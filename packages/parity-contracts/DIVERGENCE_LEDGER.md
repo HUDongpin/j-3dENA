@@ -9,7 +9,7 @@ they are not permission to relax tests or update goldens.
 | DIV-002 | Ordinary SVD column signs may differ across LAPACK and JavaScript solvers | Expected equivalence | apply one rotation-derived sign vector consistently; do not alter variance or distances |
 | DIV-003 | Near-degenerate singular values may yield rotated bases inside the same subspace | Open | implement subspace/Gram/Procrustes comparison and a tied-spectrum fixture before approval |
 | DIV-004 | Legacy RDS-byte hash is not portable to a pure TypeScript runtime | Open successor | approve source SHA-256 plus canonical JSON analysis-payload SHA-256; never claim RDS-byte parity |
-| DIV-005 | R bootstrap uses R RNG, `sample`, and quantile type 7; no TypeScript bootstrap contract exists here | Open | freeze resample indices for estimator parity and separately approve RNG/quantile semantics |
+| DIV-005 | R bootstrap uses R RNG, `sample`, and quantile type 7; the TypeScript candidate uses explicit resample plans plus a successor PRNG and makes no R RNG parity claim | Open | freeze cross-runtime resample indices for estimator parity and separately approve successor RNG/type-7 semantics before product integration |
 | DIV-006 | `jena-js@0.6.2` declares a self-dependency on `jena-js@^0.6.0` | Packaging defect | remove in a reviewed successor and prove one resolved jENA version in the production dependency graph |
 
 ## Entry protocol

@@ -6,54 +6,76 @@ promote a broader milestone.
 | Boundary | Fixture / evidence | Current state | Closure requirement |
 |---|---|---|---|
 | Frozen source versions | contract v1 | `IMPLEMENTED_UNVERIFIED` | verify packed `jena-js@0.6.2` integrity and exact oracle environments |
-| small-raw source custody | CSV + SHA-256 provenance | `PARITY_CANDIDATE` | independent custody review |
+| small-raw source custody | CSV + generated manifest + exact hash validation | `PARITY_CANDIDATE` | independent approval record |
 | raw mapping and limits | analysis unit tests | `PARITY_CANDIDATE` | integrated parser/security cases |
-| AccumulatedTrajectory, moving back 4 | jENA execution test | `IMPLEMENTED_UNVERIFIED` | compare staged counts/weights to frozen rENA 0.2.7 golden |
-| sphere normalization and center | public result + ungoverned candidate diagnostic | `IMPLEMENTED_UNVERIFIED` | approved rENA 0.2.7 center/line-weight fixture |
-| shared SVD1/SVD2/SVD3 | one facade call + trajectory tests + ungoverned candidate diagnostic | `PARITY_CANDIDATE` | approved sign-aligned rENA 0.2.7 numeric report |
-| projected points | ungoverned candidate diagnostic passed | `IMPLEMENTED_UNVERIFIED` | governed row-key exact, sign-aligned tolerance pass |
-| node positions | ungoverned candidate diagnostic passed | `IMPLEMENTED_UNVERIFIED` | governed code-order exact, sign-aligned tolerance pass |
-| variance/eigenvalues | ungoverned candidate diagnostic passed | `IMPLEMENTED_UNVERIFIED` | governed full-basis denominator and tolerance pass |
-| participant-period reduction | duplicate-step unit test | `PARITY_CANDIDATE` | legacy Class 1 or dedicated oracle fixture |
-| available/complete cohorts | missing-period unit test | `PARITY_CANDIDATE` | full missing/gap/cohort oracle matrix |
-| group-time centroids and paths | shared-space unit tests | `PARITY_CANDIDATE` | Class 1 15-centroid approved golden |
-| display filter invariant | object-identity unit test | `PARITY_CANDIDATE` | UI structural + export invariance test |
-| SVD sign indeterminacy | synthetic comparator test | `PARITY_CANDIDATE` | real oracle fixture pass |
+| AccumulatedTrajectory, moving back 4 | governed model/row count and line-weight comparison | `PARITY_CANDIDATE` | independently approved fixture |
+| sphere normalization and center | governed complete candidate comparison | `PARITY_CANDIDATE` | independently approved fixture |
+| shared SVD1/SVD2/SVD3 | one facade call + trajectory tests + governed candidate | `PARITY_CANDIDATE` | approved sign-aligned numeric report |
+| projected points | governed exact-row-order candidate pass | `PARITY_CANDIDATE` | independent approval |
+| node positions | governed exact-code-order candidate pass | `PARITY_CANDIDATE` | independent approval |
+| variance/eigenvalues | governed full-basis candidate pass | `PARITY_CANDIDATE` | independent approval |
+| raw full-dimensional coordinates | one shared fit now retains all rotation columns with resource gates | `IMPLEMENTED_UNVERIFIED` | approved raw Class 1/full-space oracle and product dimension selector |
+| typed public contracts and JSON Schemas | strict validators plus generated scalar/key/receipt/spec/display/task/evidence/provenance/envelope schemas; envelope task kind is bound to result schema and provenance entries | `IMPLEMENTED_UNVERIFIED` | complete per-field validators for every result variant, independent schema/API review, cross-client/service conformance and version-negotiation evidence |
+| Comparison A-minus-B network | raw/prepared discriminated public task core plus Worker/Web candidates; prepared is hash/receipt-bound and non-jENA | `IMPLEMENTED_UNVERIFIED` | per-quantity oracle, confidence-language decision, full trace/export matrix and independent approval |
+| Change exact-level network | raw/prepared discriminated public task core plus Worker/Web candidates; prepared remains one-level descriptive reduction | `IMPLEMENTED_UNVERIFIED` | legacy cardinality/cache/error oracle and approved product semantics |
+| independent and paired coordinate Stats | typed stats core plus raw/prepared public task candidates; prepared pairs on full typed participant-time identity; 95% Welch/paired-t mean-difference intervals are method-tagged in result/UI/formal CSV | `IMPLEMENTED_UNVERIFIED` | formula/tie/zero/CI/multiplicity oracle, paired browser flow, prepared inferential disposition and independent approval |
+| participant-period reduction | synthetic duplicate-step unit test | `IMPLEMENTED_UNVERIFIED` | authorized raw Class 1 or dedicated approved oracle fixture |
+| available/complete cohorts | missing-period unit test | `IMPLEMENTED_UNVERIFIED` | full missing/gap/cohort oracle matrix |
+| group-time centroids and paths | fully synthetic fixed-imported-space unit tests | `PRECOMPUTED_COMPATIBILITY_CANDIDATE` | authorized raw Class 1 recomputation and independently approved per-quantity oracle rows |
+| trajectory elapsed/speed/weighting | additive dynamics package, task and formal CSV candidates for numeric/Date/instant/difftime and selected/full space | `IMPLEMENTED_UNVERIFIED` | frozen estimator/time-unit decision, oracle, UI/Plotly and service lifecycle |
+| display filter invariant | object-identity unit test | `IMPLEMENTED_UNVERIFIED` | UI structural + export invariance test |
+| SVD sign indeterminacy | synthetic comparator test | `IMPLEMENTED_UNVERIFIED` | real oracle fixture pass |
 | Fixture custody and approval gate | synthetic generated/approved/tamper tests | `PARITY_CANDIDATE` | independently reviewed real oracle fixture plus CI approved-only gate |
-| degenerate SVD subspace | contract only | `PLANNED` | tied-spectrum fixture and projection/Gram/Procrustes comparator |
-| bootstrap clusters/RNG/quantiles | none | `PLANNED` | fixed resample-plan estimator fixture plus explicit RNG policy |
-| Web Worker hard cancellation | outside this package | `PLANNED` | terminate/rebuild, timeout, stale ownership, crash, capacity tests |
-| Plotly structural semantics | outside this package | `PLANNED` | trace-role/layout/axis/filter/export assertions |
-| production contains no R | outside this package | `PLANNED` | exact build dependency and artifact scan |
+| Class 1 exchange custody | legacy prepared candidate quarantined as `sensitive-excluded`; no tracked artifact, aggregate receipt, or approval | blocked | written authorization, de-identification review, exact-byte private custody and independently approved aggregate/hash-only receipts; prepared input can never substitute for raw Class 1 parity |
+| degenerate SVD subspace | strict candidate comparator uses rank-checked orthogonal projectors and passes rotation/sign/permutation versus different-subspace tests | `IMPLEMENTED_UNVERIFIED` | governed tied-spectrum oracle fixture, tolerance decision and independent approval |
+| trajectory path comparison | package-level typed paired/independent candidate tests | `IMPLEMENTED_UNVERIFIED` | oracle, service/Worker, UI, Plotly and export closure |
+| bootstrap clusters/RNG/quantiles | package-level participant-history/type-7 candidate tests; RNG parity explicitly false | `IMPLEMENTED_UNVERIFIED` | fixed resample-plan oracle, policy approval, lifecycle, UI and export closure |
+| Web Worker hard cancellation | module-Worker termination, owner/generation stale suppression and focused browser tests | `IMPLEMENTED_UNVERIFIED` | exact optimized cancellation fixture, crash/max-plus-one/memory recovery and multi-browser evidence |
+| persistent compute orchestration | in-memory lease/fencing/CAS/cancel/TTL and framework-neutral HTTP candidates plus a real single-host Node supervisor and publish-acknowledged scientific child | `IMPLEMENTED_UNVERIFIED` | PostgreSQL/S3 adapters, distributed capacity, restart reattachment/acknowledgement replay, complete task matrix and hardened container evidence |
+| transactional spreadsheet workflow | exact browser/service byte custody, parsed-content hash, inventory/sheet selection, typed mapping preview and atomic in-memory activation | `IMPLEMENTED_UNVERIFIED` | HTTP/UI, durable encrypted adapters, real XLS/XLSX workflow integration, restart/TTL/deletion and browser evidence |
+| Plotly structural semantics | pure compiler tests for roles, axes, 2D/3D layout, camera, filters and prepared provenance | `IMPLEMENTED_UNVERIFIED` | centralized Web use plus confidence/network/trajectory structural and browser matrix |
+| public SDK package | local prerelease tarball with bundled runtime, declarations/maps/schemas/notices/provenance; fresh Node/TS/Vite/Next smoke; exact dirty snapshot fresh-dependency full check | `IMPLEMENTED_UNVERIFIED` | clean-checkout reproduction, registry provenance, public API approval and release gates |
+| production contains no R | runtime-boundary verifier and artifact/package candidates | `IMPLEMENTED_UNVERIFIED` | clean exact Web/Compute/SDK image dependency and filesystem scans |
 
-Current package-level conclusion: the reusable facade and comparison machinery
-are calibration candidates. Scientific equivalence to the legacy application
-is not yet established because the exact rENA 0.2.7 numeric fixture remains
-pending.
+Current package-level conclusion: the reusable facade and its local task,
+Plotly, export, Stats and trajectory candidates form a broader implemented
+surface around the complete small-raw calibration candidate. Scientific
+equivalence to the legacy application is not verified because the generated
+evidence has no independent approval record, raw Class 1 is unavailable, and
+the service/product/release matrix remains open.
 
-## Ungoverned calibration diagnostic
+## Governed generated calibration candidate
 
-On 2026-08-20, an explicit environment-gated test read a temporary candidate
-whose reported artifact SHA-256 was
-`fa865c6c318431bddbeb530beafc17413ef0f5d1c48e414ec0b1c89b0339a03b` and whose
-canonical analysis-payload SHA-256 was
+On 2026-08-20, the frozen generator at repository commit
+`4a0f0a6c79b8872e0a07d6ac239b5a4e863a6d48` produced the tracked generated
+small-raw candidate. Its artifact SHA-256 is
+`35458bc85fa665d0d3449fc07a4f308f35c821bfa8edda0862a2fff759c5c245`, and its
+canonical analysis-payload SHA-256 is
 `b8d5708d3bf71341f39013f73c450bd66d5b145e06cdd95bf6e5cea77d0d3e5d`.
-Seven public DTO fields passed the v1 comparator: line weights, center vector,
-full rotation matrix, points, nodes, full variance, and full eigenvalues.
-Connection counts and row connection counts were present in the oracle but are
-not exposed by the public DTO, so they remain a coverage gap.
+All nine fields pass the v1 comparator in complete scope: accumulated model
+counts, source-row counts, line weights, center vector, full rotation matrix,
+points, nodes, full variance, and full eigenvalues. The production DTO exposes
+the first two under neutral `modelCounts` and `rowCounts` names; the parity
+normalizer maps them to the oracle schema.
 
-The rotation-derived sign vector was `[-1, +1, -1, +1, +1, +1]` for
+Model counts, source-row counts, line weights, and center match exactly. The
+rotation-derived sign vector is `[-1, +1, -1, +1, +1, +1]` for
 `SVD1` through `SVD6`. Maximum absolute errors in that diagnostic were: line
 weights `0`, center `0`, rotation `9.992007221626409e-16`, points
 `7.216449660063518e-16`, nodes `2.1719919196527826e-9`, variance
 `8.326672684688674e-17`, and eigenvalues `5.551115123125783e-17`; every
-field had zero mismatches under its versioned tolerance.
+field has zero mismatches under its versioned tolerance.
 
-That temporary candidate was generated before the generator's final Git-commit
-enforcement was added. It was not copied into `fixtures/`, was not adopted, and
-does not change the tracked golden envelope from `pending`. The diagnostic is a
-useful calibration result, not governed parity evidence. Under the custody-aware
-comparator it exposes `numericStatus: pass` for the seven selected public fields
-but combined `status: candidate-invalid`, because its generator Git commit,
-timestamp/runtime provenance, and current generator-byte binding are not valid.
+The comparator reports `fixtureStatus: generated`, `numericStatus: pass`,
+`comparisonScope: complete`, `status: candidate-pass`, and
+`approvedForParity: false`. No `approval` object exists. Therefore the result
+is governed candidate evidence, not approved evidence and not
+`VERIFIED_PARITY`.
+
+The legacy prepared Class 1 candidate is quarantined outside the public parity
+tree because it contains participant identities and has no authorization or
+de-identification review for this release. Its disposition is
+`sensitive-excluded`: it is not a committable fixture, contributes no tracked
+aggregate oracle evidence, has no independent approval, and provides no raw
+parity. Future release evidence may retain only privacy-reviewed hash-only or
+approved aggregate receipts; exact bytes remain in private custody.

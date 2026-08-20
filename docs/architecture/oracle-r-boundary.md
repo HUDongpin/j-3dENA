@@ -136,30 +136,23 @@ Normal `npm ci`, build, test, E2E, and deployment workflows do not install or
 invoke R. A stale or unavailable oracle blocks regeneration, not product use of
 the last reviewed static fixture.
 
-## Class 1 trusted-native migration
+## Quarantined legacy prepared conversion
 
-The pinned legacy repository also contains a one-time trusted converter:
+The legacy prepared candidate is `sensitive-excluded` and is not a committable
+fixture. It contains participant identities and has no current authorization,
+de-identification review, scientific approval, or raw-parity standing. Exact
+input/output hashes, byte counts, dimensions, row counts, identities, and
+aggregate values are therefore not recorded here.
 
-- input at commit d020:
-  `sample_data/class1_timepoints_enaset.RData`;
-- input SHA-256:
-  `16c74f4e2ab4580f5742f2c46684e24bb7ab3417c0c0b66ba99f7bb2fed9debc`;
-- converter:
-  `tools/convert_trusted_rdata_to_ena3d_json.R` at the same commit; and
-- converter-file SHA-256:
-  `f07e28ae3c1d3209aa8d4c5171bf80f575f25534d250bd879935964ea079c7b1`.
-
-The independently observed pinned conversion is 52,073 bytes with SHA-256
-`704b940865fbf09a7c5e42949105c935f3a64f5831a65e9af489af04e695c909`.
-`oracle-r/generate-class1-exchange.R` does not trust that recorded value by
-copying it into an artifact: it reruns the pinned converter, recomputes the
-candidate hash and size, and refuses approval unless both match. It then writes
-a separate provenance JSON containing the full hashes. The wrapper itself must
-run from its fixed path in a generator repository with a concrete `HEAD`; it
-must be tracked and clean. Both preflight and generation fail closed otherwise.
-Preflight prints `wrapper_commit` and `wrapper_sha256`, and the provenance JSON
-records both (including top-level `wrapperCommit`), so an exchange cannot be
-approved from an uncommitted wrapper.
+`oracle-r/generate-class1-exchange.R` remains development-only converter
+plumbing. It has no built-in expected output identity and cannot create an
+approval. Both preflight and generation require an expected output SHA-256 and
+byte count supplied externally from the authorized private review context. The
+wrapper must also run from its fixed path in a generator repository with a
+concrete `HEAD`; it must be tracked and clean. Preflight prints only that an
+external identity was supplied, not the identity itself. Generated checksum and
+provenance files remain in the external private review directory and are still
+unapproved candidates.
 
 Preflight is write-free:
 
@@ -167,6 +160,10 @@ Preflight is write-free:
 R_LIBS_USER=/absolute/path/to/legacy/renv/library \
   Rscript --vanilla oracle-r/generate-class1-exchange.R \
   --legacy-checkout /absolute/path/to/clean-d020-checkout \
+  --expected-input-sha256 '<private-review-input-hash>' \
+  --expected-input-bytes '<private-review-input-byte-count>' \
+  --expected-exchange-sha256 '<private-review-hash>' \
+  --expected-exchange-bytes '<private-review-byte-count>' \
   --preflight
 ```
 
@@ -176,12 +173,17 @@ Generation must target an external review directory, never the legacy checkout:
 R_LIBS_USER=/absolute/path/to/legacy/renv/library \
   Rscript --vanilla oracle-r/generate-class1-exchange.R \
   --legacy-checkout /absolute/path/to/clean-d020-checkout \
-  --output /absolute/review/path/class1-timepoints.ena3d.json
+  --output /absolute/private-review/path/prepared-exchange.ena3d.json \
+  --expected-input-sha256 '<private-review-input-hash>' \
+  --expected-input-bytes '<private-review-input-byte-count>' \
+  --expected-exchange-sha256 '<private-review-hash>' \
+  --expected-exchange-bytes '<private-review-byte-count>'
 ```
 
-The converter must be run only against the pinned, local, trusted `.RData`; R
-serialization is unsafe for public upload. Its produced `.ena3d.json` and
-`.sha256` are review candidates, not trusted merely because they are present or
-ignored in a working tree. Governance requires the full converter commit,
-converter hash, input hash, output hash, byte count, and schema validation.
-Production reads only the accepted JSON exchange and never the `.RData` source.
+Do not run the converter until the private custody process has supplied the
+authorization, de-identification disposition, retention policy, and expected
+output identity. R serialization is unsafe for public upload. Produced exchange,
+checksum, and provenance files are private review candidates, not tracked or
+approved evidence merely because they exist. Production never reads the native
+source, and no output may enter Git without a separate privacy review and
+independent scientific disposition.
