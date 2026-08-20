@@ -1,17 +1,59 @@
 "use client";
 
-import { useMemo, useState, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import dynamic from "next/dynamic";
-import type { AnalysisResult, Coordinates3D } from "@3dena/analysis";
-import type { Config, Data, Layout } from "plotly.js";
-import { Box, Download, List, Table2 } from "lucide-react";
+import type {
+  AnalysisResult,
+  Coordinates3D,
+  DatasetLimitsReceiptV1,
+  DatasetSchemaV1,
+} from "@3dena/analysis";
+import type { Data, Layout } from "plotly.js";
+import { Download } from "lucide-react";
+import { PlotToolsPanel } from "@/components/plot-tools-panel";
+import { RawChangePanel } from "@/components/raw-change-panel";
+import { RawComparisonPanel } from "@/components/raw-comparison-panel";
+import { RawStatisticsPanel } from "@/components/raw-statistics-panel";
+import {
+  ResultExplorerTabs,
+  ResultPanel,
+} from "@/components/result-explorer-tabs";
+import {
+  assessRawEvidenceScope,
+  PRODUCT_STATUS,
+  type RawEvidenceAssessment,
+} from "@/lib/evidence-scope";
 import type { RunOwner } from "@/lib/worker-protocol";
+import type { RawDerivedSource } from "@/lib/use-derived-analysis";
+import {
+  RAW_BROWSER_DATASET_LIMITS,
+  fallbackRawDatasetSchema,
+} from "@/lib/raw-dataset-receipt";
 import { downloadAnalysisResult } from "@/lib/export-results";
 import {
+  axisColor,
   axisTraces3d,
   groupColor,
   trajectoryTraces,
 } from "@/lib/plot-traces";
+import {
+  axisMappingIndexes,
+  buildResultPlotConfig,
+  cameraForPreset,
+  createPlotToolState,
+  permuteCoordinate,
+  selectAxisDimension,
+  type AxisSlot,
+  type CameraPreset,
+  type PlotDimension,
+  type PlotToolState,
+  type ResultSection,
+} from "@/lib/result-plot-tools";
 
 const Plot = dynamic(
   async () => {
@@ -31,8 +73,6 @@ const Plot = dynamic(
     ),
   },
 );
-
-type ResultView = "3d" | "2d" | "table";
 
 function axisExtent(result: AnalysisResult): number {
   const magnitudes = [
@@ -97,9 +137,7 @@ function networkTraces(result: AnalysisResult, dimensions: 2 | 3): Data[] {
   for (const edge of result.edges) {
     const source = nodesByIndex.get(edge.sourceIndex);
     const target = nodesByIndex.get(edge.targetIndex);
-    if (!source || !target || edge.meanWeight <= 0) {
-      continue;
-    }
+    if (!source || !target || edge.meanWeight <= 0) continue;
     edges.push({
       type: dimensions === 3 ? "scatter3d" : "scatter",
       mode: "lines",
@@ -138,33 +176,63 @@ function networkTraces(result: AnalysisResult, dimensions: 2 | 3): Data[] {
   return [...edges, nodes];
 }
 
-function plotData(result: AnalysisResult, dimensions: 2 | 3): Data[] {
-  const extent = axisExtent(result);
+function networkPlotData(result: AnalysisResult, dimensions: 2 | 3): Data[] {
   return [
     ...networkTraces(result, dimensions),
     ...pointTraces(result, dimensions),
-    ...trajectoryTraces(result, dimensions, extent),
-    ...(dimensions === 3 ? axisTraces3d(extent) : []),
+    ...(dimensions === 3
+      ? axisTraces3d(axisExtent(result), result.axes)
+      : []),
   ];
 }
 
-function plotLayout(result: AnalysisResult, dimensions: 2 | 3): Partial<Layout> {
+function trajectoryPlotData(result: AnalysisResult, dimensions: 2 | 3): Data[] {
+  const extent = axisExtent(result);
+  return [
+    ...trajectoryTraces(result, dimensions, extent),
+    ...(dimensions === 3 ? axisTraces3d(extent, result.axes) : []),
+  ];
+}
+
+function plotLayout(
+  result: AnalysisResult,
+  dimensions: 2 | 3,
+  cameraPreset: CameraPreset,
+  uirevision: string,
+): Partial<Layout> {
   const common: Partial<Layout> = {
     autosize: true,
     margin: { l: 56, r: 24, t: 30, b: 56 },
     paper_bgcolor: "#ffffff",
     plot_bgcolor: "#f8fafc",
-    font: { family: "Atkinson Hyperlegible, system-ui, sans-serif", color: "#334155" },
+    font: {
+      family: "Atkinson Hyperlegible, system-ui, sans-serif",
+      color: "#334155",
+    },
     legend: { orientation: "h", y: -0.16 },
     hoverlabel: { bgcolor: "#0f172a", font: { color: "#ffffff" } },
+    uirevision,
   };
   if (dimensions === 3) {
     return {
       ...common,
       scene: {
-        xaxis: { title: { text: result.axes[0] }, color: "#b91c1c", gridcolor: "#e2e8f0" },
-        yaxis: { title: { text: result.axes[1] }, color: "#1d4ed8", gridcolor: "#e2e8f0" },
-        zaxis: { title: { text: result.axes[2] }, color: "#15803d", gridcolor: "#e2e8f0" },
+        xaxis: {
+          title: { text: result.axes[0] },
+          color: axisColor(result.axes[0]),
+          gridcolor: "#e2e8f0",
+        },
+        yaxis: {
+          title: { text: result.axes[1] },
+          color: axisColor(result.axes[1]),
+          gridcolor: "#e2e8f0",
+        },
+        zaxis: {
+          title: { text: result.axes[2] },
+          color: axisColor(result.axes[2]),
+          gridcolor: "#e2e8f0",
+        },
+        camera: cameraForPreset(cameraPreset),
         bgcolor: "#f8fafc",
         aspectmode: "cube",
       },
@@ -172,67 +240,203 @@ function plotLayout(result: AnalysisResult, dimensions: 2 | 3): Partial<Layout> 
   }
   return {
     ...common,
-    xaxis: { title: { text: result.axes[0] }, color: "#b91c1c", gridcolor: "#e2e8f0" },
-    yaxis: { title: { text: result.axes[1] }, color: "#1d4ed8", gridcolor: "#e2e8f0" },
+    xaxis: {
+      title: { text: result.axes[0] },
+      color: axisColor(result.axes[0]),
+      gridcolor: "#e2e8f0",
+    },
+    yaxis: {
+      title: { text: result.axes[1] },
+      color: axisColor(result.axes[1]),
+      gridcolor: "#e2e8f0",
+    },
   };
 }
 
-const plotConfig: Partial<Config> = {
-  responsive: true,
-  displaylogo: false,
-  scrollZoom: true,
-  modeBarButtonsToRemove: ["sendDataToCloud", "lasso2d", "select2d"],
-  toImageButtonOptions: { format: "png", filename: "3dena-shared-space" },
-};
+function displayPermutation(
+  result: AnalysisResult,
+  tools: PlotToolState,
+): AnalysisResult {
+  const indexes = axisMappingIndexes(result.axes, tools.axes);
+  const coordinate = (value: Coordinates3D): Coordinates3D =>
+    permuteCoordinate(value, indexes);
+  const displayBase: AnalysisResult = {
+    ...result,
+    axes: [tools.axes.x, tools.axes.y, tools.axes.z] as AnalysisResult["axes"],
+    points: result.points.map((point) => ({
+      ...point,
+      coordinates: coordinate(point.coordinates),
+    })),
+    nodes: result.nodes.map((node) => ({
+      ...node,
+      coordinates: coordinate(node.coordinates),
+    })),
+  };
+  if (!result.trajectory) return displayBase;
+  return {
+    ...displayBase,
+    trajectory: {
+      ...result.trajectory,
+      participantPeriods: result.trajectory.participantPeriods.map((point) => ({
+        ...point,
+        coordinates: coordinate(point.coordinates),
+      })),
+      centroids: result.trajectory.centroids.map((centroid) => ({
+        ...centroid,
+        coordinates: coordinate(centroid.coordinates),
+      })),
+    },
+  };
+}
 
 interface AnalysisResultsProps {
   result: AnalysisResult;
   owner: RunOwner;
   datasetName: string;
+  /** Exact server-rendered build identity; omitted/unversioned builds fail closed. */
+  buildId?: string | undefined;
+  datasetByteLength?: number;
+  datasetColumns?: number;
+  datasetSchema?: DatasetSchemaV1;
+  datasetLimits?: DatasetLimitsReceiptV1;
 }
 
-export function AnalysisResults({ result, owner, datasetName }: AnalysisResultsProps) {
-  const [view, setView] = useState<ResultView>("3d");
+export function AnalysisResults({
+  result,
+  owner,
+  datasetName,
+  buildId,
+  datasetByteLength = 0,
+  datasetColumns = result.summary.inputColumns,
+  datasetSchema = fallbackRawDatasetSchema(datasetColumns),
+  datasetLimits = RAW_BROWSER_DATASET_LIMITS,
+}: AnalysisResultsProps) {
+  const resultRef = useRef<HTMLElement>(null);
+  const evidence = assessRawEvidenceScope(result, owner, buildId);
+  const [activeSection, setActiveSection] =
+    useState<ResultSection>("networks");
+  const [tools, setTools] = useState<PlotToolState>(() =>
+    createPlotToolState(result.axes),
+  );
   const [plotlyReady, setPlotlyReady] = useState(false);
-  const data3d = useMemo(() => plotData(result, 3), [result]);
-  const data2d = useMemo(() => plotData(result, 2), [result]);
+  const [revision, setRevision] = useState(0);
+  const [fullscreenActive, setFullscreenActive] = useState(false);
+  const displayedResult = useMemo(
+    () => displayPermutation(result, tools),
+    [result, tools],
+  );
+  const derivedSource = useMemo<RawDerivedSource>(() => ({
+    mode: "raw",
+    name: datasetName,
+    byteLength: datasetByteLength,
+    rows: result.summary.inputRows,
+    columns: datasetColumns,
+    schema: datasetSchema,
+    limits: datasetLimits,
+    result,
+  }), [datasetByteLength, datasetColumns, datasetLimits, datasetName, datasetSchema, result]);
+  const dimensionCount = tools.dimension === "3d" ? 3 : 2;
+  const networks = useMemo(
+    () => networkPlotData(displayedResult, dimensionCount),
+    [displayedResult, dimensionCount],
+  );
+  const trajectories = useMemo(
+    () => trajectoryPlotData(displayedResult, dimensionCount),
+    [displayedResult, dimensionCount],
+  );
+  const plotConfig = useMemo(
+    () =>
+      buildResultPlotConfig({
+        showModeBar: tools.showModeBar,
+        fileName: `${datasetName.replace(/\.csv$/iu, "")}-${owner.runId}-shared-space`,
+      }),
+    [datasetName, owner.runId, tools.showModeBar],
+  );
+  const layout = useMemo(
+    () =>
+      plotLayout(
+        displayedResult,
+        dimensionCount,
+        tools.cameraPreset,
+        `${owner.runId}-${tools.dimension}-${Object.values(tools.axes).join("-")}-${tools.cameraPreset}`,
+      ),
+    [displayedResult, dimensionCount, owner.runId, tools],
+  );
 
-  function selectView(nextView: ResultView): void {
-    setPlotlyReady(false);
-    setView(nextView);
+  useEffect(() => {
+    function syncFullscreen(): void {
+      setFullscreenActive(document.fullscreenElement === resultRef.current);
+    }
+    document.addEventListener("fullscreenchange", syncFullscreen);
+    return () => document.removeEventListener("fullscreenchange", syncFullscreen);
+  }, []);
+
+  function updateAxis(slot: AxisSlot, dimension: string): void {
+    setTools((current) => ({
+      ...current,
+      axes: selectAxisDimension(current.axes, slot, dimension, result.axes),
+    }));
   }
 
-  function handleTabKeyDown(
-    event: KeyboardEvent<HTMLButtonElement>,
-    currentView: ResultView,
-  ): void {
-    const order: ResultView[] = ["3d", "2d", "table"];
-    const currentIndex = order.indexOf(currentView);
-    let nextView: ResultView | undefined;
-    if (event.key === "ArrowRight") {
-      nextView = order[(currentIndex + 1) % order.length];
-    } else if (event.key === "ArrowLeft") {
-      nextView = order[(currentIndex - 1 + order.length) % order.length];
-    } else if (event.key === "Home") {
-      nextView = order[0];
-    } else if (event.key === "End") {
-      nextView = order.at(-1);
-    }
-    if (!nextView) return;
-    event.preventDefault();
-    selectView(nextView);
+  function updateDimension(dimension: PlotDimension): void {
+    setTools((current) => ({ ...current, dimension }));
+  }
+
+  function updateCamera(cameraPreset: CameraPreset): void {
+    setTools((current) => ({ ...current, cameraPreset }));
+    setRevision((current) => current + 1);
+  }
+
+  function schedulePlotReflow(): void {
     requestAnimationFrame(() => {
-      document.getElementById(`result-tab-${nextView}`)?.focus();
+      setRevision((current) => current + 1);
+      window.dispatchEvent(new Event("resize"));
     });
+  }
+
+  function selectSection(section: ResultSection): void {
+    setActiveSection(section);
+    if (section === "networks" || section === "trajectory") {
+      schedulePlotReflow();
+    }
+  }
+
+  function reflowPlot(): void {
+    schedulePlotReflow();
+  }
+
+  async function toggleFullscreen(): Promise<void> {
+    const target = resultRef.current;
+    if (!target) return;
+    selectSection("networks");
+    try {
+      if (document.fullscreenElement === target && document.exitFullscreen) {
+        await document.exitFullscreen();
+        return;
+      }
+      if (target.requestFullscreen) {
+        await target.requestFullscreen();
+        return;
+      }
+      setFullscreenActive((current) => !current);
+      schedulePlotReflow();
+    } catch {
+      setFullscreenActive(false);
+    }
   }
 
   return (
     <section
-      className="analysis-results"
+      ref={resultRef}
+      className={`analysis-results${fullscreenActive ? " analysis-results--fullscreen" : ""}`}
       data-testid="analysis-result"
       data-dataset-hash={owner.datasetHash}
       data-spec-hash={owner.specHash}
       data-run-id={owner.runId}
+      data-product-status={PRODUCT_STATUS}
+      data-evidence-status={evidence.evidenceStatus}
+      data-evidence-scope={evidence.scopeVersion ?? "unscoped-local-result"}
+      data-evidence-build-id={evidence.buildId ?? "unbound-build"}
       aria-labelledby="results-title"
     >
       <header className="results-heading">
@@ -247,12 +451,158 @@ export function AnalysisResults({ result, owner, datasetName }: AnalysisResultsP
         <button
           className="button button--secondary"
           type="button"
-          onClick={() => downloadAnalysisResult(result, datasetName.replace(/\.csv$/iu, ""))}
+          onClick={() =>
+            downloadAnalysisResult(result, datasetName.replace(/\.csv$/iu, ""))
+          }
         >
           <Download size={18} aria-hidden="true" /> Export result CSV
         </button>
       </header>
 
+      <div
+        className="prepared-boundary result-evidence-boundary"
+        role="note"
+        data-testid="raw-evidence-status"
+      >
+        <strong>Product status: {PRODUCT_STATUS}</strong>
+        <span>
+          {evidence.evidenceStatus === "PARITY_CANDIDATE"
+            ? `Only this exact fixture, specification, explicit build identity (${evidence.buildId}), and frozen version set is a scoped PARITY_CANDIDATE (${evidence.scopeVersion}). Integrated parity remains open.`
+            : "This local result does not match the governed small-raw fixture, specification, explicit build identity, and frozen version set. It carries no parity-candidate claim."}
+        </span>
+      </div>
+
+      <ResultExplorerTabs
+        active={activeSection}
+        idPrefix="raw-result"
+        onSelect={selectSection}
+      />
+
+      <ResultPanel active={activeSection} section="overall" idPrefix="raw-result">
+        <OverallResult result={result} owner={owner} evidence={evidence} />
+      </ResultPanel>
+
+      <ResultPanel
+        active={activeSection}
+        section="networks"
+        idPrefix="raw-result"
+        className="plot-panel result-network-panel"
+      >
+        <div
+          className="result-plot-frame"
+          role="region"
+          aria-label={`${tools.dimension === "3d" ? "Three" : "Two"}-dimensional ENA network plot`}
+          tabIndex={0}
+          data-testid="analysis-plot"
+          data-plotly-ready={plotlyReady ? "true" : "false"}
+          data-render-revision={revision}
+        >
+          <p className="sr-only">
+            Interactive network chart. Overall and Trajectory include
+            keyboard-accessible exact-value tables for the same owned result.
+          </p>
+          {fullscreenActive && (
+            <button
+              className="button button--quiet plot-fullscreen-exit"
+              type="button"
+              onClick={() => void toggleFullscreen()}
+            >
+              Exit fullscreen
+            </button>
+          )}
+          <Plot
+            data={networks}
+            layout={layout}
+            config={plotConfig}
+            revision={revision}
+            useResizeHandler
+            className="analysis-plotly"
+            onInitialized={() => setPlotlyReady(true)}
+            onUpdate={() => setPlotlyReady(true)}
+          />
+        </div>
+      </ResultPanel>
+
+      <ResultPanel active={activeSection} section="comparison" idPrefix="raw-result">
+        <RawComparisonPanel source={derivedSource} owner={owner} />
+      </ResultPanel>
+
+      <ResultPanel active={activeSection} section="change" idPrefix="raw-result">
+        <RawChangePanel source={derivedSource} owner={owner} />
+      </ResultPanel>
+
+      <ResultPanel active={activeSection} section="statistics" idPrefix="raw-result">
+        <RawStatisticsPanel source={derivedSource} owner={owner} />
+      </ResultPanel>
+
+      <ResultPanel active={activeSection} section="trajectory" idPrefix="raw-result">
+        <section className="trajectory-result" aria-labelledby="trajectory-result-title">
+          <header>
+            <p className="eyebrow">Same owned rotation</p>
+            <h3 id="trajectory-result-title">Group-time trajectories</h3>
+            <p>
+              Paths and centroids are display selections from this result; gaps
+              remain gaps and no period-specific model is fit here.
+            </p>
+          </header>
+          {result.trajectory ? (
+            <div
+              className="plot-panel trajectory-plot-panel"
+              role="region"
+              aria-label="Group-time trajectory plot"
+              tabIndex={0}
+              data-testid="trajectory-plot"
+              data-render-revision={revision}
+            >
+              <Plot
+                data={trajectories}
+                layout={layout}
+                config={plotConfig}
+                revision={revision}
+                useResizeHandler
+                className="analysis-plotly"
+              />
+            </div>
+          ) : (
+            <p className="result-empty-state" role="status">
+              This owned result does not contain trajectory artifacts.
+            </p>
+          )}
+          <ResultTables result={result} />
+        </section>
+      </ResultPanel>
+
+      <ResultPanel active={activeSection} section="plot-tools" idPrefix="raw-result">
+        <PlotToolsPanel
+          dimensions={result.axes}
+          state={tools}
+          fullscreenActive={fullscreenActive}
+          onDimensionChange={updateDimension}
+          onAxisChange={updateAxis}
+          onCameraChange={updateCamera}
+          onCameraReset={() => updateCamera("isometric")}
+          onModeBarChange={(showModeBar) =>
+            setTools((current) => ({ ...current, showModeBar }))
+          }
+          onResize={reflowPlot}
+          onFullscreen={() => void toggleFullscreen()}
+        />
+      </ResultPanel>
+    </section>
+  );
+}
+
+function OverallResult({
+  result,
+  owner,
+  evidence,
+}: {
+  result: AnalysisResult;
+  owner: RunOwner;
+  evidence: RawEvidenceAssessment;
+}) {
+  return (
+    <div className="overall-result">
       <dl className="summary-grid" aria-label="Analysis summary">
         <div><dt>Rows</dt><dd>{result.summary.inputRows}</dd></div>
         <div><dt>Units</dt><dd>{result.summary.units}</dd></div>
@@ -262,104 +612,32 @@ export function AnalysisResults({ result, owner, datasetName }: AnalysisResultsP
         <div><dt>Centroids</dt><dd>{result.summary.trajectoryCentroids}</dd></div>
       </dl>
 
-      <div className="result-view-tabs" role="tablist" aria-label="Result representation">
-        <button
-          id="result-tab-3d"
-          type="button"
-          role="tab"
-          aria-selected={view === "3d"}
-          aria-controls="result-panel-3d"
-          tabIndex={view === "3d" ? 0 : -1}
-          onClick={() => selectView("3d")}
-          onKeyDown={(event) => handleTabKeyDown(event, "3d")}
-        >
-          <Box size={17} aria-hidden="true" /> 3D
-        </button>
-        <button
-          id="result-tab-2d"
-          type="button"
-          role="tab"
-          aria-selected={view === "2d"}
-          aria-controls="result-panel-2d"
-          tabIndex={view === "2d" ? 0 : -1}
-          onClick={() => selectView("2d")}
-          onKeyDown={(event) => handleTabKeyDown(event, "2d")}
-        >
-          <List size={17} aria-hidden="true" /> 2D
-        </button>
-        <button
-          id="result-tab-table"
-          type="button"
-          role="tab"
-          aria-selected={view === "table"}
-          aria-controls="result-panel-table"
-          tabIndex={view === "table" ? 0 : -1}
-          onClick={() => selectView("table")}
-          onKeyDown={(event) => handleTabKeyDown(event, "table")}
-        >
-          <Table2 size={17} aria-hidden="true" /> Table
-        </button>
-      </div>
-
-      {view === "3d" && (
-        <div
-          id="result-panel-3d"
-          className="plot-panel"
-          role="tabpanel"
-          aria-labelledby="result-tab-3d"
-          tabIndex={0}
-          data-testid="analysis-plot"
-          data-plotly-ready={plotlyReady ? "true" : "false"}
-        >
-          <p className="sr-only">
-            Interactive 3D chart. Use the adjacent 2D view or result table for a
-            non-spatial representation of the same computed coordinates.
-          </p>
-          <Plot
-            data={data3d}
-            layout={plotLayout(result, 3)}
-            config={plotConfig}
-            useResizeHandler
-            className="analysis-plotly"
-            onInitialized={() => setPlotlyReady(true)}
-            onUpdate={() => setPlotlyReady(true)}
-          />
+      <section aria-labelledby="variance-title">
+        <h3 id="variance-title">Model variance</h3>
+        <div className="table-scroll" role="region" aria-label="Model variance table" tabIndex={0}>
+          <table>
+            <caption>Exact variance values supplied by the owned analysis result.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Axis</th>
+                <th scope="col">Proportion</th>
+                <th scope="col">Eigenvalue</th>
+                <th scope="col">Displayed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.variance.map((dimension) => (
+                <tr key={dimension.axis}>
+                  <th scope="row">{dimension.axis}</th>
+                  <td>{dimension.proportion.toFixed(6)}</td>
+                  <td>{dimension.eigenvalue.toFixed(6)}</td>
+                  <td>{dimension.displayed ? "Yes" : "No"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      )}
-
-      {view === "2d" && (
-        <div
-          id="result-panel-2d"
-          className="plot-panel"
-          role="tabpanel"
-          aria-labelledby="result-tab-2d"
-          tabIndex={0}
-          data-testid="analysis-plot"
-          data-plotly-ready={plotlyReady ? "true" : "false"}
-        >
-          <Plot
-            data={data2d}
-            layout={plotLayout(result, 2)}
-            config={plotConfig}
-            useResizeHandler
-            className="analysis-plotly"
-            onInitialized={() => setPlotlyReady(true)}
-            onUpdate={() => setPlotlyReady(true)}
-          />
-        </div>
-      )}
-
-      {view === "table" && (
-        <div
-          id="result-panel-table"
-          className="result-table-panel"
-          role="tabpanel"
-          aria-labelledby="result-tab-table"
-          tabIndex={0}
-        >
-          <ResultTables result={result} />
-        </div>
-      )}
+      </section>
 
       <footer className="result-provenance">
         <div>
@@ -369,8 +647,24 @@ export function AnalysisResults({ result, owner, datasetName }: AnalysisResultsP
           </span>
         </div>
         <div>
+          <strong>Owned run</strong>
+          <span>
+            Dataset {owner.datasetHash} · specification {owner.specHash} · run {owner.runId}
+          </span>
+        </div>
+        <div>
+          <strong>Resolved specification</strong>
+          <span>
+            {result.provenance.resolvedConfig.model} · {result.provenance.resolvedConfig.window} · {result.provenance.resolvedConfig.weightBy} · back {result.provenance.resolvedConfig.windowSizeBack} · forward {result.provenance.resolvedConfig.windowSizeForward}
+          </span>
+        </div>
+        <div>
           <strong>Scientific status</strong>
-          <span>Legacy application fixture comparison pending</span>
+          <span>
+            {evidence.evidenceStatus === "PARITY_CANDIDATE"
+              ? `Scoped small-raw vertical slice: PARITY_CANDIDATE under ${evidence.scopeVersion}. The product remains ${PRODUCT_STATUS}; integrated closure and independent approval remain open.`
+              : `${PRODUCT_STATUS}. No governed parity-candidate scope applies to this result.`}
+          </span>
         </div>
       </footer>
 
@@ -386,7 +680,7 @@ export function AnalysisResults({ result, owner, datasetName }: AnalysisResultsP
           </ul>
         </aside>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -410,9 +704,7 @@ function ResultTables({ result }: { result: AnalysisResult }) {
                 <th scope="col">Unit</th>
                 <th scope="col">Group</th>
                 <th scope="col">Time</th>
-                <th scope="col">SVD1</th>
-                <th scope="col">SVD2</th>
-                <th scope="col">SVD3</th>
+                {result.axes.map((axis) => <th scope="col" key={axis}>{axis}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -451,9 +743,7 @@ function ResultTables({ result }: { result: AnalysisResult }) {
                 <th scope="col">Group</th>
                 <th scope="col">Time</th>
                 <th scope="col">Participants</th>
-                <th scope="col">SVD1</th>
-                <th scope="col">SVD2</th>
-                <th scope="col">SVD3</th>
+                {result.axes.map((axis) => <th scope="col" key={axis}>{axis}</th>)}
               </tr>
             </thead>
             <tbody>

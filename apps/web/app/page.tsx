@@ -34,9 +34,11 @@ export default function HomePage() {
           <div className="verification-note" role="status">
             <FileCheck2 size={19} aria-hidden="true" />
             <span>
-              <strong>Scientific parity verification in progress.</strong> Browser
-              results are not yet claimed as fully equivalent to the offline
-              frozen scientific oracle.
+              <strong>Product status: IMPLEMENTED_UNVERIFIED.</strong> Only the
+              exact governed small-raw fixture, specification, explicit build
+              identity, and frozen version set may carry a scoped
+              PARITY_CANDIDATE label. Other
+              browser results carry no parity claim.
             </span>
           </div>
         </div>

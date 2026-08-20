@@ -39,6 +39,21 @@ export async function createRunOwner(
   return { datasetHash, specHash, runId };
 }
 
+export async function createRunOwnerFromDatasetHash(
+  datasetHash: string,
+  specification: unknown,
+  runId: string,
+): Promise<RunOwner> {
+  if (!/^[a-f0-9]{64}$/u.test(datasetHash)) {
+    throw new TypeError("A prepared dataset owner requires a lowercase SHA-256 hash.");
+  }
+  return {
+    datasetHash,
+    specHash: await sha256(stableStringify(specification)),
+    runId,
+  };
+}
+
 export function sameRunOwner(
   active: RunOwner | null,
   candidate: RunOwner,

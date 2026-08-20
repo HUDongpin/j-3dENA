@@ -1,4 +1,66 @@
+import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { resolve } from "node:path";
+
 import { expect, type Page } from "@playwright/test";
+
+export const SMALL_RAW_CSV = resolve(
+  process.cwd(),
+  "packages/parity-contracts/fixtures/small-raw.csv",
+);
+
+function syntheticPreparedExchangeBytes(): Buffer {
+  const rows = [
+    ["synthetic-1", "A", "alpha", "TP1", 0.1, 0.2, 0.3],
+    ["synthetic-2", "A", "beta", "TP2", 0.2, 0.3, 0.4],
+    ["synthetic-3", "A", "gamma", "TP3", 0.3, 0.4, 0.5],
+    ["synthetic-4", "B", "delta", "TP1", -0.1, -0.2, -0.3],
+    ["synthetic-5", "B", "epsilon", "TP2", -0.2, -0.3, -0.4],
+    ["synthetic-6", "B", "zeta", "TP3", -0.3, -0.4, -0.5],
+  ] as const;
+  const metadata = [
+    { name: "ENA_UNIT", type: "character", values: rows.map((row) => row[0]) },
+    { name: "Group", type: "character", values: rows.map((row) => row[1]) },
+    { name: "Speaker", type: "character", values: rows.map((row) => row[2]) },
+    { name: "Period", type: "character", values: rows.map((row) => row[3]) },
+  ];
+  const edges = [
+    { name: "A & B", type: "character", values: ["A", "B"] },
+    { name: "A & C", type: "character", values: ["A", "C"] },
+    { name: "B & C", type: "character", values: ["B", "C"] },
+  ];
+  return Buffer.from(JSON.stringify({
+    format: "ena3d-exchange",
+    version: 1,
+    dimensions: ["SVD1", "SVD2", "SVD3"],
+    group_variables: ["Group", "Speaker", "Period"],
+    tables: {
+      meta_data: { columns: metadata },
+      points: { columns: [
+        ...metadata,
+        { name: "SVD1", type: "double", values: rows.map((row) => row[4]) },
+        { name: "SVD2", type: "double", values: rows.map((row) => row[5]) },
+        { name: "SVD3", type: "double", values: rows.map((row) => row[6]) },
+      ] },
+      line_weights: { columns: [
+        ...metadata,
+        ...edges.map(({ name }) => ({ name, type: "double", values: rows.map(() => 0.25) })),
+      ] },
+      nodes: { columns: [
+        { name: "code", type: "character", values: ["A", "B", "C"] },
+        { name: "SVD1", type: "double", values: [1, 0, 0] },
+        { name: "SVD2", type: "double", values: [0, 1, 0] },
+        { name: "SVD3", type: "double", values: [0, 0, 1] },
+      ] },
+      adjacency_key: { columns: edges },
+    },
+  }));
+}
+
+export const SYNTHETIC_PREPARED_BYTES = syntheticPreparedExchangeBytes();
+export const SYNTHETIC_PREPARED_SHA256 = createHash("sha256")
+  .update(SYNTHETIC_PREPARED_BYTES)
+  .digest("hex");
 
 export const PRODUCT_ROUTES = ["/", "/app", "/papers", "/team", "/about"] as const;
 
@@ -6,11 +68,23 @@ export const testIds = {
   appShell: "app-shell",
   routeMain: "route-main",
   rawFileInput: "raw-file-input",
+  workspace: "analysis-workspace",
+  rawMode: "analysis-mode-raw",
+  preparedMode: "analysis-mode-prepared",
+  preparedFileInput: "prepared-file-input",
+  preparedImportStatus: "prepared-import-status",
+  preparedReceipt: "prepared-dataset-receipt",
+  preparedSummary: "prepared-summary",
+  preparedEvidenceStatus: "prepared-evidence-status",
+  preparedExportCentroids: "prepared-export-centroids",
+  preparedExportProvenance: "prepared-export-provenance",
+  preparedExportBundle: "prepared-export-bundle",
   run: "analysis-run",
   cancel: "analysis-cancel",
   status: "analysis-status",
   workerStatus: "worker-status",
   result: "analysis-result",
+  rawEvidenceStatus: "raw-evidence-status",
   plot: "analysis-plot",
   windowSize: "analysis-spec-window-size",
 } as const;
@@ -54,6 +128,45 @@ export async function workerEvents(page: Page) {
   return page.evaluate(() => window.__THREEDENA_WORKER_EVENTS__ ?? []);
 }
 
+export async function uploadSmallRaw(page: Page) {
+  expect(
+    existsSync(SMALL_RAW_CSV),
+    `governed E2E fixture is missing: ${SMALL_RAW_CSV}`,
+  ).toBe(true);
+  await page.getByTestId(testIds.rawFileInput).setInputFiles(SMALL_RAW_CSV);
+  // setInputFiles dispatches the change event, but the product intentionally
+  // stages File.text(), CSV parsing, mapping, and row validation before it
+  // atomically commits the dataset. The Run button is already enabled for the
+  // bundled sample, so its enabled state alone is not an upload-complete gate.
+  await expect(page.locator(".dataset-receipt")).toContainText("Local file");
+  await expect(page.getByTestId(testIds.run)).toBeEnabled();
+}
+
+export async function loadSyntheticPreparedExchange(page: Page) {
+  await page.getByTestId(testIds.preparedMode).click();
+  await expect(page.getByTestId(testIds.workspace)).toHaveAttribute(
+    "data-analysis-mode",
+    "prepared",
+  );
+  await page.getByTestId(testIds.preparedFileInput).setInputFiles({
+    name: "synthetic-prepared.ena3d.json",
+    mimeType: "application/json",
+    buffer: SYNTHETIC_PREPARED_BYTES,
+  });
+  await expect(page.getByTestId(testIds.preparedImportStatus)).toHaveAttribute(
+    "data-state",
+    "completed",
+    { timeout: 30_000 },
+  );
+  const receipt = page.getByTestId(testIds.preparedReceipt);
+  await expect(receipt).toHaveAttribute("data-source", "file");
+  await expect(receipt).toHaveAttribute(
+    "data-dataset-hash",
+    SYNTHETIC_PREPARED_SHA256,
+  );
+  await expect(page.getByTestId(testIds.run)).toBeEnabled();
+}
+
 export function observeAnalysisTransport(page: Page) {
   const fetchOrXhr: string[] = [];
   const webSockets: string[] = [];
@@ -62,6 +175,13 @@ export function observeAnalysisTransport(page: Page) {
   page.on("request", (request) => {
     if (!recording) return;
     if (["fetch", "xhr"].includes(request.resourceType())) {
+      const url = new URL(request.url());
+      const headers = request.headers();
+      const isNextRoutePrefetch = request.method() === "GET"
+        && url.searchParams.has("_rsc")
+        && headers["rsc"] === "1"
+        && headers["next-router-prefetch"] === "1";
+      if (isNextRoutePrefetch) return;
       fetchOrXhr.push(`${request.method()} ${request.url()}`);
     }
   });
