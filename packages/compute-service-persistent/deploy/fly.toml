@@ -1,0 +1,47 @@
+# Supply the app name and primary region through the release command after the
+# Neon region is reviewed. This file intentionally does not invent either.
+kill_signal = "SIGTERM"
+kill_timeout = "30s"
+
+[processes]
+  api = "api"
+  worker = "worker"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+  TZ = "UTC"
+  MAX_OPEN_FILES = "1024"
+  MAX_PROCESSES = "64"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["api"]
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 50
+    hard_limit = 100
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    timeout = "5s"
+    path = "/readyz"
+
+[[vm]]
+  processes = ["api"]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[[vm]]
+  processes = ["worker"]
+  # Calibration must replace this candidate size if one child exceeds 50% RSS.
+  size = "performance-1x"
+  memory = "2048mb"
+  swap_size_mb = 0
