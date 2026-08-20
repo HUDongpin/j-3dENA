@@ -6,6 +6,7 @@ playwright-report/
 test-results/
 /output/playwright/
 /.playwright-cli/
+/.sensitive-excluded/
 *.log
 *.tsbuildinfo
 .DS_Store
