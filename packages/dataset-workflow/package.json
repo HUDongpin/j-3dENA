@@ -1,5 +1,5 @@
 {
-  "name": "@3dena/parity-contracts",
+  "name": "@3dena/dataset-workflow",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -17,8 +17,11 @@
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build": "tsc --noEmit",
-    "release:strict-closure": "node ./scripts/verify-strict-closure.mjs"
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@3dena/analysis": "0.1.0",
+    "@3dena/tabular-import": "0.1.0"
   },
   "devDependencies": {
     "typescript": "6.0.3",

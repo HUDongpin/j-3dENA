@@ -21,9 +21,24 @@
     "test:golden": "npm run test --workspace @3dena/parity-contracts",
     "test:e2e": "playwright test",
     "test:e2e:a11y": "playwright test --project=a11y",
+    "test:oracle-custody": "node --test oracle-r/verify-small-raw-custody.test.mjs && node oracle-r/verify-small-raw-custody.mjs",
+    "test:class1-custody:unit": "node --test oracle-r/verify-class1-custody-receipt.test.mjs",
+    "build:public": "npm run build:public --workspace @3dena/analysis",
+    "verify:public-package": "npm run pack:check --workspace @3dena/analysis",
+    "test:public-package": "npm run test:public-package --workspace @3dena/analysis",
     "test:runtime-boundary:unit": "node --test scripts/verify-production-boundary.test.mjs",
     "test:runtime-boundary": "node scripts/verify-production-boundary.mjs",
-    "check": "npm run lint && npm run typecheck && npm run test && npm run test:golden && npm run build && npm run test:runtime-boundary:unit && npm run test:runtime-boundary"
+    "test:release-security:unit": "node --test scripts/verify-release-security.test.mjs",
+    "test:release-security": "node scripts/verify-release-security.mjs",
+    "test:jena-successor:unit": "node --test scripts/verify-jena-successor.test.mjs",
+    "test:jena-successor": "node scripts/verify-jena-successor.mjs",
+    "test:release-receipts:unit": "node --test scripts/verify-release-receipts.test.mjs",
+    "test:release-receipts": "node scripts/verify-release-receipts.mjs",
+    "test:strict-closure": "npm run release:strict-closure --workspace @3dena/parity-contracts",
+    "release:gate": "npm run check && npm run test:jena-successor && npm run test:strict-closure && npm run test:release-receipts",
+    "test:ci-action-pins": "node scripts/verify-ci-action-pins.mjs",
+    "evidence:worktree": "node scripts/capture-worktree-inventory.mjs",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run test:golden && npm run test:oracle-custody && npm run test:class1-custody:unit && npm run build && npm run build:public && npm run verify:public-package && npm run test:public-package && npm run test:runtime-boundary:unit && npm run test:runtime-boundary && npm run test:release-security:unit && npm run test:release-security && npm run test:jena-successor:unit && npm run test:release-receipts:unit && npm run test:ci-action-pins"
   },
   "dependencies": {
     "plotly.js": "3.7.0"
