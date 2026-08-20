@@ -1,0 +1,3950 @@
+{
+  "schemaVersion": "3dena.worktree-inventory.v1",
+  "repositoryHead": "4a0f0a6c79b8872e0a07d6ac239b5a4e863a6d48",
+  "branch": "codex/strict-gap-closure-20260821",
+  "generatedAt": "2026-08-20T19:32:57.340Z",
+  "mutationPolicy": "read-only-no-reset-clean-stash",
+  "counts": {
+    "changedPaths": 385,
+    "trackedPaths": 46,
+    "untrackedPaths": 339
+  },
+  "worktreeInventorySha256": "de0b56b09bc05569eeed72c727a967fe359fabed5e9535e669fa76834be15815",
+  "testsBySubsystem": {
+    "web": [
+      "apps/web/components/analysis-results.test.tsx",
+      "apps/web/components/analysis-workspace.test.tsx",
+      "apps/web/components/prepared-analysis-results.test.tsx",
+      "apps/web/components/raw-statistics-panel.test.tsx",
+      "apps/web/lib/app-build-identity.test.ts",
+      "apps/web/lib/derived-analysis-protocol.test.ts",
+      "apps/web/lib/derived-download.test.ts",
+      "apps/web/lib/evidence-scope.test.ts",
+      "apps/web/lib/export-prepared-results.test.ts",
+      "apps/web/lib/export-results.test.ts",
+      "apps/web/lib/parse-analysis-csv.test.ts",
+      "apps/web/lib/plot-traces.test.ts",
+      "apps/web/lib/prepared-class1-asset.test.ts",
+      "apps/web/lib/prepared-class1-integration.test.ts",
+      "apps/web/lib/prepared-class1-plot-candidate.test.ts",
+      "apps/web/lib/prepared-derived-analysis.test.ts",
+      "apps/web/lib/result-plot-tools.test.ts",
+      "apps/web/lib/run-ownership.test.ts",
+      "apps/web/lib/sample-data.test.ts",
+      "apps/web/lib/worker-protocol.test.ts"
+    ],
+    "browser-evidence": [
+      "e2e/accessibility.a11y.spec.ts",
+      "e2e/analysis.spec.ts",
+      "e2e/prepared-class1.spec.ts",
+      "e2e/routes.spec.ts"
+    ],
+    "offline-oracle": [
+      "oracle-r/verify-small-raw-custody.test.mjs"
+    ],
+    "ai-contract": [
+      "packages/ai-contract/src/index.test.ts"
+    ],
+    "analysis-facade": [
+      "packages/analysis/src/analysis-client.test.ts",
+      "packages/analysis/src/analyze.test.ts",
+      "packages/analysis/src/contracts.test.ts",
+      "packages/analysis/src/dataset-inspection.test.ts",
+      "packages/analysis/src/display.test.ts",
+      "packages/analysis/src/export-bundle.test.ts",
+      "packages/analysis/src/network-analysis.test.ts",
+      "packages/analysis/src/plotly-spec.test.ts",
+      "packages/analysis/src/prepared-space.test.ts",
+      "packages/analysis/src/public.test.ts",
+      "packages/analysis/src/task-executor-prepared.test.ts",
+      "packages/analysis/src/task-executor.test.ts",
+      "packages/analysis/src/trajectory-bootstrap.test.ts",
+      "packages/analysis/src/trajectory-statistics.test.ts"
+    ],
+    "compute-service": [
+      "packages/compute-service-core/src/service.test.ts",
+      "packages/compute-service-http/src/router.test.ts",
+      "packages/compute-service-node/src/node-process-supervisor.test.ts",
+      "packages/compute-service-node/src/scientific/scientific-worker.test.ts"
+    ],
+    "dataset-workflow": [
+      "packages/dataset-workflow/src/workflow.test.ts"
+    ],
+    "export": [
+      "packages/export/src/csv.test.ts",
+      "packages/export/src/zip.test.ts"
+    ],
+    "dataset-io": [
+      "packages/io/src/decode.test.ts",
+      "packages/tabular-import/src/importer.test.ts"
+    ],
+    "scientific-evidence": [
+      "packages/parity-contracts/src/class1-fixture.test.ts",
+      "packages/parity-contracts/src/compare.test.ts",
+      "packages/parity-contracts/src/oracle-candidate.test.ts",
+      "packages/parity-contracts/src/subspace.test.ts"
+    ],
+    "stats": [
+      "packages/stats/src/index.test.ts"
+    ],
+    "trajectory": [
+      "packages/trajectory/src/analyze.test.ts"
+    ],
+    "repository-tooling": [
+      "scripts/verify-production-boundary.test.mjs",
+      "scripts/verify-release-security.test.mjs"
+    ]
+  },
+  "entries": [
+    {
+      "status": " M",
+      "path": ".github/workflows/ci.yml",
+      "tracked": true,
+      "subsystem": "ci",
+      "kind": "file",
+      "bytes": 3837,
+      "sha256": "1aded970c58180d3a35a0a5db4e6ceead343e03e6c40bc9154dfa57fc83a07c3",
+      "testCount": 0
+    },
+    {
+      "status": " M",
+      "path": "apps/web/app/about/page.tsx",
+      "tracked": true,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 3308,
+      "sha256": "f01f5118c2fbf12607925887017a9611fbc0ade4a82d4be36654d70a2ccbb300",
+      "testCount": 20
+    },
+    {
+      "status": " M",
+      "path": "apps/web/app/app/page.tsx",
+      "tracked": true,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 559,
+      "sha256": "0da0b1c48eba53a59570b05f372276ea80d18f0525beda817bc6861bb880e474",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/app/build-info/route.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 650,
+      "sha256": "9dec01047204160f7900b9de72f15ea47d13a670c76ce3300ba01cea4030cf12",
+      "testCount": 20
+    },
+    {
+      "status": " M",
+      "path": "apps/web/app/globals.css",
+      "tracked": true,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 44455,
+      "sha256": "ec988b9eb3d954af4a31a7444ac116f3cdf640b1dc7b447ea7594c9fc473823a",
+      "testCount": 20
+    },
+    {
+      "status": " M",
+      "path": "apps/web/app/layout.tsx",
+      "tracked": true,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 1191,
+      "sha256": "ffbb74b45d5d0f30e9f8045f7d82acfabca08f4bb1c867dfe2286572964850b9",
+      "testCount": 20
+    },
+    {
+      "status": " M",
+      "path": "apps/web/app/page.tsx",
+      "tracked": true,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 4273,
+      "sha256": "eb78264a87d6d6a258c6c098a0f058d3fea24ef426803299f27381de8c085c19",
+      "testCount": 20
+    },
+    {
+      "status": " M",
+      "path": "apps/web/components/analysis-results.test.tsx",
+      "tracked": true,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 11732,
+      "sha256": "0b63973ed0fa1af666c0951a560c9b86fd4e09d8db1507cc6d5506708a2eb14b",
+      "testCount": 20
+    },
+    {
+      "status": " M",
+      "path": "apps/web/components/analysis-results.tsx",
+      "tracked": true,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 25315,
+      "sha256": "83b69183f5bb3ffef9ff6fd40d2aeb289ba69344fc675328e5077cc21e23b905",
+      "testCount": 20
+    },
+    {
+      "status": " M",
+      "path": "apps/web/components/analysis-workspace.test.tsx",
+      "tracked": true,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 20617,
+      "sha256": "4370d17e942c8ab1ca23aae8311117839da14f7feadef7e45570ce205529e222",
+      "testCount": 20
+    },
+    {
+      "status": " M",
+      "path": "apps/web/components/analysis-workspace.tsx",
+      "tracked": true,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 45797,
+      "sha256": "589fba0e82e9c8a575a7b4f7c03abf795aef3d6f49a5c0b5b88c4db8c69f3c62",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/components/derived-panel-ui.tsx",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 4084,
+      "sha256": "e0556cee8e57eeb679575d2cdc8d208a9608e15d514954e9e2c6229ef1e196d3",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/components/plot-tools-panel.tsx",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 4941,
+      "sha256": "d4e97e4e0430b4012937710c7fd957a8ac67ae517e26593e5b66aaec89502acc",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/components/prepared-analysis-results.test.tsx",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 14879,
+      "sha256": "9318eecb40a44300f069a89b28f9193766a06a58ab5ec70e7d22b165451c3ecd",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/components/prepared-analysis-results.tsx",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 23714,
+      "sha256": "f687060c99b0cc5002bf4150fced11bba347525e58e405ef3cc523cefc148883",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/components/prepared-change-panel.tsx",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 6460,
+      "sha256": "11dabc00b17b8297b6ebc34ca4c60690cb46dfaeb0155822fe00745b1cc7ddb2",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/components/prepared-comparison-panel.tsx",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 5709,
+      "sha256": "db03850fa083717e3e09602a054de709916092a0a2071d04843426962632c09a",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/components/prepared-statistics-panel.tsx",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 9347,
+      "sha256": "efad8b644728e186ab52fc12e94063aeb4f35a0594ac6e691721e93a236203c7",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/components/raw-change-panel.tsx",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 6046,
+      "sha256": "da7459fdb737d38510413abc7cd07d7a1603e81075c3afc7e16d05d1407a0cc9",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/components/raw-comparison-panel.tsx",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 5242,
+      "sha256": "e7d65767e7a26f881367296e92c02566a4285741e343ef27af3f741b52edb8e7",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/components/raw-statistics-panel.test.tsx",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 3419,
+      "sha256": "eff2bfbfd52fb2718381717f333c80654570b587ab9d6071b90c3123b36a38ea",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/components/raw-statistics-panel.tsx",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 13035,
+      "sha256": "a637f208af92ad884e453dd7d4b51aef5d7a591ccc4c0e4bf75d39ca121578ff",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/components/result-explorer-tabs.tsx",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 2650,
+      "sha256": "beb155ed12544dfc9c02193cf43b754c2a22d496e2c9b06d51f7980f43b4a81c",
+      "testCount": 20
+    },
+    {
+      "status": " M",
+      "path": "apps/web/components/site-footer.tsx",
+      "tracked": true,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 563,
+      "sha256": "370a297e2ced24a7ecce2e13ea5acd75e7d0aba3f2600a208e163d67326854a7",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/app-build-identity.test.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 1164,
+      "sha256": "0d71f7cf46d5f7e85c35c95c4e66d27e6b0adb8d7752f5ce163249a5dc4393a1",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/app-build-identity.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 686,
+      "sha256": "1d91efd4dab29fc72aa20fe79cc8dcc70df13a2f188a29e052f7f1b29b9780e2",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/build-identity.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 185,
+      "sha256": "56abd779279db40cc311b52691ace5e6003b427ca2812cf3580dd97d2c4557b0",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/derived-analysis-protocol.test.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 7473,
+      "sha256": "021f07b4a6ed28fe3a9c4275e8aa48cf6f3114588e4fadf9fddc3be750c269cd",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/derived-analysis-protocol.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 11946,
+      "sha256": "984448bb5d2de5963327dbc0bff30b46a66e81abdc0a5c5333ccd6c3edef859a",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/derived-download.test.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 1170,
+      "sha256": "37389a8ca3278f396a1526d46c8ae4c6c541169e8b4d40448ac1c3f188c54c7b",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/derived-download.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 1162,
+      "sha256": "1cf541b162f7e0f6d2ca64b45f2b6b56a3796e0be1d42a31032e7f146a37e9c1",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/evidence-scope.test.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 4486,
+      "sha256": "8c34617953fd461dca9b09ba1477a15fdd4784773a6d345e9013037dde8c1f13",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/evidence-scope.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 5799,
+      "sha256": "31d81daf664af7a149511c469af256eb4bba0d196e3b7a09dd72a43e51bb406b",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/export-prepared-results.test.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 4163,
+      "sha256": "5c8a2c865f36c42c4d9dbce94c83ce246fb1ed78e694c5fc2692121fcfce3e86",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/export-prepared-results.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 3949,
+      "sha256": "704150e360f30a817cc18562f6f1bf2cb5497240c1d99cccdffb2d5639b296f4",
+      "testCount": 20
+    },
+    {
+      "status": " M",
+      "path": "apps/web/lib/plot-traces.ts",
+      "tracked": true,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 10169,
+      "sha256": "6d4657505253220081e7ca6864d7d97653ccdc481777fc3a77a626a1fbac24d4",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/prepared-class1-asset.test.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 914,
+      "sha256": "f6e5a14636033710eb0754dae8004679d3a8d9e5a2372d4a1b963e3940bd20c8",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/prepared-class1-integration.test.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 3352,
+      "sha256": "6f2155b1a6fbfd0c816fac45da1abf2f00a03812c10b94183e33d2a21cc2b58a",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/prepared-class1-plot-candidate.test.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 12436,
+      "sha256": "9d68795845ff436e294133199efe6e61e4724b018acd042afc7f0ba407d76241",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/prepared-class1-plot-candidate.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 18975,
+      "sha256": "44490a2d73fb38abe87abfdfe27a1f73c4cc268955d70e149b68af2f630c0914",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/prepared-class1.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 6160,
+      "sha256": "8f1316821eb3d6c4e3809c089d80a7927e1025300a0acd8147ea3b5bd973ddc8",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/prepared-derived-analysis.test.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 6931,
+      "sha256": "95567a43aa453973a292fe8e8740e6f9d034e930860226c7588b353c3f53d268",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/prepared-derived-analysis.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 18096,
+      "sha256": "b96efc7574353465a40400003b6848a8362dd9978663dba1d5172021038cdc4a",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/prepared-derived-options.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 3078,
+      "sha256": "3b79b1a92a5d4a447bb1c686f999843d5b0c936821e3b81493c7ab605c51dac9",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/raw-dataset-receipt.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 1852,
+      "sha256": "f787abd695a39ea0f02891d294ef2a3d0168857e1d0fde2e8384339e1d893253",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/raw-derived-options.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 2087,
+      "sha256": "a4a66b451dbfd1b1f5ea6f46396b72d295f8e93b1a5f3907fdc424b03061add7",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/result-plot-tools.test.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 3058,
+      "sha256": "81bb194ac1c8697498164de4077e38c4527fd110050129c1bf77f7a2b2346846",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/result-plot-tools.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 7098,
+      "sha256": "096255f20abc1bf4c4758f5805ef7425ff4553ae7cd37cd9acd951339f88bf65",
+      "testCount": 20
+    },
+    {
+      "status": " M",
+      "path": "apps/web/lib/run-ownership.test.ts",
+      "tracked": true,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 1657,
+      "sha256": "8c618d23f05dba2287577c8b0f989e03e9828581babd811187a2bfb29d88e224",
+      "testCount": 20
+    },
+    {
+      "status": " M",
+      "path": "apps/web/lib/run-ownership.ts",
+      "tracked": true,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 1863,
+      "sha256": "c175a76999b4387ea8ce2239828bcaf2700fde86f428a7c2b14fc26bcf9d397c",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/use-derived-analysis.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 8581,
+      "sha256": "39de190f37a53e6e8d81da4b05f17c27778d02c243b69cb4521e21b93440a4c8",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/lib/worker-protocol.test.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 2539,
+      "sha256": "03f309151f72d39952ac69214aa7647566aae99e829d91a1d81b94d635f6f105",
+      "testCount": 20
+    },
+    {
+      "status": " M",
+      "path": "apps/web/lib/worker-protocol.ts",
+      "tracked": true,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 3995,
+      "sha256": "3f793a5da5aa59f65584f5717920939f33c6af5ab36c35154efcb114c3ab1b0a",
+      "testCount": 20
+    },
+    {
+      "status": " M",
+      "path": "apps/web/package.json",
+      "tracked": true,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 995,
+      "sha256": "7a36c852ce5b8332b5146d85552a97880693dd92189f883ed79367517d842dc9",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/public/data/class1-timepoints.ena3d.json",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 52073,
+      "sha256": "704b940865fbf09a7c5e42949105c935f3a64f5831a65e9af489af04e695c909",
+      "testCount": 20
+    },
+    {
+      "status": " M",
+      "path": "apps/web/workers/analysis.worker.ts",
+      "tracked": true,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 4764,
+      "sha256": "4c82e5d2f43e69fd55afe243bef0f02bb72e03d377180837b83d90d940ba89bb",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/workers/derived-analysis.worker.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 4760,
+      "sha256": "9a8aa65784cdd35fa908bf0da6e8c24b54127a51988ca25cba33f89b759241f9",
+      "testCount": 20
+    },
+    {
+      "status": "??",
+      "path": "apps/web/workers/prepared-validation.worker.ts",
+      "tracked": false,
+      "subsystem": "web",
+      "kind": "file",
+      "bytes": 1497,
+      "sha256": "0c4e2a9e350f951bdde101a73f57243ab2baceaffa2adb5f19b843e5da4d4cf3",
+      "testCount": 20
+    },
+    {
+      "status": " M",
+      "path": "docs/architecture/browser-vertical-slice-contract.md",
+      "tracked": true,
+      "subsystem": "documentation",
+      "kind": "file",
+      "bytes": 6984,
+      "sha256": "44a80b0a477cf2183f0bd2a0d7e95cad9b220b803b0a69cecadd3c3d6113dbb8",
+      "testCount": 0
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/persistent-compute-service-v1.md",
+      "tracked": false,
+      "subsystem": "documentation",
+      "kind": "file",
+      "bytes": 6065,
+      "sha256": "f001f77e6ac8491a4ca6d38c932afcc50cb2c3de23f1160f4a43dadc423668eb",
+      "testCount": 0
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/prepared-exchange-boundary.md",
+      "tracked": false,
+      "subsystem": "documentation",
+      "kind": "file",
+      "bytes": 5661,
+      "sha256": "eb4c8ac0b9f6fda8d4503484f0083add75eedf27e85b1ca00aacec92cb190f33",
+      "testCount": 0
+    },
+    {
+      "status": " M",
+      "path": "docs/architecture/production-runtime-boundary.md",
+      "tracked": true,
+      "subsystem": "documentation",
+      "kind": "file",
+      "bytes": 3873,
+      "sha256": "0d0e64065fb82ee0f6c231652fc968063101662af98e569eb4bd49ba99084a7d",
+      "testCount": 0
+    },
+    {
+      "status": "??",
+      "path": "docs/session-records/2026-08-20-strict-successor-implementation-record.md",
+      "tracked": false,
+      "subsystem": "documentation",
+      "kind": "file",
+      "bytes": 14591,
+      "sha256": "3cbe07150b2b01e558f8a1425b69b4265f457905d91102072971771c83e99336",
+      "testCount": 0
+    },
+    {
+      "status": " M",
+      "path": "e2e/accessibility.a11y.spec.ts",
+      "tracked": true,
+      "subsystem": "browser-evidence",
+      "kind": "file",
+      "bytes": 10172,
+      "sha256": "ba2e115b8a336915ff7616c8209faf8100c0ccab38e06f8e3dacfc64976e373f",
+      "testCount": 4
+    },
+    {
+      "status": " M",
+      "path": "e2e/analysis.spec.ts",
+      "tracked": true,
+      "subsystem": "browser-evidence",
+      "kind": "file",
+      "bytes": 11435,
+      "sha256": "44949ae3cbe0419610bfd71b1740deaac137f5c48a4b9e759af2857b22557cb3",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "e2e/app-identity.setup.ts",
+      "tracked": false,
+      "subsystem": "browser-evidence",
+      "kind": "file",
+      "bytes": 1427,
+      "sha256": "1549accec72a119093afb90f8f441dc5be19b79979b73a4597be01f317850b76",
+      "testCount": 4
+    },
+    {
+      "status": " M",
+      "path": "e2e/helpers/runtime-contract.ts",
+      "tracked": true,
+      "subsystem": "browser-evidence",
+      "kind": "file",
+      "bytes": 6923,
+      "sha256": "7e07f6d8f22811acbc02477659e75256b8adb355a761ac3447296b1ece6ddeba",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "e2e/prepared-class1.spec.ts",
+      "tracked": false,
+      "subsystem": "browser-evidence",
+      "kind": "file",
+      "bytes": 13285,
+      "sha256": "bafae393bc1ea1d7df554c70528dcd5da70f7f6ab2769df360cfb6c085713b5b",
+      "testCount": 4
+    },
+    {
+      "status": " M",
+      "path": "e2e/routes.spec.ts",
+      "tracked": true,
+      "subsystem": "browser-evidence",
+      "kind": "file",
+      "bytes": 1930,
+      "sha256": "2d1f965ff2fbd57a2ae70cf66ac213dfdcc3f7dceb12c57774dc252e1c10df6b",
+      "testCount": 4
+    },
+    {
+      "status": " M",
+      "path": "package-lock.json",
+      "tracked": true,
+      "subsystem": "workspace-root",
+      "kind": "file",
+      "bytes": 287097,
+      "sha256": "0f44c1ddfb65a1a4fcafc1812855dae190974856e04d9dadca2182658c1c6e78",
+      "testCount": 0
+    },
+    {
+      "status": " M",
+      "path": "package.json",
+      "tracked": true,
+      "subsystem": "workspace-root",
+      "kind": "file",
+      "bytes": 2240,
+      "sha256": "fa18c703488dcf0d4f807d29ee5ab53d085919daa2ce5c52786ae14bd8c2a3da",
+      "testCount": 0
+    },
+    {
+      "status": "??",
+      "path": "packages/ai-contract/package.json",
+      "tracked": false,
+      "subsystem": "ai-contract",
+      "kind": "file",
+      "bytes": 484,
+      "sha256": "a8937947af1840e4260cd23c7e7146435f9e0a03dd077495095547139390e9a4",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/ai-contract/README.md",
+      "tracked": false,
+      "subsystem": "ai-contract",
+      "kind": "file",
+      "bytes": 1002,
+      "sha256": "7f664bd32cc813760102944dad66be97923d64f5eaa2f7effe85f66baa94af1c",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/ai-contract/src/index.test.ts",
+      "tracked": false,
+      "subsystem": "ai-contract",
+      "kind": "file",
+      "bytes": 6549,
+      "sha256": "8ce0e1e102a0b33aa72b78160ae627d73b6deb2997cc094158e3b5b5d0b4ca06",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/ai-contract/src/index.ts",
+      "tracked": false,
+      "subsystem": "ai-contract",
+      "kind": "file",
+      "bytes": 12414,
+      "sha256": "b58d2eb541c60a7060bd7f055d8c9a2afbdefec7009a78bf997d27a01db7fc1e",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/ai-contract/tsconfig.json",
+      "tracked": false,
+      "subsystem": "ai-contract",
+      "kind": "file",
+      "bytes": 134,
+      "sha256": "450fb7e27289c48110296b4b14ea741bf297524c3d2fe4f1edc55c07f88a8337",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/index.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 48,
+      "sha256": "65c24c24c35497f798dbe2723496c743b6ae39bc16793633b78083f884118aac",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/index.js",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1564588,
+      "sha256": "065a4ad8568b5d048e329ece2ee9d0a10a12d40062ee503ee6a2f63c1c0724c3",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/index.js.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 3185956,
+      "sha256": "aef9764730cb24b138e3fd59e133144bbafe6952ae0ef847c0f51eabbe7553ec",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/LICENSE",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 35149,
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/package.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 740,
+      "sha256": "e1f835ca12cd94aa7ecf4bdd222411d19390b971bf4ac9ab04ab8bc898ecae28",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/PROVENANCE.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1603,
+      "sha256": "7d09ecb5290641e48e5e3f9d7b4a6533f46992321173b44d9dd5fdea9c2c71cb",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/README.md",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1663,
+      "sha256": "06ce486eaee8b492d3253a02a036aedb8d55cfcb3de97b2f90342a33acb56d9d",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/analysis-result-envelope.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 7644,
+      "sha256": "d78c88753c91d01e501c28ee685321dad6275bc8508633acd7f538fc085c5a12",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/analysis-spec.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1071,
+      "sha256": "c768eff17f905eb0613bea2ee3a18442003f0fc23206214d275dc82bcd023610",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/analysis-task.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 12802,
+      "sha256": "a41979dd439a737cd5df66c1669391c37a1d21434dfb4e9ee9ab0668b2029740",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/dataset-receipt.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 4264,
+      "sha256": "3162a1f6f954302385a80e21fe3f75c53a67a996fc196f359458cf84baa74043",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/display-spec.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 4511,
+      "sha256": "f8edaae648572f1ad77c97ea092cd67e9484eca840d32f9a3cb58d282468f4c3",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/evidence-stamp.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1034,
+      "sha256": "5c817054bf58e481ca0899677bdbe8bb1291998c64131af84433cd1c9be63136",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/index.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 529,
+      "sha256": "f82fb0c339330b4d088ec6f3017fdd8c5932c6971753cf1816d55aa15d013a9a",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/provenance-manifest.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 2251,
+      "sha256": "286e0c9182904601f706af9bb3daa9764895a4295e7b61ecfda2614157e5f9be",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/task-owner.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 611,
+      "sha256": "df21323b7a2e9961bb060e4a2db45e99f1c47e1c35ec8a5f5f5e4881d4207a26",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/typed-key.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 803,
+      "sha256": "a4916236c553ea7378f9dcad13de5516476e0c68988ebdf36d9fc90c0c390c18",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/typed-scalar.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 3657,
+      "sha256": "65141b68b9d2784f49e9f208c2ffee477001c05903d1158f2481796966f4c37a",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/THIRD_PARTY_NOTICES.md",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1284,
+      "sha256": "1e3259125d903c6053a2d409d1bc9f7103dbcc8a221d2344c7493ffcd1b8e685",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/THIRD_PARTY/jena-js-LICENSE",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 34278,
+      "sha256": "d10bac154a838028d10b3ae490af756f0696d31657f48114c73601a9e4e7fe62",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/THIRD_PARTY/jena-js-PROVENANCE.md",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 3865,
+      "sha256": "ab99709c81c269eca667406735abf8eaeca8e2e053d2510e55d494a375314e48",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/THIRD_PARTY/SheetJS-LICENSE.txt",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 11355,
+      "sha256": "4d2a38ac35cda06a555c84074a819d413339cd3691b822cae50f8f322fe01f64",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/analysis-client.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 3619,
+      "sha256": "813e6dcc68b66e3253127bd0fc16ceda8282b281ce686bfbbfc606b4dd628ad8",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/analysis-client.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 3104,
+      "sha256": "54c563a0105b667d2f89efe98ad1deb6ee6b8ee6e8ad2f554a842058c78c3ee6",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/analyze.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 503,
+      "sha256": "f1bf578db29cb1e54673aef5fd703a7a6bba60b82714b7212c6ff25516623715",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/analyze.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 253,
+      "sha256": "d4a66e2c60a40f94b245775090e40913c3aab6e42f88eee2a5df55f5799c2949",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/contracts.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 39773,
+      "sha256": "4b7f8630749fb939e0d73ba1520bcde5724dfee5a3f8642dc856fff974a4c45d",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/contracts.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 9051,
+      "sha256": "3a5ef0302b1daa339ee6b4be9bd47bc482db80892c4a067900d6e53b5e39e88e",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/dataset-inspection.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1902,
+      "sha256": "103972faf663af72f173e0db1b30c2ca86d7b44ca650cdb620878b3c108a7d48",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/dataset-inspection.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1327,
+      "sha256": "25c613134752bd4d6ef4f3d85b477ba3565186415e474387b507bc58b0195578",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/display.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 440,
+      "sha256": "99555a637d0c6c35c0f3c2da82120a2db7ece15a12cac11cec302408213d86a1",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/display.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 298,
+      "sha256": "7275c3b07253c44f14e937030e495a1a966a6ddf26ce3c2504aaaf1cdd269f82",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/export-bundle.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 2479,
+      "sha256": "413f6d8e1efc817fbf8d4215c7e23872f49b98a32f1871f751a83526aeff2593",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/export-bundle.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1953,
+      "sha256": "e100c14a2bfb2038f4a9730e5ea8b3d13d1f7c2ffd33bc99e679c5728fcff781",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/index.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 4440,
+      "sha256": "53b8713cc9e931709011283fe5f58ab083dd4139f81ecdc6eccf4b3fd7ac28cc",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/index.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 2754,
+      "sha256": "cf496d79ca6d6e7b4f99ccf0a81e14f1596bcae267a191df6574f31f01b946ea",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/network-analysis.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 2169,
+      "sha256": "dc143bcf7512da13336ec9ac4df3b3e07afa82e3e983565fcff4e925de0037bb",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/network-analysis.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1607,
+      "sha256": "966b27b6607e1dc4004420d0d30c7695785b0a95119a6dc2ecd74643ce93aa3d",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/plotly-spec.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1303,
+      "sha256": "f2bcebfce78b0c1e45e33b7f859138e54bf5d6f5b583c10ca340062af23a5ca3",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/plotly-spec.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1179,
+      "sha256": "f9b5dcd90b9451c4b11947e654f06cad423b84388f89cbfc95227d750b30d36f",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/prepared-derived.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1457,
+      "sha256": "03866507140d1e533a1bbdd84d6a783ef47199add320cfeac666d2f5c57884e6",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/prepared-derived.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1110,
+      "sha256": "3cf717367f80f62762ef0934f64a48e018ca453611577faea75cf934864d261a",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/prepared-space.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 837,
+      "sha256": "c6d0802908cbc9a0db1c17ef2dc14a61e7f164bda718f4b59dd255a7044a5627",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/prepared-space.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 396,
+      "sha256": "abed7ae90febbe16a5046ca7a86154b77152778a9306f8482d94ab5de204f16d",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/prepared-types.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 6928,
+      "sha256": "083d1def0ad95c3a27e14152249755a84116b1e6f0a1c42670c7e3d779996c2b",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/prepared-types.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 5100,
+      "sha256": "61b60cbbb1be7b4c9c973c0ac646733fb9687b817bdc83895b917cd6f93ce6af",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/public.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1223,
+      "sha256": "6764e43de5b30be32ca19b005a483038cad15c2ba86ef6546c643935371685df",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/public.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 755,
+      "sha256": "d5d26dc513f24f47aca7d4d85d973164685d73b0af29233bbbf829ac708d2afb",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/task-executor.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 3509,
+      "sha256": "4d63ac91adc95ce4f1ee965edbaf6b2933e287ec9ef35508626f9f227ea906e0",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/task-executor.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 2252,
+      "sha256": "2a669bef2eca3e17437fc8ec93e5e1477f92322235c54bc2b59df37a1a3e87c9",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/trajectory-series-adapters.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1213,
+      "sha256": "42f8fc77c68e14c2918dd1bbc465ca6930e1e711b427799c2e4cb11980886e97",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/trajectory-series-adapters.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 652,
+      "sha256": "061b96d6f3239f1926e8fa07b6700d536976c3d34e3ca30760a5da7e52923782",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/trajectory-statistics.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 11292,
+      "sha256": "d8b97696e43936c0bf63f158803341a1d90dbc6c89a15f9293b4a0e2dc368b0f",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/trajectory-statistics.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 8565,
+      "sha256": "1d2a7cfb7c243c8e8d6570c4f838e8eff531d51e68e0c03ec2caeb53b3f1210d",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/trajectory.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 751,
+      "sha256": "835f4c1f37e3a078b3924e3a3cc18975b61511ccfc194f05dccdd63adede8c52",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/trajectory.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 457,
+      "sha256": "d25f969e059500ac474dd495423f47e1984e46b2d99b7191cf25cdf3fc071771",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/types.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 9887,
+      "sha256": "bbdaecde346ec44a47945c8ec8a836fb6f41847bd3c8e6386c336fc906b920d1",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/types.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 7492,
+      "sha256": "f1f433446c57133e62f8f7e3d798ab9c42d6fa2af36a140b36e1ddc2b9d4da9d",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/validation.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1657,
+      "sha256": "b7f2c5f41f08c82ea6d81597e7b913aaf539bc7a01b7523b2ac97ac153ce55e2",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/validation.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1375,
+      "sha256": "70bb6c96e43b8b876346fd730f874128ef12c0f5f9c11d1acce249cb9d6fc3fd",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/csv.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1471,
+      "sha256": "47dfe0e98bba23354acc5e309c32db6f9e17b833e258f2f857eb96c4700ab80d",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/csv.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1130,
+      "sha256": "495571897d8ee76a0a647d1e0ef38b2c08c6647a6dd59447e57c55f29d6211bd",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/errors.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 693,
+      "sha256": "5c46186cf83f313eb0e76ad207e13b2b0e1f9e255b29305376c4ec939d359c3d",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/errors.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 608,
+      "sha256": "6877def3c5c3cb6154e3bd3605285c93ee13ca8f3805f103f53cbd351c6dc160",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/index.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 577,
+      "sha256": "da928b0d4d3bcdb6fa129fba5fdba6d3606f484c774a6c26e58848403158f37f",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/index.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 501,
+      "sha256": "2f83438ef302720c77f826d47f879de5b791a3f4147c4f3269247dcd23a14a85",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/unicode.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 106,
+      "sha256": "b06912f11e0245d52e500e7871dec16e3b69b1b0ab3208d3885e6c1ff76a1452",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/unicode.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 184,
+      "sha256": "400490828417a1ec7d91df92650b6cd598017d440eb448fbb10849375f208acc",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/zip.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 878,
+      "sha256": "1b1f450e2d08973d66ffd0b228fe17a342575b88d4477eedef77040c9ed0dd9a",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/zip.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 679,
+      "sha256": "bcbae194723611ed949127f0d1bee3c76c96d244ddf90855259328df1a140082",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/decode.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1195,
+      "sha256": "d330650b98b71c04ecbf59a444c28dd14dba4ce40436658e4b405011530579eb",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/decode.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 716,
+      "sha256": "b177b014eb78900a001b343d5f4a02b7e06aca0e6eb76ef46a1783ad314f775a",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/errors.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 738,
+      "sha256": "5ddbc5f85ed5c79b093bed990dcb764673004a64b3eaa3faf13846389ac75f37",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/errors.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 622,
+      "sha256": "6c0125e98889edefb0e641f48f4fe54da0b45052cbf70f63b907a1804f604ca2",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/index.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 856,
+      "sha256": "5e81229d6030c714581f70bc2e1eaaa077e0b8bbe9d6f6c6c63ac72858b406e4",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/index.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 648,
+      "sha256": "639f687277e7ef50489cadf30679302d7d34460212f35efc5b3a77de30fcd4e3",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/json-preflight.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 350,
+      "sha256": "be89f8b4fe35da2ac3637041a8f28c784fd8d58d809d21f0c8b1208facff9686",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/json-preflight.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 207,
+      "sha256": "e7b0ed55c7f58959ff4291e4de326bbd06b30988af3569724e301a3b903eeaac",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/limits.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 707,
+      "sha256": "e0a259750807e7022b48f2d176ebc69a2af4d0cd952e90d94904ed803ada412c",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/limits.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 681,
+      "sha256": "a186962a495bcf1f0a984c19a5a83e07d2d0e08c2f2c2459098cbe0b220a5c22",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/types.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 3073,
+      "sha256": "d916bd7d577f2b043b5eb447a223e7c6f38f6129afb073be4c30f3ae42450511",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/types.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 2789,
+      "sha256": "0b41b4acd0383d6701d5d4975ff3c870d7e1e0fae0747592b1d399af2ed3f210",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/adjust.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 203,
+      "sha256": "aa5b945a45f545a02fc368e997c3bb0e7dadcbddd176256d292dd9ab8f69fc7d",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/adjust.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 267,
+      "sha256": "cd95a5d1c4009fed8f2e7744d368f5cf66fedbc05c8dc11f66b03dc4d0b2ae40",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/independent.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 252,
+      "sha256": "3b1ea0e786963827a278b616bf6bd03df1e97a864ed9c580de555ee22d240b96",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/independent.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 266,
+      "sha256": "9e6aac1c6d999d2d39379b24275e5708dfff21769fcb529b306972aeb11dbfb1",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/index.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 747,
+      "sha256": "fcf5652274901b9a0ba8117e27c616f4f1d578b821af431dbcff54d91e74193f",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/index.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 584,
+      "sha256": "c984dcd38717f3e5a3521975a6fa8d1a868f2df2f50ec343a12e0e207f1cb5f1",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/numerics.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1351,
+      "sha256": "cfb1e9173f8ff0e8bad084491c448ac1bd91a1c6e710a00f7592792f3a9c83c1",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/numerics.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1227,
+      "sha256": "126a7d09e10abf9290ef8a644ba7cce015511f0ac7503242c80db2b5e8f9f286",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/paired.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 222,
+      "sha256": "ce2153e3318eef97f3d012266e571581fdc8a3064fed18d9ec455f01f015e2b4",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/paired.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 254,
+      "sha256": "8f46d055e3ea63281a9b0206851e5c257b5722174e6f03fa9b53c51f9051e3e3",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/types.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 6751,
+      "sha256": "1b1031f7a8133428955d36138182ce4518bef1c2c2cce8483093bfa8e3a7a9a2",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/types.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 4851,
+      "sha256": "8f0016362e4be22f8648ac3c26387086d69c47c95b480e37e2de9f08260dd8cb",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/bytes.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 606,
+      "sha256": "ffddd9b3d548449b6863f35c0b3b63ca9851a9103d5416b00bc92052b1a62099",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/bytes.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 602,
+      "sha256": "6838de076584b95bf96fec594cc012fcc84b5d67b0d8db1b57e6a5d04a2b7661",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/container-preflight.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 453,
+      "sha256": "cb83727af4b6ce0bec14cb9ef87a81bf498f58bb258afb27a62af5572d5d41b7",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/container-preflight.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 516,
+      "sha256": "edd56596a84b8780ee31eaf0abffaf38c4c885b5793587bdb56863d744db8cdf",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/csv.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 360,
+      "sha256": "facc7818b4f319a85d4c4af08067184596b2204a0dc2ea525537f671f44be3f5",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/csv.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 427,
+      "sha256": "395e6e0d3f8ac7f768f908483a1e35297c79037317975388f5e70518887c372b",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/errors.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1553,
+      "sha256": "2ae937c926f2424574a61ee115d5c7b69291d70f6015836590c4a1e807b2c1e0",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/errors.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 987,
+      "sha256": "d91c4d78fe361207192563eeed3191d2b478a5c81d8baac6660a141177f7bf7e",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/importer.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1131,
+      "sha256": "ef578c42ea2ee9c23febdcb12cdb463404fc767d83aca5d31333778d7310d4c2",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/importer.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 878,
+      "sha256": "007c7d8ec4c6ada2e09005fb4b145569e2e157223588d79cc83f73e1b827ff22",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/index.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 728,
+      "sha256": "7448acc6a3744e724f5f2f0d075809355b47dfc3cc8a3813850d7c6d448ebc50",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/index.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 588,
+      "sha256": "a4d6b33c25ad55b37131907e93a62f55362a4d4555f1a4840dc681f775dffc26",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/limits.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 379,
+      "sha256": "227134597293cec21016c452bf9d3923e941089930ef28cf6f18f75827a5c004",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/limits.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 390,
+      "sha256": "f11c452759aab7585c2805e96b4f3c533da2f28e316d0d281ecdb34e6087e6fd",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/types.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 4199,
+      "sha256": "11ed7b3dd5806631db58ab04c6808e9f6d4dd706c3750b2c1e4f7b107dd40f57",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/types.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 3179,
+      "sha256": "b9b31b38cd03067d6fa1de6bcaa8ba4c69765ca35b88b55856add3b752bc4108",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/trajectory/src/analyze.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 241,
+      "sha256": "08a8180ef2fe2cedcc2acbe5f367a480a7f0f40daf189d9dbfa0d11ecb0cbb06",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/trajectory/src/analyze.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 257,
+      "sha256": "64a0db225e6696a0ee6fc8372fe781ccebdd785f22aa73e838bc96f90244f1fc",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/trajectory/src/errors.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 317,
+      "sha256": "ad6b4ce06cefcd9fce670eb3dfb1d2305d774803c1edefc0cf54dec96f5505ea",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/trajectory/src/errors.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 393,
+      "sha256": "cd80515843a3ab79c52bc031b8453c0a25a8503935527f2edd8da5d8a0a44faf",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/trajectory/src/index.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 678,
+      "sha256": "cda8d6f142851ab5ba912b1eb3a6546bf2d1598040d9c9f60f9207c7ab80252b",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/trajectory/src/index.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 489,
+      "sha256": "3f268ae3ec96a069841fb02378ed4c5299b2b943d1aa42be1dd8c84680388716",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/trajectory/src/types.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 6031,
+      "sha256": "d734ba76b7e26ef2e23645bed4c7809b7d44ff471ef9edbeaccd387514f3fdc4",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/trajectory/src/types.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 4809,
+      "sha256": "02b2e5d868ed46c2b7049157abd9813283d9c8a78dfca7cfe084b51adf5fedc2",
+      "testCount": 14
+    },
+    {
+      "status": " M",
+      "path": "packages/analysis/package.json",
+      "tracked": true,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 953,
+      "sha256": "b2281946558eb905b7321122e6717d000eef7cca89e69012fd6b9e52a9154ca6",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/PUBLIC_PACKAGE_README.md",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1663,
+      "sha256": "06ce486eaee8b492d3253a02a036aedb8d55cfcb3de97b2f90342a33acb56d9d",
+      "testCount": 14
+    },
+    {
+      "status": " M",
+      "path": "packages/analysis/README.md",
+      "tracked": true,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 16271,
+      "sha256": "8a33df86c5a9196f947fe944313e8a6b99b3a914bf5ae1616ac1bf784dee34d8",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/scripts/build-public-package.mjs",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 12535,
+      "sha256": "d43884f89fda750085acca89dfdbb39d5b789058e60a8fa3a0b773a243fa36fe",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/scripts/smoke-public-package.mjs",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 8269,
+      "sha256": "b42e5a850e1dbf4872b2ba4ecf111f5b35f19cb5cf086fda07bfd0f589202d07",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/scripts/verify-public-package.mjs",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 7317,
+      "sha256": "e823f766b6a99018c092435f898cdef222ab965d933e6e8f712cf486c96438e1",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/analysis-client.test.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 9394,
+      "sha256": "ccc0bd3b8e892746648b5464628ad11d9f7edc0d2dac5fa1dc7dcc2d77542096",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/analysis-client.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 22681,
+      "sha256": "0776b78a3cba978a8f6342562604ad026e272e8bb668e5ea645db0de555fe8ca",
+      "testCount": 14
+    },
+    {
+      "status": " M",
+      "path": "packages/analysis/src/analyze.test.ts",
+      "tracked": true,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 13110,
+      "sha256": "d6248bc6ce986a42a26e7ac2ee75f726c87241d132591a2fb26572840a2cab30",
+      "testCount": 14
+    },
+    {
+      "status": " M",
+      "path": "packages/analysis/src/analyze.ts",
+      "tracked": true,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 13856,
+      "sha256": "14343dc8c899354fe5a989ff7ec8675399bfb825d4c76fe46c7c5bceed6138f6",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/contracts.test.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 13968,
+      "sha256": "add578e264c0e274b0ac9c6319a581f2c4cf8d638b54773a51befc11e9777b63",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/contracts.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 63979,
+      "sha256": "74bc8a276c925cbc634aac1767faf5fa577a84261adcd5f1422f46190707b36e",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/dataset-inspection.test.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 3790,
+      "sha256": "13bab41554e350fdc161fdcfa160946ba738e4be82027bf75030e5c72a4e655a",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/dataset-inspection.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 4431,
+      "sha256": "e5e31678e333f2b2ae00df3a14b5df3cdfd27d4a570c549fa88fd60cde17ce53",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/display.test.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 2718,
+      "sha256": "cd4943fbbe80ed625e98cad4a2df5a7c19ee6bfc6878a692adfb3b9cd4cfa459",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/display.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 5339,
+      "sha256": "2421d9d3576e22bcc0e06b15d311165cc09c0b696d48b26de5459c01fef68786",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/export-bundle.test.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 16378,
+      "sha256": "fe36da8a4ff0fbb4375bbf55326abba8681598223239faa3f0ba982e979606a1",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/export-bundle.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 24163,
+      "sha256": "e0076b3258f610b40ff6fb21e894bb475b117df68c21105fc400215dc312e18e",
+      "testCount": 14
+    },
+    {
+      "status": " M",
+      "path": "packages/analysis/src/index.ts",
+      "tracked": true,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 4602,
+      "sha256": "542cf4dedbbacc966d1fc4f963f8646541fd7bf9fd78dc99a07aab05afe58e65",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/network-analysis.test.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 4030,
+      "sha256": "3ee97358e7b3ce90d50e600683703461ec9da1f9756b3473c936807bc13d6088",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/network-analysis.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 8415,
+      "sha256": "08472e837b3e5789dda72adcf05961467387eb89df7cd9d2419fe58d951505de",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/plotly-spec.test.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 6065,
+      "sha256": "5ad7ebaa2a874db8bb7d2e23d0afb121b2aa2386ab151d533aa1a48b7c873611",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/plotly-spec.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 16664,
+      "sha256": "d59b628609e374997047429e747935d9df6984d0a100d81489bbbab6b0604292",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/prepared-derived.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 14874,
+      "sha256": "cb7906bc2b1fc4e62a5cb558d2fe04c0ddf69964a1746d0d53d423d7c7f94fe3",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/prepared-space.test.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 21984,
+      "sha256": "0d010ebbdd3ecf4f6d3a87e3531fd649519a27c846304319ab3d6eb59cfa99fb",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/prepared-space.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 38397,
+      "sha256": "5c8bb10a51122953b38de62f28d64250d651411dc32df3d530306f0240527747",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/prepared-types.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 6617,
+      "sha256": "2f437b0aac19453e14d5c3170306c8583298ae1fd1b03a5ccc38998a0a470a88",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/public.test.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 500,
+      "sha256": "b4e6ee9aef4266ad9efc1cf75b1226f498deb55a2d7cd833999194fd5db6d04a",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/public.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1144,
+      "sha256": "9d843aa8c6ffb19f121db5da6b0fac0dcc6e4fc8abed12e3c56c1ca5f00f0025",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/task-executor-prepared.test.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 13487,
+      "sha256": "811ad8f9097fb62f9070ba52702187d5383cdc32b90b6315cc36c91e9a3bbddf",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/task-executor.test.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 13670,
+      "sha256": "5ca40169b43638cb7e2d914bcb5164aa6d65a272f3cd033ed81f64d98b91b240",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/task-executor.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 27571,
+      "sha256": "6a15edf072bf10d7ad630612593902f7f57b821e2649c7326a50be57525b1184",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/trajectory-bootstrap.test.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 16420,
+      "sha256": "18a75b6d72e81d1bcae4306cd1abcbac2e2597027bc7fc23ed9a9da3916f1d31",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/trajectory-series-adapters.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 6606,
+      "sha256": "583b93c2136c67d42e1246b4a1bed2d383a79e318ef3a27f82f1682e78dce798",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/trajectory-statistics.test.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 13434,
+      "sha256": "917aba29fb72860ed6c2b65f3a2faea58f5c33040b8a1c37c74da000b073e3b2",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/src/trajectory-statistics.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 72486,
+      "sha256": "fabc36483d7641374cb38c6de243d92f095201ece431c8f120cd0a816c862ed3",
+      "testCount": 14
+    },
+    {
+      "status": " M",
+      "path": "packages/analysis/src/trajectory.ts",
+      "tracked": true,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 8428,
+      "sha256": "a02a6f7eea737c06e9201c3a84187b62781935f9ff671ccef25fd6c7fc6db309",
+      "testCount": 14
+    },
+    {
+      "status": " M",
+      "path": "packages/analysis/src/types.ts",
+      "tracked": true,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 9585,
+      "sha256": "d50bc7e4562daede4ed9d06187a9fbc1ff7b32f651d0ce7cb0d18289428d5723",
+      "testCount": 14
+    },
+    {
+      "status": " M",
+      "path": "packages/analysis/src/validation.ts",
+      "tracked": true,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 21858,
+      "sha256": "5e52b2f05d65d37b5c836b174994cb8b9583b654ebc431fc180beb365ca391f3",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/THIRD_PARTY_NOTICES.md",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1284,
+      "sha256": "1e3259125d903c6053a2d409d1bc9f7103dbcc8a221d2344c7493ffcd1b8e685",
+      "testCount": 14
+    },
+    {
+      "status": " M",
+      "path": "packages/analysis/tsconfig.json",
+      "tracked": true,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 432,
+      "sha256": "9b2898fbfe50e664693f18414c260fe5af8555d39aacc379b0d7ff8a5a153e91",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/tsconfig.public.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 310,
+      "sha256": "7c0f7144e2698aa9a243866a8c695284b50f3d4de0b8bb940e0f4e2c5b9f048d",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-core/package.json",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 493,
+      "sha256": "e4d8a4c910fb105510ae2cf5a316d79444cdac9bb78e574cae1e93d1601d72ce",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-core/README.md",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 5157,
+      "sha256": "bd82c48b1616c01ad5fca116f79d65b8d359997783be8a42f606e5f3c01d621c",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-core/src/contracts.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 7313,
+      "sha256": "1742643430148ccd8fb65ed94e6348bd0fdc66044e7e9154775bbe433d56386c",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-core/src/errors.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 783,
+      "sha256": "d4cfeb9bed7485d5fc370413371613e6dfe7dbb204cc46a505dc496b34bad388",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-core/src/in-memory.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 11153,
+      "sha256": "6191b2eff3667409340a00506e84fa9d19f9d7b4ed66a23e4ecbf929dfb05c18",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-core/src/index.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 1912,
+      "sha256": "4a58afcb02306289d9d2c28bd7d045ea9f3f7ad2a141fc2d1f2f6638e7a52cd1",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-core/src/interfaces.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 3048,
+      "sha256": "f30d58dfdd349a003b063c3fc0ccf8621b79d4b7934abef994f1b48d2250358a",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-core/src/service.test.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 31906,
+      "sha256": "37899c53a7bf46de7deae81d657d5e84cef723f13161844e8ccc17ccdc6aabce",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-core/src/service.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 55441,
+      "sha256": "b7edb9fc4ed2d067495c6d97562636b757dbb024fe93ff107e86e389c3e84f6b",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-core/src/state-machine.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 2022,
+      "sha256": "58753ba2337e30b59564e19690cc6bced8abe1167186d71d4ef874cb2c162ad7",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-core/src/util.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 3079,
+      "sha256": "cea3a462b45e5d0b7ac0a5b5b2f63f0a492c033fd460ab0f1cae11b1de21d20f",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-core/tsconfig.json",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 142,
+      "sha256": "d38c25bd76efc8abab7cf154f44a0f78de3e421f898a93e73ac1756650deb977",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-http/package.json",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 593,
+      "sha256": "e29759714c7aa45293b2155c926ebb8fbcedd1ec376803fc926cda14be128755",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-http/README.md",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 2216,
+      "sha256": "525a45c63539f220ae2e3f3d7093b50265c8d25b54fccc99caefd86b6f77eddc",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-http/src/contracts.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 2429,
+      "sha256": "f8af7669a9a9bfd0c2c1f81b62aaacbeeee62b7fab5382bb03f2b86154407da6",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-http/src/errors.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 1001,
+      "sha256": "0a8a3c3d6fc76e9f9a948a13f14757d6acce12d15309175037f26b2e42d288af",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-http/src/in-memory.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 8548,
+      "sha256": "9bf158639715ccf47cc11bbed97cc6f91bb6fcfdc30e88ab9dd4a5f1dad7ac51",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-http/src/index.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 1114,
+      "sha256": "e5c44cc48d374ff40313e901e02bd1a23f3b396953201dcc80d6b807e43eafec",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-http/src/interfaces.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 2740,
+      "sha256": "1809481eb9ca80c3af90b030fdfffcb22f3e47876a761e0afc9ebc57b0d272f7",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-http/src/router.test.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 20190,
+      "sha256": "27671881bfb8b2cc546cfb70983b6aacb9650dbf9bfa29f1b95d3f703d332110",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-http/src/router.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 43613,
+      "sha256": "b181ab580f0f1ba08c4c03da4284d43dc315575d96f9ac9d942bece7902772c1",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-http/src/util.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 2788,
+      "sha256": "ea6e5336551d06292bf7e1655839501de9a4b287662242f56dfcdae72309c1dc",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-http/tsconfig.json",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 297,
+      "sha256": "4a4979cdd3028a266e93358c0c6a1a519e8c4e6f7604691bf8548c347da9b9bc",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/.gitignore",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 6,
+      "sha256": "ed19d3c9c8a5e34d0179e0b1a9c2907d2e657738733e4a432a8cf81c76ce56f1",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/package.json",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 794,
+      "sha256": "049c0b35e3c88712f690583f3da83dc80dd6e58868f6923ef8b227a781be7abd",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/README.md",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 7813,
+      "sha256": "964d6d19a7e538396a703c6f967527758646a1361bf5eb29c31d7c20a9010565",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/scripts/build-scientific-worker.mjs",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 1703,
+      "sha256": "8bdb39620d1c49e48d2a3b02e9d87a74d32bcd69afd546490102392acbf4cfc3",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/scripts/diff-check.mjs",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 1555,
+      "sha256": "35f973d3d9a9081602bfc80d853c344d530e23f026c58caf1ed35eb76d3082ae",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/contracts.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 3099,
+      "sha256": "f68c2c02901bd0979da71faaebb7534342f1630ac7841c88a1979197d1cd5ccc",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/errors.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 1961,
+      "sha256": "eb4d83a338d2690d29cd81961755f2864c7f8262d6a186bf065fe6aec626c7fe",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/fixtures/crash.mjs",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 74,
+      "sha256": "a6a0bd3b4784f2bd115e73053a90851813064cc20e261d7276578a6202bdc17f",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/fixtures/delayed-ready.mjs",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 82,
+      "sha256": "61988c71f071c698788663e6f4dff70b0e6a60f4bbfda83e39435ac31d948176",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/fixtures/fixture-runtime.mjs",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 2278,
+      "sha256": "6ec496a720a8f8cc9a826345cfe4ee8e7e2b4469aaf5554701ef3d7e4b161c95",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/fixtures/ignore-term.mjs",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 80,
+      "sha256": "5c747366c4fdf425cbdfbe0564acac2ffbfc7640625ffe7aa6b7e2c895aab546",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/fixtures/invalid-ready.mjs",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 82,
+      "sha256": "4b269a6fbcfff0dd8aec896015bbc6867d5f112735fc7bf27b2d6a7bb2144e96",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/fixtures/normal.mjs",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 75,
+      "sha256": "13a58349eace7a68f5f71409b3e9d3d678b9416e759101d42c7a0656dd74ed43",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/fixtures/slow-term.mjs",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 78,
+      "sha256": "3cf4654c07307c66733bc21d021dd4e2adfa94fc54fef7ac3279ecca922ae6de",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/fixtures/wait.mjs",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 73,
+      "sha256": "29bcca1a99fb3677eb7c03a405011dfd5832dc5d4daf8fcd11e6254d389af9cc",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/index.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 734,
+      "sha256": "b8a8a377259a6538f129657cc8b5e544f5878ad5cafd7ea0666c386aa8a74ae2",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/node-process-supervisor.test.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 11671,
+      "sha256": "bac3c2ca9d807989259bae9d072aaeac5de4e7d264ef3404499afa1de5816cb3",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/node-process-supervisor.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 29059,
+      "sha256": "32581ba8e255f44efaaf94740d039f9f59b1075996cab80a63dc3c4862dcc296",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/scientific/contracts.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 7484,
+      "sha256": "9eb849354ad638d0b92bb808b1a3c9dfd600e8e47300c4581eb791e60791987f",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/scientific/errors.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 1794,
+      "sha256": "b817b808ea419bd1903bbb22fc279ea3fd84066c580c3452848aeaef1b4c5252",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/scientific/file-result-store.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 4953,
+      "sha256": "a94f222fd720deab1dd3a4dd2f01a9385796c9cc05820466fe1d4c393b7ea972",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/scientific/index.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 998,
+      "sha256": "aa2b2b43bbd0bfbc070e7a31d453b786a10bc85227c139a980fd0e86ce55c493",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/scientific/input-provider.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 3840,
+      "sha256": "2644d95a66a96545f961e07d970dd598ff06d6a2993dacdf83dcc75a82afba64",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/scientific/scientific-worker.test.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 28605,
+      "sha256": "530193ceec9eb98a4849b17d6be3c5d11f4d3595b0f17ad30adfa6d5b6d02962",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/scientific/session-adapter.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 10555,
+      "sha256": "092b1b3c4a709b049e43d9b4cd1d2efe73e7d9e830674f4003da421943a58e14",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/scientific/validation.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 14828,
+      "sha256": "ecd319e40f10edc1bd636801edb306a801ee1686686059cd85a301afd69cadd7",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/scientific/worker-entry.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 98,
+      "sha256": "ff4cfd1f85f87a08b5062b8eb18d810065b497dfddbd1f892b06c0e43239ce54",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/src/scientific/worker-runtime.ts",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 11469,
+      "sha256": "b632296dac8c0f7ac72e825778e9adda7924e9482e563f46840acb059fe3bc32",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/compute-service-node/tsconfig.json",
+      "tracked": false,
+      "subsystem": "compute-service",
+      "kind": "file",
+      "bytes": 297,
+      "sha256": "4a4979cdd3028a266e93358c0c6a1a519e8c4e6f7604691bf8548c347da9b9bc",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/dataset-workflow/package.json",
+      "tracked": false,
+      "subsystem": "dataset-workflow",
+      "kind": "file",
+      "bytes": 583,
+      "sha256": "6cad1a7a7220fc6234f21e66cc35c0fe75d6ac6434ca2e2d500a429425534aa9",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/dataset-workflow/README.md",
+      "tracked": false,
+      "subsystem": "dataset-workflow",
+      "kind": "file",
+      "bytes": 9036,
+      "sha256": "979a1e0f859c2427033b1746d9cd05e01f09f1077f9330a3a5e4097c949042c4",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/dataset-workflow/src/errors.ts",
+      "tracked": false,
+      "subsystem": "dataset-workflow",
+      "kind": "file",
+      "bytes": 1458,
+      "sha256": "1517742b7fc38315fdb7ca4ae8a81d8c154a9542e14b13795216b6970cf776ca",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/dataset-workflow/src/hash.ts",
+      "tracked": false,
+      "subsystem": "dataset-workflow",
+      "kind": "file",
+      "bytes": 6078,
+      "sha256": "0b8143cde73e1de4b9a0b3492da8b1a7d908c64c5532931b59b7ff44ed0c505f",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/dataset-workflow/src/in-memory-adapters.ts",
+      "tracked": false,
+      "subsystem": "dataset-workflow",
+      "kind": "file",
+      "bytes": 10854,
+      "sha256": "cd28a03f5c69db36f22f137f710e5da6d59093ba2f413946f9b898e122d57773",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/dataset-workflow/src/index.ts",
+      "tracked": false,
+      "subsystem": "dataset-workflow",
+      "kind": "file",
+      "bytes": 2190,
+      "sha256": "0b66a854586b6bfb5145e56fc47a88a04cd233ba244feeb548d304f3f2c86a54",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/dataset-workflow/src/limits.ts",
+      "tracked": false,
+      "subsystem": "dataset-workflow",
+      "kind": "file",
+      "bytes": 2503,
+      "sha256": "3d02dd8355f0e6481f145d2d0a9cb06112222a86e0538e2d86c441f5558b82c6",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/dataset-workflow/src/shaping.ts",
+      "tracked": false,
+      "subsystem": "dataset-workflow",
+      "kind": "file",
+      "bytes": 7905,
+      "sha256": "93aad57e0e4827a37bb38134958f0e3cd4bd8bf1243aa6172fcbe1cf92d14551",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/dataset-workflow/src/tabular-import-adapter.ts",
+      "tracked": false,
+      "subsystem": "dataset-workflow",
+      "kind": "file",
+      "bytes": 3122,
+      "sha256": "6e984f5d0dfa9cebdaa172e3d0912d09c53ca01ac19b2b5a54d480b67f345ca7",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/dataset-workflow/src/types.ts",
+      "tracked": false,
+      "subsystem": "dataset-workflow",
+      "kind": "file",
+      "bytes": 12866,
+      "sha256": "dab50e8014fa33c7e2a7a2add2d7c2624a51154f39e05ac2a0453eefbb5c6387",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/dataset-workflow/src/validation.ts",
+      "tracked": false,
+      "subsystem": "dataset-workflow",
+      "kind": "file",
+      "bytes": 23040,
+      "sha256": "2ccbd72040209c1952e190c6f47d73d39452da844c9f7feb6af77776de62490c",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/dataset-workflow/src/workflow.test.ts",
+      "tracked": false,
+      "subsystem": "dataset-workflow",
+      "kind": "file",
+      "bytes": 33341,
+      "sha256": "48c436b973719ec9a451d27fc457c0f1d68e12efe3729916455bd48e2485ec8d",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/dataset-workflow/src/workflow.ts",
+      "tracked": false,
+      "subsystem": "dataset-workflow",
+      "kind": "file",
+      "bytes": 39951,
+      "sha256": "d19f0fb05ce54b5b7f709eba6feb5e1d167ae9bb5dfef37ea1fdc2c57d8904b2",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/dataset-workflow/tsconfig.json",
+      "tracked": false,
+      "subsystem": "dataset-workflow",
+      "kind": "file",
+      "bytes": 285,
+      "sha256": "2b46da98c5dca0944ffc9109f133b8d7579528e63ea8b40228789253c2dc110b",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/export/package.json",
+      "tracked": false,
+      "subsystem": "export",
+      "kind": "file",
+      "bytes": 479,
+      "sha256": "af5059adf183478ff74edcd8b0f8bbcae1e3bd553fbef751079efb4c3e0268f2",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/export/README.md",
+      "tracked": false,
+      "subsystem": "export",
+      "kind": "file",
+      "bytes": 2454,
+      "sha256": "988d7cdf2be8a4235c4c58895129c8c9750c144a7c7af07c27f2bd9f2b807383",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/export/src/csv.test.ts",
+      "tracked": false,
+      "subsystem": "export",
+      "kind": "file",
+      "bytes": 5305,
+      "sha256": "4b6fb80bf5b52a2966a1baad1a340b05952a3913fa213ff04bfd1cac10f15502",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/export/src/csv.ts",
+      "tracked": false,
+      "subsystem": "export",
+      "kind": "file",
+      "bytes": 8380,
+      "sha256": "69b27b8eda2bfa788302358ea7a11a7978381b4d4353d1874ed0a4af7068f5d5",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/export/src/errors.ts",
+      "tracked": false,
+      "subsystem": "export",
+      "kind": "file",
+      "bytes": 927,
+      "sha256": "a288085d7ae89d8e070d586785c62af52204ae2e0286d3fbe77689c42836a1af",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/export/src/index.ts",
+      "tracked": false,
+      "subsystem": "export",
+      "kind": "file",
+      "bytes": 553,
+      "sha256": "97830316520be241c574555c62334a928bdeb3b62de3422c48a691dba8bdefb1",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/export/src/unicode.ts",
+      "tracked": false,
+      "subsystem": "export",
+      "kind": "file",
+      "bytes": 431,
+      "sha256": "13cbf04bc38d73e4d710efca787abe86178aa5c2fddbdcc3f6d8f5fd6930744c",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/export/src/zip.test.ts",
+      "tracked": false,
+      "subsystem": "export",
+      "kind": "file",
+      "bytes": 9592,
+      "sha256": "70ce3ca7dfcc09d192af6b3dfbfaa181cd02769972e92fc95735abc68ecc43cd",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/export/src/zip.ts",
+      "tracked": false,
+      "subsystem": "export",
+      "kind": "file",
+      "bytes": 12126,
+      "sha256": "4b5c7af4276013e279714921469b21b81f3dc41f384f913ce7a4b826d911228c",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/export/tsconfig.json",
+      "tracked": false,
+      "subsystem": "export",
+      "kind": "file",
+      "bytes": 142,
+      "sha256": "d38c25bd76efc8abab7cf154f44a0f78de3e421f898a93e73ac1756650deb977",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/io/package.json",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 475,
+      "sha256": "b4923c53b19f5f55287aaf61c6faaa15dfc86aa32c3bb1b2e078bee6e4c562bf",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/io/README.md",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 2227,
+      "sha256": "e4a9f2a0fa9bac48616d94bfabe4458e09d42e0e69cebd7cc17286daeb37ee27",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/io/src/decode.test.ts",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 18719,
+      "sha256": "14ed07925e5615459020ff0771836bf28ee41a68df2d0bd14f6144f90761080b",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/io/src/decode.ts",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 28590,
+      "sha256": "25c431d01a516ad83c341038d58e558e6457216ad37da8c444f94020da6053d7",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/io/src/errors.ts",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 974,
+      "sha256": "6740995aa7b96c442de37abef616ed106b457ed82a034ab87e7aa2488635b8e4",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/io/src/index.ts",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 851,
+      "sha256": "87665c8831d8b9a31ff4a5fa94f1d9e7b2a4e91f429e7b60243d279625413f20",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/io/src/json-preflight.ts",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 5970,
+      "sha256": "d6d5d4443c2e730daa80e43f686f72efc07a5f5826015bf21c533a7b5f7da8be",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/io/src/limits.ts",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 2276,
+      "sha256": "a847e8ea6f82184cc1262a4c3ce2f4ced2730a574b4fdf46a71a9aa86341a994",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/io/src/types.ts",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 3066,
+      "sha256": "1ecec3986413b83b59e3d9dad88c4a39fc1a708dbcc3d3eb63f731c4095e3b66",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/io/tsconfig.json",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 142,
+      "sha256": "d38c25bd76efc8abab7cf154f44a0f78de3e421f898a93e73ac1756650deb977",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/parity-contracts/CAPABILITY_LEDGER.md",
+      "tracked": false,
+      "subsystem": "scientific-evidence",
+      "kind": "file",
+      "bytes": 10902,
+      "sha256": "f4d05e2df7a9b05ddb5503ac428f2bb04e9d9dc2cd8f78d596f18a2bcb751a75",
+      "testCount": 4
+    },
+    {
+      "status": " M",
+      "path": "packages/parity-contracts/DIVERGENCE_LEDGER.md",
+      "tracked": true,
+      "subsystem": "scientific-evidence",
+      "kind": "file",
+      "bytes": 1905,
+      "sha256": "e1be129e221e0434c6f726a6d2015319e043aed334562a12731150a5c9b8a358",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/parity-contracts/fixtures/class1-timepoints.ena3d.json",
+      "tracked": false,
+      "subsystem": "scientific-evidence",
+      "kind": "file",
+      "bytes": 52073,
+      "sha256": "704b940865fbf09a7c5e42949105c935f3a64f5831a65e9af489af04e695c909",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/parity-contracts/fixtures/class1-timepoints.ena3d.json.provenance.json",
+      "tracked": false,
+      "subsystem": "scientific-evidence",
+      "kind": "file",
+      "bytes": 1409,
+      "sha256": "092b8f5cd78aea1d877fc4f3789ba6726a7f339f5e64aed5d0dcd6bd7b9c3d8a",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/parity-contracts/fixtures/class1-timepoints.ena3d.json.sha256",
+      "tracked": false,
+      "subsystem": "scientific-evidence",
+      "kind": "file",
+      "bytes": 94,
+      "sha256": "feb1c2bce21219893085aa052eb156b262f3abea4099bff9e492d681330d49cc",
+      "testCount": 4
+    },
+    {
+      "status": " M",
+      "path": "packages/parity-contracts/fixtures/small-raw.rena-0.2.7.golden.json",
+      "tracked": true,
+      "subsystem": "scientific-evidence",
+      "kind": "file",
+      "bytes": 14813,
+      "sha256": "35458bc85fa665d0d3449fc07a4f308f35c821bfa8edda0862a2fff759c5c245",
+      "testCount": 4
+    },
+    {
+      "status": " M",
+      "path": "packages/parity-contracts/PARITY_CONTRACT_V1.md",
+      "tracked": true,
+      "subsystem": "scientific-evidence",
+      "kind": "file",
+      "bytes": 10047,
+      "sha256": "96bbf1b1977ce4cbc6d8f7087728268d3bc309c0bb57a9ed9d66c0a0926a6d32",
+      "testCount": 4
+    },
+    {
+      "status": " M",
+      "path": "packages/parity-contracts/PARITY_MATRIX.md",
+      "tracked": true,
+      "subsystem": "scientific-evidence",
+      "kind": "file",
+      "bytes": 9043,
+      "sha256": "d2023bbcaec7eeec910769039cd77523aacce607dbb1a4ddc1cac0c878b431c8",
+      "testCount": 4
+    },
+    {
+      "status": " M",
+      "path": "packages/parity-contracts/README.md",
+      "tracked": true,
+      "subsystem": "scientific-evidence",
+      "kind": "file",
+      "bytes": 2904,
+      "sha256": "f04135ca2a617f2bef3b44f1c254eb54270f6585e62daa03c456aaa4e6c0a019",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/parity-contracts/SCIENTIFIC_AUTHORITY_MATRIX.md",
+      "tracked": false,
+      "subsystem": "scientific-evidence",
+      "kind": "file",
+      "bytes": 4983,
+      "sha256": "a562c03bd17f3f89232b5a7d7d1fb78f28d191ee1459fcd12cb41f76c498c41d",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/parity-contracts/src/class1-fixture.test.ts",
+      "tracked": false,
+      "subsystem": "scientific-evidence",
+      "kind": "file",
+      "bytes": 10689,
+      "sha256": "ae22b3aca315d83b6ee8259804d15040b3f4b2fea9da73885756af440cd3424f",
+      "testCount": 4
+    },
+    {
+      "status": " M",
+      "path": "packages/parity-contracts/src/compare.test.ts",
+      "tracked": true,
+      "subsystem": "scientific-evidence",
+      "kind": "file",
+      "bytes": 13178,
+      "sha256": "21879288e10bc5b799ecca74beb020aa33ab71b6c4500390b264f1e693003120",
+      "testCount": 4
+    },
+    {
+      "status": " M",
+      "path": "packages/parity-contracts/src/compare.ts",
+      "tracked": true,
+      "subsystem": "scientific-evidence",
+      "kind": "file",
+      "bytes": 40540,
+      "sha256": "baca2cd4a7617928afdd054181c24dfc9ef99b7040b65c76ca17e50a01704ba3",
+      "testCount": 4
+    },
+    {
+      "status": " M",
+      "path": "packages/parity-contracts/src/index.ts",
+      "tracked": true,
+      "subsystem": "scientific-evidence",
+      "kind": "file",
+      "bytes": 988,
+      "sha256": "2fd0639d57bf8fb064f7262dda722cfca363f434e2936f27c9db32e7952f8327",
+      "testCount": 4
+    },
+    {
+      "status": " M",
+      "path": "packages/parity-contracts/src/oracle-candidate.test.ts",
+      "tracked": true,
+      "subsystem": "scientific-evidence",
+      "kind": "file",
+      "bytes": 3900,
+      "sha256": "205f793e0c4ad6bfe58087b6377708853f65538ebfb9f1f8e20a85543003cd7d",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/parity-contracts/src/subspace.test.ts",
+      "tracked": false,
+      "subsystem": "scientific-evidence",
+      "kind": "file",
+      "bytes": 3357,
+      "sha256": "89f60a8c19bc25aafa80ac9280ff80dd6fe3a0a12e678696ef5adeb326f054ba",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/parity-contracts/src/subspace.ts",
+      "tracked": false,
+      "subsystem": "scientific-evidence",
+      "kind": "file",
+      "bytes": 11216,
+      "sha256": "5c441f7b633297b43abd77f20d6c0777b99fd3699be8183dd415906a264a0f0c",
+      "testCount": 4
+    },
+    {
+      "status": "??",
+      "path": "packages/stats/package.json",
+      "tracked": false,
+      "subsystem": "stats",
+      "kind": "file",
+      "bytes": 478,
+      "sha256": "653cfc42997d7f8baf52b422762f7ac3a41d919aed821406a4b735743e7a4c53",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/stats/README.md",
+      "tracked": false,
+      "subsystem": "stats",
+      "kind": "file",
+      "bytes": 4849,
+      "sha256": "d19fd376933160014b4aa57af22234687cd3157b2e5c72fa0eb106226a68fcc6",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/stats/src/adjust.ts",
+      "tracked": false,
+      "subsystem": "stats",
+      "kind": "file",
+      "bytes": 1606,
+      "sha256": "c3f2333ec71b223ac4335cebc4adf0a22dc44e319a74b5fe7315f6cbf9ebae67",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/stats/src/independent.ts",
+      "tracked": false,
+      "subsystem": "stats",
+      "kind": "file",
+      "bytes": 12431,
+      "sha256": "098d01b641515f38b8c03e89519990d61833a56430545e7830555478b771ce7b",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/stats/src/index.test.ts",
+      "tracked": false,
+      "subsystem": "stats",
+      "kind": "file",
+      "bytes": 18126,
+      "sha256": "7051fc048de07c203d3e2713ac5b9c425f3fea557dc22d824901a6bf1109cbc3",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/stats/src/index.ts",
+      "tracked": false,
+      "subsystem": "stats",
+      "kind": "file",
+      "bytes": 741,
+      "sha256": "6bed01d5ad8db2c0bb555f2f11b97caa6a1a40fb577a5a90361c6f25763c171e",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/stats/src/numerics.ts",
+      "tracked": false,
+      "subsystem": "stats",
+      "kind": "file",
+      "bytes": 8157,
+      "sha256": "87dbfd12638993a849f510a38430bdf1ecd0e5bd8acbf3130e0fb1afd187cc7e",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/stats/src/paired.ts",
+      "tracked": false,
+      "subsystem": "stats",
+      "kind": "file",
+      "bytes": 12637,
+      "sha256": "4fb26a7b354af6b689a1e5ccff721e50bab75e57b9b9e2e1c80c901756f4e770",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/stats/src/types.ts",
+      "tracked": false,
+      "subsystem": "stats",
+      "kind": "file",
+      "bytes": 6550,
+      "sha256": "abb82a410bfe6e13918ff0118450373a3de6f2098fe60489204b6e9d0beaee4a",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/stats/tsconfig.json",
+      "tracked": false,
+      "subsystem": "stats",
+      "kind": "file",
+      "bytes": 142,
+      "sha256": "d38c25bd76efc8abab7cf154f44a0f78de3e421f898a93e73ac1756650deb977",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/tabular-import/package.json",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 568,
+      "sha256": "e742986055a219d2fefefa67e20bca1c60e90f9fb2702287105ea85d5e14a749",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/tabular-import/README.md",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 4838,
+      "sha256": "0f09708e761dde2dd06fe808310b9e4336ca1f3b0b83c208f7ea101ebb34993c",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/tabular-import/src/bytes.ts",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 3671,
+      "sha256": "21e4d4edfdca67a21fdd31554c772b705676f611ed24ef00fb192b01bd38f7a5",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/tabular-import/src/container-preflight.ts",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 15177,
+      "sha256": "59fbdad57a944230d153c769d209dc8cc73e4675fa45fd19b2f53f43a5d2ef3f",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/tabular-import/src/csv.ts",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 7227,
+      "sha256": "dfdcde32d4beb8bcd9589f6a0cae3e3e4ba3ddceae9adaa84fdcd91dac9c6dec",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/tabular-import/src/errors.ts",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 1766,
+      "sha256": "f99c38b3b7662491d4e207e2b14c039beb003392b9c5a874b0995646bad4c34e",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/tabular-import/src/importer.test.ts",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 19882,
+      "sha256": "3a393944936fe8c76a810a72a347dc94ce61f98dd21781782b02f72c8e97e070",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/tabular-import/src/importer.ts",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 24232,
+      "sha256": "2a1d93938c74e867f7e02af89ab08cb71c5e79ef1cb53ddcbb1f9d2388580ce1",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/tabular-import/src/index.ts",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 722,
+      "sha256": "15f4c156b7fd0c3e7b9b08b910544374b5117873a91cfeda7894b59f2410d4ec",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/tabular-import/src/limits.ts",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 2266,
+      "sha256": "52960ed93334498290e037a0da2e866805b6e11b5fb6db56c4fe336987da3c1f",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/tabular-import/src/test-xlsx-builder.test-util.ts",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 6378,
+      "sha256": "f3a2038314dbf428ce4b8990088eeb81b0b8d46d68603be6c11efe45945bcb26",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/tabular-import/src/types.ts",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 4041,
+      "sha256": "19ec90f2b80cab3c890b14a62aad5e134ad71a9f44b34bb4585714ad5c5f3468",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/tabular-import/test-fixtures/date-cell.xlsx",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 6127,
+      "sha256": "bc49c22f652505139825b2630008290ecf2d4368f994df62824c0e312ed3ce65",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/tabular-import/test-fixtures/manifest.json",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 1346,
+      "sha256": "48ab06e6ae29d55459be0df876864ce5b6baa5160615ebf33e4d4bc2e5469c02",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/tabular-import/test-fixtures/simple-with-colours.xls",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 6144,
+      "sha256": "350ea9306c60c4d4bf7949858e75f3277cf702f7b684a8b0597d7b2ec718070e",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/tabular-import/test-fixtures/two-sheets-one-hidden.xlsx",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 7962,
+      "sha256": "3e9749837cac5a19a7628d7e60c1a1c6d0ff7657f27fa7904b217b96e0dc534f",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/tabular-import/test-fixtures/with-various-data.xlsx",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 10603,
+      "sha256": "1440a832bb810c09687d3498b841782964b0b697e9242428fed1072ab22d078a",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/tabular-import/tsconfig.json",
+      "tracked": false,
+      "subsystem": "dataset-io",
+      "kind": "file",
+      "bytes": 142,
+      "sha256": "d38c25bd76efc8abab7cf154f44a0f78de3e421f898a93e73ac1756650deb977",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "packages/trajectory/package.json",
+      "tracked": false,
+      "subsystem": "trajectory",
+      "kind": "file",
+      "bytes": 483,
+      "sha256": "ef3163c985bd5614318211f7f64e781c3b095a26d8e8b9211229d1acb9da12f6",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/trajectory/README.md",
+      "tracked": false,
+      "subsystem": "trajectory",
+      "kind": "file",
+      "bytes": 5472,
+      "sha256": "a8cec5ca4774949055a9af9a86d1e0a1ade57966e6ab54b1a5f7ac777c27eb26",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/trajectory/src/analyze.test.ts",
+      "tracked": false,
+      "subsystem": "trajectory",
+      "kind": "file",
+      "bytes": 16927,
+      "sha256": "0a29812f04eacf904e88318f69f2c14062e9e4009967f49ef6ff3707bf2f301c",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/trajectory/src/analyze.ts",
+      "tracked": false,
+      "subsystem": "trajectory",
+      "kind": "file",
+      "bytes": 42596,
+      "sha256": "a04882d9f67379a68b1580521fb4522b48bce2c30ae05eff156d36ed04aa0ba5",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/trajectory/src/errors.ts",
+      "tracked": false,
+      "subsystem": "trajectory",
+      "kind": "file",
+      "bytes": 448,
+      "sha256": "1751b82afe3b4d20ee69d8072929e0114b3f32389a5ebc8b079f644726ed591f",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/trajectory/src/index.ts",
+      "tracked": false,
+      "subsystem": "trajectory",
+      "kind": "file",
+      "bytes": 672,
+      "sha256": "113c7e30e23ec82c610cc0e06035f1abf93eff3de97d64e8f51a427c80175ecd",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/trajectory/src/types.ts",
+      "tracked": false,
+      "subsystem": "trajectory",
+      "kind": "file",
+      "bytes": 5899,
+      "sha256": "3ac9d675a514fd1ce9d8f4dd7fbb163da94bfebaf0b26717b6f5663032a40736",
+      "testCount": 1
+    },
+    {
+      "status": "??",
+      "path": "packages/trajectory/tsconfig.json",
+      "tracked": false,
+      "subsystem": "trajectory",
+      "kind": "file",
+      "bytes": 142,
+      "sha256": "d38c25bd76efc8abab7cf154f44a0f78de3e421f898a93e73ac1756650deb977",
+      "testCount": 1
+    },
+    {
+      "status": " M",
+      "path": "playwright.config.ts",
+      "tracked": true,
+      "subsystem": "browser-evidence",
+      "kind": "file",
+      "bytes": 3439,
+      "sha256": "35aea90968a59d85e855de70604f7e76f394390cbf80f9f57c5da39103c01a28",
+      "testCount": 4
+    },
+    {
+      "status": " M",
+      "path": "README.md",
+      "tracked": true,
+      "subsystem": "documentation",
+      "kind": "file",
+      "bytes": 8419,
+      "sha256": "762ea885c324d94e985af15087c6ef96b1c000639c9cf544a3b969f96ee242b5",
+      "testCount": 0
+    },
+    {
+      "status": "??",
+      "path": "scripts/capture-worktree-inventory.mjs",
+      "tracked": false,
+      "subsystem": "repository-tooling",
+      "kind": "file",
+      "bytes": 5443,
+      "sha256": "219a412e31a1a72a83fe544174cee34ea27ce23c253d4f1a567e4d205501a25f",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "scripts/generate-release-sbom.mjs",
+      "tracked": false,
+      "subsystem": "repository-tooling",
+      "kind": "file",
+      "bytes": 9973,
+      "sha256": "5f8587d46bae72a93b59b58f9d81760038266d226be6b37fc749411e7b6109e8",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "scripts/verify-ci-action-pins.mjs",
+      "tracked": false,
+      "subsystem": "repository-tooling",
+      "kind": "file",
+      "bytes": 1490,
+      "sha256": "aa08d72a0c9f90700a31750f526ef9e1e5f1da83ec75e2245fc51778696d746d",
+      "testCount": 2
+    },
+    {
+      "status": " M",
+      "path": "scripts/verify-production-boundary.mjs",
+      "tracked": true,
+      "subsystem": "repository-tooling",
+      "kind": "file",
+      "bytes": 20168,
+      "sha256": "a18d97b8976574d4bae708a2f80ec9925e1a68d38bc2a1a9249e0292f4255cc0",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "scripts/verify-release-security.mjs",
+      "tracked": false,
+      "subsystem": "repository-tooling",
+      "kind": "file",
+      "bytes": 56302,
+      "sha256": "f5ac7a5c5c31b76186f39c5e71db2fa8b1fbeada1133bba126ef20090dff303d",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "scripts/verify-release-security.test.mjs",
+      "tracked": false,
+      "subsystem": "repository-tooling",
+      "kind": "file",
+      "bytes": 13393,
+      "sha256": "169b31b085bdccbcab85079cc5ef9dc4cd7216b5c95f69470d14f3cede6957b9",
+      "testCount": 2
+    },
+    {
+      "status": "??",
+      "path": "vendor/sheetjs/README.md",
+      "tracked": false,
+      "subsystem": "vendored-custody",
+      "kind": "file",
+      "bytes": 1059,
+      "sha256": "725523597f1392f41675fb8e4828bebc308c4c3f3ddb132c36894b6afc81adf6",
+      "testCount": 0
+    },
+    {
+      "status": "??",
+      "path": "vendor/sheetjs/xlsx-0.20.3.tgz",
+      "tracked": false,
+      "subsystem": "vendored-custody",
+      "kind": "file",
+      "bytes": 2409319,
+      "sha256": "8dc73fc3b00203e72d176e85b50938627c7b086e607c682e8d3c22c02bb99fe8",
+      "testCount": 0
+    }
+  ]
+}
