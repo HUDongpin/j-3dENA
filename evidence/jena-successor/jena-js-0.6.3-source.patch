@@ -1,0 +1,97 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 92dc74b..a6dd439 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,13 @@
+ # Changelog
+
++## 0.6.3 - 2026-08-21
++
++- Removed the accidental `jena-js@^0.6.0` runtime self-dependency. The package
++  again has zero runtime npm dependencies, matching its documented runtime
++  boundary. No runtime or numerical source changed.
++- Packaging validation now rejects any future runtime dependency, including a
++  self-dependency, before publication.
++
+ ## 0.6.2 - 2026-07-12
+
+ - `package.json` `sideEffects` is now `["./dist/browser/worker.js"]` instead
+diff --git a/PROVENANCE.md b/PROVENANCE.md
+index 21b15c0..9b32e0e 100644
+--- a/PROVENANCE.md
++++ b/PROVENANCE.md
+@@ -53,6 +53,10 @@ The package runtime is pure JavaScript:
+
+ R is used only for development-time tasks: regenerating golden fixtures (`npm run goldens:r`, `npm run goldens:stats`) and comparing behavior to rENA in tests.
+
++Version 0.6.3 restores this boundary at the package-manifest level by removing
++the accidental 0.6.2 self-dependency. The runtime and numerical source are
++unchanged from commit `2f63db4c6ccf5684afc8437ae81ed1a3ccd0c1a3`.
++
+ ## License
+
+ Distributed under **GPL-3.0-only**. rENA is the upstream GPL-3 work this package translates; the GPL posture (license, attribution, and corresponding source via this repository) is preserved. See the Upstream NOTICE above.
+diff --git a/package.json b/package.json
+index 3511f47..7fa9ad1 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "jena-js",
+-  "version": "0.6.2",
++  "version": "0.6.3",
+   "description": "Standalone TypeScript/JavaScript library for Epistemic Network Analysis, ported from rENA for browser and Node runtimes.",
+   "type": "module",
+   "license": "GPL-3.0-only",
+@@ -90,14 +90,13 @@
+     "@types/node": "^22.15.0",
+     "@typescript-eslint/eslint-plugin": "^8.32.0",
+     "@typescript-eslint/parser": "^8.32.0",
+-    "@vitest/browser": "^3.2.6",
++    "@vitest/browser": "^4.1.11",
++    "@vitest/browser-playwright": "^4.1.11",
++    "esbuild": "0.28.2",
+     "eslint": "^9.26.0",
+     "playwright": "^1.61.1",
+     "tsup": "^8.4.0",
+     "typescript": "^5.8.3",
+-    "vitest": "^3.1.3"
+-  },
+-  "dependencies": {
+-    "jena-js": "^0.6.0"
++    "vitest": "^4.1.11"
+   }
+ }
+diff --git a/scripts/pack-check.mjs b/scripts/pack-check.mjs
+index f02b3eb..8fbe96c 100644
+--- a/scripts/pack-check.mjs
++++ b/scripts/pack-check.mjs
+@@ -73,4 +73,9 @@ if (!Array.isArray(pkg.sideEffects) || !pkg.sideEffects.includes("./dist/browser
+   process.exit(1);
+ }
+
++if (pkg.dependencies !== undefined && Object.keys(pkg.dependencies).length > 0) {
++  console.error("jena-js must publish with zero runtime dependencies.");
++  process.exit(1);
++}
++
+ console.log("pack-check OK: only dist + docs ship, all entry points present, worker side effect declared.");
+diff --git a/vitest.browser.config.ts b/vitest.browser.config.ts
+index 15fcd6e..e85cce9 100644
+--- a/vitest.browser.config.ts
++++ b/vitest.browser.config.ts
+@@ -1,4 +1,5 @@
+ import { defineConfig } from "vitest/config";
++import { playwright } from "@vitest/browser-playwright";
+
+ // Real-browser harness (advisory F-014): runs the worker round-trip and the
+ // SVG renderer in actual Chromium via Playwright.
+@@ -8,7 +9,7 @@ export default defineConfig({
+     browser: {
+       enabled: true,
+       headless: true,
+-      provider: "playwright",
++      provider: playwright(),
+       instances: [{ browser: "chromium" }]
+     }
+   }
