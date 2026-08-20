@@ -1,0 +1,35 @@
+{
+  "manifest": {
+    "schemaVersion": "3dena.parity-fixture.v1",
+    "fixtureId": "small-raw-rena-0.2.7-accumulated-back4",
+    "status": "pending",
+    "availableFields": [],
+    "pendingReason": "The frozen rENA 0.2.7 oracle has not yet generated and hashed the numeric analysis payload.",
+    "legacyCommit": "d02019ad872c5ece3840be2b4028ef27af38b2ff",
+    "rVersion": "4.4.1",
+    "rENAVersion": "0.2.7",
+    "jenaCommit": "2f63db4c6ccf5684afc8437ae81ed1a3ccd0c1a3",
+    "jenaVersion": "0.6.2",
+    "input": {
+      "path": "small-raw.csv",
+      "sha256": "163ee849ac316d380e2664067e7389a8114e30d97877c97d6d912e3706c72f16"
+    },
+    "spec": {
+      "model": "AccumulatedTrajectory",
+      "units": ["Group", "Name"],
+      "conversation": ["Lesson"],
+      "codes": ["EC", "ICT", "MCO", "ATT"],
+      "group": "Group",
+      "participant": ["Name"],
+      "time": "Lesson",
+      "window": "MovingStanzaWindow",
+      "windowSizeBack": 4,
+      "windowSizeForward": 0,
+      "weightBy": "binary",
+      "rotation": "svd",
+      "dimensions": 3,
+      "centerAlignToOrigin": true
+    }
+  },
+  "analysis": null
+}

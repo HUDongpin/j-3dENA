@@ -1,0 +1,243 @@
+/** Values accepted at the raw-row boundary. Dates and objects must be encoded explicitly. */
+export type RawScalar = string | number | boolean | null;
+export type RawRow = Record<string, RawScalar>;
+
+export type ENAModel = "EndPoint" | "AccumulatedTrajectory" | "SeparateTrajectory";
+export type ENAWindow = "MovingStanzaWindow" | "Conversation";
+export type ENAWeight = "binary" | "sum";
+export type CohortPolicy = "available" | "complete";
+export type AxisName = "SVD1" | "SVD2" | "SVD3";
+export type Coordinates3D = [number, number, number];
+
+export interface TrajectoryMapping {
+  /** Participant label columns. Scientific identity remains the complete `units` tuple. */
+  participant: string[];
+  /** Unit-level group column; it must also occur in `units`. */
+  group: string;
+  /** Period column; it must also occur in `conversation`. */
+  time: string;
+  /** Optional explicit order. Missing expected periods remain explicit gaps in paths. */
+  timeOrder?: RawScalar[];
+  cohortPolicy?: CohortPolicy;
+}
+
+export interface RawRowMapping {
+  units: string[];
+  conversation: string[];
+  codes: string[];
+  metadata?: string[];
+  trajectory?: TrajectoryMapping;
+}
+
+export interface AnalysisConfig {
+  model?: ENAModel;
+  window?: ENAWindow;
+  weightBy?: ENAWeight;
+  windowSizeBack?: number;
+  windowSizeForward?: number;
+  centerAlignToOrigin?: boolean;
+}
+
+export interface AnalysisResourceLimits {
+  maxRows: number;
+  maxColumns: number;
+  maxCells: number;
+  maxCodes: number;
+  maxEdges: number;
+  maxStringLength: number;
+  maxUnits: number;
+  maxGroups: number;
+  maxTimePoints: number;
+  maxOutputPoints: number;
+}
+
+export interface AnalyzeRowsInput {
+  rows: RawRow[];
+  mapping: RawRowMapping;
+  config?: AnalysisConfig;
+  /** Limits may only tighten the package hard ceiling, never raise it. */
+  limits?: Partial<AnalysisResourceLimits>;
+}
+
+export interface TypedValue {
+  canonical: string;
+  display: string;
+  value: RawScalar;
+}
+
+export interface EntityKey {
+  /** Collision-safe, type-preserving tuple encoding. */
+  canonical: string;
+  display: string;
+  columns: string[];
+  values: RawScalar[];
+}
+
+export interface AnalysisPoint {
+  index: number;
+  id: EntityKey;
+  unit: EntityKey;
+  participantLabel: EntityKey;
+  step?: EntityKey;
+  group?: TypedValue;
+  time?: TypedValue;
+  coordinates: Coordinates3D;
+  /** One normalized weight per `AnalysisResult.edges`, in identical order. */
+  lineWeights: number[];
+  metadata: Record<string, RawScalar>;
+}
+
+export interface AnalysisNode {
+  index: number;
+  code: string;
+  coordinates: Coordinates3D;
+}
+
+export interface AnalysisEdge {
+  index: number;
+  id: string;
+  column: string;
+  source: string;
+  target: string;
+  sourceIndex: number;
+  targetIndex: number;
+  /** Mean of normalized line weights over all model points. */
+  meanWeight: number;
+}
+
+export interface DimensionVariance {
+  axis: string;
+  proportion: number;
+  eigenvalue: number;
+  displayed: boolean;
+}
+
+export interface AnalysisRotation {
+  method: "svd";
+  columns: string[];
+  matrix: number[][];
+  eigenvalues: number[];
+  centerVector: number[];
+}
+
+export interface ParticipantPeriodPoint {
+  index: number;
+  participant: EntityKey;
+  participantLabel: EntityKey;
+  group: TypedValue;
+  time: TypedValue;
+  coordinates: Coordinates3D;
+  sourcePointIndexes: number[];
+  includedInCohort: boolean;
+}
+
+export interface TrajectoryCentroid {
+  index: number;
+  group: TypedValue;
+  time: TypedValue;
+  coordinates: Coordinates3D;
+  participantCount: number;
+  participantPeriodIndexes: number[];
+}
+
+export interface TrajectoryPathStep {
+  time: TypedValue;
+  /** `null` is an explicit unobserved period/gap, not a zero coordinate. */
+  centroidIndex: number | null;
+}
+
+export interface TrajectoryPath {
+  group: TypedValue;
+  steps: TrajectoryPathStep[];
+}
+
+export interface SharedSpaceTrajectories {
+  /** Every row was projected by `AnalysisResult.rotation`; no period refit occurs. */
+  space: "analysis-result-rotation";
+  cohortPolicy: CohortPolicy;
+  groupOrder: TypedValue[];
+  timeOrder: TypedValue[];
+  participantPeriods: ParticipantPeriodPoint[];
+  centroids: TrajectoryCentroid[];
+  paths: TrajectoryPath[];
+}
+
+export interface TrajectoryDisplayFilter {
+  /** Canonical group keys returned in `trajectory.groupOrder`. */
+  groups?: string[];
+}
+
+export interface TrajectoryDisplaySelection {
+  space: "analysis-result-rotation";
+  groupOrder: TypedValue[];
+  timeOrder: TypedValue[];
+  centroids: TrajectoryCentroid[];
+  paths: TrajectoryPath[];
+}
+
+export type DiagnosticSeverity = "info" | "warning";
+
+export interface AnalysisDiagnostic {
+  code: string;
+  severity: DiagnosticSeverity;
+  message: string;
+  path?: string;
+}
+
+export interface AnalysisSummary {
+  inputRows: number;
+  inputColumns: number;
+  units: number;
+  points: number;
+  nodes: number;
+  edges: number;
+  groups: number;
+  timePoints: number;
+  participantPeriods: number;
+  trajectoryCentroids: number;
+}
+
+export interface AnalysisProvenance {
+  adapter: "@3dena/analysis";
+  adapterVersion: "0.1.0";
+  jenaPackage: "jena-js";
+  jenaVersion: "0.6.2";
+  jenaCommit: "2f63db4c6ccf5684afc8437ae81ed1a3ccd0c1a3";
+  coreGoldenContract: "jena-package-golden-v1";
+  legacyGoldenContract: "legacy-application-golden-v1";
+  legacyGoldenStatus: "pending";
+  parityContract: "3dena.parity-contract.v1";
+  resultSemantics: "one shared SVD rotation; participant-period reduction before group-time centroids";
+  resolvedConfig: Required<AnalysisConfig>;
+  resolvedLimits: AnalysisResourceLimits;
+}
+
+export interface AnalysisResult {
+  schemaVersion: "3dena.analysis-result.v1";
+  axes: [AxisName, AxisName, AxisName];
+  points: AnalysisPoint[];
+  nodes: AnalysisNode[];
+  edges: AnalysisEdge[];
+  variance: DimensionVariance[];
+  rotation: AnalysisRotation;
+  trajectory?: SharedSpaceTrajectories;
+  summary: AnalysisSummary;
+  diagnostics: AnalysisDiagnostic[];
+  provenance: AnalysisProvenance;
+}
+
+export interface AnalysisValidationIssue {
+  code: string;
+  message: string;
+  path: string;
+}
+
+export class AnalysisValidationError extends Error {
+  readonly issues: AnalysisValidationIssue[];
+
+  constructor(issues: AnalysisValidationIssue[]) {
+    super(issues.map((issue) => `${issue.path}: ${issue.message}`).join("; "));
+    this.name = "AnalysisValidationError";
+    this.issues = issues;
+  }
+}

@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint, test, build, and runtime boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Use the frozen npm release
+        run: npm install --global npm@11.16.0
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Golden parity tests
+        run: npm run test:golden
+
+      - name: Frozen oracle custody tests (R-free)
+        run: |
+          node --test oracle-r/verify-small-raw-custody.test.mjs
+          node oracle-r/verify-small-raw-custody.mjs
+
+      - name: Production build
+        run: npm run build
+
+      - name: Boundary-gate unit tests
+        run: node --test scripts/verify-production-boundary.test.mjs
+
+      - name: Verify production runtime boundary
+        run: node scripts/verify-production-boundary.mjs --require-installed-tree
+
+  browser:
+    name: Chromium vertical slice and accessibility
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Use the frozen npm release
+        run: npm install --global npm@11.16.0
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser vertical slice
+        run: npm run test:e2e -- --project=chromium
+
+      - name: Accessibility at 390, 768, and 1280 px
+        run: npm run test:e2e:a11y
+
+      - name: Upload Playwright evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-evidence
+          path: output/playwright
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://3dena.local/schemas/parity-fixture-v1.json",
+  "title": "3DENA parity fixture v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["manifest", "analysis"],
+  "properties": {
+    "manifest": { "$ref": "#/$defs/manifest" },
+    "analysis": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/analysis" }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "manifest": { "properties": { "status": { "const": "pending" } } } } },
+      "then": {
+        "properties": {
+          "manifest": {
+            "required": ["pendingReason"],
+            "properties": { "availableFields": { "maxItems": 0 } },
+            "not": { "required": ["approval"] }
+          },
+          "analysis": { "type": "null" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "manifest": { "properties": { "status": { "enum": ["generated", "approved"] } } } } },
+      "then": {
+        "properties": {
+          "manifest": {
+            "required": [
+              "legacyCommit",
+              "rVersion",
+              "rENAVersion",
+              "jenaCommit",
+              "jenaVersion",
+              "scientificOracle",
+              "generator",
+              "generatedAtUtc",
+              "numericalRuntime",
+              "command",
+              "analysisPayloadSha256",
+              "analysisPayload"
+            ],
+            "properties": {
+              "availableFields": { "minItems": 1 },
+              "input": { "required": ["bytes"] }
+            }
+          },
+          "analysis": { "$ref": "#/$defs/analysis" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "manifest": { "properties": { "status": { "const": "generated" } } } } },
+      "then": { "properties": { "manifest": { "not": { "required": ["approval"] } } } }
+    },
+    {
+      "if": { "properties": { "manifest": { "properties": { "status": { "const": "approved" } } } } },
+      "then": { "properties": { "manifest": { "required": ["approval"] } } }
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "gitCommit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stringArray": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/nonEmptyString" }
+    },
+    "manifest": {
+      "type": "object",
+      "required": ["schemaVersion", "fixtureId", "status", "availableFields", "input", "spec"],
+      "properties": {
+        "schemaVersion": { "const": "3dena.parity-fixture.v1" },
+        "fixtureId": { "$ref": "#/$defs/nonEmptyString" },
+        "status": { "enum": ["pending", "generated", "approved"] },
+        "availableFields": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": ["connectionCounts", "rowConnectionCounts", "lineWeights", "centerVector", "rotationMatrix", "points", "nodes", "variance", "eigenvalues"]
+          }
+        },
+        "pendingReason": { "$ref": "#/$defs/nonEmptyString" },
+        "legacyCommit": { "const": "d02019ad872c5ece3840be2b4028ef27af38b2ff" },
+        "rVersion": { "const": "4.4.1" },
+        "rENAVersion": { "const": "0.2.7" },
+        "jenaCommit": { "const": "2f63db4c6ccf5684afc8437ae81ed1a3ccd0c1a3" },
+        "jenaVersion": { "const": "0.6.2" },
+        "scientificOracle": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["role", "legacyProductCommit", "R", "rENA", "jsonlite", "digest", "platform"],
+          "properties": {
+            "role": { "const": "offline-fixture-generator-only" },
+            "legacyProductCommit": { "const": "d02019ad872c5ece3840be2b4028ef27af38b2ff" },
+            "R": { "const": "4.4.1" },
+            "rENA": { "const": "0.2.7" },
+            "jsonlite": { "const": "2.0.0" },
+            "digest": { "const": "0.6.37" },
+            "platform": { "$ref": "#/$defs/nonEmptyString" }
+          }
+        },
+        "generator": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "gitCommit", "sha256"],
+          "properties": {
+            "path": { "const": "oracle-r/generate-small-raw-golden.R" },
+            "gitCommit": { "$ref": "#/$defs/gitCommit" },
+            "sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "generatedAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "numericalRuntime": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["platform", "BLAS", "LAPACK"],
+          "properties": {
+            "platform": { "$ref": "#/$defs/nonEmptyString" },
+            "BLAS": { "$ref": "#/$defs/nonEmptyString" },
+            "LAPACK": { "$ref": "#/$defs/nonEmptyString" }
+          }
+        },
+        "command": { "$ref": "#/$defs/nonEmptyString" },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "sha256"],
+          "properties": {
+            "path": { "$ref": "#/$defs/nonEmptyString" },
+            "bytes": { "type": "integer", "minimum": 0 },
+            "sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "spec": {
+          "type": "object",
+          "required": ["model", "units", "conversation", "codes", "group", "participant", "time", "window", "windowSizeBack", "windowSizeForward", "weightBy", "rotation", "dimensions", "centerAlignToOrigin"],
+          "properties": {
+            "model": { "$ref": "#/$defs/nonEmptyString" },
+            "units": { "$ref": "#/$defs/stringArray" },
+            "conversation": {
+              "oneOf": [
+                { "$ref": "#/$defs/nonEmptyString" },
+                { "$ref": "#/$defs/stringArray" }
+              ]
+            },
+            "codes": { "$ref": "#/$defs/stringArray" },
+            "group": { "$ref": "#/$defs/nonEmptyString" },
+            "participant": {
+              "oneOf": [
+                { "$ref": "#/$defs/nonEmptyString" },
+                { "$ref": "#/$defs/stringArray" }
+              ]
+            },
+            "time": { "$ref": "#/$defs/nonEmptyString" },
+            "window": { "$ref": "#/$defs/nonEmptyString" },
+            "windowSizeBack": { "type": "integer", "minimum": 0 },
+            "windowSizeForward": { "type": "integer", "minimum": 0 },
+            "weightBy": { "$ref": "#/$defs/nonEmptyString" },
+            "rotation": { "$ref": "#/$defs/nonEmptyString" },
+            "dimensions": { "type": "integer", "minimum": 1 },
+            "dimensionColumns": { "$ref": "#/$defs/stringArray" },
+            "centerAlignToOrigin": { "type": "boolean" }
+          }
+        },
+        "analysisPayloadSha256": { "$ref": "#/$defs/sha256" },
+        "analysisPayload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hashAlgorithm", "hashScope", "sha256"],
+          "properties": {
+            "hashAlgorithm": { "const": "sha256" },
+            "hashScope": { "const": "compact-json-utf8-of-top-level-analysis" },
+            "sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "approval": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "reviewedBy", "reviewedAtUtc", "decisionRecord", "inputSha256", "analysisPayloadSha256", "generatorGitCommit"],
+          "properties": {
+            "schemaVersion": { "const": "3dena.parity-approval.v1" },
+            "reviewedBy": { "$ref": "#/$defs/nonEmptyString" },
+            "reviewedAtUtc": { "type": "string", "format": "date-time", "pattern": "Z$" },
+            "decisionRecord": { "$ref": "#/$defs/nonEmptyString" },
+            "inputSha256": { "$ref": "#/$defs/sha256" },
+            "analysisPayloadSha256": { "$ref": "#/$defs/sha256" },
+            "generatorGitCommit": { "$ref": "#/$defs/gitCommit" }
+          }
+        }
+      }
+    },
+    "numericTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rowKeys", "columns", "values"],
+      "properties": {
+        "rowKeys": { "$ref": "#/$defs/stringArray" },
+        "columns": { "$ref": "#/$defs/stringArray" },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "number" }
+          }
+        }
+      }
+    },
+    "numericVector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["columns", "values"],
+      "properties": {
+        "columns": { "$ref": "#/$defs/stringArray" },
+        "values": {
+          "type": "array",
+          "items": { "type": "number" }
+        }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "connectionCounts": { "$ref": "#/$defs/numericTable" },
+        "rowConnectionCounts": { "$ref": "#/$defs/numericTable" },
+        "lineWeights": { "$ref": "#/$defs/numericTable" },
+        "centerVector": { "$ref": "#/$defs/numericVector" },
+        "rotationMatrix": { "$ref": "#/$defs/numericTable" },
+        "points": { "$ref": "#/$defs/numericTable" },
+        "nodes": { "$ref": "#/$defs/numericTable" },
+        "variance": { "$ref": "#/$defs/numericVector" },
+        "eigenvalues": { "$ref": "#/$defs/numericVector" }
+      }
+    }
+  }
+}

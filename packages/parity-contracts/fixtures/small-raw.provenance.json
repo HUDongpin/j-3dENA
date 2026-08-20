@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "3dena.source-provenance.v1",
+  "fixtureId": "small-raw",
+  "custodyStatus": "tracked-source-copy",
+  "copiedOn": "2026-08-20",
+  "source": {
+    "repository": "HUDongpin/3DENA",
+    "commit": "d02019ad872c5ece3840be2b4028ef27af38b2ff",
+    "path": "tests/e2e/fixtures/small-raw.csv",
+    "verifiedIdenticalAtCommit": true
+  },
+  "artifact": {
+    "path": "fixtures/small-raw.csv",
+    "sha256": "163ee849ac316d380e2664067e7389a8114e30d97877c97d6d912e3706c72f16",
+    "bytes": 743,
+    "rowsExcludingHeader": 16,
+    "columns": ["Group", "Lesson", "Name", "EC", "ICT", "MCO", "ATT"]
+  },
+  "privacy": {
+    "classification": "synthetic-test-data",
+    "containsDirectIdentifiers": false
+  }
+}
