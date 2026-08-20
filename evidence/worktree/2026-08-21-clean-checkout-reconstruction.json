@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "3dena.clean-checkout-reconstruction-receipt.v1",
+  "recordedAtUtc": "2026-08-20T21:32:21Z",
+  "checkedCommit": "7c0a737d48e5b2e2aef28d983040204cba1462e1",
+  "sourceBranch": "codex/strict-gap-closure-20260821",
+  "checkoutMode": "detached-linked-worktree",
+  "initialGitStatus": [],
+  "install": {
+    "command": "npm ci --ignore-scripts",
+    "exitCode": 0,
+    "packagesAdded": 757,
+    "packagesAudited": 772,
+    "vulnerabilities": 0
+  },
+  "integratedCheck": {
+    "command": "npm run check",
+    "exitCode": 0,
+    "workspaceTestCount": 393,
+    "optimizedNextWebpackBuild": "pass",
+    "productionRuntimeBoundary": "pass",
+    "productionLicenseDispositions": "340/340",
+    "cycloneDxComponents": 340,
+    "ciActionPinGate": "pass"
+  },
+  "publicPackage": {
+    "version": "0.1.0-implemented-unverified.0",
+    "smokeRuns": 2,
+    "tarballSha256Run1": "3f0e48cb3ee566165bf41360b4e060f0bc0fdcbbb0703e9bc6c7f5084594183f",
+    "tarballSha256Run2": "3f0e48cb3ee566165bf41360b4e060f0bc0fdcbbb0703e9bc6c7f5084594183f",
+    "indexJsSha256": "74cc29253e00014b5212c546282ad4b7ca915b7af637a7724b63ca357bd98316",
+    "nodeRuntime": "pass",
+    "typeDeclarations": "pass",
+    "vite": "pass",
+    "nextWebpack": "pass"
+  },
+  "requiredFailClosedGates": [
+    {
+      "command": "npm run test:jena-successor",
+      "exitCode": 1,
+      "reason": "The reviewed public-registry jena-js 0.6.3 successor is absent; the exact lock still contains 0.6.2 and its self-dependency declaration."
+    },
+    {
+      "command": "npm run release:strict-closure --workspace @3dena/parity-contracts",
+      "exitCode": 1,
+      "reason": "All 55 scientific quantities and all 41 strict capabilities remain without independent approved closure."
+    },
+    {
+      "command": "npm run test:release-receipts",
+      "exitCode": 1,
+      "reason": "The independently approved exact-build manifest is absent; 0 of 25 production release receipts were observed."
+    }
+  ],
+  "finalTrackedChanges": 0,
+  "finalUntrackedDisposition": "generated public-package staging tree only",
+  "independentApproval": false,
+  "productionEvidence": false,
+  "overallStatus": "IMPLEMENTED_UNVERIFIED"
+}
