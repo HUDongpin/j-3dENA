@@ -1,10 +1,24 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { lstat, readFile, readlink } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { lstat, readFile, readlink, writeFile } from "node:fs/promises";
+import { relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
+
+function outputPathFromArguments() {
+  const args = process.argv.slice(2);
+  if (args.length === 0) return null;
+  if (args.length !== 2 || args[0] !== "--output") {
+    throw new Error("usage: capture-worktree-inventory.mjs [--output <new-path-inside-repository>]");
+  }
+  const output = resolve(repositoryRoot, args[1]);
+  const display = relative(repositoryRoot, output);
+  if (display.startsWith("..") || display === "" || display.split(sep).includes("..")) {
+    throw new Error("WORKTREE_INVENTORY_UNSAFE_OUTPUT");
+  }
+  return output;
+}
 
 function git(args, encoding = "utf8") {
   return execFileSync("git", args, {
@@ -151,4 +165,16 @@ const receipt = {
   entries,
 };
 
-process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
+const serializedReceipt = `${JSON.stringify(receipt, null, 2)}\n`;
+const outputPath = outputPathFromArguments();
+if (outputPath === null) {
+  process.stdout.write(serializedReceipt);
+} else {
+  await writeFile(outputPath, serializedReceipt, { encoding: "utf8", flag: "wx" });
+  process.stdout.write(`${JSON.stringify({
+    output: relative(repositoryRoot, outputPath),
+    repositoryHead: receipt.repositoryHead,
+    counts: receipt.counts,
+    worktreeInventorySha256: receipt.worktreeInventorySha256,
+  })}\n`);
+}
