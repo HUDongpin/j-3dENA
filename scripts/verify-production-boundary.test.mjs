@@ -29,7 +29,7 @@ function inspect(root) {
   return inspectProductionBoundary({ root, requireInstalledTree: false });
 }
 
-test("passes a browser-only production tree", () => {
+test("passes a TypeScript-only production source tree", () => {
   const result = inspect(fixture());
   assert.equal(result.ok, true, JSON.stringify(result.findings, null, 2));
 });
@@ -129,6 +129,28 @@ test("rejects native R fixtures even inside parity contracts", () => {
   assert.ok(result.findings.some(({ rule }) => rule === "native-r-file"));
 });
 
+test("rejects custody-excluded Class 1 prepared artifacts in public and parity trees", () => {
+  const root = fixture();
+  mkdirSync(join(root, "apps", "web", "public", "data"), { recursive: true });
+  mkdirSync(join(root, "packages", "parity-contracts", "fixtures"), {
+    recursive: true,
+  });
+  writeFileSync(
+    join(root, "apps", "web", "public", "data", "class1-timepoints.ena3d.json"),
+    "{}",
+  );
+  writeFileSync(
+    join(root, "packages", "parity-contracts", "fixtures", "class1-timepoints.ena3d.json"),
+    "{}",
+  );
+  const result = inspect(root);
+  assert.equal(result.ok, false);
+  assert.equal(
+    result.findings.filter(({ rule }) => rule === "class1-participant-artifact").length,
+    2,
+  );
+});
+
 test("rejects forbidden references emitted into .next", () => {
   const root = fixture();
   mkdirSync(join(root, "apps", "web", ".next", "static", "chunks"), {
@@ -162,6 +184,25 @@ test("rejects direct R executable invocation emitted into .next", () => {
     result.findings.some(
       ({ scope, rule }) =>
         scope === "next-output" && rule === "direct-r-executable",
+    ),
+  );
+});
+
+test("rejects a custody-excluded prepared artifact emitted into .next", () => {
+  const root = fixture();
+  mkdirSync(join(root, "apps", "web", ".next", "static", "data"), {
+    recursive: true,
+  });
+  writeFileSync(
+    join(root, "apps", "web", ".next", "static", "data", "class1-timepoints.ena3d.json"),
+    "{}",
+  );
+  const result = inspect(root);
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.findings.some(
+      ({ scope, rule }) =>
+        scope === "next-output" && rule === "class1-participant-artifact",
     ),
   );
 });

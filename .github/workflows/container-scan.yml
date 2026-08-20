@@ -1,0 +1,62 @@
+name: Exact compute image scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_ref:
+        description: Fly registry image pinned by sha256 digest
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: container-scan-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  exact-image:
+    name: Trivy exact Fly OCI image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Validate immutable image identity
+        env:
+          IMAGE_REF: ${{ inputs.image_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$IMAGE_REF" =~ ^registry\.fly\.io/[a-z0-9-]+@sha256:[a-f0-9]{64}$ ]]; then
+            echo "image_ref must be a registry.fly.io image pinned by sha256 digest" >&2
+            exit 64
+          fi
+
+      - name: Authenticate to the private Fly registry
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FLY_API_TOKEN"
+          echo "$FLY_API_TOKEN" | docker login registry.fly.io --username x --password-stdin
+
+      - name: Scan exact image for vulnerabilities and misconfiguration
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ inputs.image_ref }}
+          scanners: vuln,misconfig
+          format: sarif
+          output: trivy-exact-image.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+
+      - name: Upload exact-image scan result
+        if: always()
+        uses: github/codeql-action/upload-sarif@9e3211c9a3b9311dfe05da2ed48eea3386f042dd # v4.37.6
+        with:
+          sarif_file: trivy-exact-image.sarif
+          category: trivy-exact-fly-image

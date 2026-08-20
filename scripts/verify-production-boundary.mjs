@@ -30,6 +30,16 @@ const PROHIBITED_NATIVE_R_NAMES = [
   /\.(?:R|RData|Rda|Rds|Rproj)$/i,
 ];
 
+// The previously bundled Class 1 prepared exchange contains row-level
+// participant identities and has no authorization/de-identification approval
+// binding for Git, CI, or a public application artifact. Keep this exact
+// identity out of every repository/package/Next boundary. Generic user-uploaded
+// .ena3d.json bytes are handled at runtime and are not repository assets.
+const PROHIBITED_SENSITIVE_ARTIFACT_NAMES = [
+  /(?:^|\/)class1-timepoints\.ena3d\.json(?:\.(?:provenance\.json|sha256))?$/i,
+  /(?:^|\/)public\/.*\.ena3d\.json$/i,
+];
+
 const PROHIBITED_DEPENDENCY_NAME =
   /(?:^|[/_-])(?:rscript|rena|shiny|rserve|opencpu)(?:$|[/_-])/i;
 
@@ -496,6 +506,16 @@ function scanNativeRArtifacts(root, findings, evidence) {
           "Native R scripts/workspaces/serialized objects are allowed only under oracle-r and never as production/parity fixtures",
       });
     }
+    if (PROHIBITED_SENSITIVE_ARTIFACT_NAMES.some((pattern) => pattern.test(rel))) {
+      evidence.sensitiveArtifactCandidates += 1;
+      findings.push({
+        scope: "sensitive-artifact",
+        path: rel,
+        rule: "class1-participant-artifact",
+        detail:
+          "Class 1 participant-level prepared artifacts require private custody and may not enter Git, CI, public assets, packages, or production output",
+      });
+    }
   }
 }
 
@@ -560,6 +580,14 @@ function scanNextOutput(root, findings, evidence) {
           detail: "Native R artifact emitted into the Next.js output",
         });
       }
+      if (PROHIBITED_SENSITIVE_ARTIFACT_NAMES.some((pattern) => pattern.test(rel))) {
+        findings.push({
+          scope: "next-output",
+          path: rel,
+          rule: "class1-participant-artifact",
+          detail: "A custody-excluded Class 1 prepared artifact was emitted into the Next.js output",
+        });
+      }
       findTextViolations(root, path, "next-output", findings);
     }
   }
@@ -582,6 +610,7 @@ export function inspectProductionBoundary({
     nextRoots: 0,
     nextFiles: 0,
     nativeArtifactCandidates: 0,
+    sensitiveArtifactCandidates: 0,
   };
 
   scanDeclaredDependencies(resolvedRoot, findings, evidence);
@@ -650,7 +679,7 @@ function printHuman(result) {
     [
       `Production boundary evidence: ${evidence.manifests} manifests; ${dependencyEvidence}; ${evidence.sourceFiles} source files; ${evidence.nextRoots} .next roots / ${evidence.nextFiles} emitted files.`,
       result.ok
-        ? "PASS: production runtime is browser-only; no R/rENA/Shiny service boundary was detected."
+        ? "PASS: production runtime is TypeScript-only at the audited boundary; no R/rENA/Shiny service boundary was detected."
         : `FAIL: ${findings.length} prohibited production-runtime finding(s).`,
     ].join("\n") + "\n",
   );
