@@ -13,7 +13,6 @@ import {
 } from "@3dena/trajectory";
 import { decodeEna3dExchangeV1WithSha256 } from "@3dena/io";
 
-import { analyzeRows } from "./analyze";
 import {
   ANALYSIS_CONTRACT_VERSION_V1,
   PROVENANCE_MANIFEST_VERSION_V1,
@@ -674,8 +673,13 @@ async function executeTaskResult(
   task: AnalysisTaskV1,
 ): Promise<{ result: AnalysisTaskResultV1; sourceKind: "raw-jena" | "prepared-exchange" }> {
   switch (task.kind) {
-    case "ena-model":
+    case "ena-model": {
+      // Direct prepared/derived executor consumers do not need to resolve the
+      // ESM-only jENA core. The all-task scientific-worker bundle can still
+      // include it through the package index because that worker also runs ENA.
+      const { analyzeRows } = await import("./analyze");
       return { result: analyzeRows(task.input), sourceKind: "raw-jena" };
+    }
     case "prepared-import":
       return { result: await executePreparedImport(dataset, task), sourceKind: "prepared-exchange" };
     case "network-comparison": {
