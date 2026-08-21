@@ -3,12 +3,15 @@
 This directory is a fail-closed deployment candidate, not a production receipt.
 
 The Docker build requires a reviewed immutable `NODE_BASE_IMAGE` digest that
-already contains `/sbin/tini`. It consumes only three prebuilt files from
-`output/compute-service`; it never copies the repository, oracle directories,
-tests, package manager cache, or R material into the runtime image. The
-application directory is made non-writable and the runtime user is numeric
-UID/GID `10001`. Fly provides the writable ephemeral `/tmp`; no persistent
-filesystem volume is mounted.
+already contains `/sbin/tini` and a full lowercase `SOURCE_COMMIT` build
+argument. The latter is written to the standard OCI revision label alongside
+the fixed `https://github.com/HUDongpin/j-3dENA` source label; a missing or
+malformed source commit fails the build. The image consumes only three prebuilt
+files from `output/compute-service`; it never copies the repository, oracle
+directories, tests, package manager cache, or R material into the runtime
+image. The application directory is made non-writable and the runtime user is
+numeric UID/GID `10001`. Fly provides the writable ephemeral `/tmp`; no
+persistent filesystem volume is mounted.
 
 The entrypoint applies a restrictive umask and hard-fails if the configured
 open-file or process limit cannot be applied, if `/app` is writable, if the
@@ -42,6 +45,15 @@ Before deployment, integration must:
 7. run the image as read-only or equivalently prove non-root write denial,
    `/tmp` bounds, pids, files, memory, and CPU limits;
 8. run two-machine lease/restart/deletion probes and container scanning.
+
+The manual `Exact compute image scan` workflow accepts only an immutable Fly
+registry digest and the exact source commit used to build it. It checks out that
+commit, records `docker image inspect`, runs the pinned Trivy 0.70.0 image scan,
+and issues `3dena.container-scan-receipt.v1` only when the image digest, source
+labels, non-root identity, entrypoint, health check, absence of baked credential
+variables, and zero HIGH/CRITICAL results all pass. The SARIF, inspect document,
+and receipt are retained together as `trivy-exact-image-evidence`; this does not
+replace the independent release review or BuildApprovalV1 binding.
 
 The release command must explicitly scale both groups, for example one API and
 at least one worker Machine for initial smoke, followed by the approved

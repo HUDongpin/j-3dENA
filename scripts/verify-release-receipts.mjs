@@ -34,7 +34,12 @@ export const REQUIRED_RELEASE_RECEIPTS = Object.freeze({
     strategyCount: 6,
     maximumHeapMb: 1_024,
   },
-  "container-scan": {},
+  "container-scan": {
+    contract: "3dena.container-scan-receipt.v1",
+    scannerName: "Trivy",
+    scannerVersion: "0.70.0",
+    runtimeUser: "10001:10001",
+  },
   "license-legal": { decision: "approved" },
   preview: { environment: "preview" },
   "capacity-multi-machine": { minimumMachines: 2 },
@@ -75,7 +80,7 @@ function validId(value) {
   return typeof value === "string" && ID.test(value);
 }
 
-function validateDetails(receipt, required, path, findings) {
+function validateDetails(receipt, required, path, findings, manifestGitCommit) {
   if (!isRecord(receipt.details)) {
     findings.push(finding("receipt-details", `${path}.details`, "Receipt details must be an object."));
     return;
@@ -164,6 +169,29 @@ function validateDetails(receipt, required, path, findings) {
     for (const hashField of ["sourceBundleSha256", "vitestReportSha256"]) {
       if (!SHA256.test(receipt.details[hashField])) {
         findings.push(finding("parser-fuzz-hash", `${path}.details.${hashField}`, "Exact parser fuzz source and report SHA-256 values are required."));
+      }
+    }
+  }
+  if (receipt.kind === "container-scan") {
+    for (const [field, expected] of [
+      ["contract", required.contract],
+      ["scannerName", required.scannerName],
+      ["scannerVersion", required.scannerVersion],
+      ["runtimeUser", required.runtimeUser],
+      ["sourceHeadCommit", manifestGitCommit],
+      ["resultCount", 0],
+      ["bakedSensitiveEnvironmentVariables", 0],
+    ]) {
+      if (receipt.details[field] !== expected) {
+        findings.push(finding("container-scan-invariant", `${path}.details.${field}`, `Expected ${JSON.stringify(expected)}.`));
+      }
+    }
+    if (!/^registry\.fly\.io\/[a-z0-9-]+@sha256:[a-f0-9]{64}$/u.test(receipt.details.imageRef)) {
+      findings.push(finding("container-scan-image", `${path}.details.imageRef`, "An immutable Fly image digest reference is required."));
+    }
+    for (const hashField of ["imageInspectSha256", "sarifSha256"]) {
+      if (!SHA256.test(receipt.details[hashField])) {
+        findings.push(finding("container-scan-hash", `${path}.details.${hashField}`, "Exact Docker inspect and SARIF SHA-256 values are required."));
       }
     }
   }
@@ -293,7 +321,7 @@ export function inspectReleaseReceipts(manifest) {
     if (!validId(receipt.deploymentId)) {
       findings.push(finding("deployment-id", `${path}.deploymentId`, "Exact deployment/build identity is required."));
     }
-    validateDetails(receipt, required, path, findings);
+    validateDetails(receipt, required, path, findings, manifest.gitCommit);
   });
 
   for (const kind of Object.keys(REQUIRED_RELEASE_RECEIPTS)) {

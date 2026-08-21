@@ -1,12 +1,17 @@
 # syntax=docker/dockerfile:1.7
 # A reviewed immutable image digest is mandatory, for example:
 #   --build-arg NODE_BASE_IMAGE=registry.example/node-tini@sha256:<64 hex>
+#   --build-arg SOURCE_COMMIT=<40 lowercase hex Git SHA>
 # The selected image must contain Node >=20.9 and /sbin/tini. There is no
 # mutable tag default: omission deliberately fails the build.
 ARG NODE_BASE_IMAGE
 FROM ${NODE_BASE_IMAGE} AS runtime
 
+ARG SOURCE_COMMIT
 ARG RUNTIME_BUNDLE_DIR=output/compute-service
+
+LABEL org.opencontainers.image.revision="${SOURCE_COMMIT}" \
+      org.opencontainers.image.source="https://github.com/HUDongpin/j-3dENA"
 
 ENV NODE_ENV=production \
     HOME=/nonexistent \
@@ -30,6 +35,7 @@ COPY --chmod=0555 packages/compute-service-persistent/deploy/entrypoint.sh /usr/
 # Refuse an image without a real init and refuse accidentally bundled oracle/R
 # source by filename. The release boundary scanner remains an independent gate.
 RUN test -x /sbin/tini \
+    && printf '%s\n' "$SOURCE_COMMIT" | grep -Eq '^[a-f0-9]{40}$' \
     && test -s /app/compute-runtime.mjs \
     && test -s /app/scientific-worker-entry.mjs \
     && test -s /app/build-manifest.json \

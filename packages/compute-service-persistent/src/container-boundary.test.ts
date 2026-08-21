@@ -11,6 +11,10 @@ describe("compute container boundary", () => {
     const dockerfile = deployFile("Dockerfile");
     expect(dockerfile).toContain("ARG NODE_BASE_IMAGE");
     expect(dockerfile).toContain("FROM ${NODE_BASE_IMAGE}");
+    expect(dockerfile).toContain("ARG SOURCE_COMMIT");
+    expect(dockerfile).toContain('org.opencontainers.image.revision="${SOURCE_COMMIT}"');
+    expect(dockerfile).toContain('org.opencontainers.image.source="https://github.com/HUDongpin/j-3dENA"');
+    expect(dockerfile).toContain("grep -Eq '^[a-f0-9]{40}$'");
     expect(dockerfile).not.toMatch(/^FROM\s+[^$].*:[^@\s]+\s*$/mu);
     expect(dockerfile).toContain("test -x /sbin/tini");
     expect(dockerfile).toContain("USER 10001:10001");

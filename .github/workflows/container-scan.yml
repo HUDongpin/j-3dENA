@@ -7,10 +7,13 @@ on:
         description: Fly registry image pinned by sha256 digest
         required: true
         type: string
+      source_head_commit:
+        description: Full lowercase Git SHA used to build the image
+        required: true
+        type: string
 
 permissions:
   contents: read
-  security-events: write
 
 concurrency:
   group: container-scan-${{ github.run_id }}
@@ -22,15 +25,31 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Validate immutable image identity
+      - name: Check out the exact source head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.source_head_commit }}
+          persist-credentials: false
+
+      - name: Validate immutable source and image identity
         env:
           IMAGE_REF: ${{ inputs.image_ref }}
+          SOURCE_HEAD_COMMIT: ${{ inputs.source_head_commit }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ ! "$IMAGE_REF" =~ ^registry\.fly\.io/[a-z0-9-]+@sha256:[a-f0-9]{64}$ ]]; then
             echo "image_ref must be a registry.fly.io image pinned by sha256 digest" >&2
             exit 64
+          fi
+          if [[ ! "$SOURCE_HEAD_COMMIT" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "source_head_commit must be a full lowercase Git SHA" >&2
+            exit 64
+          fi
+          CHECKED_OUT_COMMIT="$(git rev-parse HEAD)"
+          if [[ "$CHECKED_OUT_COMMIT" != "$SOURCE_HEAD_COMMIT" ]]; then
+            echo "checked-out source does not match source_head_commit" >&2
+            exit 65
           fi
 
       - name: Authenticate to the private Fly registry
@@ -42,21 +61,52 @@ jobs:
           test -n "$FLY_API_TOKEN"
           echo "$FLY_API_TOKEN" | docker login registry.fly.io --username x --password-stdin
 
-      - name: Scan exact image for vulnerabilities and misconfiguration
+      - name: Pull and inspect the exact image
+        env:
+          IMAGE_REF: ${{ inputs.image_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p output/container-scan
+          docker pull "$IMAGE_REF"
+          docker image inspect "$IMAGE_REF" > output/container-scan/docker-inspect.json
+
+      - name: Scan exact image for vulnerabilities, misconfiguration, and secrets
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
+          version: v0.70.0
           scan-type: image
           image-ref: ${{ inputs.image_ref }}
-          scanners: vuln,misconfig
+          scanners: vuln,misconfig,secret
           format: sarif
-          output: trivy-exact-image.sarif
+          output: output/container-scan/trivy-exact-image.sarif
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: 1
 
-      - name: Upload exact-image scan result
+      - name: Verify source- and digest-bound image evidence
         if: always()
-        uses: github/codeql-action/upload-sarif@9e3211c9a3b9311dfe05da2ed48eea3386f042dd # v4.37.6
+        env:
+          IMAGE_REF: ${{ inputs.image_ref }}
+          SOURCE_HEAD_COMMIT: ${{ inputs.source_head_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/verify-container-scan-evidence.mjs \
+            --sarif output/container-scan/trivy-exact-image.sarif \
+            --inspect output/container-scan/docker-inspect.json \
+            --output output/container-scan/receipt.json \
+            --image-ref "$IMAGE_REF" \
+            --repository "$GITHUB_REPOSITORY" \
+            --source-head-commit "$SOURCE_HEAD_COMMIT" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT"
+
+      - name: Upload exact-image scan evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          sarif_file: trivy-exact-image.sarif
-          category: trivy-exact-fly-image
+          name: trivy-exact-image-evidence
+          path: output/container-scan
+          if-no-files-found: error
+          retention-days: 14

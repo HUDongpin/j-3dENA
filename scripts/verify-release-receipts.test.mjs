@@ -48,6 +48,20 @@ function details(kind, required) {
       vitestReportSha256: "e".repeat(64),
     });
   }
+  if (kind === "container-scan") {
+    Object.assign(value, {
+      contract: required.contract,
+      imageRef: `registry.fly.io/j-3dena-compute@sha256:${"c".repeat(64)}`,
+      sourceHeadCommit: "b".repeat(40),
+      scannerName: required.scannerName,
+      scannerVersion: required.scannerVersion,
+      resultCount: 0,
+      bakedSensitiveEnvironmentVariables: 0,
+      runtimeUser: required.runtimeUser,
+      imageInspectSha256: "f".repeat(64),
+      sarifSha256: "1".repeat(64),
+    });
+  }
   if (kind === "rollback") {
     Object.assign(value, {
       vercelRestored: true,
@@ -150,4 +164,19 @@ test("rejects a weakened or unbound parser fuzz receipt", () => {
   assert.ok(rules.has("parser-fuzz-invariant"));
   assert.ok(rules.has("parser-fuzz-heap"));
   assert.ok(rules.has("parser-fuzz-hash"));
+});
+
+test("rejects a mutable, finding-bearing, or source-drifted container scan receipt", () => {
+  const manifest = validManifest();
+  const scan = manifest.receipts.find(({ kind }) => kind === "container-scan");
+  scan.details.imageRef = "registry.fly.io/j-3dena-compute:latest";
+  scan.details.sourceHeadCommit = "c".repeat(40);
+  scan.details.resultCount = 1;
+  scan.details.sarifSha256 = "not-a-hash";
+  const result = inspectReleaseReceipts(manifest);
+  assert.equal(result.ok, false);
+  const rules = new Set(result.findings.map(({ rule }) => rule));
+  assert.ok(rules.has("container-scan-image"));
+  assert.ok(rules.has("container-scan-invariant"));
+  assert.ok(rules.has("container-scan-hash"));
 });
