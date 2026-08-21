@@ -28,7 +28,7 @@
     "@3dena/stats": "0.1.0",
     "@3dena/tabular-import": "0.1.0",
     "@3dena/trajectory": "0.1.0",
-    "jena-js": "0.6.2"
+    "jena-js": "0.6.3"
   },
   "devDependencies": {
     "ajv": "8.20.0",

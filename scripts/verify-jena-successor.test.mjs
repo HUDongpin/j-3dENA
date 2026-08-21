@@ -16,7 +16,7 @@ function fixture(metadataOverrides = {}, installedOverrides = {}) {
   const metadata = {
     version: JENA_SUCCESSOR_CONTRACT.version,
     resolved: JENA_SUCCESSOR_CONTRACT.registryTarball,
-    integrity: "sha512-reviewed",
+    integrity: JENA_SUCCESSOR_CONTRACT.integrity,
     license: JENA_SUCCESSOR_CONTRACT.license,
     ...metadataOverrides,
   };
@@ -55,6 +55,12 @@ test("rejects the 0.6.2 self-dependency declaration", () => {
   assert.ok(rules.has("installed-successor-mismatch"));
 });
 
+test("rejects a registry integrity value that does not match the reviewed tarball", () => {
+  const result = inspectJenaSuccessor({ root: fixture({ integrity: "sha512-unreviewed" }) });
+  assert.equal(result.ok, false);
+  assert.ok(result.findings.some(({ rule }) => rule === "registry-integrity-mismatch"));
+});
+
 test("rejects duplicate and local-tarball successor substitutions", () => {
   const root = fixture({ resolved: "file:jena-js-0.6.3.tgz" });
   const lock = {
@@ -64,13 +70,13 @@ test("rejects duplicate and local-tarball successor substitutions", () => {
       "node_modules/jena-js": {
         version: "0.6.3",
         resolved: "file:jena-js-0.6.3.tgz",
-        integrity: "sha512-reviewed",
+        integrity: JENA_SUCCESSOR_CONTRACT.integrity,
         license: "GPL-3.0-only",
       },
       "node_modules/example/node_modules/jena-js": {
         version: "0.6.3",
         resolved: JENA_SUCCESSOR_CONTRACT.registryTarball,
-        integrity: "sha512-reviewed",
+        integrity: JENA_SUCCESSOR_CONTRACT.integrity,
         license: "GPL-3.0-only",
       },
     },

@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "3dena.jena-successor-publication-receipt.v1",
+  "recordedAtUtc": "2026-08-21T14:31:36Z",
+  "upstream": {
+    "repository": "https://github.com/HUDongpin/jENA",
+    "baselineCommit": "2f63db4c6ccf5684afc8437ae81ed1a3ccd0c1a3",
+    "reviewedSuccessorCommit": "55fe95505a7076c0c44cd9f01a65b9c84b4ab56e",
+    "mergedSuccessorCommit": "57b7794ec3873c251c33086454523e5a3949836f",
+    "version": "0.6.3",
+    "runtimeOrNumericalImplementationChanged": false
+  },
+  "independentReview": {
+    "reviewerActorId": "codex-agent:Epicurus",
+    "reviewerRole": "independent-non-implementation-reviewer",
+    "disposition": "APPROVE",
+    "reviewedTarballSha256": "0387c7958718e1d8a70a29f056da1ffe78e94ceb14ac957a3a360b586ac23121",
+    "reviewedTarballFileCount": 43,
+    "reviewedTarballPackedBytes": 124473,
+    "reviewedTarballUnpackedBytes": 480593,
+    "contractMutationCases": 46,
+    "trackedContractTestsPassed": 17,
+    "unitTestsPassed": 150,
+    "browserPackageTestsPassed": 4,
+    "nodeVersionsIndependentlyExercised": [
+      "18.20.8",
+      "current-project-runtime"
+    ],
+    "productionRuntimeDependencies": 0,
+    "productionAuditVulnerabilities": 0,
+    "acceptedResidual": "one low-severity esbuild@0.27.7 finding in a development-only dependency"
+  },
+  "registry": {
+    "registry": "https://registry.npmjs.org/",
+    "package": "jena-js",
+    "version": "0.6.3",
+    "access": "public",
+    "distTagLatest": "0.6.3",
+    "publishedAtUtc": "2026-08-21T14:28:39.486Z",
+    "publisherUsername": "peterhudongpin",
+    "tarballUrl": "https://registry.npmjs.org/jena-js/-/jena-js-0.6.3.tgz",
+    "tarballSha256": "0387c7958718e1d8a70a29f056da1ffe78e94ceb14ac957a3a360b586ac23121",
+    "tarballSha1": "5713278b6a0b0a8418569afb52ccef55f53c5383",
+    "integrity": "sha512-AT/LTYt0YyQiGbO4Xq0XLES9FZ9rBuzj+J+Oq9s8B3HESy5bClzHFnjfpxThNmRWOM7HuuwM9E6NdOT0vyGNng==",
+    "registryRedownloadByteIdentical": true
+  },
+  "productIntegration": {
+    "dependencyDeclaration": "jena-js@0.6.3",
+    "resolvedTarball": "https://registry.npmjs.org/jena-js/-/jena-js-0.6.3.tgz",
+    "integrity": "sha512-AT/LTYt0YyQiGbO4Xq0XLES9FZ9rBuzj+J+Oq9s8B3HESy5bClzHFnjfpxThNmRWOM7HuuwM9E6NdOT0vyGNng==",
+    "lockInstances": 1,
+    "runtimeDependencies": 0,
+    "selfDependencyPresent": false,
+    "successorContractTestsPassed": 4,
+    "successorGate": "pass"
+  },
+  "claims": {
+    "upstreamSuccessorMerged": true,
+    "independentReviewApproved": true,
+    "publicRegistryPublicationVerified": true,
+    "publicRegistryObjectMatchesReviewedTarball": true,
+    "productPinnedToReviewedSuccessor": true
+  },
+  "limitations": [
+    "This receipt is scoped to the jENA packaging successor and public package publication.",
+    "It is not a Class 1 custody or scientific-parity approval.",
+    "It is not a signed BuildApprovalV1 or a production release approval."
+  ]
+}

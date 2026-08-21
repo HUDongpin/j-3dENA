@@ -12,6 +12,8 @@ export const JENA_SUCCESSOR_CONTRACT = Object.freeze({
   version: "0.6.3",
   registryTarball:
     "https://registry.npmjs.org/jena-js/-/jena-js-0.6.3.tgz",
+  integrity:
+    "sha512-AT/LTYt0YyQiGbO4Xq0XLES9FZ9rBuzj+J+Oq9s8B3HESy5bClzHFnjfpxThNmRWOM7HuuwM9E6NdOT0vyGNng==",
   license: "GPL-3.0-only",
 });
 
@@ -84,12 +86,12 @@ export function inspectJenaSuccessor({
         ),
       );
     }
-    if (typeof metadata?.integrity !== "string" || !metadata.integrity.startsWith("sha512-")) {
+    if (metadata?.integrity !== JENA_SUCCESSOR_CONTRACT.integrity) {
       findings.push(
         finding(
           path,
-          "missing-registry-integrity",
-          "The reviewed registry tarball must have an npm sha512 integrity binding.",
+          "registry-integrity-mismatch",
+          "The registry lock entry must bind the exact independently reviewed npm tarball SRI.",
         ),
       );
     }

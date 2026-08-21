@@ -1,51 +1,71 @@
-# jENA 0.6.3 successor candidate handoff
+# jENA 0.6.3 public successor receipt
 
-Status: `IMPLEMENTED_UNVERIFIED` — local upstream candidate only.
+Status: packaging successor **published and independently approved**. This closes
+the jENA self-dependency successor and public-registry publication requirement;
+it does not establish 3DENA scientific parity or production readiness.
 
-This receipt records a minimal successor candidate prepared from the frozen jENA
-source commit `2f63db4c6ccf5684afc8437ae81ed1a3ccd0c1a3`. It removes the accidental
-`jena-js -> jena-js@^0.6.0` runtime self-dependency, adds a pack-time zero-runtime-
-dependency assertion, and updates development-only browser test tooling. It does
-not change runtime or numerical source.
+The machine-readable publication record is
+`2026-08-21-jena-js-0.6.3-publication.json`.
 
-## Immutable candidate identities
+## Upstream identities
 
-| Item | SHA-256 |
+| Item | Identity |
 |---|---|
-| Local `jena-js-0.6.3.tgz` | `2bae88973c0aa948767a2bdbf78d7c17510f5d35475190dc40c50f8be97896c7` |
-| `CHANGELOG.md` | `3b5ba53f89b5ede83faaf2f261dcf8f42db0d66a8b5bf3067fb7af3bde0c64de` |
-| `PROVENANCE.md` | `e7074a92fcc21a7f308abb3398d8c65aebaa48331440036c5f4af3892a4e2e5f` |
-| `package.json` | `5ade34aee40e805f9bcf25a62368542a19151bbaf83a65a5b733000f0405cdae` |
-| `package-lock.json` | `b608bdab95ebd3c37da2c1b68d53b10953888dbcd6099f934db06e1f73398801` |
-| `scripts/pack-check.mjs` | `6d160c8e7535351ed6887de7f3e8d0cd7ec2b40515b526d0ad6c9cd2c6e34581` |
-| `vitest.browser.config.ts` | `153072f6ff16253e778fb6217bf88a99bf134a222ea5a51270cf9ce5949c98fd` |
+| Repository | `https://github.com/HUDongpin/jENA` |
+| Frozen 0.6.2 baseline | `2f63db4c6ccf5684afc8437ae81ed1a3ccd0c1a3` |
+| Reviewed successor commit | `55fe95505a7076c0c44cd9f01a65b9c84b4ab56e` |
+| Merged upstream successor | `57b7794ec3873c251c33086454523e5a3949836f` |
+| Public package | `jena-js@0.6.3` with `latest=0.6.3` |
+| Registry tarball | `https://registry.npmjs.org/jena-js/-/jena-js-0.6.3.tgz` |
+| Tarball SHA-256 | `0387c7958718e1d8a70a29f056da1ffe78e94ceb14ac957a3a360b586ac23121` |
+| Tarball SHA-1 | `5713278b6a0b0a8418569afb52ccef55f53c5383` |
+| npm SRI | `sha512-AT/LTYt0YyQiGbO4Xq0XLES9FZ9rBuzj+J+Oq9s8B3HESy5bClzHFnjfpxThNmRWOM7HuuwM9E6NdOT0vyGNng==` |
 
-The review patch intentionally contains the authored source and manifest changes.
-The regenerated exact lockfile is supplied separately as
-`jena-js-0.6.3.package-lock.json`, rather than embedded as thousands of generated
-patch lines. Its content must match the hash above when applied in the upstream
-review branch/commit.
+The registry recorded publication at `2026-08-21T14:28:39.486Z`. A fresh
+`npm pack jena-js@0.6.3` download reproduced the exact reviewed SHA-256 and
+SHA-1 above, so the public object is byte-identical to the independently
+reviewed 43-file tarball.
 
-## Local gates run on 2026-08-21
+## Independent review
 
-- `npm ci`: pass.
-- `npm run lint`: pass.
-- `npm run typecheck`: pass.
-- `npm test`: pass, 13 files and 150 tests.
-- `npm run build`: pass.
-- `npm run pack:check`: pass, 43 published files and zero runtime dependencies.
-- `npm run test:browser`: pass, two files and four tests in real Playwright Chromium.
-- `npm audit --audit-level=moderate`: pass; one low-severity vulnerability remains
-  in `tsup`'s development-only nested `esbuild`, with no runtime dependency graph.
-- Fresh Node ESM consumer installed the local tarball and observed exactly one
-  lock entry at `node_modules/jena-js`, version `0.6.3`, with no dependencies.
+The non-implementation reviewer `Epicurus` issued `APPROVE` for the complete
+successor worktree and the exact tarball above. The reviewer independently:
 
-## Required independent release actions
+- verified removal of the runtime self-dependency from package, lock root, npm
+  runtime tree, and tarball;
+- ran a 46-case malformed-contract mutation matrix and the tracked 17-case
+  fail-closed contract suite;
+- ran clean installation, lint, typecheck, 150 unit tests, build, pack check,
+  and four Chromium package tests;
+- repeated the package gates under Node 18; and
+- proved the baseline and successor `dist/` trees byte-identical, so the
+  successor did not change numerical, API, or runtime implementation bytes.
 
-This candidate is not a production successor and must not be consumed as one yet.
-The upstream owner must create a reviewed commit/PR, rerun the frozen numerical and
-consumer matrix, inspect the manifest, exports, tarball, license, and provenance,
-and publish an authorized `jena-js@0.6.3`. The product release gate must then prove
-that its clean consumer lockfile and SBOM contain exactly that single registry
-instance and no self edge. A workspace alias, filtered SBOM, modified lockfile, or
-this local tarball cannot satisfy that gate.
+The review retained one non-blocking low-severity `esbuild@0.27.7` finding in a
+development-only dependency. Production dependencies audited with zero known
+vulnerabilities; the receipt does not claim that every development dependency
+has zero findings.
+
+## Product integration
+
+The j-3dENA product now pins exactly `jena-js: "0.6.3"`. Its lock entry resolves
+only to the public registry tarball and exact SRI above, contains no runtime
+dependency/self edge, and `npm ls jena-js --all` returns one registry instance.
+Both the four-case fail-closed successor contract suite and the actual product
+successor gate pass.
+
+## Historical candidate material
+
+`jena-js-0.6.3-source.patch` and `jena-js-0.6.3.package-lock.json` preserve the
+earlier handoff candidate. They are retained for lineage, but their old
+candidate hashes and content are not the authoritative published object. The
+merged upstream commit and registry tarball identities above supersede them for
+release consumption.
+
+## Evidence boundary
+
+This receipt closes only the named jENA packaging successor, independent code
+review, upstream merge, public npm publication, and exact product dependency
+pin. It does not approve Class 1 custody, any of the 55 scientific quantities,
+Fly deployment, legal/DPA/region decisions, a signed `BuildApprovalV1`, stress,
+soak, canary, production probes, or rollback.
