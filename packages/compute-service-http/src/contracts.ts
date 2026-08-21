@@ -16,7 +16,7 @@ export const COMPUTE_HTTP_CONTRACT_VERSION = "3dena.compute-http.v1" as const;
 export interface ReservedDatasetV1 {
   readonly sha256: string;
   readonly byteLength: number;
-  readonly format: "csv" | "xlsx" | "xls";
+  readonly format: "csv" | "xlsx" | "xls" | "ena3d-json";
 }
 
 /**

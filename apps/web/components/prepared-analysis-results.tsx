@@ -38,6 +38,7 @@ import {
   createPlotToolState,
   permutePlotly3dTrace,
   projectPlotly3dTrace2d,
+  RESULT_SECTIONS,
   selectAxisDimension,
   type AxisSlot,
   type CameraPreset,
@@ -194,11 +195,13 @@ function preparedPlotLayout(
 interface PreparedAnalysisResultsProps {
   result: PreparedSpaceResult;
   owner: RunOwner;
+  browserDerivedEnabled?: boolean;
 }
 
 export function PreparedAnalysisResults({
   result,
   owner,
+  browserDerivedEnabled = true,
 }: PreparedAnalysisResultsProps) {
   const resultRef = useRef<HTMLElement>(null);
   const [activeSection, setActiveSection] =
@@ -213,6 +216,13 @@ export function PreparedAnalysisResults({
     mode: "prepared",
     result,
   }), [result]);
+  const visibleSections = useMemo(
+    () => browserDerivedEnabled
+      ? RESULT_SECTIONS
+      : RESULT_SECTIONS.filter((section) =>
+          !["comparison", "change", "statistics"].includes(section.id)),
+    [browserDerivedEnabled],
+  );
   const candidate = useMemo(
     () => buildPreparedExchangePlotCandidate(preparedExchangePlotInput(result)),
     [result],
@@ -351,11 +361,13 @@ export function PreparedAnalysisResults({
           <p className="eyebrow">Imported prepared shared space</p>
           <h2 id="prepared-results-title">Prepared-exchange result</h2>
           <p>
-            These SVD coordinates were imported from the exchange and summarized
-            in the browser. No raw-row jENA recomputation was performed.
+            These SVD coordinates were imported from the exchange and {browserDerivedEnabled
+              ? "summarized in the browser"
+              : "validated and summarized by the approved compute service"}.
+            No raw-row jENA recomputation was performed.
           </p>
         </div>
-        <div className="prepared-export-actions" aria-label="Prepared result exports">
+        {browserDerivedEnabled && <div className="prepared-export-actions" aria-label="Prepared result exports">
           <button
             className="button button--secondary"
             type="button"
@@ -380,7 +392,7 @@ export function PreparedAnalysisResults({
           >
             <Archive size={18} aria-hidden="true" /> Download bundle
           </button>
-        </div>
+        </div>}
       </header>
 
       <div
@@ -405,6 +417,7 @@ export function PreparedAnalysisResults({
         active={activeSection}
         idPrefix="prepared-result"
         onSelect={selectSection}
+        sections={visibleSections}
       />
 
       <ResultPanel
@@ -461,21 +474,21 @@ export function PreparedAnalysisResults({
         </div>
       </ResultPanel>
 
-      <ResultPanel
+      {browserDerivedEnabled && <ResultPanel
         active={activeSection}
         section="comparison"
         idPrefix="prepared-result"
       >
         <PreparedComparisonPanel source={derivedSource} owner={owner} />
-      </ResultPanel>
+      </ResultPanel>}
 
-      <ResultPanel active={activeSection} section="change" idPrefix="prepared-result">
+      {browserDerivedEnabled && <ResultPanel active={activeSection} section="change" idPrefix="prepared-result">
         <PreparedChangePanel source={derivedSource} owner={owner} />
-      </ResultPanel>
+      </ResultPanel>}
 
-      <ResultPanel active={activeSection} section="statistics" idPrefix="prepared-result">
+      {browserDerivedEnabled && <ResultPanel active={activeSection} section="statistics" idPrefix="prepared-result">
         <PreparedStatisticsPanel source={derivedSource} owner={owner} />
-      </ResultPanel>
+      </ResultPanel>}
 
       <ResultPanel
         active={activeSection}

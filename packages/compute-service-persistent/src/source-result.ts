@@ -64,9 +64,8 @@ function sha256(bytes: Uint8Array): string {
 
 /**
  * Append-only publication index and exact-byte resolver for derived tasks.
- * It accepts raw ENA results only; derived results can never recursively pose
- * as a model source. Prepared exchange sources require their separately
- * reviewed import registry and remain fail-closed here.
+ * It accepts only primary raw ENA or prepared-exchange import results; derived
+ * results can never recursively pose as a scientific source.
  */
 export class PostgresPublishedSourceResultRegistry
   implements ComputeHttpSourceResultResolver
@@ -193,7 +192,7 @@ export class PostgresPublishedSourceResultRegistry
       !isRecord(parsed) ||
       !hasExactKeys(parsed, ["version", "owner", "taskKind", "envelope"]) ||
       parsed.version !== "3dena.compute-scientific-result-artifact.v1" ||
-      parsed.taskKind !== "ena-model"
+      (parsed.taskKind !== "ena-model" && parsed.taskKind !== "prepared-import")
     ) return null;
     const envelope = parsed.envelope;
     try {
@@ -202,9 +201,16 @@ export class PostgresPublishedSourceResultRegistry
       return null;
     }
     const validated = envelope as AnalysisResultEnvelopeV1<AnalysisTaskResultV1>;
+    const rawJena = validated.taskKind === "ena-model";
     if (
-      validated.taskKind !== "ena-model" ||
-      validated.result.schemaVersion !== "3dena.analysis-result.v1" ||
+      (validated.taskKind !== "ena-model" && validated.taskKind !== "prepared-import") ||
+      (rawJena
+        ? validated.result.schemaVersion !== "3dena.analysis-result.v1" ||
+          validated.provenance.sourceKind !== "raw-jena" ||
+          validated.provenance.jenaExecuted !== true
+        : validated.result.schemaVersion !== "3dena.prepared-space-result.v1" ||
+          validated.provenance.sourceKind !== "prepared-exchange" ||
+          validated.provenance.jenaExecuted !== false) ||
       validated.owner.datasetHash !== input.activatedDatasetSha256 ||
       validated.owner.specHash !== row.spec_hash ||
       validated.owner.taskId !== row.task_id ||
@@ -213,11 +219,17 @@ export class PostgresPublishedSourceResultRegistry
       validated.provenance.resultHash !== input.sourceResultHash ||
       await hashAnalysisValueV1(validated.result) !== input.sourceResultHash
     ) return null;
-    const source: AnalysisExecutionSourceResultV2 = {
-      sourceKind: "raw-jena",
-      hash: input.sourceResultHash,
-      result: validated.result,
-    };
+    const source = (rawJena
+      ? {
+          sourceKind: "raw-jena",
+          hash: input.sourceResultHash,
+          result: validated.result,
+        }
+      : {
+          sourceKind: "prepared-exchange",
+          hash: input.sourceResultHash,
+          result: validated.result,
+        }) as AnalysisExecutionSourceResultV2;
     return {
       source,
       owner: structuredClone(validated.owner),

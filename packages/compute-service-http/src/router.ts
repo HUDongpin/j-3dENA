@@ -39,6 +39,7 @@ import {
   type ComputeJobRecordV1,
   type ImmutableObjectDescriptor,
 } from "@3dena/compute-service-core";
+import { Buffer } from "node:buffer";
 
 import {
   COMPUTE_HTTP_CONTRACT_VERSION,
@@ -58,6 +59,7 @@ import {
   type CreateSourceResultAnalysisJobRequestV1,
   type CreateComputeDatasetRequestV1,
   type ExecuteActivatedAnalysisJobRequestV1,
+  type ExecutePreparedImportJobRequestV1,
   type PreviewComputeDatasetRequestV1,
   type PutComputeDatasetMappingRequestV1,
   type SelectComputeDatasetWorksheetRequestV1,
@@ -85,6 +87,7 @@ import {
 
 const MAX_CAS_ATTEMPTS = 24;
 const MAX_DATASET_BYTES = 5 * 1024 * 1024;
+const MAX_PREPARED_DATASET_BYTES = 2 * 1024 * 1024;
 const MAX_JOB_TTL_MS = 24 * 60 * 60 * 1_000;
 const DEFAULT_TASK_RUNTIME_MS = 60 * 60 * 1_000;
 const DEFAULT_JSON_BYTES = 5 * 1024 * 1024;
@@ -116,6 +119,7 @@ const CORS_ALLOWED_HEADERS = new Set([
 ]);
 const SUPPORTED_TASK_KINDS = new Set<AnalysisTaskV1["kind"]>([
   "ena-model",
+  "prepared-import",
   "network-comparison",
   "change-network",
   "statistics",
@@ -192,7 +196,8 @@ function isDatasetFormat(
   return (
     value === "csv" ||
     value === "xlsx" ||
-    value === "xls"
+    value === "xls" ||
+    value === "ena3d-json"
   );
 }
 
@@ -717,7 +722,7 @@ export class ComputeV1HttpRouter {
         return await this.#createJob(request, context);
       }
 
-      const match = /^\/v1\/jobs\/([^/]+)(?:\/(execute|events|result|artifact))?$/u.exec(
+      const match = /^\/v1\/jobs\/([^/]+)(?:\/(content|execute|events|result|artifact))?$/u.exec(
         url.pathname,
       );
       if (match === null) httpError("NOT_FOUND", 404, "No compute route matched.");
@@ -736,6 +741,11 @@ export class ComputeV1HttpRouter {
       }
       const action = match[2] ?? null;
 
+      if (action === "content") {
+        this.#assertMethod(method, ["PUT"]);
+        const job = await this.#authorize(request, jobId, origin, false);
+        return await this.#putJobContent(request, job, context);
+      }
       if (action === "execute") {
         this.#assertMethod(method, ["POST"]);
         const job = await this.#authorize(request, jobId, origin, false);
@@ -1047,8 +1057,22 @@ export class ComputeV1HttpRouter {
     context: RequestContext,
   ): Promise<Response> {
     const idempotencyKey = this.#requireIdempotencyKey(request);
-    const capabilityToken = this.#bearerToken(request);
     const parsed = await this.#parseJson(request);
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      (parsed as { schemaVersion?: unknown }).schemaVersion ===
+        "3dena.create-job-request.v1"
+    ) {
+      return this.#createPreparedImportJob(
+        request,
+        parsed,
+        idempotencyKey,
+        context,
+      );
+    }
+    const capabilityToken = this.#bearerToken(request);
     if (
       parsed !== null &&
       typeof parsed === "object" &&
@@ -1117,7 +1141,7 @@ export class ComputeV1HttpRouter {
     const jobCapability = this.#infrastructure.capabilityCodec.issue(jobId);
     const expiresAtMs = Math.min(activation.session.expiresAtMs, now + this.#jobTtlMs);
     const activatedDatasetFormat = activation.receipt.datasetReceipt.format;
-    if (!isDatasetFormat(activatedDatasetFormat)) {
+    if (!isDatasetFormat(activatedDatasetFormat) || activatedDatasetFormat === "ena3d-json") {
       httpError("INVALID_REQUEST", 400, "Activated dataset format is not supported remotely.");
     }
     const dataset: ReservedDatasetV1 = cloneFrozen({
@@ -1151,6 +1175,95 @@ export class ComputeV1HttpRouter {
     const created = await this.#infrastructure.repository.createIfAbsent(record);
     if (!created.created && created.record.createRequestFingerprint !== createRequestFingerprint) {
       httpError("IDEMPOTENCY_CONFLICT", 409, "Concurrent activated create conflicted.");
+    }
+    if (created.created) {
+      const status = await this.#statusSnapshot(created.record);
+      await this.#publishStatus(status.status);
+    }
+    return this.#jobCapabilityResponse(created.record, created.created, context);
+  }
+
+  async #createPreparedImportJob(
+    request: Request,
+    parsed: unknown,
+    idempotencyKey: string,
+    context: RequestContext,
+  ): Promise<Response> {
+    assertExactFields(
+      parsed,
+      ["schemaVersion", "dataset", "processingPolicyConfirmed"],
+      "prepared import create request",
+    );
+    const candidate = parsed as Record<string, unknown>;
+    if (candidate.schemaVersion !== "3dena.create-job-request.v1"
+        || candidate.processingPolicyConfirmed !== true) {
+      httpError("INVALID_REQUEST", 400, "Prepared import create request is invalid.");
+    }
+    assertExactFields(candidate.dataset, ["sha256", "byteLength", "format"], "prepared import dataset");
+    const datasetCandidate = candidate.dataset as Record<string, unknown>;
+    if (typeof datasetCandidate.sha256 !== "string"
+        || !LOWER_SHA256.test(datasetCandidate.sha256)
+        || !Number.isSafeInteger(datasetCandidate.byteLength)
+        || (datasetCandidate.byteLength as number) < 1
+        || (datasetCandidate.byteLength as number) > MAX_PREPARED_DATASET_BYTES
+        || datasetCandidate.format !== "ena3d-json") {
+      httpError("INVALID_REQUEST", 400, "Prepared import exact-byte reservation is invalid.");
+    }
+    const createRequest = parsed as unknown as CreateAnalysisJobRequestV1;
+    const createRequestFingerprint = sha256Text(canonicalStringify({
+      request: createRequest,
+      origin: context.origin,
+    }));
+    const createIdempotencyHash = this.#infrastructure.capabilityCodec.hashSecret(
+      `prepared-create\0${context.origin ?? "server"}\0${idempotencyKey}`,
+    );
+    const replay = await this.#infrastructure.repository.findByCreateIdempotencyHash(
+      createIdempotencyHash,
+    );
+    if (replay !== null) {
+      if (replay.createRequestFingerprint !== createRequestFingerprint) {
+        httpError("IDEMPOTENCY_CONFLICT", 409, "Prepared import create key is bound to another request.");
+      }
+      return this.#jobCapabilityResponse(replay, false, context);
+    }
+    const now = this.#infrastructure.clock.now();
+    const jobId = this.#infrastructure.idFactory.nextId("job");
+    if (!OPAQUE_ID.test(jobId)) httpError("INTERNAL_ERROR", 500, "Job ID is unsafe.");
+    const capability = this.#infrastructure.capabilityCodec.issue(jobId);
+    const expiresAtMs = now + this.#jobTtlMs;
+    const dataset: ReservedDatasetV1 = cloneFrozen({
+      sha256: createRequest.dataset.sha256,
+      byteLength: createRequest.dataset.byteLength,
+      format: "ena3d-json",
+    });
+    const upload = await this.#infrastructure.objectUrls.createUploadTarget({
+      jobId,
+      dataset,
+      expiresAtMs,
+    });
+    assertSafeAbsoluteUrl(upload.uploadUrl, "prepared import upload URL");
+    if (typeof upload.objectKey !== "string"
+        || !upload.objectKey.startsWith(`compute-inputs/${jobId}/`)) {
+      httpError("INTERNAL_ERROR", 500, "Prepared import upload issuer returned an unowned key.");
+    }
+    const record: ComputeHttpJobRecordV1 = cloneFrozen({
+      version: COMPUTE_HTTP_JOB_VERSION,
+      jobId,
+      revision: 0,
+      capabilityHash: this.#infrastructure.capabilityCodec.hashSecret(capability),
+      boundOrigin: context.origin,
+      createIdempotencyHash,
+      createRequestFingerprint,
+      dataset,
+      inputObjectKey: upload.objectKey,
+      inputObjectOwnedByJob: true,
+      createdAtMs: now,
+      updatedAtMs: now,
+      expiresAtMs,
+    });
+    const created = await this.#infrastructure.repository.createIfAbsent(record);
+    if (!created.created && created.record.createRequestFingerprint !== createRequestFingerprint) {
+      httpError("IDEMPOTENCY_CONFLICT", 409, "Concurrent prepared import create conflicted.");
     }
     if (created.created) {
       const status = await this.#statusSnapshot(created.record);
@@ -1194,14 +1307,15 @@ export class ComputeV1HttpRouter {
     if (
       sourceSnapshot.status.state !== "SUCCEEDED" ||
       !sourceSnapshot.status.resultAvailable ||
-      sourceSnapshot.job.taskKind !== "ena-model" ||
+      (sourceSnapshot.job.taskKind !== "ena-model" &&
+        sourceSnapshot.job.taskKind !== "prepared-import") ||
       sourceOwner === undefined ||
       receipt === undefined
     ) {
       httpError(
         "DATASET_WORKFLOW_REJECTED",
         409,
-        "A successful service-owned ENA source job is required.",
+        "A successful service-owned scientific source job is required.",
       );
     }
     try {
@@ -1221,9 +1335,12 @@ export class ComputeV1HttpRouter {
       requiredBuildId: this.#buildIdentity.flyBuildId,
       nowMs: now,
     });
+    const expectedSourceKind = sourceSnapshot.job.taskKind === "ena-model"
+      ? "raw-jena"
+      : "prepared-exchange";
     if (
       sourceBinding === null ||
-      sourceBinding.source.sourceKind !== "raw-jena" ||
+      sourceBinding.source.sourceKind !== expectedSourceKind ||
       sourceBinding.source.hash !== createRequest.sourceResultHash ||
       sourceBinding.buildId !== this.#buildIdentity.flyBuildId ||
       !sameTaskOwner(sourceBinding.owner, sourceOwner) ||
@@ -1234,7 +1351,7 @@ export class ComputeV1HttpRouter {
       httpError(
         "DATASET_RECEIPT_MISMATCH",
         409,
-        "The requested ENA source result is unavailable or not owned by the source job.",
+        "The requested scientific source result is unavailable or not owned by the source job.",
       );
     }
     const createRequestFingerprint = sha256Text(canonicalStringify({
@@ -1366,6 +1483,9 @@ export class ComputeV1HttpRouter {
     ) {
       return this.#executeActivatedJob(request, authorizedJob, context);
     }
+    if (authorizedJob.dataset.format === "ena3d-json") {
+      return this.#executePreparedImportJob(request, authorizedJob, context);
+    }
     const idempotencyKey = this.#requireIdempotencyKey(request);
     const parsed = await this.#parseJson(request);
     assertExactFields(
@@ -1383,6 +1503,175 @@ export class ComputeV1HttpRouter {
       httpError("INVALID_REQUEST", 400, "Execute request violates analysis contracts.");
     }
     const executeRequest = parsed as unknown as ExecuteAnalysisJobRequestV1;
+    return this.#executeReservedJob(
+      authorizedJob,
+      context,
+      idempotencyKey,
+      executeRequest,
+    );
+  }
+
+  async #putJobContent(
+    request: Request,
+    job: ComputeHttpJobRecordV1,
+    context: RequestContext,
+  ): Promise<Response> {
+    this.#requireIdempotencyKey(request);
+    if (
+      job.dataset.format !== "ena3d-json" ||
+      job.inputObjectOwnedByJob !== true ||
+      job.executeRequestFingerprint !== undefined ||
+      job.inputDeletedAtMs !== undefined
+    ) {
+      httpError(
+        "DATASET_WORKFLOW_REJECTED",
+        409,
+        "This job does not accept prepared-exchange content.",
+      );
+    }
+    const bytes = await this.#parseRawDataset(request, job.dataset.byteLength);
+    if (sha256Bytes(bytes) !== job.dataset.sha256) {
+      httpError(
+        "DATASET_RECEIPT_MISMATCH",
+        409,
+        "Prepared-exchange bytes do not match the reserved SHA-256.",
+      );
+    }
+    const stored = await this.#infrastructure.objectStore.putImmutable(
+      job.inputObjectKey,
+      bytes,
+    );
+    if (!descriptorsEqual(stored.descriptor, {
+      key: job.inputObjectKey,
+      sha256: job.dataset.sha256,
+      byteLength: job.dataset.byteLength,
+    })) {
+      httpError("DATASET_RECEIPT_MISMATCH", 409, "Prepared-exchange storage receipt diverged.");
+    }
+    return this.#json(200, {
+      schemaVersion: "3dena.prepared-import-upload-receipt.v1",
+      jobId: job.jobId,
+      sha256: stored.descriptor.sha256,
+      byteLength: stored.descriptor.byteLength,
+      accepted: true,
+    }, context);
+  }
+
+  async #executePreparedImportJob(
+    request: Request,
+    authorizedJob: ComputeHttpJobRecordV1,
+    context: RequestContext,
+  ): Promise<Response> {
+    const idempotencyKey = this.#requireIdempotencyKey(request);
+    const parsed = await this.#parseJson(request);
+    assertExactFields(
+      parsed,
+      ["schemaVersion", "datasetReceipt", "task"],
+      "prepared import execute request",
+    );
+    if (parsed.schemaVersion !== "3dena.execute-prepared-import-job-request.v1") {
+      httpError("INVALID_REQUEST", 400, "Unsupported prepared import execute request version.");
+    }
+    try {
+      assertDatasetReceiptV1(parsed.datasetReceipt, "request.datasetReceipt");
+    } catch {
+      httpError("INVALID_REQUEST", 400, "Prepared import dataset receipt is invalid.");
+    }
+    assertExactFields(
+      parsed.task,
+      ["schemaVersion", "kind", "runId", "deadlineEpochMilliseconds", "mapping"],
+      "prepared import task",
+    );
+    const requestTask = (parsed as unknown as ExecutePreparedImportJobRequestV1).task;
+    if (
+      requestTask.schemaVersion !== "3dena.activated-prepared-import-task-spec.v1" ||
+      requestTask.kind !== "prepared-import" ||
+      typeof requestTask.runId !== "string" ||
+      !OPAQUE_ID.test(requestTask.runId) ||
+      !Number.isSafeInteger(requestTask.deadlineEpochMilliseconds)
+    ) {
+      httpError("INVALID_REQUEST", 400, "Prepared import task binding is invalid.");
+    }
+    const receipt = (parsed as unknown as ExecutePreparedImportJobRequestV1).datasetReceipt;
+    if (
+      receipt.format !== "ena3d-json" ||
+      receipt.sha256 !== authorizedJob.dataset.sha256 ||
+      receipt.byteLength !== authorizedJob.dataset.byteLength
+    ) {
+      httpError(
+        "DATASET_RECEIPT_MISMATCH",
+        409,
+        "Prepared import receipt does not match the reserved exact bytes.",
+      );
+    }
+    const uploaded = await this.#infrastructure.objectStore.head(authorizedJob.inputObjectKey);
+    const bytes = await this.#infrastructure.objectStore.get(authorizedJob.inputObjectKey);
+    if (
+      uploaded === null ||
+      bytes === null ||
+      uploaded.sha256 !== receipt.sha256 ||
+      uploaded.byteLength !== receipt.byteLength ||
+      bytes.byteLength !== receipt.byteLength ||
+      sha256Bytes(bytes) !== receipt.sha256
+    ) {
+      httpError(
+        "DATASET_RECEIPT_MISMATCH",
+        409,
+        "Prepared import upload does not match its immutable receipt.",
+      );
+    }
+    const specHash = await hashAnalysisValueV1({
+      kind: "prepared-import",
+      mapping: requestTask.mapping,
+    });
+    if (receipt.activationIdentity !== `prepared:${receipt.sha256}:${specHash}`) {
+      httpError(
+        "DATASET_RECEIPT_MISMATCH",
+        409,
+        "Prepared import receipt is not bound to the frozen mapping.",
+      );
+    }
+    const task: Extract<AnalysisTaskV1, { kind: "prepared-import" }> = {
+      schemaVersion: ANALYSIS_TASK_VERSION_V1,
+      kind: "prepared-import",
+      owner: {
+        contractVersion: ANALYSIS_CONTRACT_VERSION_V1,
+        datasetHash: receipt.sha256,
+        specHash,
+        runId: requestTask.runId,
+        taskId: authorizedJob.jobId,
+      },
+      deadlineEpochMilliseconds: requestTask.deadlineEpochMilliseconds,
+      input: {
+        sourceName: "uploaded.ena3d.json",
+        exactBytesBase64: Buffer.from(bytes).toString("base64"),
+        mapping: requestTask.mapping,
+      },
+    };
+    try {
+      assertAnalysisTaskV1(task, "service.task");
+    } catch {
+      httpError("INVALID_REQUEST", 400, "Prepared import mapping violates analysis contracts.");
+    }
+    const executeRequest: ExecuteAnalysisJobRequestV1 = {
+      schemaVersion: "3dena.execute-job-request.v1",
+      datasetReceipt: receipt,
+      task,
+    };
+    return this.#executeReservedJob(
+      authorizedJob,
+      context,
+      idempotencyKey,
+      executeRequest,
+    );
+  }
+
+  async #executeReservedJob(
+    authorizedJob: ComputeHttpJobRecordV1,
+    context: RequestContext,
+    idempotencyKey: string,
+    executeRequest: ExecuteAnalysisJobRequestV1,
+  ): Promise<Response> {
     const receipt = executeRequest.datasetReceipt;
     const task = executeRequest.task;
     if (!SUPPORTED_TASK_KINDS.has(task.kind)) {
@@ -1523,6 +1812,7 @@ export class ComputeV1HttpRouter {
         executionObjectKey,
         executeIdempotencyHash: idempotencyHash,
         executeRequestFingerprint: requestFingerprint,
+        activatedDatasetReceipt: receipt,
       });
       const changed = await this.#infrastructure.repository.compareAndSet(
         current.jobId,

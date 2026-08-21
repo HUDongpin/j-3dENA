@@ -10,30 +10,32 @@ interface ResultExplorerTabsProps {
   active: ResultSection;
   idPrefix: string;
   onSelect: (section: ResultSection) => void;
+  sections?: ReadonlyArray<(typeof RESULT_SECTIONS)[number]>;
 }
 
 export function ResultExplorerTabs({
   active,
   idPrefix,
   onSelect,
+  sections = RESULT_SECTIONS,
 }: ResultExplorerTabsProps) {
   function handleKeyDown(
     event: KeyboardEvent<HTMLButtonElement>,
     current: ResultSection,
   ): void {
-    const currentIndex = RESULT_SECTIONS.findIndex((section) => section.id === current);
+    const currentIndex = sections.findIndex((section) => section.id === current);
     let nextIndex: number | undefined;
     if (event.key === "ArrowRight") {
-      nextIndex = (currentIndex + 1) % RESULT_SECTIONS.length;
+      nextIndex = (currentIndex + 1) % sections.length;
     } else if (event.key === "ArrowLeft") {
-      nextIndex = (currentIndex - 1 + RESULT_SECTIONS.length) % RESULT_SECTIONS.length;
+      nextIndex = (currentIndex - 1 + sections.length) % sections.length;
     } else if (event.key === "Home") {
       nextIndex = 0;
     } else if (event.key === "End") {
-      nextIndex = RESULT_SECTIONS.length - 1;
+      nextIndex = sections.length - 1;
     }
     if (nextIndex === undefined) return;
-    const next = RESULT_SECTIONS[nextIndex];
+    const next = sections[nextIndex];
     if (!next) return;
     event.preventDefault();
     onSelect(next.id);
@@ -49,7 +51,7 @@ export function ResultExplorerTabs({
       aria-label="Analysis result sections"
       data-testid="result-section-tabs"
     >
-      {RESULT_SECTIONS.map((section) => (
+      {sections.map((section) => (
         <button
           key={section.id}
           id={`${idPrefix}-tab-${section.id}`}

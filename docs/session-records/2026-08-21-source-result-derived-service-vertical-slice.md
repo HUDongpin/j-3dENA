@@ -35,6 +35,7 @@ enabled:
 
 - `3dena.compute-http.v1`;
 - `3dena.compute-dataset-http.v1`;
+- `3dena.compute-prepared-import-http.v1`;
 - `3dena.compute-source-result-job-http.v1`; and
 - `3dena.contract.v1`.
 

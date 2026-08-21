@@ -10,7 +10,7 @@ import type {
   AnalysisResultEnvelopeV1,
   DatasetReceiptV1,
 } from "@3dena/analysis";
-import { analyzeRows, compareGroupNetworks } from "@3dena/analysis";
+import { analyzeRows, compareGroupNetworks, hashAnalysisValueV1 } from "@3dena/analysis";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RemoteAnalysisWorkspace } from "./remote-analysis-workspace";
 import type { WebExecutionPolicy } from "@/lib/execution-policy";
@@ -19,6 +19,7 @@ import type {
   RemoteDatasetInventory,
   RemoteDatasetPreview,
   RemoteParsedWorksheet,
+  RemotePreparedDataset,
 } from "@/lib/remote-dataset-workflow";
 import {
   assertApprovedComputeBuild,
@@ -30,6 +31,10 @@ import {
 
 vi.mock("@/components/analysis-results", () => ({
   AnalysisResults: () => <div data-testid="mock-remote-analysis-result">Remote result</div>,
+}));
+
+vi.mock("@/components/prepared-analysis-results", () => ({
+  PreparedAnalysisResults: () => <div data-testid="mock-remote-prepared-result">Prepared remote result</div>,
 }));
 
 vi.mock("next/dynamic", () => ({
@@ -171,6 +176,65 @@ const preview: RemoteDatasetPreview = {
 
 const client = {} as AnalysisClientV1;
 
+const preparedCandidate: RemotePreparedDataset = {
+  workflowId: "prepared-workflow-1",
+  sha256: "9".repeat(64),
+  byteLength: 900,
+  dimensions: ["SVD1", "SVD2", "SVD3", "SVD4"],
+  groupVariables: ["Group", "Speaker", "Period"],
+  tables: [
+    { name: "meta_data", rows: 18, columns: 4 },
+    { name: "points", rows: 18, columns: 8 },
+    { name: "line_weights", rows: 18, columns: 7 },
+    { name: "nodes", rows: 3, columns: 5 },
+    { name: "adjacency_key", rows: 2, columns: 3 },
+  ],
+  points: 18,
+  nodes: 3,
+  edges: 3,
+  groups: 2,
+  periods: ["TP1", "TP2", "TP3"],
+  mapping: {
+    participant: ["Group", "Speaker"],
+    participantLabel: "Speaker",
+    group: "Group",
+    time: "Period",
+    timeOrder: ["TP1", "TP2", "TP3"],
+    cohortPolicy: "available",
+    displayDimensions: ["SVD1", "SVD2", "SVD3"],
+    missingDisplayCoordinates: "reject",
+  },
+};
+
+const preparedReceipt: DatasetReceiptV1 = {
+  schemaVersion: "3dena.dataset-receipt.v1",
+  sha256: preparedCandidate.sha256,
+  byteLength: preparedCandidate.byteLength,
+  format: "ena3d-json",
+  sheet: null,
+  rows: preparedCandidate.points,
+  columns: preparedCandidate.dimensions.length,
+  schema: {
+    schemaVersion: "3dena.dataset-schema.v1",
+    headers: [...preparedCandidate.dimensions],
+    columns: preparedCandidate.dimensions.map((name) => ({
+      name,
+      inferredType: "number",
+      roles: ["unmapped"],
+    })),
+  },
+  limits: {
+    schemaVersion: "3dena.dataset-limits.v1",
+    maxFileBytes: 2 * 1024 * 1024,
+    maxWorksheets: 1,
+    maxRows: 50_000,
+    maxColumns: 200,
+    maxCells: 20_000_000,
+  },
+  warnings: [],
+  activationIdentity: `prepared:${preparedCandidate.sha256}:${"8".repeat(64)}`,
+};
+
 const sourceAnalysis = analyzeRows({
   rows: [
     { group: "A", participant: "p1", time: 1, A: 1, B: 1, C: 0 },
@@ -210,6 +274,9 @@ function workflow(available = true): RemoteDatasetWorkflowAdapter {
       onProgress({ phase: "inventory", completed: 1, total: 1, message: "Inventory complete." });
       return inventory;
     }),
+    inspectPrepared: vi.fn(async () => {
+      throw new Error("Prepared fixture not configured.");
+    }),
     parseWorksheet: vi.fn(async () => parsed),
     prepare: vi.fn(async () => preview),
     activate: vi.fn(async () => ({
@@ -224,6 +291,9 @@ function workflow(available = true): RemoteDatasetWorkflowAdapter {
       runId: task.runId,
       start: vi.fn(async () => undefined),
     })),
+    bindPreparedExecution: vi.fn(async () => {
+      throw new Error("Prepared fixture not configured.");
+    }),
     bindDerivedExecution: vi.fn(async (_source, task): Promise<RemoteExecutionBinding> => ({
       reference: { jobId: "derived-job-1", capabilityToken: "derived-capability-1" },
       datasetReceipt: receipt,
@@ -356,7 +426,7 @@ describe("RemoteAnalysisWorkspace", () => {
     fireEvent.change(taskSelect, { target: { value: "statistics" } });
     expect(screen.getByTestId("remote-analysis-run")).toBeDisabled();
     expect(screen.getByTestId("remote-execution-blocker")).toHaveTextContent(
-      "verified, service-owned ENA source result",
+      "verified, service-owned scientific source result",
     );
     expect(target.bindExecution).not.toHaveBeenCalled();
     fireEvent.change(taskSelect, { target: { value: "ena-model" } });
@@ -389,6 +459,98 @@ describe("RemoteAnalysisWorkspace", () => {
       }),
       expect.any(AbortSignal),
     );
+  });
+
+  it("reviews and explicitly activates a prepared exchange, then exposes service-only derived controls", async () => {
+    const target = workflow();
+    vi.mocked(target.inspectPrepared).mockImplementationOnce(async (_file, _signal, onProgress) => {
+      onProgress({ phase: "prepared-preflight", completed: 900, total: 900, message: "Prepared preflight complete." });
+      return preparedCandidate;
+    });
+    vi.mocked(target.bindPreparedExecution).mockResolvedValueOnce({
+      reference: { jobId: "prepared-job-1", capabilityToken: "prepared-capability-1" },
+      datasetReceipt: preparedReceipt,
+      taskKind: "prepared-import",
+      runId: "prepared-run-1",
+      start: vi.fn(async () => undefined),
+    });
+    const { result: preparedResult } = await import("../../../packages/analysis/test-support/synthetic-prepared-exchange")
+      .then(({ createSyntheticPreparedFixture }) => createSyntheticPreparedFixture());
+    const resultHash = await hashAnalysisValueV1(preparedResult);
+    vi.mocked(runRemoteAnalysis).mockResolvedValueOnce({
+      envelope: {
+        schemaVersion: "3dena.analysis-result-envelope.v1",
+        owner: {
+          contractVersion: "3dena.contract.v1",
+          datasetHash: preparedReceipt.sha256,
+          specHash: "8".repeat(64),
+          runId: "prepared-run-1",
+          taskId: "prepared-job-1",
+        },
+        taskKind: "prepared-import",
+        result: preparedResult,
+        diagnostics: preparedResult.diagnostics,
+        evidence: {
+          schemaVersion: "3dena.evidence-stamp.v1",
+          scope: "feature",
+          status: "IMPLEMENTED_UNVERIFIED",
+          datasetHash: preparedReceipt.sha256,
+          specHash: "8".repeat(64),
+          buildId: "compute-approved",
+          approvedForParity: false,
+        },
+        provenance: {
+          schemaVersion: "3dena.provenance-manifest.v1",
+          datasetHash: preparedReceipt.sha256,
+          specHash: "8".repeat(64),
+          resultHash,
+          adapterVersion: "prepared-test",
+          jenaPackage: "jena-js",
+          jenaVersion: "0.6.3",
+          jenaCommit: "7".repeat(40),
+          sourceKind: "prepared-exchange",
+          jenaExecuted: false,
+          sdkPackage: "@3dena/analysis",
+          sdkVersion: "0.1.0",
+          appVersion: "0.1.0",
+          contractVersion: "3dena.contract.v1",
+          buildId: "compute-approved",
+          seed: null,
+          toleranceContract: null,
+          schemaVersions: ["3dena.prepared-space-result.v1"],
+          generatedAt: "2026-08-21T00:00:00.000Z",
+        },
+      },
+      reference: {
+        schemaVersion: "3dena.job-result-reference.v1",
+        jobId: "prepared-job-1",
+        sha256: "6".repeat(64),
+        byteLength: 100,
+        resultUrl: "https://objects.example.test/prepared.json",
+        exportUrl: null,
+        expiresAt: "2026-08-22T00:00:00.000Z",
+      },
+      exactBytes: new TextEncoder().encode("{}"),
+    });
+
+    render(<RemoteAnalysisWorkspace webBuildId="web-build" policy={policy} client={client} workflow={target} />);
+    await waitFor(() => expect(screen.getByTestId("remote-runtime-status")).toHaveAttribute("data-state", "idle"));
+    fireEvent.click(screen.getByTestId("remote-processing-consent"));
+    fireEvent.change(screen.getByTestId("remote-file-input"), {
+      target: { files: [new File(["prepared"], "study.ena3d.json", { type: "application/json" })] },
+    });
+    fireEvent.click(screen.getByTestId("remote-upload-inspect"));
+    expect(await screen.findByTestId("remote-prepared-inventory")).toHaveTextContent("Group + Speaker");
+    expect(target.bindPreparedExecution).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("remote-prepared-activate"));
+    await waitFor(() => expect(target.bindPreparedExecution).toHaveBeenCalledOnce());
+    expect(await screen.findByTestId("mock-remote-prepared-result")).toBeInTheDocument();
+    expect(screen.getByTestId("remote-activation-receipt")).toHaveTextContent("18 rows · 4 columns");
+    fireEvent.change(screen.getByTestId("remote-task-kind"), {
+      target: { value: "network-comparison" },
+    });
+    expect(await screen.findByTestId("remote-derived-controls")).toBeInTheDocument();
+    expect(screen.getByText("Service-owned source · no raw re-upload")).toBeInTheDocument();
   });
 
   it("closes the dataset workflow before deleting the retained ENA source", async () => {

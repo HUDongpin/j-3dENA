@@ -7,7 +7,9 @@ import {
   ANALYSIS_TASK_VERSION_V1,
   DATASET_RECEIPT_VERSION_V1,
   executeAnalysisTask,
+  hashAnalysisValueV1,
   type AnalysisExecutionDatasetV1,
+  type AnalysisExecutionDatasetV2,
   type AnalysisTaskV1,
   type RawRow,
 } from "@3dena/analysis";
@@ -20,6 +22,11 @@ import {
   type SqlQueryResult,
 } from "./postgres";
 import { PostgresPublishedSourceResultRegistry } from "./source-result";
+import {
+  createSyntheticPreparedExchangeBytes,
+  createSyntheticPreparedFixture,
+  createSyntheticPreparedMapping,
+} from "../../analysis/test-support/synthetic-prepared-exchange";
 
 const DATASET_HASH = "a".repeat(64);
 const SPEC_HASH = "b".repeat(64);
@@ -211,5 +218,103 @@ describe("PostgresPublishedSourceResultRegistry", () => {
       nowMs: NOW + 60_000,
     })).resolves.toBeNull();
     expect(pool.statements.join("\n")).not.toMatch(/UPDATE\s+compute_scientific_results/iu);
+  });
+
+  it("resolves a primary prepared import without recasting it as raw jENA", async () => {
+    const fixture = await createSyntheticPreparedFixture();
+    const bytes = createSyntheticPreparedExchangeBytes();
+    const mapping = createSyntheticPreparedMapping();
+    const specHash = await hashAnalysisValueV1({ kind: "prepared-import", mapping });
+    const dataset: AnalysisExecutionDatasetV2 = {
+      schemaVersion: "3dena.analysis-execution-dataset.v2",
+      receipt: {
+        schemaVersion: DATASET_RECEIPT_VERSION_V1,
+        sha256: fixture.artifact.sha256,
+        byteLength: fixture.artifact.byteLength,
+        format: "ena3d-json",
+        sheet: null,
+        rows: fixture.result.fullSpace.points.length,
+        columns: fixture.result.fullSpace.dimensions.length,
+        schema: {
+          schemaVersion: "3dena.dataset-schema.v1",
+          headers: [...fixture.result.fullSpace.dimensions],
+          columns: fixture.result.fullSpace.dimensions.map((name) => ({
+            name,
+            inferredType: "number",
+            roles: ["unmapped"],
+          })),
+        },
+        limits: {
+          schemaVersion: "3dena.dataset-limits.v1",
+          maxFileBytes: 2 * 1024 * 1024,
+          maxWorksheets: 1,
+          maxRows: 50_000,
+          maxColumns: 200,
+          maxCells: 20_000_000,
+        },
+        warnings: [],
+        activationIdentity: `prepared:${fixture.artifact.sha256}:${specHash}`,
+      },
+      specHash,
+      buildId: "fly-build-prepared",
+      generatedAt: new Date(NOW).toISOString(),
+    };
+    const task: Extract<AnalysisTaskV1, { kind: "prepared-import" }> = {
+      schemaVersion: ANALYSIS_TASK_VERSION_V1,
+      kind: "prepared-import",
+      owner: {
+        contractVersion: ANALYSIS_CONTRACT_VERSION_V1,
+        datasetHash: fixture.artifact.sha256,
+        specHash,
+        runId: "prepared-source-run",
+        taskId: "prepared-source-task",
+      },
+      deadlineEpochMilliseconds: 4_000_000_000_000,
+      input: {
+        sourceName: "uploaded.ena3d.json",
+        exactBytesBase64: Buffer.from(bytes).toString("base64"),
+        mapping,
+      },
+    };
+    const envelope = await executeAnalysisTask(dataset, task);
+    const artifact = {
+      version: "3dena.compute-scientific-result-artifact.v1",
+      owner: envelope.owner,
+      taskKind: "prepared-import",
+      envelope,
+    };
+    const store = new InMemoryComputeObjectStore();
+    const put = await store.putImmutable(
+      "compute-results/prepared-source-task/result.json",
+      new TextEncoder().encode(JSON.stringify(artifact)),
+    );
+    const pool = new SourcePool();
+    const registry = new PostgresPublishedSourceResultRegistry(
+      new PostgresDatabase(pool),
+      store,
+    );
+    await registry.record({
+      sourceResultHash: envelope.provenance.resultHash,
+      owner: envelope.owner,
+      buildId: "fly-build-prepared",
+      object: put.descriptor,
+      publishedAtMs: NOW - 1_000,
+      expiresAtMs: NOW + 60_000,
+      publicationReceipt: { version: "test-prepared-publication-receipt.v1" },
+    });
+    await expect(registry.resolve({
+      sourceResultHash: envelope.provenance.resultHash,
+      activatedDatasetSha256: fixture.artifact.sha256,
+      requiredBuildId: "fly-build-prepared",
+      nowMs: NOW,
+    })).resolves.toMatchObject({
+      source: {
+        sourceKind: "prepared-exchange",
+        hash: envelope.provenance.resultHash,
+        result: { schemaVersion: "3dena.prepared-space-result.v1" },
+      },
+      owner: envelope.owner,
+      buildId: "fly-build-prepared",
+    });
   });
 });

@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 import { expect, test, type Route } from "@playwright/test";
-import { SMALL_RAW_CSV } from "./helpers/runtime-contract";
+import {
+  SMALL_RAW_CSV,
+  SYNTHETIC_PREPARED_BYTES,
+} from "./helpers/runtime-contract";
+import { analyzePreparedSpace } from "../packages/analysis/src/prepared-space";
+import type { PreparedSpaceMapping } from "../packages/analysis/src/prepared-types";
+import { decodeEna3dExchangeV1WithSha256 } from "../packages/io/src/decode";
 
 const ANALYSIS_CONTRACT_VERSION_V1 = "3dena.contract.v1";
 
@@ -10,6 +16,8 @@ const JOB_ID = "job-remote-e2e";
 const JOB_CAPABILITY = "job-capability-remote-e2e";
 const DERIVED_JOB_ID = "job-derived-remote-e2e";
 const DERIVED_JOB_CAPABILITY = "job-derived-capability-remote-e2e";
+const PREPARED_JOB_ID = "job-prepared-remote-e2e";
+const PREPARED_JOB_CAPABILITY = "job-prepared-capability-remote-e2e";
 const APPROVAL_MANIFEST = "a".repeat(64);
 const GIT_COMMIT = "b".repeat(40);
 const FLY_IMAGE = `sha256:${"c".repeat(64)}`;
@@ -240,6 +248,7 @@ async function derivedResultArtifact(input: Readonly<{
   activatedTask: Record<string, unknown>;
   datasetReceipt: Readonly<{ sha256: string }>;
   sourceResultHash: string;
+  sourceKind?: "raw-jena" | "prepared-exchange";
 }>): Promise<Readonly<{ bytes: Buffer; owner: Record<string, unknown> }>> {
   const { runId } = input.activatedTask;
   if (typeof runId !== "string") throw new Error("Derived E2E task did not include a runId.");
@@ -316,8 +325,8 @@ async function derivedResultArtifact(input: Readonly<{
       jenaPackage: "jena-js",
       jenaVersion: "0.6.3",
       jenaCommit: "d".repeat(40),
-      sourceKind: "raw-jena",
-      jenaExecuted: true,
+      sourceKind: input.sourceKind ?? "raw-jena",
+      jenaExecuted: (input.sourceKind ?? "raw-jena") === "raw-jena",
       sdkPackage: "@3dena/analysis",
       sdkVersion: "0.1.0",
       appVersion: "0.1.0",
@@ -341,6 +350,91 @@ async function derivedResultArtifact(input: Readonly<{
       envelope,
     })),
     owner,
+  };
+}
+
+async function preparedResultArtifact(input: Readonly<{
+  datasetHash: string;
+  mapping: Record<string, unknown>;
+  runId: string;
+}>): Promise<Readonly<{
+  bytes: Buffer;
+  owner: Record<string, unknown>;
+  resultHash: string;
+}>> {
+  const artifact = await decodeEna3dExchangeV1WithSha256(SYNTHETIC_PREPARED_BYTES);
+  const result = analyzePreparedSpace({
+    source: { artifact, name: "uploaded.ena3d.json" },
+    mapping: input.mapping as unknown as PreparedSpaceMapping,
+  });
+  if (result.sourceReceipt.sha256 !== input.datasetHash) {
+    throw new Error("Prepared E2E fixture hash does not match the uploaded exact bytes.");
+  }
+  if (canonicalJson(result.provenance.resolvedMapping) !== canonicalJson(input.mapping)) {
+    throw new Error("Prepared E2E task did not preserve the frozen mapping.");
+  }
+  const specHash = createHash("sha256").update(canonicalJson({
+    kind: "prepared-import",
+    mapping: input.mapping,
+  })).digest("hex");
+  const resultHash = createHash("sha256").update(canonicalJson(result)).digest("hex");
+  const owner = {
+    contractVersion: ANALYSIS_CONTRACT_VERSION_V1,
+    datasetHash: input.datasetHash,
+    specHash,
+    runId: input.runId,
+    taskId: PREPARED_JOB_ID,
+  } as const;
+  const envelope = {
+    schemaVersion: "3dena.analysis-result-envelope.v1",
+    owner,
+    taskKind: "prepared-import",
+    result,
+    diagnostics: result.diagnostics,
+    evidence: {
+      schemaVersion: "3dena.evidence-stamp.v1",
+      scope: "feature",
+      status: "IMPLEMENTED_UNVERIFIED",
+      datasetHash: input.datasetHash,
+      specHash,
+      buildId: FLY_BUILD,
+      approvedForParity: false,
+    },
+    provenance: {
+      schemaVersion: "3dena.provenance-manifest.v1",
+      datasetHash: input.datasetHash,
+      specHash,
+      resultHash,
+      adapterVersion: "remote-prepared-e2e-adapter",
+      jenaPackage: "jena-js",
+      jenaVersion: "0.6.3",
+      jenaCommit: "d".repeat(40),
+      sourceKind: "prepared-exchange",
+      jenaExecuted: false,
+      sdkPackage: "@3dena/analysis",
+      sdkVersion: "0.1.0",
+      appVersion: "0.1.0",
+      contractVersion: ANALYSIS_CONTRACT_VERSION_V1,
+      buildId: FLY_BUILD,
+      seed: null,
+      toleranceContract: null,
+      schemaVersions: [
+        "3dena.analysis-result-envelope.v1",
+        "3dena.prepared-space-result.v1",
+        "3dena.analysis-task.v1",
+      ],
+      generatedAt: "2026-08-21T00:00:00.000Z",
+    },
+  } as const;
+  return {
+    bytes: Buffer.from(JSON.stringify({
+      version: "3dena.compute-scientific-result-artifact.v1",
+      owner,
+      taskKind: "prepared-import",
+      envelope,
+    })),
+    owner,
+    resultHash,
   };
 }
 
@@ -432,6 +526,7 @@ test("mocked remote service closes ENA, source-bound derived analysis, formal do
         role: "api",
         contractVersions: [
           "3dena.compute-dataset-http.v1",
+          "3dena.compute-prepared-import-http.v1",
           "3dena.compute-source-result-job-http.v1",
           "3dena.contract.v1",
         ],
@@ -613,7 +708,9 @@ test("mocked remote service closes ENA, source-bound derived analysis, formal do
     if (path === "/v1/jobs" && method === "POST") {
       const body = request.postDataJSON() as Record<string, unknown>;
       if (body.schemaVersion === "3dena.create-source-result-job-request.v1") {
-        if (body.sourceJobId !== JOB_ID || body.sourceResultHash !== sourceArtifact?.resultHash) {
+        if (sourceArtifact === null
+            || body.sourceJobId !== JOB_ID
+            || body.sourceResultHash !== sourceArtifact.resultHash) {
           await fulfillJson(route, { code: "SOURCE_RESULT_MISMATCH" }, 409);
           return;
         }
@@ -847,7 +944,7 @@ test("mocked remote service closes ENA, source-bound derived analysis, formal do
     task: {
       kind: "network-comparison",
       schemaVersion: "3dena.activated-network-comparison-task-spec.v1",
-      sourceResultHash: sourceArtifact?.resultHash,
+      sourceResultHash: (sourceArtifact as Awaited<ReturnType<typeof sourceResultArtifact>> | null)?.resultHash,
     },
   });
   expect(JSON.stringify({ sourceExecuteBody, derivedExecuteBody })).not.toMatch(
@@ -875,6 +972,331 @@ test("mocked remote service closes ENA, source-bound derived analysis, formal do
   ]));
   expect(await page.evaluate(() =>
     (window as unknown as { __remoteWorkers: string[] }).__remoteWorkers)).toEqual([]);
+});
+
+test("mocked remote service preserves exact prepared bytes through parser activation, derived analysis, formal download, and deletion", async ({
+  page,
+}) => {
+  const datasetHash = createHash("sha256").update(SYNTHETIC_PREPARED_BYTES).digest("hex");
+  let createBody: Record<string, unknown> | null = null;
+  let uploadedBytes: Buffer | null = null;
+  let sourceExecuteBody: Record<string, unknown> | null = null;
+  let derivedExecuteBody: Record<string, unknown> | null = null;
+  let sourceArtifact: Awaited<ReturnType<typeof preparedResultArtifact>> | null = null;
+  let derivedArtifact: Awaited<ReturnType<typeof derivedResultArtifact>> | null = null;
+  const mutations: string[] = [];
+  await page.addInitScript(() => {
+    const NativeWorker = window.Worker;
+    (window as unknown as { __remotePreparedWorkers: string[] }).__remotePreparedWorkers = [];
+    window.Worker = new Proxy(NativeWorker, {
+      construct(target, args: ConstructorParameters<typeof Worker>) {
+        (window as unknown as { __remotePreparedWorkers: string[] }).__remotePreparedWorkers.push(String(args[0]));
+        return Reflect.construct(target, args) as Worker;
+      },
+    });
+  });
+
+  await page.route("**/__remote_calibration__/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = url.pathname.replace("/__remote_calibration__", "");
+    const method = request.method();
+    if (method !== "GET") mutations.push(`${method} ${path}`);
+    if (path === "/build-info") {
+      await fulfillJson(route, {
+        schemaVersion: "3dena.compute-build-info.v1",
+        approvalManifestSha256: APPROVAL_MANIFEST,
+        releaseId: "remote-calibration-release",
+        gitCommit: GIT_COMMIT,
+        flyImageDigest: FLY_IMAGE,
+        flyBuildId: FLY_BUILD,
+        role: "api",
+        contractVersions: [
+          "3dena.compute-dataset-http.v1",
+          "3dena.compute-prepared-import-http.v1",
+          "3dena.compute-source-result-job-http.v1",
+          "3dena.contract.v1",
+        ],
+      });
+      return;
+    }
+    if (path === "/v1/jobs" && method === "POST") {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      if (body.schemaVersion === "3dena.create-source-result-job-request.v1") {
+        if (sourceArtifact === null
+            || body.sourceJobId !== PREPARED_JOB_ID
+            || body.sourceResultHash !== sourceArtifact.resultHash) {
+          throw new Error("Prepared derived job was not bound to its primary source result.");
+        }
+        await fulfillJson(route, {
+          schemaVersion: "3dena.source-result-job-capability.v1",
+          jobId: DERIVED_JOB_ID,
+          capabilityToken: DERIVED_JOB_CAPABILITY,
+          sourceJobId: PREPARED_JOB_ID,
+          sourceResultHash: sourceArtifact.resultHash,
+          expiresAt: "2026-08-22T00:00:00.000Z",
+        }, 201);
+        return;
+      }
+      createBody = body;
+      await fulfillJson(route, {
+        schemaVersion: "3dena.job-capability.v1",
+        jobId: PREPARED_JOB_ID,
+        capabilityToken: PREPARED_JOB_CAPABILITY,
+        uploadUrl: new URL(`/__remote_calibration__/v1/jobs/${PREPARED_JOB_ID}/content`, request.url()).toString(),
+        expiresAt: "2026-08-22T00:00:00.000Z",
+      }, 201);
+      return;
+    }
+    if (path === `/v1/jobs/${PREPARED_JOB_ID}/content` && method === "PUT") {
+      uploadedBytes = request.postDataBuffer();
+      await fulfillJson(route, {
+        schemaVersion: "3dena.prepared-import-upload-receipt.v1",
+        jobId: PREPARED_JOB_ID,
+        sha256: datasetHash,
+        byteLength: SYNTHETIC_PREPARED_BYTES.byteLength,
+        accepted: true,
+      });
+      return;
+    }
+    if (path === `/v1/jobs/${PREPARED_JOB_ID}/execute` && method === "POST") {
+      sourceExecuteBody = request.postDataJSON() as Record<string, unknown>;
+      const task = sourceExecuteBody.task as {
+        runId: string;
+        mapping: Record<string, unknown>;
+      };
+      sourceArtifact = await preparedResultArtifact({
+        datasetHash,
+        mapping: task.mapping,
+        runId: task.runId,
+      });
+      await fulfillJson(route, {
+        schemaVersion: "3dena.job-status.v1",
+        jobId: PREPARED_JOB_ID,
+        state: "QUEUED",
+        owner: null,
+        progress: null,
+        createdAt: "2026-08-21T00:00:00.000Z",
+        updatedAt: "2026-08-21T00:00:00.000Z",
+        expiresAt: "2026-08-22T00:00:00.000Z",
+        resultAvailable: false,
+        errorCode: null,
+      }, 202);
+      return;
+    }
+    if (path === `/v1/jobs/${DERIVED_JOB_ID}/execute` && method === "POST") {
+      derivedExecuteBody = request.postDataJSON() as Record<string, unknown>;
+      if (sourceArtifact === null) throw new Error("Prepared derived job ran before its source existed.");
+      derivedArtifact = await derivedResultArtifact({
+        activatedTask: derivedExecuteBody.task as Record<string, unknown>,
+        datasetReceipt: { sha256: datasetHash },
+        sourceResultHash: sourceArtifact.resultHash,
+        sourceKind: "prepared-exchange",
+      });
+      await fulfillJson(route, {
+        schemaVersion: "3dena.job-status.v1",
+        jobId: DERIVED_JOB_ID,
+        state: "QUEUED",
+        owner: null,
+        progress: null,
+        createdAt: "2026-08-21T00:01:00.000Z",
+        updatedAt: "2026-08-21T00:01:00.000Z",
+        expiresAt: "2026-08-22T00:00:00.000Z",
+        resultAvailable: false,
+        errorCode: null,
+      }, 202);
+      return;
+    }
+    if (path === `/v1/jobs/${PREPARED_JOB_ID}` && method === "GET") {
+      await fulfillJson(route, {
+        schemaVersion: "3dena.job-status.v1",
+        jobId: PREPARED_JOB_ID,
+        state: "SUCCEEDED",
+        owner: sourceArtifact?.owner ?? null,
+        progress: { phase: "complete", completed: 1, total: 1 },
+        createdAt: "2026-08-21T00:00:00.000Z",
+        updatedAt: "2026-08-21T00:01:00.000Z",
+        expiresAt: "2026-08-22T00:00:00.000Z",
+        resultAvailable: true,
+        errorCode: null,
+      });
+      return;
+    }
+    if (path === `/v1/jobs/${DERIVED_JOB_ID}` && method === "GET") {
+      await fulfillJson(route, {
+        schemaVersion: "3dena.job-status.v1",
+        jobId: DERIVED_JOB_ID,
+        state: "SUCCEEDED",
+        owner: derivedArtifact?.owner ?? null,
+        progress: { phase: "complete", completed: 1, total: 1 },
+        createdAt: "2026-08-21T00:01:00.000Z",
+        updatedAt: "2026-08-21T00:02:00.000Z",
+        expiresAt: "2026-08-22T00:00:00.000Z",
+        resultAvailable: true,
+        errorCode: null,
+      });
+      return;
+    }
+    if (path === `/v1/jobs/${PREPARED_JOB_ID}/result` && method === "GET") {
+      const bytes = sourceArtifact!.bytes;
+      await fulfillJson(route, {
+        schemaVersion: "3dena.job-result-reference.v1",
+        jobId: PREPARED_JOB_ID,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+        byteLength: bytes.byteLength,
+        resultUrl: new URL("/__remote_calibration__/objects/prepared-result.json", request.url()).toString(),
+        exportUrl: null,
+        expiresAt: "2026-08-22T00:00:00.000Z",
+      });
+      return;
+    }
+    if (path === `/v1/jobs/${DERIVED_JOB_ID}/result` && method === "GET") {
+      const bytes = derivedArtifact!.bytes;
+      await fulfillJson(route, {
+        schemaVersion: "3dena.job-result-reference.v1",
+        jobId: DERIVED_JOB_ID,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+        byteLength: bytes.byteLength,
+        resultUrl: new URL("/__remote_calibration__/objects/prepared-derived-result.json", request.url()).toString(),
+        exportUrl: null,
+        expiresAt: "2026-08-22T00:00:00.000Z",
+      });
+      return;
+    }
+    if (path === "/objects/prepared-result.json" && method === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: sourceArtifact!.bytes });
+      return;
+    }
+    if (path === "/objects/prepared-derived-result.json" && method === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: derivedArtifact!.bytes });
+      return;
+    }
+    if (path === `/v1/jobs/${PREPARED_JOB_ID}` && method === "DELETE") {
+      await fulfillJson(route, {
+        schemaVersion: "3dena.job-deletion-receipt.v1",
+        jobId: PREPARED_JOB_ID,
+        cancelled: false,
+        inputDeleted: true,
+        resultDeleted: true,
+        deletedAt: "2026-08-21T00:03:00.000Z",
+      });
+      return;
+    }
+    if (path === `/v1/jobs/${DERIVED_JOB_ID}` && method === "DELETE") {
+      await fulfillJson(route, {
+        schemaVersion: "3dena.job-deletion-receipt.v1",
+        jobId: DERIVED_JOB_ID,
+        cancelled: false,
+        inputDeleted: true,
+        resultDeleted: true,
+        deletedAt: "2026-08-21T00:02:00.000Z",
+      });
+      return;
+    }
+    await fulfillJson(route, { code: "NOT_FOUND" }, 404);
+  });
+
+  await page.goto("/app?remoteCalibration=1");
+  await expect(page.getByTestId("remote-runtime-status")).toHaveAttribute("data-state", "idle");
+  await page.getByTestId("remote-processing-consent").check();
+  await page.getByTestId("remote-file-input").setInputFiles({
+    name: "synthetic-remote.ena3d.json",
+    mimeType: "application/json",
+    buffer: SYNTHETIC_PREPARED_BYTES,
+  });
+  await page.getByTestId("remote-upload-inspect").click();
+  const inventory = page.getByTestId("remote-prepared-inventory");
+  await expect(inventory).toContainText(datasetHash);
+  await expect(inventory).toContainText("Group + Speaker");
+  await expect(page.getByRole("table", { name: "Exact strict-parser table inventory" })).toBeVisible();
+  expect(mutations).toEqual([]);
+
+  await page.getByTestId("remote-prepared-activate").click();
+  await expect.poll(
+    () => page.getByTestId("remote-runtime-status").getAttribute("data-state"),
+    { timeout: 30_000 },
+  ).toMatch(/^(completed|error)$/u);
+  const sourceState = await page.getByTestId("remote-runtime-status").getAttribute("data-state");
+  if (sourceState === "error") {
+    throw new Error(`Mocked prepared service failed: ${await page.getByTestId("remote-analysis-error").innerText()}`);
+  }
+  await expect(page.getByTestId("analysis-result")).toHaveAttribute("data-source-kind", "prepared-exchange");
+  await page.getByRole("tab", { name: "Trajectory" }).click();
+  await expect(page.getByTestId("prepared-centroid-table")).toBeVisible();
+  await expect(page.getByTestId("prepared-export-centroids")).toHaveCount(0);
+  await expect(page.getByTestId("prepared-export-provenance")).toHaveCount(0);
+  await expect(page.getByTestId("prepared-export-bundle")).toHaveCount(0);
+
+  await page.getByTestId("remote-task-kind").selectOption("network-comparison");
+  await expect(page.getByTestId("remote-derived-controls")).toBeVisible();
+  await page.getByTestId("remote-derived-run").click();
+  await expect.poll(
+    () => page.getByTestId("remote-runtime-status").getAttribute("data-state"),
+    { timeout: 30_000 },
+  ).toMatch(/^(completed|error)$/u);
+  const derivedState = await page.getByTestId("remote-runtime-status").getAttribute("data-state");
+  if (derivedState === "error") {
+    throw new Error(`Mocked prepared derived service failed: ${await page.getByTestId("remote-analysis-error").innerText()}`);
+  }
+  await expect(page.getByTestId("remote-derived-result")).toHaveAttribute("data-task-kind", "network-comparison");
+  await expect(page.getByTestId("remote-derived-table")).toBeVisible();
+
+  const downloadEvent = page.waitForEvent("download");
+  await page.getByTestId("remote-verified-download").click();
+  const download = await downloadEvent;
+  expect(download.suggestedFilename()).toMatch(/^3dena-remote-.+\.zip$/u);
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  expect([...Buffer.concat(chunks).subarray(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04]);
+
+  expect(createBody).toEqual({
+    schemaVersion: "3dena.create-job-request.v1",
+    dataset: {
+      sha256: datasetHash,
+      byteLength: SYNTHETIC_PREPARED_BYTES.byteLength,
+      format: "ena3d-json",
+    },
+    processingPolicyConfirmed: true,
+  });
+  expect(uploadedBytes).not.toBeNull();
+  expect(Buffer.compare(uploadedBytes!, Buffer.from(SYNTHETIC_PREPARED_BYTES))).toBe(0);
+  expect(sourceExecuteBody).toMatchObject({
+    schemaVersion: "3dena.execute-prepared-import-job-request.v1",
+    datasetReceipt: { sha256: datasetHash, format: "ena3d-json" },
+    task: {
+      schemaVersion: "3dena.activated-prepared-import-task-spec.v1",
+      kind: "prepared-import",
+      mapping: {
+        participant: ["Group", "Speaker"],
+        timeOrder: ["TP1", "TP2", "TP3"],
+        displayDimensions: ["SVD1", "SVD2", "SVD3"],
+      },
+    },
+  });
+  expect(derivedExecuteBody).toMatchObject({
+    schemaVersion: "3dena.execute-activated-job-request.v1",
+    task: {
+      kind: "network-comparison",
+      sourceResultHash: (sourceArtifact as Awaited<ReturnType<typeof preparedResultArtifact>> | null)?.resultHash,
+    },
+  });
+  expect(JSON.stringify({ createBody, sourceExecuteBody, derivedExecuteBody })).not.toMatch(
+    /exactBytesBase64|uploaded\.ena3d\.json|capabilityToken|resultUrl/u,
+  );
+
+  await page.getByTestId("remote-source-delete").click();
+  await expect(page.getByTestId("remote-runtime-status")).toHaveAttribute("data-state", "idle");
+  expect(mutations).toEqual(expect.arrayContaining([
+    "POST /v1/jobs",
+    `PUT /v1/jobs/${PREPARED_JOB_ID}/content`,
+    `POST /v1/jobs/${PREPARED_JOB_ID}/execute`,
+    `POST /v1/jobs/${DERIVED_JOB_ID}/execute`,
+    `DELETE /v1/jobs/${DERIVED_JOB_ID}`,
+    `DELETE /v1/jobs/${PREPARED_JOB_ID}`,
+  ]));
+  expect(await page.evaluate(() =>
+    (window as unknown as { __remotePreparedWorkers: string[] }).__remotePreparedWorkers)).toEqual([]);
 });
 
 test("remote consent and retention boundary remains accessible at 375px", async ({

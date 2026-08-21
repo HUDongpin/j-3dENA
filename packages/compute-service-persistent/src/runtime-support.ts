@@ -149,8 +149,16 @@ class FlyArtifactUrlIssuer implements ComputeHttpObjectUrlIssuer {
     }
   }
 
-  async createUploadTarget(): Promise<{ objectKey: string; uploadUrl: string }> {
-    throw new TypeError("Legacy direct job upload is disabled in persistent production mode.");
+  async createUploadTarget(input: Readonly<{
+    jobId: string;
+  }>): Promise<{ objectKey: string; uploadUrl: string }> {
+    return Object.freeze({
+      objectKey: `compute-inputs/${input.jobId}/dataset.bin`,
+      uploadUrl: new URL(
+        `/v1/jobs/${encodeURIComponent(input.jobId)}/content`,
+        this.#baseUrl,
+      ).toString(),
+    });
   }
 
   async createResultReference(input: Readonly<{
@@ -240,7 +248,7 @@ class CoreScientificResultPublisher implements ScientificResultPublisherV1 {
     }
     assertAnalysisResultEnvelopeV1(parsed.envelope);
     const envelope = parsed.envelope as AnalysisResultEnvelopeV1<AnalysisTaskResultV1>;
-    if (envelope.taskKind === "ena-model") {
+    if (envelope.taskKind === "ena-model" || envelope.taskKind === "prepared-import") {
       const index: PublishedScientificResultRecordV1 = {
         sourceResultHash: envelope.provenance.resultHash,
         owner: envelope.owner,

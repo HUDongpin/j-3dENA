@@ -23,10 +23,14 @@ import {
   HmacComputeHttpCapabilityCodec,
   InMemoryComputeHttpEventBroker,
   InMemoryComputeHttpJobRepository,
-  InMemoryComputeHttpObjectUrlIssuer,
   SequenceComputeHttpIdFactory,
   StaticComputeHttpReadinessProbe,
 } from "./in-memory";
+import {
+  createSyntheticPreparedExchangeBytes,
+  createSyntheticPreparedFixture,
+  createSyntheticPreparedMapping,
+} from "../../analysis/test-support/synthetic-prepared-exchange";
 import { InMemoryComputeHttpDatasetWorkflowService } from "./dataset-in-memory";
 import { ComputeV1HttpRouter } from "./router";
 
@@ -79,7 +83,16 @@ function harness() {
       clock,
       idFactory: new SequenceComputeHttpIdFactory(),
       capabilityCodec: codec,
-      objectUrls: new InMemoryComputeHttpObjectUrlIssuer(),
+      objectUrls: {
+        createUploadTarget: async ({ jobId }) => ({
+          objectKey: `compute-inputs/${jobId}/dataset.bin`,
+          uploadUrl: `${BASE}/v1/jobs/${encodeURIComponent(jobId)}/content`,
+        }),
+        createResultReference: async ({ jobId, object }) => ({
+          resultUrl: `${BASE}/v1/jobs/${encodeURIComponent(jobId)}/artifact?sha256=${object.sha256}`,
+          exportUrl: null,
+        }),
+      },
       events: new InMemoryComputeHttpEventBroker(),
       readiness: new StaticComputeHttpReadinessProbe(true),
       rateLimiter: { consume: async () => ({ allowed: true, retryAfterSeconds: 1 }) },
@@ -114,6 +127,7 @@ function harness() {
       flyBuildId: "dataset-router-build",
       contractVersions: [
         "3dena.compute-dataset-http.v1",
+        "3dena.compute-prepared-import-http.v1",
         "3dena.compute-source-result-job-http.v1",
       ],
     },
@@ -532,5 +546,184 @@ describe("Compute dataset HTTP workflow", () => {
     }));
     expect(oldCreate.status).toBe(400);
     await expect(oldCreate.json()).resolves.toMatchObject({ code: "INVALID_REQUEST" });
+  });
+
+  it("binds strict prepared exact bytes to a frozen mapping and retains only the verified prepared source for derived jobs", async () => {
+    const {
+      router, repository, objectStore, core, supervisor, sourceResults, sourceBindingOverrides,
+    } = harness();
+    const bytes = createSyntheticPreparedExchangeBytes();
+    const fixture = await createSyntheticPreparedFixture();
+    const mapping = createSyntheticPreparedMapping();
+    const datasetHash = createHash("sha256").update(bytes).digest("hex");
+    const specHash = await hashAnalysisValueV1({ kind: "prepared-import", mapping });
+    const receipt = {
+      schemaVersion: "3dena.dataset-receipt.v1",
+      sha256: datasetHash,
+      byteLength: bytes.byteLength,
+      format: "ena3d-json",
+      sheet: null,
+      rows: fixture.result.fullSpace.points.length,
+      columns: fixture.result.fullSpace.dimensions.length,
+      schema: {
+        schemaVersion: "3dena.dataset-schema.v1",
+        headers: [...fixture.result.fullSpace.dimensions],
+        columns: fixture.result.fullSpace.dimensions.map((name) => ({
+          name,
+          inferredType: "number",
+          roles: ["unmapped"],
+        })),
+      },
+      limits: {
+        schemaVersion: "3dena.dataset-limits.v1",
+        maxFileBytes: 2 * 1024 * 1024,
+        maxWorksheets: 1,
+        maxRows: 50_000,
+        maxColumns: 200,
+        maxCells: 20_000_000,
+      },
+      warnings: [],
+      activationIdentity: `prepared:${datasetHash}:${specHash}`,
+    } as const;
+    const job = await json(await router.handle(new Request(`${BASE}/v1/jobs`, {
+      method: "POST",
+      headers: requestHeaders(undefined, "prepared-create-0001"),
+      body: JSON.stringify({
+        schemaVersion: "3dena.create-job-request.v1",
+        dataset: { sha256: datasetHash, byteLength: bytes.byteLength, format: "ena3d-json" },
+        processingPolicyConfirmed: true,
+      }),
+    })));
+    expect(job).toMatchObject({
+      schemaVersion: "3dena.job-capability.v1",
+      uploadUrl: `${BASE}/v1/jobs/${job.jobId}/content`,
+    });
+
+    const wrongBytes = Uint8Array.from(bytes);
+    wrongBytes[0] = wrongBytes[0] === 123 ? 91 : 123;
+    const rejectedUpload = await router.handle(new Request(job.uploadUrl, {
+      method: "PUT",
+      headers: requestHeaders(job.capabilityToken, "prepared-content-bad", "application/octet-stream"),
+      body: Uint8Array.from(wrongBytes).buffer,
+    }));
+    expect(rejectedUpload.status).toBe(409);
+    await expect(rejectedUpload.json()).resolves.toMatchObject({ code: "DATASET_RECEIPT_MISMATCH" });
+
+    const upload = await json(await router.handle(new Request(job.uploadUrl, {
+      method: "PUT",
+      headers: requestHeaders(job.capabilityToken, "prepared-content-good", "application/octet-stream"),
+      body: Uint8Array.from(bytes).buffer,
+    })));
+    expect(upload).toEqual({
+      schemaVersion: "3dena.prepared-import-upload-receipt.v1",
+      jobId: job.jobId,
+      sha256: datasetHash,
+      byteLength: bytes.byteLength,
+      accepted: true,
+    });
+
+    const execute = await json(await router.handle(new Request(`${BASE}/v1/jobs/${job.jobId}/execute`, {
+      method: "POST",
+      headers: requestHeaders(job.capabilityToken, "prepared-execute-0001"),
+      body: JSON.stringify({
+        schemaVersion: "3dena.execute-prepared-import-job-request.v1",
+        datasetReceipt: receipt,
+        task: {
+          schemaVersion: "3dena.activated-prepared-import-task-spec.v1",
+          kind: "prepared-import",
+          runId: "prepared-run-1",
+          deadlineEpochMilliseconds: NOW + 30 * 60_000,
+          mapping,
+        },
+      }),
+    })));
+    expect(execute).toMatchObject({
+      state: "QUEUED",
+      owner: { datasetHash, specHash, taskId: job.jobId },
+    });
+    const record = await repository.get(job.jobId);
+    expect(record).toMatchObject({
+      taskKind: "prepared-import",
+      activatedDatasetReceipt: { sha256: datasetHash, activationIdentity: receipt.activationIdentity },
+    });
+    const executionBytes = await objectStore.get(record!.executionObjectKey!);
+    const execution = JSON.parse(new TextDecoder().decode(executionBytes!));
+    expect(execution).toMatchObject({
+      dataset: { receipt: { format: "ena3d-json", sha256: datasetHash } },
+      task: {
+        kind: "prepared-import",
+        owner: { datasetHash, specHash, taskId: job.jobId },
+        input: { sourceName: "uploaded.ena3d.json", mapping },
+      },
+    });
+    expect(execution.task.input.exactBytesBase64).toBe(Buffer.from(bytes).toString("base64"));
+
+    const sourceResultHash = await hashAnalysisValueV1(fixture.result);
+    sourceResults.set(sourceResultHash, {
+      sourceKind: "prepared-exchange",
+      hash: sourceResultHash,
+      result: fixture.result,
+    });
+    const lease = await core.claimTask(job.jobId, {
+      leaseId: "prepared-source-lease",
+      holderId: "worker-prepared-source",
+      durationMs: 30_000,
+    });
+    const running = await core.executeTask(job.jobId, lease);
+    const resultKey = running.execution?.resultObjectKey;
+    const childId = running.execution?.childId;
+    if (resultKey === undefined || childId === undefined) throw new Error("Expected prepared source execution.");
+    const resultObject = await objectStore.putImmutable(
+      resultKey,
+      new TextEncoder().encode('{"preparedSource":true}'),
+    );
+    await core.publishResult(job.jobId, lease, resultObject.descriptor);
+    supervisor.observeTermination(childId, {
+      kind: "completed",
+      observedAtMs: NOW,
+      exitCode: 0,
+      signal: null,
+    });
+    await core.settleBackground();
+    sourceBindingOverrides.owner = execute.owner;
+
+    const derivedJob = await json(await router.handle(new Request(`${BASE}/v1/jobs`, {
+      method: "POST",
+      headers: requestHeaders(job.capabilityToken, "prepared-derived-create"),
+      body: JSON.stringify({
+        schemaVersion: "3dena.create-source-result-job-request.v1",
+        sourceJobId: job.jobId,
+        sourceResultHash,
+        processingPolicyConfirmed: true,
+      }),
+    })));
+    const derivedStatus = await json(await router.handle(new Request(
+      `${BASE}/v1/jobs/${derivedJob.jobId}/execute`,
+      {
+        method: "POST",
+        headers: requestHeaders(derivedJob.capabilityToken, "prepared-derived-execute"),
+        body: JSON.stringify({
+          schemaVersion: "3dena.execute-activated-job-request.v1",
+          task: {
+            schemaVersion: "3dena.activated-network-comparison-task-spec.v1",
+            kind: "network-comparison",
+            runId: "prepared-derived-run",
+            deadlineEpochMilliseconds: NOW + 30 * 60_000,
+            sourceResultHash,
+            groups: fixture.result.displaySpace.trajectory.groupOrder.map((group) => group.canonical),
+          },
+        }),
+      },
+    )));
+    expect(derivedStatus).toMatchObject({ state: "QUEUED" });
+    const derivedRecord = await repository.get(derivedJob.jobId);
+    const derivedBytes = await objectStore.get(derivedRecord!.executionObjectKey!);
+    const derivedInput = JSON.parse(new TextDecoder().decode(derivedBytes!));
+    expect(derivedInput).toMatchObject({
+      dataset: {
+        sourceResult: { sourceKind: "prepared-exchange", hash: sourceResultHash },
+      },
+      task: { kind: "network-comparison", sourceResultHash },
+    });
   });
 });

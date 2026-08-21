@@ -31,6 +31,7 @@ import {
   Upload,
 } from "lucide-react";
 import { AnalysisResults } from "@/components/analysis-results";
+import { PreparedAnalysisResults } from "@/components/prepared-analysis-results";
 import {
   RemoteDerivedControls,
   RemoteDerivedResult,
@@ -59,6 +60,7 @@ import {
   type RemoteDatasetWorkflowAdapter,
   type RemoteEnaSourceResult,
   type RemoteParsedWorksheet,
+  type RemotePreparedDataset,
   type RemoteWorksheetSummary,
 } from "@/lib/remote-dataset-workflow";
 import { mappingForHeaders } from "@/lib/sample-data";
@@ -78,7 +80,7 @@ type RemoteStatus =
   | "invalidated"
   | "error";
 
-type RemoteTaskKind = AnalysisTaskV1["kind"];
+type RemoteTaskKind = Exclude<AnalysisTaskV1["kind"], "prepared-import">;
 
 const REMOTE_TASK_OPTIONS = Object.freeze([
   { kind: "ena-model", label: "ENA model", readiness: "ready" },
@@ -167,6 +169,7 @@ export function RemoteAnalysisWorkspace({
   const [consent, setConsent] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [inventory, setInventory] = useState<RemoteDatasetInventory | null>(null);
+  const [prepared, setPrepared] = useState<RemotePreparedDataset | null>(null);
   const [worksheet, setWorksheet] = useState<RemoteWorksheetSummary | null>(null);
   const [parsed, setParsed] = useState<RemoteParsedWorksheet | null>(null);
   const [mapping, setMapping] = useState<AnalysisMapping | null>(null);
@@ -255,6 +258,7 @@ export function RemoteAnalysisWorkspace({
   function invalidateAfterSelection(): void {
     abortRequests();
     setInventory(null);
+    setPrepared(null);
     setWorksheet(null);
     setParsed(null);
     setMapping(null);
@@ -279,8 +283,31 @@ export function RemoteAnalysisWorkspace({
     requestAbortRef.current = controller;
     setStatus("uploading");
     setError(null);
-    setMessage("Uploading exact bytes and waiting for authoritative service inventory…");
+    const preparedExchange = selectedFile.name.toLocaleLowerCase("en-US").endsWith(".ena3d.json");
+    setMessage(preparedExchange
+      ? "Strictly validating an owned local snapshot before any service upload…"
+      : "Uploading exact bytes and waiting for authoritative service inventory…");
     try {
+      if (preparedExchange) {
+        const nextPrepared = await workflow.inspectPrepared(
+          selectedFile,
+          controller.signal,
+          (update) => {
+            if (generation !== generationRef.current) return;
+            const percent = update.total && update.total > 0
+              ? Math.round((update.completed / update.total) * 100)
+              : 0;
+            setProgress(Math.max(0, Math.min(100, percent)));
+            setMessage(update.message);
+          },
+        );
+        if (generation !== generationRef.current) return;
+        workflowIdRef.current = nextPrepared.workflowId;
+        setPrepared(nextPrepared);
+        setStatus("preview");
+        setMessage("Prepared exchange passed strict local preflight. Review the exact inventory and frozen mapping, then explicitly activate service parsing. No service upload has occurred yet.");
+        return;
+      }
       const next = await workflow.inspect(selectedFile, controller.signal, (update) => {
         if (generation !== generationRef.current) return;
         const percent = update.total && update.total > 0
@@ -304,6 +331,91 @@ export function RemoteAnalysisWorkspace({
       setStatus("error");
       const nextMessage = inspectError instanceof Error ? inspectError.message : "Remote inspection failed.";
       setError(`${nextMessage} The previously active dataset was not replaced.`);
+    }
+  }
+
+  async function runPreparedAnalysis(): Promise<void> {
+    if (!prepared || !client || status === "blocked" || enaSource) return;
+    abortRequests();
+    const generation = generationRef.current;
+    const controller = new AbortController();
+    requestAbortRef.current = controller;
+    const runId = uniqueId("prepared-run");
+    setStatus("running");
+    setResult(null);
+    setError(null);
+    setProgress(0);
+    setMessage("Creating a capability-bound prepared source job and uploading the exact reviewed bytes…");
+    try {
+      const binding = await workflow.bindPreparedExecution(
+        prepared,
+        runId,
+        Date.now() + 15 * 60_000,
+        controller.signal,
+      );
+      if (generation !== generationRef.current) return;
+      activeJobRef.current = { client, reference: binding.reference };
+      setCleanupPending(true);
+      const verified = await runRemoteAnalysis({
+        client,
+        binding,
+        approvedRemoteBuild: policy.approvedRemoteBuild,
+        currentWebBuildId: webBuildId ?? null,
+        signal: controller.signal,
+        onProgress(update) {
+          if (generation !== generationRef.current) return;
+          const percent = update.total && update.total > 0
+            ? Math.round((update.completed / update.total) * 100)
+            : 0;
+          setProgress(Math.max(0, Math.min(100, percent)));
+          setMessage(`Remote ${update.phase}: ${update.completed}${update.total === null ? "" : ` of ${update.total}`}.`);
+        },
+      });
+      if (generation !== generationRef.current) return;
+      if (verified.envelope.taskKind !== "prepared-import"
+          || verified.envelope.result.schemaVersion !== "3dena.prepared-space-result.v1") {
+        throw new Error("The verified service result is not a prepared-space source.");
+      }
+      sourceJobRef.current = { client, reference: binding.reference };
+      activeJobRef.current = null;
+      setCleanupPending(false);
+      setActive({
+        workflowId: prepared.workflowId,
+        activationIdentity: binding.datasetReceipt.activationIdentity,
+        receipt: binding.datasetReceipt,
+      });
+      setEnaSource({
+        reference: binding.reference,
+        datasetReceipt: binding.datasetReceipt,
+        sourceResultHash: verified.envelope.provenance.resultHash,
+        sourceKind: "prepared-exchange",
+      });
+      setEnaSourceResult(verified);
+      setResult(verified);
+      setPrepared(null);
+      workflowIdRef.current = null;
+      setProgress(100);
+      setStatus("completed");
+      setMessage("Prepared source activated. The service re-read the immutable upload, verified its exact bytes, executed the strict exchange parser and frozen mapping, and published a checksum-verified prepared-space result. jENA was not executed.");
+    } catch (runError) {
+      if (generation !== generationRef.current) return;
+      const cleanup = activeJobRef.current;
+      if (cleanup) {
+        try {
+          await deleteRemoteJobData(cleanup.client, cleanup.reference);
+          if (generation !== generationRef.current) return;
+          activeJobRef.current = null;
+          setCleanupPending(false);
+        } catch (cleanupError) {
+          if (generation !== generationRef.current) return;
+          setCleanupPending(true);
+          setStatus("error");
+          setError(`${runError instanceof Error ? runError.message : "Prepared activation failed."} Cleanup is still required: ${cleanupError instanceof Error ? cleanupError.message : "service deletion was not observed."}`);
+          return;
+        }
+      }
+      setStatus("error");
+      setError(runError instanceof Error ? runError.message : "Prepared activation failed.");
     }
   }
 
@@ -518,7 +630,7 @@ export function RemoteAnalysisWorkspace({
     setResult(null);
     setError(null);
     setProgress(0);
-    setMessage("Authorizing a derived job against the retained service-owned ENA result hash…");
+    setMessage("Authorizing a derived job against the retained service-owned scientific result hash…");
     try {
       const binding = await workflow.bindDerivedExecution(enaSource, task, controller.signal);
       if (generation !== generationRef.current) return;
@@ -547,7 +659,7 @@ export function RemoteAnalysisWorkspace({
       setResult(verified);
       setProgress(100);
       setStatus("completed");
-      setMessage("Derived analysis completed. Exact result bytes and ownership passed verification; its derived job objects are attested deleted. The ENA source remains capability-bound for another reviewed derived task.");
+      setMessage("Derived analysis completed. Exact result bytes and ownership passed verification; its derived job objects are attested deleted. The scientific source remains capability-bound for another reviewed derived task.");
     } catch (runError) {
       if (generation !== generationRef.current) return;
       const cleanup = activeJobRef.current;
@@ -609,7 +721,7 @@ export function RemoteAnalysisWorkspace({
     setSourceDeleting(true);
     setStatus("cancelling");
     setError(null);
-    setMessage("Deleting the retained ENA source result and closing its dataset session…");
+    setMessage("Deleting the retained scientific source result and closing its dataset session…");
     try {
       if (activeWorkflowIdRef.current) {
         await workflow.discard(activeWorkflowIdRef.current);
@@ -620,13 +732,15 @@ export function RemoteAnalysisWorkspace({
       }
       await deleteRemoteJobData(sourceJob.client, sourceJob.reference);
       sourceJobRef.current = null;
+      setActive(null);
+      setActiveMapping(null);
       setEnaSource(null);
       setEnaSourceResult(null);
       setResult(null);
       setSelectedTaskKind("ena-model");
       setProgress(0);
       setStatus("idle");
-      setMessage("The ENA source result and dataset session are attested deleted. Upload the dataset again to begin another analysis session.");
+      setMessage("The scientific source result and dataset session are attested deleted. Upload the dataset again to begin another analysis session.");
     } catch (deleteError) {
       setStatus("error");
       setError(deleteError instanceof Error ? deleteError.message : "Source-session deletion was not observed.");
@@ -665,11 +779,13 @@ export function RemoteAnalysisWorkspace({
   )?.label ?? selectedTaskKind;
   const taskProductBlocker = selectedTaskKind === "ena-model"
     ? enaSource
-      ? "This ENA source is already frozen and its raw activation bytes are deleted. Use a derived task, or activate a replacement dataset before refitting."
-      : null
+      ? "This scientific source is already frozen and its uploaded activation bytes are deleted. Use a derived task, or end the source session before activating a replacement."
+      : prepared
+        ? "This is a prepared coordinate-space exchange, not raw rows. Use its explicit service-parser activation control; no jENA model fit will be claimed."
+        : null
     : enaSource && enaSourceResult
       ? null
-      : `${selectedTaskLabel} requires a checksum-verified, service-owned ENA source result. Run ENA first; no derived job will be allocated before that source binding exists.`;
+      : `${selectedTaskLabel} requires a checksum-verified, service-owned scientific source result. Run ENA or activate a prepared exchange first; no derived job will be allocated before that source binding exists.`;
   const effectiveExecutionBlocker = executionBlocker ?? taskProductBlocker;
 
   return (
@@ -773,8 +889,8 @@ export function RemoteAnalysisWorkspace({
               />
             </label>
             <p className="validation-hint">
-              Prepared <code>.ena3d.json</code> remains unavailable until the
-              service publishes its reviewed prepared-exchange custody contract.
+              Prepared <code>.ena3d.json</code> is locally preflighted first; the
+              exact bytes are uploaded only after you review its inventory and frozen mapping and explicitly activate service parsing.
             </p>
             {selectedFile && (
               <div className="dataset-receipt" data-testid="remote-selected-file">
@@ -792,6 +908,45 @@ export function RemoteAnalysisWorkspace({
               <Upload size={18} aria-hidden="true" /> Upload and inspect
             </button>
           </section>
+
+          {prepared && (
+            <section className="workspace-card" aria-labelledby="remote-prepared-title">
+              <div className="workspace-card__heading">
+                <span className="icon-tile"><Database size={20} aria-hidden="true" /></span>
+                <div><p className="eyebrow">Prepared source review</p><h2 id="remote-prepared-title">Strict exchange inventory and frozen mapping</h2></div>
+              </div>
+              <dl className="remote-runtime-receipt" data-testid="remote-prepared-inventory">
+                <div><dt>Exact SHA-256</dt><dd><code>{prepared.sha256}</code></dd></div>
+                <div><dt>Exact bytes</dt><dd>{readableBytes(prepared.byteLength)}</dd></div>
+                <div><dt>Scientific shape</dt><dd>{prepared.points} points · {prepared.nodes} nodes · {prepared.edges} edges</dd></div>
+                <div><dt>Space</dt><dd>{prepared.dimensions.length} dimensions · {prepared.groups} groups · {prepared.periods.join(" → ")}</dd></div>
+                <div><dt>Participant identity</dt><dd>{prepared.mapping.participant.join(" + ")}</dd></div>
+                <div><dt>Group / time</dt><dd>{prepared.mapping.group} / {prepared.mapping.time}</dd></div>
+                <div><dt>Display dimensions</dt><dd>{prepared.mapping.displayDimensions.join(" / ")}</dd></div>
+                <div><dt>Cohort policy</dt><dd>{prepared.mapping.cohortPolicy}</dd></div>
+              </dl>
+              <div className="table-scroll dataset-preview" role="region" aria-label="Prepared exchange table inventory" tabIndex={0}>
+                <table>
+                  <caption>Exact strict-parser table inventory</caption>
+                  <thead><tr><th scope="col">Table</th><th scope="col">Rows</th><th scope="col">Columns</th></tr></thead>
+                  <tbody>{prepared.tables.map((table) => (
+                    <tr key={table.name}><th scope="row">{table.name}</th><td>{table.rows}</td><td>{table.columns}</td></tr>
+                  ))}</tbody>
+                </table>
+              </div>
+              <div className="processing-notice" role="note">
+                <strong>Scientific boundary</strong>
+                <p>This activation imports an existing prepared coordinate space. The service does not refit raw rows and records <code>jenaExecuted: false</code>.</p>
+              </div>
+              <button
+                type="button"
+                className="button button--primary"
+                onClick={() => void runPreparedAnalysis()}
+                disabled={Boolean(executionBlocker) || Boolean(enaSource) || cleanupPending || sourceDeleting || status === "running" || status === "cancelling"}
+                data-testid="remote-prepared-activate"
+              ><CheckCircle2 size={18} aria-hidden="true" /> Explicitly activate service parser</button>
+            </section>
+          )}
 
           {inventory && (
             <section className="workspace-card" aria-labelledby="remote-inventory-title">
@@ -922,8 +1077,8 @@ export function RemoteAnalysisWorkspace({
               ))}
             </select>
             <p className="validation-hint">
-              All seven public task discriminators use the persistent remote route.
-              Derived tasks bind a verified service-owned ENA source and never enter a browser Worker.
+              All seven public analysis task discriminators use the persistent remote route.
+              Prepared import is a separate source-activation contract; derived tasks bind either verified source kind and never enter a browser Worker.
             </p>
             {effectiveExecutionBlocker && (
               <p className="validation-hint" role="note" data-testid="remote-execution-blocker">
@@ -963,7 +1118,7 @@ export function RemoteAnalysisWorkspace({
                 onClick={() => void endSourceSession()}
                 disabled={sourceDeleting || status === "running" || status === "cancelling"}
                 data-testid="remote-source-delete"
-              ><Square size={17} aria-hidden="true" /> {sourceDeleting ? "Deleting source session…" : "End session and delete ENA source"}</button>
+              ><Square size={17} aria-hidden="true" /> {sourceDeleting ? "Deleting source session…" : "End session and delete scientific source"}</button>
             )}
           </section>
         </aside>
@@ -979,7 +1134,7 @@ export function RemoteAnalysisWorkspace({
         />
       )}
 
-      {result && result.envelope.taskKind !== "ena-model" && (
+      {result && result.envelope.taskKind !== "ena-model" && result.envelope.taskKind !== "prepared-import" && (
         <RemoteDerivedResult verified={result} />
       )}
 
@@ -999,6 +1154,20 @@ export function RemoteAnalysisWorkspace({
           datasetColumns={active.receipt.columns}
           datasetSchema={active.receipt.schema}
           datasetLimits={active.receipt.limits}
+          browserDerivedEnabled={false}
+        />
+      )}
+
+      {enaSourceResult && active
+        && enaSourceResult.envelope.taskKind === "prepared-import"
+        && enaSourceResult.envelope.result.schemaVersion === "3dena.prepared-space-result.v1" && (
+        <PreparedAnalysisResults
+          result={enaSourceResult.envelope.result}
+          owner={{
+            datasetHash: enaSourceResult.envelope.owner.datasetHash,
+            specHash: enaSourceResult.envelope.owner.specHash,
+            runId: enaSourceResult.envelope.owner.runId,
+          }}
           browserDerivedEnabled={false}
         />
       )}

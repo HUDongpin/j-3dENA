@@ -4,6 +4,7 @@ import type {
 import type {
   AnalysisJobReferenceV1,
   DatasetReceiptV1,
+  PreparedSpaceMapping,
   TypedScalarV1,
 } from "@3dena/analysis";
 import type { ActivatedAnalysisTaskSpecV1 } from "@3dena/compute-service-http";
@@ -66,6 +67,24 @@ export interface RemoteEnaSourceResult {
   readonly reference: AnalysisJobReferenceV1;
   readonly datasetReceipt: DatasetReceiptV1;
   readonly sourceResultHash: string;
+  readonly sourceKind?: "raw-jena" | "prepared-exchange";
+}
+
+export type RemoteScientificSourceResult = RemoteEnaSourceResult;
+
+export interface RemotePreparedDataset {
+  readonly workflowId: string;
+  readonly sha256: string;
+  readonly byteLength: number;
+  readonly dimensions: readonly string[];
+  readonly groupVariables: readonly string[];
+  readonly tables: readonly { name: string; rows: number; columns: number }[];
+  readonly points: number;
+  readonly nodes: number;
+  readonly edges: number;
+  readonly groups: number;
+  readonly periods: readonly string[];
+  readonly mapping: PreparedSpaceMapping;
 }
 
 export interface RemoteDatasetWorkflowCapability {
@@ -90,6 +109,11 @@ export interface RemoteDatasetWorkflowAdapter {
     signal: AbortSignal,
     onProgress: (progress: RemoteWorkflowProgress) => void,
   ): Promise<RemoteDatasetInventory>;
+  inspectPrepared(
+    file: File,
+    signal: AbortSignal,
+    onProgress: (progress: RemoteWorkflowProgress) => void,
+  ): Promise<RemotePreparedDataset>;
   parseWorksheet(
     inventory: RemoteDatasetInventory,
     worksheet: RemoteWorksheetSummary,
@@ -110,6 +134,12 @@ export interface RemoteDatasetWorkflowAdapter {
     task: ActivatedAnalysisTaskSpecV1,
     signal: AbortSignal,
   ): Promise<RemoteExecutionBinding>;
+  bindPreparedExecution(
+    prepared: RemotePreparedDataset,
+    runId: string,
+    deadlineEpochMilliseconds: number,
+    signal: AbortSignal,
+  ): Promise<RemoteExecutionBinding>;
   bindDerivedExecution(
     source: RemoteEnaSourceResult,
     task: ActivatedAnalysisTaskSpecV1,
@@ -122,6 +152,8 @@ export const REMOTE_DATASET_WORKFLOW_REQUIRED_CONTRACT =
   "3dena.compute-dataset-http.v1";
 export const REMOTE_DERIVED_EXECUTION_REQUIRED_CONTRACT =
   "3dena.compute-source-result-job-http.v1";
+export const REMOTE_PREPARED_IMPORT_REQUIRED_CONTRACT =
+  "3dena.compute-prepared-import-http.v1";
 
 /**
  * The current public job client deliberately has no worksheet/mapping routes.
@@ -145,10 +177,12 @@ export function createUnavailableRemoteDatasetWorkflowAdapter(): RemoteDatasetWo
       };
     },
     inspect: unavailable,
+    inspectPrepared: unavailable,
     parseWorksheet: unavailable,
     prepare: unavailable,
     activate: unavailable,
     bindExecution: unavailable,
+    bindPreparedExecution: unavailable,
     bindDerivedExecution: unavailable,
     async discard() {
       // No remote workflow was created, so there is nothing to delete.

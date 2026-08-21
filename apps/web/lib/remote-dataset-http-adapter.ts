@@ -1,10 +1,15 @@
 import {
   ANALYSIS_CONTRACT_VERSION_V1,
+  DATASET_RECEIPT_VERSION_V1,
   assertDatasetReceiptV1,
   assertTypedScalarV1,
+  hashAnalysisValueV1,
+  inspectDataset,
   type AnalysisJobCapabilityV1,
+  type DatasetReceiptV1,
 } from "@3dena/analysis";
 import type {
+  ActivatedPreparedImportTaskSpecV1,
   ActivatedAnalysisTaskSpecV1,
   ActivateComputeDatasetRequestV1,
   ComputeDatasetActivationReceiptV1,
@@ -17,11 +22,13 @@ import type {
   CreateSourceResultAnalysisJobRequestV1,
   CreateComputeDatasetRequestV1,
   ExecuteActivatedAnalysisJobRequestV1,
+  ExecutePreparedImportJobRequestV1,
   PreviewComputeDatasetRequestV1,
   PutComputeDatasetMappingRequestV1,
   SelectComputeDatasetWorksheetRequestV1,
   SourceResultAnalysisJobCapabilityV1,
 } from "@3dena/compute-service-http";
+import { DEFAULT_ENA3D_EXCHANGE_LIMITS } from "@3dena/io";
 import {
   createBrowserPreflightReceipt,
   type ActivationIdentityV1,
@@ -31,14 +38,20 @@ import {
 } from "@3dena/dataset-workflow";
 import type { AnalysisMapping } from "@/lib/analysis-contract";
 import {
+  PREPARED_EXCHANGE_MAPPING,
+  inspectPreparedExchange,
+} from "@/lib/prepared-class1";
+import {
   REMOTE_DATASET_WORKFLOW_REQUIRED_CONTRACT,
   REMOTE_DERIVED_EXECUTION_REQUIRED_CONTRACT,
+  REMOTE_PREPARED_IMPORT_REQUIRED_CONTRACT,
   type RemoteActiveDataset,
   type RemoteDatasetInventory,
   type RemoteDatasetPreview,
   type RemoteDatasetWorkflowAdapter,
   type RemoteEnaSourceResult,
   type RemoteParsedWorksheet,
+  type RemotePreparedDataset,
   type RemoteWorkflowProgress,
   type RemoteWorksheetSummary,
 } from "@/lib/remote-dataset-workflow";
@@ -59,6 +72,11 @@ interface DatasetSession {
   mappingReceipt: ComputeDatasetMappingReceiptV1 | null;
   preview: ComputeDatasetPreviewResultV1 | null;
   activation: ComputeDatasetActivationReceiptV1 | null;
+}
+
+interface PreparedSession {
+  readonly bytes: Uint8Array<ArrayBuffer>;
+  readonly dataset: RemotePreparedDataset;
 }
 
 class RemoteDatasetHttpError extends Error {
@@ -563,6 +581,47 @@ export function createHttpRemoteDatasetWorkflowAdapter(
   const serviceUrl = (path: string): string =>
     new URL(`${basePath}${path}`, baseUrl.origin).toString();
   const sessions = new Map<string, DatasetSession>();
+  const preparedSessions = new Map<string, PreparedSession>();
+
+  const preparedReceipt = async (
+    prepared: RemotePreparedDataset,
+  ): Promise<DatasetReceiptV1> => {
+    const specHash = await hashAnalysisValueV1({
+      kind: "prepared-import",
+      mapping: prepared.mapping,
+    });
+    const dimensions = [...prepared.dimensions];
+    const receipt: DatasetReceiptV1 = {
+      schemaVersion: DATASET_RECEIPT_VERSION_V1,
+      sha256: prepared.sha256,
+      byteLength: prepared.byteLength,
+      format: "ena3d-json",
+      sheet: null,
+      rows: prepared.points,
+      columns: dimensions.length,
+      schema: {
+        schemaVersion: "3dena.dataset-schema.v1",
+        headers: dimensions,
+        columns: dimensions.map((name) => ({
+          name,
+          inferredType: "number",
+          roles: ["unmapped"],
+        })),
+      },
+      limits: {
+        schemaVersion: "3dena.dataset-limits.v1",
+        maxFileBytes: DEFAULT_ENA3D_EXCHANGE_LIMITS.maxFileBytes,
+        maxWorksheets: 1,
+        maxRows: DEFAULT_ENA3D_EXCHANGE_LIMITS.maxPointRows,
+        maxColumns: DEFAULT_ENA3D_EXCHANGE_LIMITS.maxDimensions,
+        maxCells: DEFAULT_ENA3D_EXCHANGE_LIMITS.maxTableCells,
+      },
+      warnings: [],
+      activationIdentity: `prepared:${prepared.sha256}:${specHash}`,
+    };
+    assertDatasetReceiptV1(receipt);
+    return receipt;
+  };
 
   const headers = (
     session?: DatasetSession,
@@ -719,6 +778,15 @@ export function createHttpRemoteDatasetWorkflowAdapter(
           executionBlocker: "The allowlisted compute build does not advertise the reviewed service-owned source-result job contract. Analysis execution remains fail-closed.",
         };
       }
+      if (!build.contractVersions.includes(REMOTE_PREPARED_IMPORT_REQUIRED_CONTRACT)) {
+        return {
+          available: true,
+          contractVersion: REMOTE_DATASET_WORKFLOW_REQUIRED_CONTRACT,
+          blocker: null,
+          executionAvailable: false,
+          executionBlocker: "The allowlisted compute build does not advertise the reviewed prepared-exchange import contract. Analysis execution remains fail-closed.",
+        };
+      }
       return {
         available: true,
         contractVersion: REMOTE_DATASET_WORKFLOW_REQUIRED_CONTRACT,
@@ -817,6 +885,60 @@ export function createHttpRemoteDatasetWorkflowAdapter(
         }
         throw error;
       }
+    },
+
+    async inspectPrepared(
+      file: File,
+      signal: AbortSignal,
+      onProgress: (progress: RemoteWorkflowProgress) => void,
+    ) {
+      if (!file.name.toLocaleLowerCase("en-US").endsWith(".ena3d.json")) {
+        fail("UNSUPPORTED_DATASET", "Prepared inspection requires a strict .ena3d.json file.");
+      }
+      onProgress({
+        phase: "prepared-preflight",
+        completed: 0,
+        total: file.size,
+        message: "Strictly decoding an owned exact-byte snapshot before activation…",
+      });
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (signal.aborted) throw signal.reason;
+      const inspection = await inspectDataset(bytes, { name: file.name });
+      if (inspection.kind !== "prepared-exchange") {
+        fail("INVALID_PREPARED_EXCHANGE", "Prepared inspection returned the wrong dataset variant.");
+      }
+      const summary = inspectPreparedExchange(inspection.artifact.exchange);
+      const workflowId = randomIdempotencyKey("prepared");
+      const dataset: RemotePreparedDataset = Object.freeze({
+        workflowId,
+        sha256: inspection.receipt.sha256,
+        byteLength: inspection.receipt.byteLength,
+        dimensions: Object.freeze([...inspection.inventory.dimensions]),
+        groupVariables: Object.freeze([...inspection.inventory.groupVariables]),
+        tables: Object.freeze(inspection.inventory.tables.map((table) => Object.freeze({ ...table }))),
+        points: summary.points,
+        nodes: summary.nodes,
+        edges: summary.edges,
+        groups: summary.groups,
+        periods: Object.freeze([...summary.periods]),
+        mapping: Object.freeze({
+          ...PREPARED_EXCHANGE_MAPPING,
+          participant: Object.freeze([...PREPARED_EXCHANGE_MAPPING.participant]),
+          timeOrder: Object.freeze([...PREPARED_EXCHANGE_MAPPING.timeOrder]),
+          displayDimensions: Object.freeze([...PREPARED_EXCHANGE_MAPPING.displayDimensions]),
+        }) as typeof PREPARED_EXCHANGE_MAPPING,
+      });
+      preparedSessions.set(workflowId, {
+        bytes: Uint8Array.from(bytes),
+        dataset,
+      });
+      onProgress({
+        phase: "prepared-preflight",
+        completed: bytes.byteLength,
+        total: bytes.byteLength,
+        message: "Strict exchange schema, scientific inventory, exact hash, and frozen mapping passed local preflight. No service upload has occurred yet.",
+      });
+      return dataset;
     },
 
     async parseWorksheet(
@@ -942,6 +1064,122 @@ export function createHttpRemoteDatasetWorkflowAdapter(
         workflowId: preview.workflowId,
         activationIdentity: activation.activationIdentity,
         receipt: activation.datasetReceipt,
+      };
+    },
+
+    async bindPreparedExecution(
+      prepared: RemotePreparedDataset,
+      runId: string,
+      deadlineEpochMilliseconds: number,
+      signal: AbortSignal,
+    ) {
+      const session = preparedSessions.get(prepared.workflowId);
+      if (!session
+          || session.dataset.sha256 !== prepared.sha256
+          || session.dataset.byteLength !== prepared.byteLength
+          || !OPAQUE_ID.test(runId)
+          || !Number.isSafeInteger(deadlineEpochMilliseconds)) {
+        fail("STALE_WORKFLOW", "The prepared exchange is no longer bound to its owned exact-byte snapshot.");
+      }
+      const receipt = await preparedReceipt(prepared);
+      const capability = assertJobCapability(
+        await invokeJson(
+          serviceUrl("/v1/jobs"),
+          {
+            method: "POST",
+            headers: headers(undefined, randomIdempotencyKey("prepared-job")),
+            body: JSON.stringify({
+              schemaVersion: "3dena.create-job-request.v1",
+              dataset: {
+                sha256: receipt.sha256,
+                byteLength: receipt.byteLength,
+                format: "ena3d-json",
+              },
+              processingPolicyConfirmed: true,
+            }),
+          },
+          signal,
+        ),
+        baseUrl.origin,
+      );
+      try {
+        const uploadHeaders = jobHeaders(
+          capability.capabilityToken,
+          randomIdempotencyKey("prepared-content"),
+        );
+        uploadHeaders.set("content-type", "application/octet-stream");
+        const upload = record(await invokeJson(
+          capability.uploadUrl,
+          {
+            method: "PUT",
+            headers: uploadHeaders,
+            body: session.bytes,
+          },
+          signal,
+        ), "prepared upload receipt");
+        exact(upload, ["schemaVersion", "jobId", "sha256", "byteLength", "accepted"], "prepared upload receipt");
+        if (upload.schemaVersion !== "3dena.prepared-import-upload-receipt.v1"
+            || upload.jobId !== capability.jobId
+            || upload.sha256 !== receipt.sha256
+            || upload.byteLength !== receipt.byteLength
+            || upload.accepted !== true) {
+          fail("INVALID_RESPONSE", "Prepared upload receipt does not match the exact-byte reservation.");
+        }
+      } catch (error) {
+        try {
+          await invokeJson(
+            serviceUrl(`/v1/jobs/${encodeURIComponent(capability.jobId)}`),
+            {
+              method: "DELETE",
+              headers: jobHeaders(
+                capability.capabilityToken,
+                randomIdempotencyKey("prepared-upload-delete"),
+              ),
+            },
+          );
+        } catch (cleanupError) {
+          throw new RemoteDatasetHttpError(
+            "UPLOAD_CLEANUP_UNCONFIRMED",
+            `${error instanceof Error ? error.message : "Prepared upload failed."} Job cleanup was not attested: ${cleanupError instanceof Error ? cleanupError.message : "unknown cleanup failure"}`,
+          );
+        }
+        throw error;
+      }
+      preparedSessions.delete(prepared.workflowId);
+      const task: ActivatedPreparedImportTaskSpecV1 = {
+        schemaVersion: "3dena.activated-prepared-import-task-spec.v1",
+        kind: "prepared-import",
+        runId,
+        deadlineEpochMilliseconds,
+        mapping: prepared.mapping,
+      };
+      const executeRequest: ExecutePreparedImportJobRequestV1 = {
+        schemaVersion: "3dena.execute-prepared-import-job-request.v1",
+        datasetReceipt: receipt,
+        task,
+      };
+      return {
+        reference: {
+          jobId: capability.jobId,
+          capabilityToken: capability.capabilityToken,
+        },
+        datasetReceipt: receipt,
+        taskKind: task.kind,
+        runId,
+        async start(startSignal?: AbortSignal) {
+          await invokeJson(
+            serviceUrl(`/v1/jobs/${encodeURIComponent(capability.jobId)}/execute`),
+            {
+              method: "POST",
+              headers: jobHeaders(
+                capability.capabilityToken,
+                randomIdempotencyKey("prepared-execute"),
+              ),
+              body: JSON.stringify(executeRequest),
+            },
+            startSignal,
+          );
+        },
       };
     },
 
@@ -1079,6 +1317,7 @@ export function createHttpRemoteDatasetWorkflowAdapter(
     },
 
     async discard(workflowId: string, signal?: AbortSignal) {
+      if (preparedSessions.delete(workflowId)) return;
       const session = sessions.get(workflowId);
       if (!session) return;
       await deleteSession(session, signal);

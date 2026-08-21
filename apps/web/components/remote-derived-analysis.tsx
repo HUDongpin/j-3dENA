@@ -12,6 +12,8 @@ import type {
   TrajectoryComparisonResult,
   TrajectoryDynamicsResultV1,
   TrajectoryDurationUnitV1,
+  PreparedSpaceResult,
+  RawScalar,
 } from "@3dena/analysis";
 import type { ActivatedAnalysisTaskSpecV1 } from "@3dena/compute-service-http";
 import type { Data, Layout } from "plotly.js";
@@ -22,6 +24,7 @@ import {
   formatDerivedNumber,
 } from "@/components/derived-panel-ui";
 import { rawChangeFieldOptions, rawGroupOptions } from "@/lib/raw-derived-options";
+import { preparedChangeFieldOptions } from "@/lib/prepared-derived-analysis";
 import type { VerifiedRemoteAnalysisResult } from "@/lib/remote-analysis-runtime";
 
 const Plot = dynamic(
@@ -91,9 +94,20 @@ function uniqueRunId(kind: string): string {
   return `remote-${kind}-${suffix}`;
 }
 
+function remoteTaskDeadline(): number {
+  return Date.now() + 15 * 60_000;
+}
+
 function sourceAnalysis(source: VerifiedRemoteAnalysisResult): AnalysisResult | null {
   return source.envelope.taskKind === "ena-model"
     && source.envelope.result.schemaVersion === "3dena.analysis-result.v1"
+    ? source.envelope.result
+    : null;
+}
+
+function sourcePrepared(source: VerifiedRemoteAnalysisResult): PreparedSpaceResult | null {
+  return source.envelope.taskKind === "prepared-import"
+    && source.envelope.result.schemaVersion === "3dena.prepared-space-result.v1"
     ? source.envelope.result
     : null;
 }
@@ -126,25 +140,59 @@ export function RemoteDerivedControls({
   onRun,
 }: RemoteDerivedControlsProps) {
   const analysis = sourceAnalysis(source);
-  const groups = useMemo(() => analysis ? rawGroupOptions(analysis) : [], [analysis]);
-  const changeFields = useMemo(() => analysis ? rawChangeFieldOptions(analysis) : [], [analysis]);
-  const retainedDimensions = analysis?.dimensions ?? [];
-  const timeOrder = analysis?.trajectory?.timeOrder ?? [];
-  const metadataFields = useMemo(() => analysis
-    ? [...new Set(analysis.points.flatMap((point) => Object.keys(point.metadata)))].sort()
-    : [], [analysis]);
-  const weightFields = useMemo(() => analysis ? metadataFields.filter((candidate) => {
+  const prepared = sourcePrepared(source);
+  const groups = useMemo(() => analysis
+    ? rawGroupOptions(analysis)
+    : prepared?.displaySpace.trajectory.groupOrder.map((groupValue) => ({
+        canonical: groupValue.canonical,
+        label: groupValue.display,
+        value: groupValue.value,
+      })) ?? [], [analysis, prepared]);
+  const changeFields = useMemo(() => analysis
+    ? rawChangeFieldOptions(analysis).map((option) => ({
+        field: option.field,
+        label: option.label,
+        levels: option.levels.map((levelOption) => ({
+          value: levelOption.value,
+          label: levelOption.label,
+          rawValue: levelOption.value as RawScalar,
+        })),
+      }))
+    : prepared ? preparedChangeFieldOptions(prepared).map((option) => ({
+        field: option.field,
+        label: option.label,
+        levels: option.levels.map((levelOption) => ({
+          value: levelOption.token,
+          label: levelOption.label,
+          rawValue: levelOption.level,
+        })),
+      })) : [], [analysis, prepared]);
+  const retainedDimensions = analysis?.dimensions ?? prepared?.fullSpace.dimensions ?? [];
+  const timeOrder = analysis?.trajectory?.timeOrder ?? prepared?.displaySpace.trajectory.timeOrder ?? [];
+  const sourcePoints = useMemo(
+    () => analysis?.points ?? prepared?.fullSpace.points ?? [],
+    [analysis, prepared],
+  );
+  const metadataFields = useMemo(() =>
+    [...new Set(sourcePoints.flatMap((point) => Object.keys(point.metadata)))].sort(),
+  [sourcePoints]);
+  const weightFields = useMemo(() => (analysis || prepared) ? metadataFields.filter((candidate) => {
     const observed = new Map<string, number>();
-    for (const point of analysis.points) {
+    for (const point of sourcePoints) {
       const value = point.metadata[candidate];
-      if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || !point.time) return false;
-      const key = `${point.participantLabel.canonical}:${point.time.canonical}`;
+      if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || !("time" in point) || !point.time) return false;
+      const participant = "participant" in point && point.participant
+        ? point.participant.canonical
+        : "participantLabel" in point && point.participantLabel
+          ? point.participantLabel.canonical
+          : "";
+      const key = JSON.stringify([participant, point.time.canonical]);
       const previous = observed.get(key);
       if (previous !== undefined && previous !== value) return false;
       observed.set(key, value);
     }
     return observed.size > 0;
-  }) : [], [analysis, metadataFields]);
+  }) : [], [analysis, prepared, metadataFields, sourcePoints]);
   const [groupA, setGroupA] = useState(groups[0]?.canonical ?? "");
   const [groupB, setGroupB] = useState(groups[1]?.canonical ?? "");
   const [group, setGroup] = useState(groups[0]?.canonical ?? "");
@@ -170,6 +218,7 @@ export function RemoteDerivedControls({
   const [confidenceLevel, setConfidenceLevel] = useState(0.95);
   const [seed, setSeed] = useState(42);
   const activeChangeField = changeFields.find((candidate) => candidate.field === field);
+  const activeChangeLevel = activeChangeField?.levels.find((candidate) => candidate.value === level);
   const pairValid = groups.length >= 2 && groupA !== "" && groupB !== "" && groupA !== groupB;
   const selectedDimensions = dimensions.slice(0, 3);
   const trajectoryDimensionsValid = selectedDimensions.length === 3 && new Set(selectedDimensions).size === 3;
@@ -182,9 +231,9 @@ export function RemoteDerivedControls({
   }) && parsedTimeValues.every((value) => value !== null && Number.isFinite(value))
     && parsedTimeValues.every((value, index) => index === 0 || (value as number) > (parsedTimeValues[index - 1] as number))
     && (timeKind !== "numeric-v1" || timeUnit.trim() !== "");
-  const valid = Boolean(analysis) && (
+  const valid = Boolean(analysis || prepared) && (
     kind === "network-comparison" ? pairValid
-      : kind === "change-network" ? Boolean(activeChangeField?.levels.some((candidate) => candidate.value === level))
+      : kind === "change-network" ? Boolean(activeChangeLevel)
         : kind === "statistics" ? pairValid && dimensions.length > 0 && (design === "independent" || pairedConfirmed)
           : kind === "trajectory" ? group !== "" && trajectoryDimensionsValid && timeValuesValid
             && (estimand === "equal-participant-v1" || weightField !== "")
@@ -201,17 +250,17 @@ export function RemoteDerivedControls({
 
   function submit(event: FormEvent): void {
     event.preventDefault();
-    if (!valid || !analysis) return;
+    if (!valid || (!analysis && !prepared)) return;
     const shared = {
       runId: uniqueRunId(kind),
-      deadlineEpochMilliseconds: Date.now() + 15 * 60_000,
+      deadlineEpochMilliseconds: remoteTaskDeadline(),
       sourceResultHash: source.envelope.provenance.resultHash,
     } as const;
     let task: ActivatedAnalysisTaskSpecV1;
     if (kind === "network-comparison") {
       task = { schemaVersion: "3dena.activated-network-comparison-task-spec.v1", kind, ...shared, groups: [groupA, groupB] };
     } else if (kind === "change-network") {
-      task = { schemaVersion: "3dena.activated-change-network-task-spec.v1", kind, ...shared, field, level };
+      task = { schemaVersion: "3dena.activated-change-network-task-spec.v1", kind, ...shared, field, level: activeChangeLevel!.rawValue };
     } else if (kind === "statistics") {
       task = {
         schemaVersion: "3dena.activated-statistics-task-spec.v1",
@@ -269,8 +318,8 @@ export function RemoteDerivedControls({
     onRun(task);
   }
 
-  if (!analysis) {
-    return <p className="derived-validation" role="alert">The verified source is not an ENA result.</p>;
+  if (!analysis && !prepared) {
+    return <p className="derived-validation" role="alert">The verified source is not a supported scientific source result.</p>;
   }
   const copy = TASK_COPY[kind];
 

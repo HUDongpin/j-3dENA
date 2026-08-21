@@ -11,6 +11,7 @@ import {
   analyzeTrajectoryDynamicsV1,
   type TrajectoryDynamicsResultV1,
 } from "@3dena/trajectory";
+import { decodeEna3dExchangeV1WithSha256 } from "@3dena/io";
 
 import { analyzeRows } from "./analyze";
 import {
@@ -35,6 +36,7 @@ import {
   preparedPointsForGroup,
   preparedReductionDiagnostic,
 } from "./prepared-derived";
+import { analyzePreparedSpace } from "./prepared-space";
 import type { PreparedSpacePoint, PreparedSpaceResult } from "./prepared-types";
 import {
   adaptAnalysisResultTrajectorySeries,
@@ -122,6 +124,7 @@ export interface StatisticsTaskResultV1 {
 
 export type AnalysisTaskResultV1 =
   | AnalysisResult
+  | PreparedSpaceResult
   | NetworkComparisonResultV1
   | ChangeNetworkResultV1
   | StatisticsTaskResultV1
@@ -279,7 +282,7 @@ function validateDataset(dataset: AnalysisExecutionDataset, task: AnalysisTaskV1
 
 async function sourceResult(
   dataset: AnalysisExecutionDataset,
-  task: Exclude<AnalysisTaskV1, { kind: "ena-model" }>,
+  task: Exclude<AnalysisTaskV1, { kind: "ena-model" } | { kind: "prepared-import" }>,
 ): Promise<ResolvedExecutionSource> {
   const source = dataset.sourceResult;
   if (!source) reject("MISSING_SOURCE_RESULT", "dataset.sourceResult", `is required for ${task.kind}`);
@@ -604,6 +607,7 @@ function executePreparedTrajectoryDynamics(source: PreparedSpaceResult, task: Tr
 
 function diagnosticsFor(result: AnalysisTaskResultV1): AnalysisDiagnostic[] {
   if (result.schemaVersion === "3dena.analysis-result.v1"
+    || result.schemaVersion === "3dena.prepared-space-result.v1"
     || result.schemaVersion === "3dena.network-comparison.v1"
     || result.schemaVersion === "3dena.change-network.v1"
     || result.schemaVersion === "3dena.trajectory-dynamics.v1"
@@ -617,6 +621,54 @@ function diagnosticsFor(result: AnalysisTaskResultV1): AnalysisDiagnostic[] {
   );
 }
 
+function decodePreparedBase64(value: string): Uint8Array<ArrayBuffer> {
+  let binary: string;
+  try {
+    binary = globalThis.atob(value);
+  } catch {
+    reject("INVALID_PREPARED_BASE64", "task.input.exactBytesBase64", "must decode as canonical base64");
+  }
+  if (globalThis.btoa(binary) !== value) {
+    reject("INVALID_PREPARED_BASE64", "task.input.exactBytesBase64", "must use canonical padding and trailing bits");
+  }
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+async function executePreparedImport(
+  dataset: AnalysisExecutionDataset,
+  task: Extract<AnalysisTaskV1, { kind: "prepared-import" }>,
+): Promise<PreparedSpaceResult> {
+  if (dataset.receipt.format !== "ena3d-json") {
+    reject("PREPARED_RECEIPT_FORMAT_MISMATCH", "dataset.receipt.format", "must be ena3d-json for prepared-import");
+  }
+  const bytes = decodePreparedBase64(task.input.exactBytesBase64);
+  const artifact = await decodeEna3dExchangeV1WithSha256(bytes);
+  if (artifact.sha256 !== dataset.receipt.sha256
+      || artifact.byteLength !== dataset.receipt.byteLength) {
+    reject("PREPARED_SOURCE_RECEIPT_MISMATCH", "task.input.exactBytesBase64", "does not match the immutable upload receipt");
+  }
+  const result = analyzePreparedSpace({
+    source: { artifact, name: task.input.sourceName },
+    mapping: task.input.mapping,
+  });
+  const dimensions = result.fullSpace.dimensions;
+  if (dataset.receipt.rows !== result.fullSpace.points.length
+      || dataset.receipt.columns !== dimensions.length
+      || dataset.receipt.schema.headers.length !== dimensions.length
+      || dataset.receipt.schema.columns.length !== dimensions.length
+      || dimensions.some((dimension, index) =>
+        dataset.receipt.schema.headers[index] !== dimension
+        || dataset.receipt.schema.columns[index]?.name !== dimension
+        || dataset.receipt.schema.columns[index]?.inferredType !== "number"
+        || dataset.receipt.schema.columns[index]?.roles.length !== 1
+        || dataset.receipt.schema.columns[index]?.roles[0] !== "unmapped")) {
+    reject("PREPARED_INVENTORY_MISMATCH", "dataset.receipt", "does not match the service-decoded prepared exchange result");
+  }
+  return result;
+}
+
 async function executeTaskResult(
   dataset: AnalysisExecutionDataset,
   task: AnalysisTaskV1,
@@ -624,6 +676,8 @@ async function executeTaskResult(
   switch (task.kind) {
     case "ena-model":
       return { result: analyzeRows(task.input), sourceKind: "raw-jena" };
+    case "prepared-import":
+      return { result: await executePreparedImport(dataset, task), sourceKind: "prepared-exchange" };
     case "network-comparison": {
       const source = await sourceResult(dataset, task);
       return {

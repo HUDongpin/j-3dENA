@@ -3,7 +3,6 @@ import type {
   ActiveDatasetHandleV1,
   ActivationIdentityV1,
   BrowserPreflightReceiptV1,
-  DatasetReceiptV1,
   DatasetRoleMappingV1,
   InspectedDatasetCandidateV1,
   ParsedIdentityV1,
@@ -16,12 +15,16 @@ import type {
   AnalysisResourceLimits,
   AnalysisSpecV1,
   AnalysisTaskV1,
+  DatasetReceiptV1,
+  PreparedSpaceMapping,
 } from "@3dena/analysis";
 import type { ImmutableObjectDescriptor } from "@3dena/compute-service-core";
 
 export const COMPUTE_DATASET_HTTP_VERSION = "3dena.compute-dataset-http.v1" as const;
 export const COMPUTE_SOURCE_RESULT_JOB_HTTP_VERSION =
   "3dena.compute-source-result-job-http.v1" as const;
+export const COMPUTE_PREPARED_IMPORT_HTTP_VERSION =
+  "3dena.compute-prepared-import-http.v1" as const;
 export const COMPUTE_DATASET_ACTIVATION_RECEIPT_VERSION =
   "3dena.compute-dataset-activation-receipt.v1" as const;
 
@@ -118,6 +121,22 @@ export interface SourceResultAnalysisJobCapabilityV1 {
   readonly expiresAt: string;
 }
 
+/** Browser-safe prepared import task. Exact bytes are uploaded separately and
+ * are injected into the internal Worker task only by the compute service. */
+export interface ActivatedPreparedImportTaskSpecV1 {
+  readonly schemaVersion: "3dena.activated-prepared-import-task-spec.v1";
+  readonly kind: "prepared-import";
+  readonly runId: string;
+  readonly deadlineEpochMilliseconds: number;
+  readonly mapping: PreparedSpaceMapping;
+}
+
+export interface ExecutePreparedImportJobRequestV1 {
+  readonly schemaVersion: "3dena.execute-prepared-import-job-request.v1";
+  readonly datasetReceipt: DatasetReceiptV1;
+  readonly task: ActivatedPreparedImportTaskSpecV1;
+}
+
 /**
  * Browser-safe ENA request. Raw rows, mapping, dataset hashes, and task IDs are
  * deliberately absent: the service derives and binds all of them from the
@@ -137,7 +156,7 @@ export interface ExecuteActivatedAnalysisJobRequestV1 {
   readonly task: ActivatedAnalysisTaskSpecV1;
 }
 
-type ActivatedDerivedTaskSpecV1<Kind extends Exclude<AnalysisTaskV1["kind"], "ena-model">> =
+type ActivatedDerivedTaskSpecV1<Kind extends Exclude<AnalysisTaskV1["kind"], "ena-model" | "prepared-import">> =
   Omit<Extract<AnalysisTaskV1, { kind: Kind }>, "schemaVersion" | "owner"> & {
     readonly schemaVersion: `3dena.activated-${Kind}-task-spec.v1`;
     readonly runId: string;

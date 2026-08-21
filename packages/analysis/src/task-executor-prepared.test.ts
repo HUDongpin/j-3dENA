@@ -16,7 +16,11 @@ import {
   type AnalysisExecutionDatasetV2,
 } from "./task-executor";
 import type { PreparedSpaceResult } from "./prepared-types";
-import { createSyntheticPreparedFixture } from "../test-support/synthetic-prepared-exchange";
+import {
+  createSyntheticPreparedExchangeBytes,
+  createSyntheticPreparedFixture,
+  createSyntheticPreparedMapping,
+} from "../test-support/synthetic-prepared-exchange";
 
 const SPEC_HASH = "b".repeat(64);
 const DEADLINE = 4_000_000_000_000;
@@ -96,6 +100,99 @@ function taskBase(
 }
 
 describe("executeAnalysisTask with immutable PreparedSpaceResult", () => {
+  it("decodes and revalidates exact prepared bytes inside the primary service task", async () => {
+    const bytes = createSyntheticPreparedExchangeBytes();
+    const fixture = await createSyntheticPreparedFixture();
+    const mapping = createSyntheticPreparedMapping();
+    const specHash = await hashAnalysisValueV1({ kind: "prepared-import", mapping });
+    const receipt = {
+      schemaVersion: DATASET_RECEIPT_VERSION_V1,
+      sha256: fixture.artifact.sha256,
+      byteLength: fixture.artifact.byteLength,
+      format: "ena3d-json" as const,
+      sheet: null,
+      rows: fixture.result.fullSpace.points.length,
+      columns: fixture.result.fullSpace.dimensions.length,
+      schema: {
+        schemaVersion: "3dena.dataset-schema.v1" as const,
+        headers: [...fixture.result.fullSpace.dimensions],
+        columns: fixture.result.fullSpace.dimensions.map((name) => ({
+          name,
+          inferredType: "number" as const,
+          roles: ["unmapped" as const],
+        })),
+      },
+      limits: {
+        schemaVersion: "3dena.dataset-limits.v1" as const,
+        maxFileBytes: 2 * 1024 * 1024,
+        maxWorksheets: 1,
+        maxRows: 50_000,
+        maxColumns: 200,
+        maxCells: 20_000_000,
+      },
+      warnings: [],
+      activationIdentity: `prepared:${fixture.artifact.sha256}:${specHash}`,
+    };
+    const dataset: AnalysisExecutionDatasetV2 = {
+      schemaVersion: ANALYSIS_EXECUTION_DATASET_VERSION_V2,
+      receipt,
+      specHash,
+      buildId: "prepared-import-test-build",
+      generatedAt: GENERATED_AT,
+    };
+    const task: Extract<AnalysisTaskV1, { kind: "prepared-import" }> = {
+      schemaVersion: ANALYSIS_TASK_VERSION_V1,
+      kind: "prepared-import",
+      owner: {
+        contractVersion: ANALYSIS_CONTRACT_VERSION_V1,
+        datasetHash: receipt.sha256,
+        specHash,
+        runId: "prepared-import-run",
+        taskId: "prepared-import-task",
+      },
+      deadlineEpochMilliseconds: DEADLINE,
+      input: {
+        sourceName: "uploaded.ena3d.json",
+        exactBytesBase64: Buffer.from(bytes).toString("base64"),
+        mapping,
+      },
+    };
+    const envelope = await executeAnalysisTask(dataset, task);
+    expect(envelope).toMatchObject({
+      taskKind: "prepared-import",
+      result: {
+        schemaVersion: "3dena.prepared-space-result.v1",
+        sourceKind: "prepared-exchange",
+        rawJenaRecompute: false,
+        sourceReceipt: {
+          name: "uploaded.ena3d.json",
+          sha256: receipt.sha256,
+          byteLength: receipt.byteLength,
+        },
+      },
+      provenance: { sourceKind: "prepared-exchange", jenaExecuted: false },
+    });
+    expect(await hashAnalysisValueV1(envelope.result)).toBe(envelope.provenance.resultHash);
+
+    const wrongHash = "f".repeat(64);
+    await expect(executeAnalysisTask({
+      ...dataset,
+      receipt: { ...receipt, sha256: wrongHash },
+    }, {
+      ...task,
+      owner: { ...task.owner, datasetHash: wrongHash },
+    })).rejects.toMatchObject({
+      code: "PREPARED_SOURCE_RECEIPT_MISMATCH",
+    });
+
+    await expect(executeAnalysisTask(dataset, {
+      ...task,
+      input: { ...task.input, exactBytesBase64: "AB==" },
+    })).rejects.toMatchObject({
+      code: "INVALID_PREPARED_BASE64",
+    });
+  });
+
   it("validates the standalone prepared execution dataset schema recursively", async () => {
     const fixture = await preparedFixture();
     expect(

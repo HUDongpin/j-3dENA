@@ -8,6 +8,8 @@ import type {
   RawScalar,
 } from "./types";
 import type { TrajectoryTimeValueV1 } from "@3dena/trajectory";
+import type { PreparedSpaceMapping } from "./prepared-types";
+import { assertPreparedDerivedSource } from "./prepared-derived";
 
 import {
   ANALYSIS_EXECUTION_DATASET_V2_SCHEMA,
@@ -22,6 +24,7 @@ export const PROVENANCE_MANIFEST_VERSION_V1 = "3dena.provenance-manifest.v1" as 
 
 export const RESULT_SCHEMA_VERSION_BY_TASK_KIND_V1 = Object.freeze({
   "ena-model": "3dena.analysis-result.v1",
+  "prepared-import": "3dena.prepared-space-result.v1",
   "network-comparison": "3dena.network-comparison.v1",
   "change-network": "3dena.change-network.v1",
   statistics: "3dena.statistics-task-result.v1",
@@ -170,6 +173,20 @@ export interface EnaModelTaskV1 extends AnalysisTaskBaseV1 {
   input: AnalyzeRowsInput;
 }
 
+/**
+ * Internal exact-byte prepared-exchange import. The browser-facing HTTP
+ * contract never carries `exactBytesBase64`; the service injects bytes read
+ * back from its immutable upload object only after matching the receipt hash.
+ */
+export interface PreparedImportTaskV1 extends AnalysisTaskBaseV1 {
+  kind: "prepared-import";
+  input: {
+    sourceName: "uploaded.ena3d.json";
+    exactBytesBase64: string;
+    mapping: PreparedSpaceMapping;
+  };
+}
+
 export interface NetworkComparisonTaskV1 extends AnalysisTaskBaseV1 {
   kind: "network-comparison";
   sourceResultHash: string;
@@ -232,6 +249,7 @@ export interface BootstrapTaskV1 extends AnalysisTaskBaseV1 {
 
 export type AnalysisTaskV1 =
   | EnaModelTaskV1
+  | PreparedImportTaskV1
   | NetworkComparisonTaskV1
   | ChangeNetworkTaskV1
   | StatisticsTaskV1
@@ -598,6 +616,31 @@ function rawScalar(value: unknown, path: string): asserts value is RawScalar {
   }
 }
 
+function assertPreparedMapping(value: unknown, path: string): asserts value is PreparedSpaceMapping {
+  const mapping = objectAt(value, path);
+  exactFields(mapping, [
+    "participant", "participantLabel", "group", "time", "timeOrder",
+    "cohortPolicy", "displayDimensions", "missingDisplayCoordinates",
+  ], path);
+  stringList(mapping.participant, `${path}.participant`);
+  nonEmptyString(mapping.participantLabel, `${path}.participantLabel`);
+  nonEmptyString(mapping.group, `${path}.group`);
+  nonEmptyString(mapping.time, `${path}.time`);
+  if (!Array.isArray(mapping.timeOrder) || mapping.timeOrder.length === 0) {
+    contractError(`${path}.timeOrder`, "must contain at least one ordered period");
+  }
+  mapping.timeOrder.forEach((candidate, index) => rawScalar(candidate, `${path}.timeOrder[${index}]`));
+  if (mapping.cohortPolicy !== "available" && mapping.cohortPolicy !== "complete") {
+    contractError(`${path}.cohortPolicy`, "must be available or complete");
+  }
+  if (stringList(mapping.displayDimensions, `${path}.displayDimensions`, 3).length !== 3) {
+    contractError(`${path}.displayDimensions`, "must contain exactly three dimensions");
+  }
+  if (mapping.missingDisplayCoordinates !== "reject") {
+    contractError(`${path}.missingDisplayCoordinates`, "must be reject");
+  }
+}
+
 function trajectoryDurationUnit(value: unknown, path: string): void {
   if (typeof value !== "string" || !TRAJECTORY_DURATION_UNITS.has(value)) {
     contractError(path, "must be milliseconds, seconds, minutes, hours, days, or weeks");
@@ -653,6 +696,21 @@ export function assertAnalysisTaskV1(value: unknown, path = "task"): asserts val
       exactFields(task, [...base, "input"], path);
       objectAt(task.input, `${path}.input`);
       return;
+    case "prepared-import": {
+      exactFields(task, [...base, "input"], path);
+      const input = objectAt(task.input, `${path}.input`);
+      exactFields(input, ["sourceName", "exactBytesBase64", "mapping"], `${path}.input`);
+      if (input.sourceName !== "uploaded.ena3d.json") contractError(`${path}.input.sourceName`, "must be the non-identifying service source name");
+      if (typeof input.exactBytesBase64 !== "string"
+          || input.exactBytesBase64.length < 4
+          || input.exactBytesBase64.length > 7_000_000
+          || input.exactBytesBase64.length % 4 !== 0
+          || !/^[A-Za-z0-9+/]+={0,2}$/u.test(input.exactBytesBase64)) {
+        contractError(`${path}.input.exactBytesBase64`, "must be bounded canonical base64");
+      }
+      assertPreparedMapping(input.mapping, `${path}.input.mapping`);
+      return;
+    }
     case "network-comparison":
       exactFields(task, [...base, "sourceResultHash", "groups"], path);
       lowercaseSha256(task.sourceResultHash, `${path}.sourceResultHash`);
@@ -820,7 +878,7 @@ export function assertAnalysisResultEnvelopeV1(value: unknown, path = "envelope"
   exactFields(envelope, ["schemaVersion", "owner", "taskKind", "result", "diagnostics", "evidence", "provenance"], path);
   if (envelope.schemaVersion !== RESULT_ENVELOPE_VERSION_V1) contractError(`${path}.schemaVersion`, `must be ${RESULT_ENVELOPE_VERSION_V1}`);
   assertTaskOwnerV1(envelope.owner, `${path}.owner`);
-  if (!(["ena-model", "network-comparison", "change-network", "statistics", "trajectory", "trajectory-comparison", "bootstrap"] as unknown[]).includes(envelope.taskKind)) {
+  if (!(["ena-model", "prepared-import", "network-comparison", "change-network", "statistics", "trajectory", "trajectory-comparison", "bootstrap"] as unknown[]).includes(envelope.taskKind)) {
     contractError(`${path}.taskKind`, "is unsupported");
   }
   const taskKind = envelope.taskKind as AnalysisTaskV1["kind"];
@@ -1492,6 +1550,7 @@ function assertBootstrap(value: unknown, path: string): void {
 export function assertAnalysisTaskResultV1(value: unknown, taskKind: AnalysisTaskV1["kind"], path = "result"): asserts value is { schemaVersion: string } {
   switch (taskKind) {
     case "ena-model": assertAnalysisResult(value, path); return;
+    case "prepared-import": assertPreparedDerivedSource(value as import("./prepared-types").PreparedSpaceResult); return;
     case "network-comparison": assertNetworkComparison(value, path); return;
     case "change-network": assertChangeNetwork(value, path); return;
     case "statistics": assertStatisticsTaskResult(value, path); return;
@@ -1541,6 +1600,24 @@ const RAW_SCALAR_SCHEMA = {
 const SAFE_NON_NEGATIVE_INTEGER_SCHEMA = { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER } as const;
 const SAFE_POSITIVE_INTEGER_SCHEMA = { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER } as const;
 const TASK_OWNER_SCHEMA_REF = { $ref: "https://3dena.com/schemas/task-owner.v1.json" } as const;
+const PREPARED_MAPPING_TASK_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "participant", "participantLabel", "group", "time", "timeOrder",
+    "cohortPolicy", "displayDimensions", "missingDisplayCoordinates",
+  ],
+  properties: {
+    participant: { type: "array", minItems: 1, uniqueItems: true, items: NON_EMPTY_STRING_SCHEMA },
+    participantLabel: NON_EMPTY_STRING_SCHEMA,
+    group: NON_EMPTY_STRING_SCHEMA,
+    time: NON_EMPTY_STRING_SCHEMA,
+    timeOrder: { type: "array", minItems: 1, uniqueItems: true, items: RAW_SCALAR_SCHEMA },
+    cohortPolicy: { enum: ["available", "complete"] },
+    displayDimensions: { type: "array", minItems: 3, maxItems: 3, uniqueItems: true, items: NON_EMPTY_STRING_SCHEMA },
+    missingDisplayCoordinates: { const: "reject" },
+  },
+} as const;
 
 function analysisTaskSchema(kind: AnalysisTaskV1["kind"], required: string[], properties: Record<string, unknown>) {
   return {
@@ -1744,6 +1821,17 @@ export const CONTRACT_SCHEMAS_V1 = Object.freeze({
     },
     oneOf: [
       analysisTaskSchema("ena-model", ["input"], { input: { type: "object" } }),
+      analysisTaskSchema("prepared-import", ["input"], {
+        input: {
+          type: "object", additionalProperties: false,
+          required: ["sourceName", "exactBytesBase64", "mapping"],
+          properties: {
+            sourceName: { const: "uploaded.ena3d.json" },
+            exactBytesBase64: { type: "string", minLength: 4, maxLength: 7_000_000, pattern: "^[A-Za-z0-9+/]+={0,2}$" },
+            mapping: PREPARED_MAPPING_TASK_SCHEMA,
+          },
+        },
+      }),
       analysisTaskSchema("network-comparison", ["sourceResultHash", "groups"], { sourceResultHash: HASH_SCHEMA, groups: { $ref: "#/$defs/stringPair" } }),
       analysisTaskSchema("change-network", ["sourceResultHash", "field", "level"], { sourceResultHash: HASH_SCHEMA, field: NON_EMPTY_STRING_SCHEMA, level: RAW_SCALAR_SCHEMA }),
       analysisTaskSchema("statistics", ["sourceResultHash", "design", "groups", "dimensions", "alternative", "adjustment", "samePhysicalEntityConfirmed"], {
@@ -1805,7 +1893,7 @@ export const CONTRACT_SCHEMAS_V1 = Object.freeze({
     required: ["schemaVersion", "owner", "taskKind", "result", "diagnostics", "evidence", "provenance"],
     properties: {
       schemaVersion: { const: RESULT_ENVELOPE_VERSION_V1 }, owner: TASK_OWNER_SCHEMA_REF,
-      taskKind: { enum: ["ena-model", "network-comparison", "change-network", "statistics", "trajectory", "trajectory-comparison", "bootstrap"] },
+      taskKind: { enum: ["ena-model", "prepared-import", "network-comparison", "change-network", "statistics", "trajectory", "trajectory-comparison", "bootstrap"] },
       result: { oneOf: Object.values(RESULT_VARIANT_SCHEMAS_V1) },
       diagnostics: {
         type: "array", items: {

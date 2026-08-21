@@ -773,16 +773,6 @@ const BOOTSTRAP_RESULT_SCHEMA = exactObject(
   },
 );
 
-export const RESULT_VARIANT_SCHEMAS_V1: Readonly<Record<string, JsonSchema>> = Object.freeze({
-  "ena-model": ENA_MODEL_RESULT_SCHEMA_V1,
-  "network-comparison": NETWORK_COMPARISON_RESULT_SCHEMA,
-  "change-network": CHANGE_NETWORK_RESULT_SCHEMA,
-  statistics: STATISTICS_TASK_RESULT_SCHEMA,
-  trajectory: TRAJECTORY_DYNAMICS_RESULT_SCHEMA,
-  "trajectory-comparison": TRAJECTORY_COMPARISON_RESULT_SCHEMA,
-  bootstrap: BOOTSTRAP_RESULT_SCHEMA,
-});
-
 const PREPARED_ENTITY_KEY_SCHEMA = exactObject(
   ["canonical", "display", "columns", "columnTypes", "values"],
   {
@@ -949,6 +939,17 @@ export const PREPARED_SPACE_RESULT_SCHEMA_V1: JsonSchema = exactObject(
     ),
   },
 );
+
+export const RESULT_VARIANT_SCHEMAS_V1: Readonly<Record<string, JsonSchema>> = Object.freeze({
+  "ena-model": ENA_MODEL_RESULT_SCHEMA_V1,
+  "prepared-import": PREPARED_SPACE_RESULT_SCHEMA_V1,
+  "network-comparison": NETWORK_COMPARISON_RESULT_SCHEMA,
+  "change-network": CHANGE_NETWORK_RESULT_SCHEMA,
+  statistics: STATISTICS_TASK_RESULT_SCHEMA,
+  trajectory: TRAJECTORY_DYNAMICS_RESULT_SCHEMA,
+  "trajectory-comparison": TRAJECTORY_COMPARISON_RESULT_SCHEMA,
+  bootstrap: BOOTSTRAP_RESULT_SCHEMA,
+});
 
 export const ANALYSIS_EXECUTION_DATASET_V2_SCHEMA: JsonSchema = {
   $id: "https://3dena.com/schemas/analysis-execution-dataset.v2.json",

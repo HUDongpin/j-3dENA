@@ -2,10 +2,39 @@ import { describe, expect, it, vi } from "vitest";
 import type { DatasetReceiptV1 } from "@3dena/analysis";
 import type { ActivatedAnalysisTaskSpecV1 } from "@3dena/compute-service-http";
 import { createHttpRemoteDatasetWorkflowAdapter } from "./remote-dataset-http-adapter";
+import { createSyntheticPreparedExchangeBytes } from "../../../packages/analysis/test-support/synthetic-prepared-exchange";
 
 const BASE = "https://compute.example.test";
 const DATASET_ID = "dataset-12345678";
 const CAPABILITY = "dataset-capability-token-12345678";
+
+function class1ShapedSyntheticPreparedBytes(): Uint8Array {
+  const decoded = JSON.parse(new TextDecoder().decode(
+    createSyntheticPreparedExchangeBytes(),
+  )) as {
+    group_variables: string[];
+    tables: Record<string, { columns: Array<{ name: string; values: unknown[] }> }>;
+  };
+  const names = new Map([
+    ["Cohort", "Group"],
+    ["Actor", "Speaker"],
+    ["Phase", "Period"],
+  ]);
+  decoded.group_variables = decoded.group_variables.map((name) => names.get(name) ?? name);
+  for (const table of Object.values(decoded.tables)) {
+    for (const column of table.columns) {
+      column.name = names.get(column.name) ?? column.name;
+      if (column.name === "Period") {
+        column.values = column.values.map((value) => ({
+          "phase-one": "TP1",
+          "phase-two": "TP2",
+          "phase-three": "TP3",
+        })[String(value)] ?? value);
+      }
+    }
+  }
+  return new TextEncoder().encode(JSON.stringify(decoded));
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -53,6 +82,7 @@ function receipt(sha256: string, byteLength: number): DatasetReceiptV1 {
 
 function remoteHarness(contractVersions: string[] = [
   "3dena.compute-dataset-http.v1",
+  "3dena.compute-prepared-import-http.v1",
   "3dena.compute-source-result-job-http.v1",
   "3dena.contract.v1",
 ]) {
@@ -61,6 +91,8 @@ function remoteHarness(contractVersions: string[] = [
   let jobRequests = 0;
   let activatedExecuteBody: Record<string, unknown> | null = null;
   let sourceCreateBody: Record<string, unknown> | null = null;
+  let preparedCreateBody: Record<string, unknown> | null = null;
+  let preparedExecuteBody: Record<string, unknown> | null = null;
   const requests: Array<{ url: string; method: string; headers: Headers }> = [];
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
@@ -92,7 +124,7 @@ function remoteHarness(contractVersions: string[] = [
         expiresAt: "2026-08-22T00:00:00.000Z",
       }, 201);
     }
-    if (url.endsWith("/content") && method === "PUT") {
+    if (url === `${BASE}/v1/datasets/${DATASET_ID}/content` && method === "PUT") {
       if (!preflight) throw new Error("preflight missing");
       return json({
         schemaVersion: "3dena.inspected-dataset-candidate.v1",
@@ -236,6 +268,16 @@ function remoteHarness(contractVersions: string[] = [
           expiresAt: "2026-08-22T00:00:00.000Z",
         }, 201);
       }
+      if (body.schemaVersion === "3dena.create-job-request.v1") {
+        preparedCreateBody = body;
+        return json({
+          schemaVersion: "3dena.job-capability.v1",
+          jobId: "job-12345678",
+          capabilityToken: "job-capability-token-12345678",
+          uploadUrl: `${BASE}/v1/jobs/job-12345678/content`,
+          expiresAt: "2026-08-22T00:00:00.000Z",
+        }, 201);
+      }
       return json({
         schemaVersion: "3dena.job-capability.v1",
         jobId: "job-12345678",
@@ -244,10 +286,23 @@ function remoteHarness(contractVersions: string[] = [
         expiresAt: "2026-08-22T00:00:00.000Z",
       }, 201);
     }
+    if (url === `${BASE}/v1/jobs/job-12345678/content` && method === "PUT") {
+      const dataset = preparedCreateBody?.dataset as Record<string, unknown> | undefined;
+      return json({
+        schemaVersion: "3dena.prepared-import-upload-receipt.v1",
+        jobId: "job-12345678",
+        sha256: dataset?.sha256,
+        byteLength: dataset?.byteLength,
+        accepted: true,
+      });
+    }
     if (url === `${BASE}/v1/jobs/job-12345678/execute`
         || url === `${BASE}/v1/jobs/derived-job-12345678/execute`) {
       jobRequests += 1;
       activatedExecuteBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      if (activatedExecuteBody.schemaVersion === "3dena.execute-prepared-import-job-request.v1") {
+        preparedExecuteBody = activatedExecuteBody;
+      }
       return json({
         schemaVersion: "3dena.job-status.v1",
         jobId: "job-12345678",
@@ -279,6 +334,8 @@ function remoteHarness(contractVersions: string[] = [
     jobRequests: () => jobRequests,
     activatedExecuteBody: () => activatedExecuteBody,
     sourceCreateBody: () => sourceCreateBody,
+    preparedCreateBody: () => preparedCreateBody,
+    preparedExecuteBody: () => preparedExecuteBody,
   };
 }
 
@@ -513,6 +570,75 @@ describe("HTTP remote dataset workflow adapter", () => {
       request.url.endsWith("/v1/jobs/job-12345678/execute"));
     expect(enaExecuteMutations.every((request) =>
       request.headers.get("authorization") === "Bearer job-capability-token-12345678")).toBe(true);
+  });
+
+  it("preflights a strict prepared exchange locally, then uploads exact bytes only during explicit service binding", async () => {
+    const target = remoteHarness();
+    const bytes = class1ShapedSyntheticPreparedBytes();
+    const file = new File([Uint8Array.from(bytes)], "prepared.ena3d.json", {
+      type: "application/json",
+    });
+    const prepared = await target.adapter.inspectPrepared(
+      file,
+      new AbortController().signal,
+      vi.fn(),
+    );
+    expect(prepared).toMatchObject({
+      byteLength: bytes.byteLength,
+      dimensions: ["SVD1", "SVD2", "SVD3", "SVD4", "SVD5"],
+      points: 18,
+      nodes: 3,
+      edges: 3,
+      groups: 2,
+      periods: ["TP1", "TP2", "TP3"],
+    });
+    expect(target.preparedCreateBody()).toBeNull();
+
+    const binding = await target.adapter.bindPreparedExecution(
+      prepared,
+      "prepared-run-test",
+      Date.now() + 60_000,
+      new AbortController().signal,
+    );
+    expect(binding).toMatchObject({
+      taskKind: "prepared-import",
+      runId: "prepared-run-test",
+      datasetReceipt: {
+        format: "ena3d-json",
+        sha256: prepared.sha256,
+        rows: prepared.points,
+        columns: prepared.dimensions.length,
+      },
+    });
+    expect(target.preparedCreateBody()).toMatchObject({
+      schemaVersion: "3dena.create-job-request.v1",
+      dataset: {
+        sha256: prepared.sha256,
+        byteLength: prepared.byteLength,
+        format: "ena3d-json",
+      },
+      processingPolicyConfirmed: true,
+    });
+    const contentRequest = target.requests.find((request) =>
+      request.url === `${BASE}/v1/jobs/job-12345678/content` && request.method === "PUT");
+    expect(contentRequest?.headers.get("authorization")).toBe("Bearer job-capability-token-12345678");
+    expect(contentRequest?.headers.get("content-type")).toBe("application/octet-stream");
+
+    await binding.start();
+    expect(target.preparedExecuteBody()).toMatchObject({
+      schemaVersion: "3dena.execute-prepared-import-job-request.v1",
+      datasetReceipt: {
+        format: "ena3d-json",
+        activationIdentity: expect.stringMatching(/^prepared:[a-f0-9]{64}:[a-f0-9]{64}$/u),
+      },
+      task: {
+        schemaVersion: "3dena.activated-prepared-import-task-spec.v1",
+        kind: "prepared-import",
+        runId: "prepared-run-test",
+        mapping: prepared.mapping,
+      },
+    });
+    expect(JSON.stringify(target.preparedExecuteBody())).not.toContain("exactBytesBase64");
   });
 
   it("rejects prepared exchanges before allocating a remote capability", async () => {

@@ -4,11 +4,19 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   ANALYSIS_CONTRACT_VERSION_V1,
+  ANALYSIS_TASK_VERSION_V1,
+  DATASET_RECEIPT_VERSION_V1,
   analyzeRows,
   compareGroupNetworks,
+  executeAnalysisTask,
   hashAnalysisValueV1,
   type AnalysisResultEnvelopeV1,
 } from "@3dena/analysis";
+import {
+  createSyntheticPreparedExchangeBytes,
+  createSyntheticPreparedFixture,
+  createSyntheticPreparedMapping,
+} from "../../../packages/analysis/test-support/synthetic-prepared-exchange";
 import { createRemoteFormalDownload } from "./remote-formal-download";
 
 function uint16(bytes: Uint8Array, offset: number): number {
@@ -212,6 +220,117 @@ describe("remote formal download", () => {
       },
     });
     expect(JSON.stringify(receipt)).not.toContain("resultUrl");
+  });
+
+  it("exports a verified prepared primary source with truthful no-jENA provenance", async () => {
+    const fixture = await createSyntheticPreparedFixture();
+    const bytes = createSyntheticPreparedExchangeBytes();
+    const mapping = createSyntheticPreparedMapping();
+    const specHash = await hashAnalysisValueV1({ kind: "prepared-import", mapping });
+    const datasetReceipt = {
+      schemaVersion: DATASET_RECEIPT_VERSION_V1,
+      sha256: fixture.artifact.sha256,
+      byteLength: fixture.artifact.byteLength,
+      format: "ena3d-json" as const,
+      sheet: null,
+      rows: fixture.result.fullSpace.points.length,
+      columns: fixture.result.fullSpace.dimensions.length,
+      schema: {
+        schemaVersion: "3dena.dataset-schema.v1" as const,
+        headers: [...fixture.result.fullSpace.dimensions],
+        columns: fixture.result.fullSpace.dimensions.map((name) => ({
+          name,
+          inferredType: "number" as const,
+          roles: ["unmapped" as const],
+        })),
+      },
+      limits: {
+        schemaVersion: "3dena.dataset-limits.v1" as const,
+        maxFileBytes: 2 * 1024 * 1024,
+        maxWorksheets: 1,
+        maxRows: 50_000,
+        maxColumns: 200,
+        maxCells: 20_000_000,
+      },
+      warnings: [],
+      activationIdentity: `prepared:${fixture.artifact.sha256}:${specHash}`,
+    };
+    const envelope = await executeAnalysisTask({
+      schemaVersion: "3dena.analysis-execution-dataset.v2",
+      receipt: datasetReceipt,
+      specHash,
+      buildId: "fly-build-prepared",
+      generatedAt: "2026-08-21T00:00:00.000Z",
+    }, {
+      schemaVersion: ANALYSIS_TASK_VERSION_V1,
+      kind: "prepared-import",
+      owner: {
+        contractVersion: ANALYSIS_CONTRACT_VERSION_V1,
+        datasetHash: fixture.artifact.sha256,
+        specHash,
+        runId: "remote-prepared-run",
+        taskId: "remote-prepared-task",
+      },
+      deadlineEpochMilliseconds: 4_000_000_000_000,
+      input: {
+        sourceName: "uploaded.ena3d.json",
+        exactBytesBase64: Buffer.from(bytes).toString("base64"),
+        mapping,
+      },
+    });
+    const exactBytes = new TextEncoder().encode(JSON.stringify(envelope));
+    const verified = {
+      envelope,
+      exactBytes: Uint8Array.from(exactBytes),
+      reference: {
+        schemaVersion: "3dena.job-result-reference.v1" as const,
+        jobId: envelope.owner.taskId,
+        sha256: createHash("sha256").update(exactBytes).digest("hex"),
+        byteLength: exactBytes.byteLength,
+        resultUrl: "https://objects.example.test/prepared.json",
+        exportUrl: null,
+        expiresAt: "2026-08-22T00:00:00.000Z",
+      },
+    };
+    const approvedBuild = {
+      approvalManifestSha256: "5".repeat(64),
+      releaseId: "release-prepared",
+      gitCommit: "6".repeat(40),
+      webBuildId: "web-build-prepared",
+      flyImageDigest: `sha256:${"7".repeat(64)}`,
+      flyBuildId: "fly-build-prepared",
+    } as const;
+    const bundle = await createRemoteFormalDownload({
+      verified,
+      sourceVerified: verified,
+      activeDataset: {
+        workflowId: "prepared-workflow",
+        activationIdentity: datasetReceipt.activationIdentity,
+        receipt: datasetReceipt,
+      },
+      approvedBuild,
+      currentWebBuildId: approvedBuild.webBuildId,
+    });
+    const outer = zipEntries(bundle.bytes);
+    const formal = zipEntries(outer.get("formal/formal-scientific-export.zip")!);
+    expect([...formal.keys()]).toEqual(expect.arrayContaining([
+      "coordinates.csv",
+      "nodes.csv",
+      "edges.csv",
+      "lineweights.csv",
+      "centroids.csv",
+      "prepared-artifacts.json",
+      "manifest.json",
+    ]));
+    const downloadReceipt = JSON.parse(new TextDecoder().decode(
+      outer.get("receipts/remote-execution-receipt.json"),
+    ));
+    expect(downloadReceipt).toMatchObject({
+      taskKind: "prepared-import",
+      sourceKind: "prepared-exchange",
+      jenaExecuted: false,
+      sourceResultBinding: null,
+    });
   });
 
   it("packages a derived result with its exact verified ENA source and formal portfolio CSV", async () => {
