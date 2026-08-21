@@ -9,6 +9,17 @@ export const SMALL_RAW_CSV = resolve(
   "packages/parity-contracts/fixtures/small-raw.csv",
 );
 
+// WebKit can spend more than one second waiting for a sticky run card to
+// settle after the Worker status first becomes observable. Keep the
+// development-only Worker delay comfortably beyond that actionability window,
+// then wait past the same frozen boundary to prove a terminated Worker cannot
+// publish late data.
+export const CANCELLATION_WORKER_DELAY_MS = 5_000;
+export const CANCELLATION_LATE_RESULT_GUARD_MS =
+  CANCELLATION_WORKER_DELAY_MS + 500;
+export const CANCELLATION_TEST_PATH =
+  `/app?e2eWorkerDelayMs=${CANCELLATION_WORKER_DELAY_MS}`;
+
 function syntheticPreparedExchangeBytes(): Buffer {
   const rows = [
     ["synthetic-1", "A", "alpha", "TP1", 0.1, 0.2, 0.3],

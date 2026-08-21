@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { expect, test, type Download } from "@playwright/test";
 
 import {
+  CANCELLATION_LATE_RESULT_GUARD_MS,
+  CANCELLATION_TEST_PATH,
   expectOwnedResult,
   installWorkerProbe,
   observeAnalysisTransport,
@@ -123,7 +125,7 @@ test("cancelling terminates the Worker and rejects a late result", async ({
   page,
 }) => {
   const transport = observeAnalysisTransport(page);
-  await page.goto("/app?e2eWorkerDelayMs=1200");
+  await page.goto(CANCELLATION_TEST_PATH);
   transport.start();
   await uploadSmallRaw(page);
 
@@ -140,7 +142,9 @@ test("cancelling terminates the Worker and rejects a late result", async ({
     .getByTestId(testIds.workerStatus)
     .getAttribute("data-worker-id");
   expect(activeWorkerId).toBeTruthy();
-  await page.getByTestId(testIds.cancel).click();
+  const cancel = page.getByTestId(testIds.cancel);
+  await expect(cancel).toBeEnabled();
+  await cancel.click();
   await expect(page.getByTestId(testIds.status)).toHaveAttribute(
     "data-state",
     "cancelled",
@@ -153,7 +157,7 @@ test("cancelling terminates the Worker and rejects a late result", async ({
 
   // Wait beyond the deterministic test delay: the terminated run may never
   // repopulate either status or visualization.
-  await page.waitForTimeout(1_500);
+  await page.waitForTimeout(CANCELLATION_LATE_RESULT_GUARD_MS);
   await expect(page.getByTestId(testIds.status)).toHaveAttribute(
     "data-state",
     "cancelled",

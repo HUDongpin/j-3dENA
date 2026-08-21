@@ -1,6 +1,8 @@
 import { expect, test, type Download, type Page } from "@playwright/test";
 
 import {
+  CANCELLATION_LATE_RESULT_GUARD_MS,
+  CANCELLATION_TEST_PATH,
   SYNTHETIC_PREPARED_SHA256,
   expectOwnedResult,
   installWorkerProbe,
@@ -113,7 +115,7 @@ test("a failed prepared import is transactional and preserves the owned result",
 test("prepared cancellation terminates the Worker and a replacement owns the rerun", async ({
   page,
 }) => {
-  await page.goto("/app?e2eWorkerDelayMs=1200");
+  await page.goto(CANCELLATION_TEST_PATH);
   await loadSyntheticPreparedExchange(page);
 
   await page.getByTestId(testIds.run).click();
@@ -126,7 +128,9 @@ test("prepared cancellation terminates the Worker and a replacement owns the rer
     .getAttribute("data-worker-id");
   expect(firstWorker).toBeTruthy();
 
-  await page.getByTestId(testIds.cancel).click();
+  const cancel = page.getByTestId(testIds.cancel);
+  await expect(cancel).toBeEnabled();
+  await cancel.click();
   await expect(page.getByTestId(testIds.status)).toHaveAttribute(
     "data-state",
     "cancelled",
@@ -135,7 +139,7 @@ test("prepared cancellation terminates the Worker and a replacement owns the rer
     "data-state",
     "terminated",
   );
-  await page.waitForTimeout(1_500);
+  await page.waitForTimeout(CANCELLATION_LATE_RESULT_GUARD_MS);
   await expect(page.getByTestId(testIds.result)).toBeHidden();
   await expect(page.getByTestId(testIds.status)).toHaveAttribute(
     "data-state",
