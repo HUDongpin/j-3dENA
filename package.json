@@ -36,11 +36,12 @@
     "test:jena-successor": "node scripts/verify-jena-successor.mjs",
     "test:release-receipts:unit": "node --test scripts/verify-release-receipts.test.mjs",
     "test:release-receipts": "node scripts/verify-release-receipts.mjs",
+    "test:playwright-evidence:unit": "node --test scripts/verify-playwright-evidence.test.mjs",
     "test:strict-closure": "npm run release:strict-closure --workspace @3dena/parity-contracts",
     "release:gate": "npm run check && npm run test:jena-successor && npm run test:strict-closure && npm run test:release-receipts",
     "test:ci-action-pins": "node scripts/verify-ci-action-pins.mjs",
     "evidence:worktree": "node scripts/capture-worktree-inventory.mjs",
-    "check": "npm run lint && npm run typecheck && npm run test && npm run test:golden && npm run test:oracle-custody && npm run test:class1-custody:unit && npm run build && npm run build:public && npm run verify:public-package && npm run test:public-package && npm run test:runtime-boundary:unit && npm run test:runtime-boundary && npm run test:release-security:unit && npm run test:release-security && npm run test:parser-fuzz:unit && npm run test:jena-successor:unit && npm run test:release-receipts:unit && npm run test:ci-action-pins"
+    "check": "npm run lint && npm run typecheck && npm run test && npm run test:golden && npm run test:oracle-custody && npm run test:class1-custody:unit && npm run build && npm run build:public && npm run verify:public-package && npm run test:public-package && npm run test:runtime-boundary:unit && npm run test:runtime-boundary && npm run test:release-security:unit && npm run test:release-security && npm run test:parser-fuzz:unit && npm run test:jena-successor:unit && npm run test:release-receipts:unit && npm run test:playwright-evidence:unit && npm run test:ci-action-pins"
   },
   "dependencies": {
     "plotly.js": "3.7.0"

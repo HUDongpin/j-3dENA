@@ -12,6 +12,17 @@ function configuredPort(): number {
   return port;
 }
 
+function artifactRoot(): string {
+  const segment = process.env.PLAYWRIGHT_REPORT_SEGMENT;
+  if (segment === undefined) return "output/playwright";
+  if (!/^[a-z0-9][a-z0-9-]{0,31}$/u.test(segment)) {
+    throw new Error(
+      "PLAYWRIGHT_REPORT_SEGMENT must be 1-32 lowercase letters, digits, or hyphens.",
+    );
+  }
+  return `output/playwright/${segment}`;
+}
+
 // A managed run owns a dedicated, configurable port. An explicitly supplied
 // base URL may target a separately managed build, but the setup project still
 // requires the j-3dENA /build-info identity before any product test runs.
@@ -21,6 +32,7 @@ const baseURL = (
 ).replace(/\/+$/u, "");
 const suppliedServer = Boolean(process.env.PLAYWRIGHT_BASE_URL);
 const chromiumChannel = process.env.PLAYWRIGHT_CHROMIUM_CHANNEL;
+const evidenceRoot = artifactRoot();
 const managedBuildId = process.env.PLAYWRIGHT_EXPECTED_BUILD_ID
   ?? `playwright-managed-${localPort}`;
 if (!suppliedServer && !process.env.PLAYWRIGHT_EXPECTED_BUILD_ID) {
@@ -42,14 +54,15 @@ export default defineConfig({
   expect: {
     timeout: 10_000,
   },
-  outputDir: "output/playwright/test-results",
+  outputDir: `${evidenceRoot}/test-results`,
   reporter: process.env.CI
     ? [
         ["github"],
+        ["json", { outputFile: `${evidenceRoot}/report.json` }],
         [
           "html",
           {
-            outputFolder: "output/playwright/report",
+            outputFolder: `${evidenceRoot}/report`,
             open: "never",
           },
         ],
@@ -59,7 +72,7 @@ export default defineConfig({
         [
           "html",
           {
-            outputFolder: "output/playwright/report",
+            outputFolder: `${evidenceRoot}/report`,
             open: "never",
           },
         ],

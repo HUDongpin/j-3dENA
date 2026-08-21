@@ -87,6 +87,9 @@ jobs:
       - name: Test exact-build release receipt contracts
         run: npm run test:release-receipts:unit
 
+      - name: Test Playwright evidence receipt contracts
+        run: npm run test:playwright-evidence:unit
+
       - name: Generate complete deterministic production dependency SBOM
         run: |
           mkdir -p output
@@ -131,10 +134,28 @@ jobs:
         run: npx playwright install --with-deps chromium firefox webkit
 
       - name: Multi-browser product matrix
+        env:
+          PLAYWRIGHT_REPORT_SEGMENT: multi-browser
         run: npm run test:e2e -- --project=chromium --project=firefox --project=webkit
 
       - name: Accessibility at 390, 768, and 1280 px
+        env:
+          PLAYWRIGHT_REPORT_SEGMENT: accessibility
         run: npm run test:e2e:a11y
+
+      - name: Verify immutable Playwright evidence
+        if: always()
+        env:
+          SOURCE_HEAD_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          node scripts/verify-playwright-evidence.mjs \
+            --root output/playwright \
+            --output output/playwright/receipt.json \
+            --repository "$GITHUB_REPOSITORY" \
+            --execution-commit "$GITHUB_SHA" \
+            --source-head-commit "$SOURCE_HEAD_COMMIT" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT"
 
       - name: Upload Playwright evidence
         if: always()
@@ -142,5 +163,5 @@ jobs:
         with:
           name: playwright-evidence
           path: output/playwright
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 14
