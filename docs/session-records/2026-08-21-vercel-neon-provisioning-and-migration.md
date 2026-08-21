@@ -45,6 +45,17 @@ migration version/hash. The child branch was then permanently deleted and the
 project returned to one branch, `main`. Only the test branch and sentinel were
 deleted; the production schema was not dropped or reset.
 
+The subsequent Git push of commit
+`5a1b66d5709f0a814b118e8ac8e2b9b67a99a1cc` triggered Vercel Preview deployment
+`dpl_HWWu9US9HEAZgX5cBHPsXrsCNqTf`. Vercel reported the deployment Ready after
+a 25-second build, including three seconds of integration provisioning, and
+identified the source as `HUDongpin/j-3dENA` branch
+`codex/strict-gap-closure-20260821`. Neon then showed an automatically created
+branch `preview/codex/strict-gap-closure-20260821`
+(`br-aged-glade-b3h9zp11`), parent `main`, created by Vercel. A read-only query
+at `2026-08-21T07:37:57.744344Z` returned one migration row, the exact approved
+version/hash, and 17 `compute_*` tables from that Preview branch.
+
 The structured execution record is
 `evidence/cloud/2026-08-21-neon-migration-execution.json`.
 
@@ -54,10 +65,9 @@ This closes the technical first-migration, database transaction/immutability,
 and manual child-branch isolation/reset/deletion probes only. The operator is
 the implementation operator, so this is not independent approval, a provider-
 signed immutable receipt, a legal/DPA region approval, or a signed
-`BuildApprovalV1`. Vercel Preview branch creation is enabled, but the automatic
-branch from a subsequent exact preview deployment still requires live
-observation and is not yet an independently approved staging build. Two real
-Fly Machines, object storage,
+`BuildApprovalV1`. Automatic Vercel Preview/Neon branch isolation has live
+implementation-operator evidence, but it is not yet an independently approved
+staging build bound to a signed approval. Two real Fly Machines, object storage,
 restart/capacity/TTL/object-deletion probes, stress, soak, canary, production
 probes, and the same-BuildApproval full rollback drill remain open. The overall
 product state remains `IMPLEMENTED_UNVERIFIED`.

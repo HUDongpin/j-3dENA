@@ -74,8 +74,13 @@ rollback, child-branch reset/deletion probe and evidence limitations are recorde
 `evidence/cloud/2026-08-21-neon-migration-execution.json`. This implementation-
 operator receipt is not independent approval or a signed `BuildApprovalV1`.
 
-Still external and therefore not claimed here: BuildApproval-bound Vercel
-Preview/database isolation, two real Fly Machines, Vercel Private Blob
+Vercel Preview database branching is enabled and one exact Git-sourced Preview
+deployment automatically created a Vercel-owned Neon child branch. A read-only
+query confirmed the expected migration version/hash and 17 tables on that
+branch. This proves the integration mechanism, not independent Preview approval.
+
+Still external and therefore not claimed here: independently approved,
+BuildApproval-bound Preview isolation, two real Fly Machines, Vercel Private Blob
 Beta/legal/region approval,
 container/image scans, egress controls, production secrets, Class 1 custody,
 restart/capacity/TTL/deletion probes, 2-hour stress, 24-hour soak, canary, full

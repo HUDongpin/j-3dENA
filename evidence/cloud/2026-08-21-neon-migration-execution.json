@@ -89,6 +89,29 @@
       "deletionObservedAtUtc": "2026-08-21T07:31:43Z",
       "postDeletionProjectBranchCount": 1,
       "remainingBranch": "main"
+    },
+    "automaticVercelPreviewBranch": {
+      "status": "pass",
+      "triggerCommit": "5a1b66d5709f0a814b118e8ac8e2b9b67a99a1cc",
+      "sourceRepository": "https://github.com/HUDongpin/j-3dENA",
+      "sourceBranch": "codex/strict-gap-closure-20260821",
+      "vercelDeploymentId": "dpl_HWWu9US9HEAZgX5cBHPsXrsCNqTf",
+      "vercelDeploymentUrl": "https://vercel.com/peter-dongpin-hu-s-projects/j-3dena/HWWu9US9HEAZgX5cBHPsXrsCNqTf",
+      "vercelEnvironment": "Preview",
+      "vercelStatus": "Ready",
+      "vercelCreatedAtUtc": "2026-08-21T07:36:02Z",
+      "vercelBuildDurationSeconds": 25,
+      "integrationProvisioningDurationSeconds": 3,
+      "neonBranchName": "preview/codex/strict-gap-closure-20260821",
+      "neonBranchId": "br-aged-glade-b3h9zp11",
+      "parentBranch": "main",
+      "createdBy": "Vercel",
+      "database": "neondb",
+      "readOnlyVerificationObservedAtUtc": "2026-08-21T07:37:57.744344Z",
+      "migrationRows": 1,
+      "migrationVersion": "0001-persistent-compute",
+      "migrationSha256": "2ada0828852d69dfebfaf3da96d41ba69dd91b522117fd868fad1665239e568e",
+      "computeTableCount": 17
     }
   },
   "secretHandling": {
@@ -100,7 +123,8 @@
   "limitations": [
     "This receipt was produced by the implementation operator and is not independent approval.",
     "This receipt is not a provider-signed immutable artifact or a signed BuildApprovalV1.",
-    "Vercel Preview branch creation is enabled and a manual Neon child-branch isolation, reset-from-parent and deletion probe passed, but an automatic branch created by a subsequent exact preview deployment has not yet been observed.",
+    "Vercel Preview branch creation is enabled; an exact Preview deployment automatically created a Neon child branch that inherited the expected migration, and the manual isolation/reset/deletion probe also passed.",
+    "The automatic Preview branch and deployment remain implementation-operator candidates without independent approval or a signed BuildApprovalV1.",
     "DPA and region approval, two real Fly Machines, object storage, restart, capacity, TTL, object deletion, stress, soak, canary, production and the same-BuildApproval full rollback receipt remain open.",
     "The expand migration remains in place by design; no improvised down migration was executed."
   ],
