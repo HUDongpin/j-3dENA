@@ -28,7 +28,7 @@ function artifactRoot(): string {
 // requires the j-3dENA /build-info identity before any product test runs.
 const localPort = configuredPort();
 const baseURL = (
-  process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${localPort}`
+  process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${localPort}`
 ).replace(/\/+$/u, "");
 const suppliedServer = Boolean(process.env.PLAYWRIGHT_BASE_URL);
 const chromiumChannel = process.env.PLAYWRIGHT_CHROMIUM_CHANNEL;
@@ -130,7 +130,7 @@ export default defineConfig({
     : {
         command:
           process.env.PLAYWRIGHT_WEB_SERVER_COMMAND ??
-          `npm run dev --workspace @3dena/web -- --hostname localhost --port ${localPort}`,
+          `npm run dev --workspace @3dena/web -- --hostname 127.0.0.1 --port ${localPort}`,
         url: `${baseURL}/build-info`,
         env: {
           THREEDENA_BUILD_ID: managedBuildId,

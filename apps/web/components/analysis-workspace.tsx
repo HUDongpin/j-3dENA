@@ -297,6 +297,11 @@ export function AnalysisWorkspace({ webBuildId }: { webBuildId?: string }) {
 }
 
 function CalibrationAnalysisWorkspace({ buildId }: { buildId?: string }) {
+  const clientReady = useSyncExternalStore(
+    subscribeStaticLocation,
+    () => true,
+    () => false,
+  );
   const [mode, setMode] = useState<AnalysisMode>("raw");
   const [dataset, setDataset] = useState<DatasetState>(initialDataset);
   const [mapping, setMapping] = useState<AnalysisMapping>(LEGACY_DEFAULT_MAPPING);
@@ -781,6 +786,7 @@ function CalibrationAnalysisWorkspace({ buildId }: { buildId?: string }) {
       className="workspace-shell section-shell"
       data-testid="analysis-workspace"
       data-analysis-mode={mode}
+      data-client-ready={clientReady}
     >
       <header className="workspace-heading">
         <div>

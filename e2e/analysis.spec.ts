@@ -4,6 +4,7 @@ import { expect, test, type Download } from "@playwright/test";
 import {
   CANCELLATION_LATE_RESULT_GUARD_MS,
   CANCELLATION_TEST_PATH,
+  expectClientWorkspaceReady,
   expectOwnedResult,
   installWorkerProbe,
   observeAnalysisTransport,
@@ -83,6 +84,7 @@ test("a user CSV with the governed filename does not inherit small-raw evidence"
   page,
 }) => {
   await page.goto("/app");
+  await expectClientWorkspaceReady(page);
   const governedBytes = readFileSync(SMALL_RAW_CSV, "utf8");
   const modifiedBytes = governedBytes.replace(
     '"Experimental","Lesson 1","Student 1",0,0,1,1',

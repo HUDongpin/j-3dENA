@@ -139,11 +139,24 @@ export async function workerEvents(page: Page) {
   return page.evaluate(() => window.__THREEDENA_WORKER_EVENTS__ ?? []);
 }
 
+export async function expectClientWorkspaceReady(page: Page) {
+  await expect(page.getByTestId(testIds.workspace)).toHaveAttribute(
+    "data-client-ready",
+    "true",
+    { timeout: 30_000 },
+  );
+}
+
 export async function uploadSmallRaw(page: Page) {
   expect(
     existsSync(SMALL_RAW_CSV),
     `governed E2E fixture is missing: ${SMALL_RAW_CSV}`,
   ).toBe(true);
+  // The file input is server-rendered before React's client listeners attach.
+  // Firefox can otherwise dispatch change during that hydration window and the
+  // page correctly remains on the bundled fixture even though the runner call
+  // itself succeeded. Wait for an explicit client-owned readiness signal.
+  await expectClientWorkspaceReady(page);
   await page.getByTestId(testIds.rawFileInput).setInputFiles(SMALL_RAW_CSV);
   // setInputFiles dispatches the change event, but the product intentionally
   // stages File.text(), CSV parsing, mapping, and row validation before it
@@ -154,6 +167,7 @@ export async function uploadSmallRaw(page: Page) {
 }
 
 export async function loadSyntheticPreparedExchange(page: Page) {
+  await expectClientWorkspaceReady(page);
   await page.getByTestId(testIds.preparedMode).click();
   await expect(page.getByTestId(testIds.workspace)).toHaveAttribute(
     "data-analysis-mode",
