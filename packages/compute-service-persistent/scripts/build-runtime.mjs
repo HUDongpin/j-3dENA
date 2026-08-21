@@ -18,7 +18,9 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageDirectory = resolve(scriptDirectory, "..");
 const repositoryRoot = resolve(packageDirectory, "../..");
 const REQUIRED_CONTRACT_VERSIONS = Object.freeze([
+  "3dena.compute-dataset-http.v1",
   "3dena.compute-http.v1",
+  "3dena.compute-source-result-job-http.v1",
   "3dena.contract.v1",
 ]);
 const NODE_BUILTINS = new Set([

@@ -299,6 +299,8 @@ interface AnalysisResultsProps {
   datasetColumns?: number;
   datasetSchema?: DatasetSchemaV1;
   datasetLimits?: DatasetLimitsReceiptV1;
+  /** Remote production routes disable browser Worker derived execution. */
+  browserDerivedEnabled?: boolean;
 }
 
 export function AnalysisResults({
@@ -310,6 +312,7 @@ export function AnalysisResults({
   datasetColumns = result.summary.inputColumns,
   datasetSchema = fallbackRawDatasetSchema(datasetColumns),
   datasetLimits = RAW_BROWSER_DATASET_LIMITS,
+  browserDerivedEnabled = true,
 }: AnalysisResultsProps) {
   const resultRef = useRef<HTMLElement>(null);
   const evidence = assessRawEvidenceScope(result, owner, buildId);
@@ -524,15 +527,21 @@ export function AnalysisResults({
       </ResultPanel>
 
       <ResultPanel active={activeSection} section="comparison" idPrefix="raw-result">
-        <RawComparisonPanel source={derivedSource} owner={owner} />
+        {browserDerivedEnabled
+          ? <RawComparisonPanel source={derivedSource} owner={owner} />
+          : <RemoteDerivedBoundary />}
       </ResultPanel>
 
       <ResultPanel active={activeSection} section="change" idPrefix="raw-result">
-        <RawChangePanel source={derivedSource} owner={owner} />
+        {browserDerivedEnabled
+          ? <RawChangePanel source={derivedSource} owner={owner} />
+          : <RemoteDerivedBoundary />}
       </ResultPanel>
 
       <ResultPanel active={activeSection} section="statistics" idPrefix="raw-result">
-        <RawStatisticsPanel source={derivedSource} owner={owner} />
+        {browserDerivedEnabled
+          ? <RawStatisticsPanel source={derivedSource} owner={owner} />
+          : <RemoteDerivedBoundary />}
       </ResultPanel>
 
       <ResultPanel active={activeSection} section="trajectory" idPrefix="raw-result">
@@ -589,6 +598,19 @@ export function AnalysisResults({
         />
       </ResultPanel>
     </section>
+  );
+}
+
+function RemoteDerivedBoundary() {
+  return (
+    <div className="result-required-state" role="note">
+      <strong>Remote production boundary</strong>
+      <p>
+        Browser Worker recomputation is disabled for this result. Use the
+        service-owned derived controls above the result explorer; they bind the
+        verified ENA source job, exact result hash, and approved build.
+      </p>
+    </div>
   );
 }
 

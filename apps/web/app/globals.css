@@ -2186,6 +2186,98 @@ tbody th {
   justify-self: start;
 }
 
+.remote-derived-controls {
+  min-width: 0;
+  margin-top: 24px;
+  padding: clamp(20px, 3vw, 32px);
+  display: grid;
+  gap: 20px;
+  border: 1px solid var(--slate-300);
+  border-top: 4px solid var(--navy-900);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  box-shadow: var(--shadow-sm);
+}
+
+.remote-derived-controls > header h3 {
+  margin-bottom: 7px;
+  font-size: clamp(1.45rem, 2vw, 1.85rem);
+}
+
+.remote-derived-controls > header p:last-child {
+  max-width: 860px;
+  margin: 0;
+  color: var(--slate-600);
+}
+
+.remote-derived-controls form {
+  padding: clamp(16px, 2vw, 22px);
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-sm);
+  background: var(--slate-50);
+}
+
+.remote-derived-controls input:not([type="checkbox"]),
+.remote-derived-controls select {
+  width: 100%;
+  min-height: 44px;
+}
+
+.derived-time-contract {
+  min-width: 0;
+  margin: 0;
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--slate-300);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+}
+
+.derived-time-contract > legend {
+  padding-inline: 6px;
+  color: var(--navy-900);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.derived-time-table {
+  max-height: 360px;
+}
+
+.derived-time-table code {
+  overflow-wrap: anywhere;
+}
+
+.remote-derived-result {
+  margin-top: 24px;
+}
+
+.remote-derived-plot {
+  min-height: 430px;
+  overflow: hidden;
+  border: 1px solid var(--slate-300);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+}
+
+.remote-derived-plotly,
+.remote-derived-plotly .js-plotly-plot,
+.remote-derived-plotly .plot-container,
+.remote-derived-plotly .svg-container {
+  width: 100% !important;
+  min-height: 430px;
+}
+
+.remote-derived-plot-loading {
+  min-height: 430px;
+  display: grid;
+  place-items: center;
+  color: var(--slate-600);
+}
+
 .result-empty-state {
   padding: 32px;
   border: 1px dashed var(--slate-300);

@@ -55,11 +55,13 @@ import {
   type ComputeDatasetActivationReceiptV1,
   type ComputeDatasetCapabilityV1,
   type CreateActivatedAnalysisJobRequestV1,
+  type CreateSourceResultAnalysisJobRequestV1,
   type CreateComputeDatasetRequestV1,
   type ExecuteActivatedAnalysisJobRequestV1,
   type PreviewComputeDatasetRequestV1,
   type PutComputeDatasetMappingRequestV1,
   type SelectComputeDatasetWorksheetRequestV1,
+  type SourceResultAnalysisJobCapabilityV1,
 } from "./dataset-contracts";
 import {
   ComputeHttpError,
@@ -362,6 +364,14 @@ function taskFailureCode(record: ComputeJobRecordV1 | null): string | null {
   if (record.state === "timed_out") return "TASK_DEADLINE_EXCEEDED";
   if (record.state === "failed") return record.failure?.code ?? "TASK_FAILED";
   return null;
+}
+
+function sameTaskOwner(left: AnalysisTaskV1["owner"], right: AnalysisTaskV1["owner"]): boolean {
+  return left.contractVersion === right.contractVersion &&
+    left.datasetHash === right.datasetHash &&
+    left.specHash === right.specHash &&
+    left.runId === right.runId &&
+    left.taskId === right.taskId;
 }
 
 function rateLimitClass(pathname: string, method: string): ComputeHttpRateLimitClassV1 | null {
@@ -1039,6 +1049,20 @@ export class ComputeV1HttpRouter {
     const idempotencyKey = this.#requireIdempotencyKey(request);
     const capabilityToken = this.#bearerToken(request);
     const parsed = await this.#parseJson(request);
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      (parsed as { schemaVersion?: unknown }).schemaVersion ===
+        "3dena.create-source-result-job-request.v1"
+    ) {
+      return this.#createSourceResultJob(
+        request,
+        parsed,
+        idempotencyKey,
+        context,
+      );
+    }
     assertExactFields(
       parsed,
       ["schemaVersion", "activationReceipt", "processingPolicyConfirmed"],
@@ -1119,6 +1143,7 @@ export class ComputeV1HttpRouter {
       activatedDatasetId: activation.session.datasetId,
       activationReceiptSha256: activation.receipt.activationReceiptSha256,
       activatedDatasetContentUrl: contentUrl,
+      activatedDatasetReceipt: activation.receipt.datasetReceipt,
       createdAtMs: now,
       updatedAtMs: now,
       expiresAtMs,
@@ -1132,6 +1157,161 @@ export class ComputeV1HttpRouter {
       await this.#publishStatus(status.status);
     }
     return this.#jobCapabilityResponse(created.record, created.created, context);
+  }
+
+  async #createSourceResultJob(
+    request: Request,
+    parsed: unknown,
+    idempotencyKey: string,
+    context: RequestContext,
+  ): Promise<Response> {
+    assertExactFields(
+      parsed,
+      ["schemaVersion", "sourceJobId", "sourceResultHash", "processingPolicyConfirmed"],
+      "source-result job create request",
+    );
+    const candidate = parsed as Record<string, unknown>;
+    if (
+      candidate.schemaVersion !== "3dena.create-source-result-job-request.v1" ||
+      candidate.processingPolicyConfirmed !== true ||
+      typeof candidate.sourceJobId !== "string" ||
+      !OPAQUE_ID.test(candidate.sourceJobId) ||
+      typeof candidate.sourceResultHash !== "string" ||
+      !LOWER_SHA256.test(candidate.sourceResultHash)
+    ) {
+      httpError("INVALID_REQUEST", 400, "Source-result job request is invalid.");
+    }
+    const createRequest = parsed as unknown as CreateSourceResultAnalysisJobRequestV1;
+    const sourceJob = await this.#authorize(
+      request,
+      createRequest.sourceJobId,
+      context.origin,
+      false,
+    );
+    const sourceSnapshot = await this.#statusSnapshot(sourceJob);
+    const receipt = sourceSnapshot.job.activatedDatasetReceipt;
+    const sourceOwner = sourceSnapshot.job.owner;
+    if (
+      sourceSnapshot.status.state !== "SUCCEEDED" ||
+      !sourceSnapshot.status.resultAvailable ||
+      sourceSnapshot.job.taskKind !== "ena-model" ||
+      sourceOwner === undefined ||
+      receipt === undefined
+    ) {
+      httpError(
+        "DATASET_WORKFLOW_REJECTED",
+        409,
+        "A successful service-owned ENA source job is required.",
+      );
+    }
+    try {
+      assertDatasetReceiptV1(receipt, "source.datasetReceipt");
+      assertTaskOwnerV1(sourceOwner, "source.owner");
+    } catch {
+      httpError("DATASET_RECEIPT_MISMATCH", 409, "Source job metadata is invalid.");
+    }
+    const resolver = this.#infrastructure.sourceResults;
+    if (resolver === undefined) {
+      httpError("DATASET_WORKFLOW_REJECTED", 409, "Service-owned source result resolution is unavailable.");
+    }
+    const now = this.#infrastructure.clock.now();
+    const sourceBinding = await resolver.resolve({
+      sourceResultHash: createRequest.sourceResultHash,
+      activatedDatasetSha256: receipt.sha256,
+      requiredBuildId: this.#buildIdentity.flyBuildId,
+      nowMs: now,
+    });
+    if (
+      sourceBinding === null ||
+      sourceBinding.source.sourceKind !== "raw-jena" ||
+      sourceBinding.source.hash !== createRequest.sourceResultHash ||
+      sourceBinding.buildId !== this.#buildIdentity.flyBuildId ||
+      !sameTaskOwner(sourceBinding.owner, sourceOwner) ||
+      sourceBinding.publishedAtMs > now ||
+      sourceBinding.expiresAtMs <= now ||
+      await hashAnalysisValueV1(sourceBinding.source.result) !== createRequest.sourceResultHash
+    ) {
+      httpError(
+        "DATASET_RECEIPT_MISMATCH",
+        409,
+        "The requested ENA source result is unavailable or not owned by the source job.",
+      );
+    }
+    const createRequestFingerprint = sha256Text(canonicalStringify({
+      request: createRequest,
+      origin: context.origin,
+    }));
+    const createIdempotencyHash = this.#infrastructure.capabilityCodec.hashSecret(
+      `source-create\0${sourceJob.jobId}\0${createRequest.sourceResultHash}\0${idempotencyKey}`,
+    );
+    const replay = await this.#infrastructure.repository.findByCreateIdempotencyHash(
+      createIdempotencyHash,
+    );
+    if (replay !== null) {
+      if (replay.createRequestFingerprint !== createRequestFingerprint) {
+        httpError("IDEMPOTENCY_CONFLICT", 409, "Source-result create key is bound to another request.");
+      }
+      return this.#sourceResultJobCapabilityResponse(replay, false, context);
+    }
+    const jobId = this.#infrastructure.idFactory.nextId("job");
+    if (!OPAQUE_ID.test(jobId)) httpError("INTERNAL_ERROR", 500, "Job ID is unsafe.");
+    const jobCapability = this.#infrastructure.capabilityCodec.issue(jobId);
+    const expiresAtMs = Math.min(
+      sourceJob.expiresAtMs,
+      sourceBinding.expiresAtMs,
+      now + this.#jobTtlMs,
+    );
+    if (expiresAtMs <= now) httpError("JOB_EXPIRED", 410, "Source result has expired.");
+    const record: ComputeHttpJobRecordV1 = cloneFrozen({
+      version: COMPUTE_HTTP_JOB_VERSION,
+      jobId,
+      revision: 0,
+      capabilityHash: this.#infrastructure.capabilityCodec.hashSecret(jobCapability),
+      boundOrigin: context.origin,
+      createIdempotencyHash,
+      createRequestFingerprint,
+      dataset: sourceJob.dataset,
+      inputObjectKey: sourceJob.inputObjectKey,
+      inputObjectOwnedByJob: false,
+      activatedDatasetReceipt: receipt,
+      sourceJobId: sourceJob.jobId,
+      sourceResultHash: createRequest.sourceResultHash,
+      createdAtMs: now,
+      updatedAtMs: now,
+      expiresAtMs,
+    });
+    const created = await this.#infrastructure.repository.createIfAbsent(record);
+    if (!created.created && created.record.createRequestFingerprint !== createRequestFingerprint) {
+      httpError("IDEMPOTENCY_CONFLICT", 409, "Concurrent source-result create conflicted.");
+    }
+    if (created.created) {
+      const status = await this.#statusSnapshot(created.record);
+      await this.#publishStatus(status.status);
+    }
+    return this.#sourceResultJobCapabilityResponse(created.record, created.created, context);
+  }
+
+  #sourceResultJobCapabilityResponse(
+    job: ComputeHttpJobRecordV1,
+    created: boolean,
+    context: RequestContext,
+  ): Response {
+    if (job.sourceJobId === undefined || job.sourceResultHash === undefined) {
+      httpError("INTERNAL_ERROR", 500, "Source-result job binding is unavailable.");
+    }
+    const capability = this.#infrastructure.capabilityCodec.issue(job.jobId);
+    if (!this.#infrastructure.capabilityCodec.verify(capability, job.capabilityHash)) {
+      httpError("INTERNAL_ERROR", 500, "Stored source-result capability is inconsistent.");
+    }
+    const response: SourceResultAnalysisJobCapabilityV1 = {
+      schemaVersion: "3dena.source-result-job-capability.v1",
+      jobId: job.jobId,
+      capabilityToken: capability,
+      sourceJobId: job.sourceJobId,
+      sourceResultHash: job.sourceResultHash,
+      expiresAt: isoTimestamp(job.expiresAtMs),
+    };
+    return this.#json(created ? 201 : 200, response, context);
   }
 
   async #jobCapabilityResponse(
@@ -1178,8 +1358,11 @@ export class ComputeV1HttpRouter {
   ): Promise<Response> {
     if (
       authorizedJob.inputObjectOwnedByJob === false &&
-      authorizedJob.activatedDatasetId !== undefined &&
-      authorizedJob.activationReceiptSha256 !== undefined
+      ((authorizedJob.activatedDatasetId !== undefined &&
+        authorizedJob.activationReceiptSha256 !== undefined) ||
+        (authorizedJob.sourceJobId !== undefined &&
+          authorizedJob.sourceResultHash !== undefined &&
+          authorizedJob.activatedDatasetReceipt !== undefined))
     ) {
       return this.#executeActivatedJob(request, authorizedJob, context);
     }
@@ -1401,25 +1584,44 @@ export class ComputeV1HttpRouter {
       return this.#json(202, replay.status, context);
     }
 
-    const datasetId = authorizedJob.activatedDatasetId;
-    const activationReceiptSha256 = authorizedJob.activationReceiptSha256;
-    if (datasetId === undefined || activationReceiptSha256 === undefined) {
-      httpError("DATASET_WORKFLOW_REJECTED", 409, "Activated dataset binding is unavailable.");
-    }
-    const resolved = await this.#requireDatasetService().resolveActivatedExecution(
-      datasetId,
-      activationReceiptSha256,
-    );
-    if (resolved === null || !descriptorsEqual(resolved.object, {
-      key: authorizedJob.inputObjectKey,
-      sha256: authorizedJob.dataset.sha256,
-      byteLength: authorizedJob.dataset.byteLength,
-    })) {
-      httpError(
-        "DATASET_RECEIPT_MISMATCH",
-        409,
-        "Activated service-owned dataset no longer matches the job binding.",
+    const sourceJobBacked = authorizedJob.sourceJobId !== undefined &&
+      authorizedJob.sourceResultHash !== undefined &&
+      authorizedJob.activatedDatasetReceipt !== undefined;
+    let activatedPayload: ActiveDatasetPayloadV1 | undefined;
+    let datasetReceipt = authorizedJob.activatedDatasetReceipt;
+    if (sourceJobBacked) {
+      if (
+        requested.kind === "ena-model" ||
+        requested.sourceResultHash !== authorizedJob.sourceResultHash
+      ) {
+        httpError("DATASET_RECEIPT_MISMATCH", 409, "Derived task does not match its source-result job binding.");
+      }
+    } else {
+      const datasetId = authorizedJob.activatedDatasetId;
+      const activationReceiptSha256 = authorizedJob.activationReceiptSha256;
+      if (datasetId === undefined || activationReceiptSha256 === undefined) {
+        httpError("DATASET_WORKFLOW_REJECTED", 409, "Activated dataset binding is unavailable.");
+      }
+      const resolved = await this.#requireDatasetService().resolveActivatedExecution(
+        datasetId,
+        activationReceiptSha256,
       );
+      if (resolved === null || !descriptorsEqual(resolved.object, {
+        key: authorizedJob.inputObjectKey,
+        sha256: authorizedJob.dataset.sha256,
+        byteLength: authorizedJob.dataset.byteLength,
+      })) {
+        httpError(
+          "DATASET_RECEIPT_MISMATCH",
+          409,
+          "Activated service-owned dataset no longer matches the job binding.",
+        );
+      }
+      activatedPayload = resolved.payload;
+      datasetReceipt = resolved.receipt.datasetReceipt;
+    }
+    if (datasetReceipt === undefined) {
+      httpError("DATASET_RECEIPT_MISMATCH", 409, "Dataset receipt is unavailable for execution.");
     }
     const scientificSpec = requested.kind === "ena-model"
       ? requested.spec
@@ -1429,7 +1631,7 @@ export class ComputeV1HttpRouter {
     const specHash = await hashAnalysisValueV1(scientificSpec);
     const owner = {
       contractVersion: ANALYSIS_CONTRACT_VERSION_V1,
-      datasetHash: resolved.receipt.datasetReceipt.sha256,
+      datasetHash: datasetReceipt.sha256,
       specHash,
       runId: requested.runId,
       taskId: authorizedJob.jobId,
@@ -1437,7 +1639,10 @@ export class ComputeV1HttpRouter {
     let task: AnalysisTaskV1;
     let sourceResult: AnalysisExecutionDatasetV2["sourceResult"] = undefined;
     if (requested.kind === "ena-model") {
-      const materialized = materializeActivatedRows(resolved.payload, requested.spec);
+      if (activatedPayload === undefined) {
+        httpError("DATASET_WORKFLOW_REJECTED", 409, "ENA execution requires an active service-owned dataset.");
+      }
+      const materialized = materializeActivatedRows(activatedPayload, requested.spec);
       task = {
         schemaVersion: ANALYSIS_TASK_VERSION_V1,
         kind: "ena-model",
@@ -1464,7 +1669,7 @@ export class ComputeV1HttpRouter {
       }
       const sourceBinding = await resolver.resolve({
         sourceResultHash: requested.sourceResultHash,
-        activatedDatasetSha256: resolved.receipt.datasetReceipt.sha256,
+        activatedDatasetSha256: datasetReceipt.sha256,
         requiredBuildId: this.#buildIdentity.flyBuildId,
         nowMs: now,
       });
@@ -1476,7 +1681,7 @@ export class ComputeV1HttpRouter {
       const resolvedSource = sourceBinding?.source ?? null;
       if (
         sourceBinding === null ||
-        sourceBinding.owner.datasetHash !== resolved.receipt.datasetReceipt.sha256 ||
+        sourceBinding.owner.datasetHash !== datasetReceipt.sha256 ||
         sourceBinding.buildId !== this.#buildIdentity.flyBuildId ||
         !Number.isSafeInteger(sourceBinding.publishedAtMs) ||
         !Number.isSafeInteger(sourceBinding.expiresAtMs) ||
@@ -1498,7 +1703,7 @@ export class ComputeV1HttpRouter {
     }
     const dataset: AnalysisExecutionDatasetV2 = {
       schemaVersion: ANALYSIS_EXECUTION_DATASET_VERSION_V2,
-      receipt: resolved.receipt.datasetReceipt,
+      receipt: datasetReceipt,
       specHash,
       buildId: this.#buildIdentity.flyBuildId,
       generatedAt: isoTimestamp(now),
@@ -1814,10 +2019,10 @@ export class ComputeV1HttpRouter {
     }
     const now = this.#infrastructure.clock.now();
     const uploadedObject =
-      job.inputDeletedAtMs === undefined
+      job.inputDeletedAtMs === undefined && job.sourceResultHash === undefined
         ? await this.#infrastructure.objectStore.head(job.inputObjectKey)
         : null;
-    let uploaded = false;
+    let uploaded = job.sourceResultHash !== undefined;
     if (uploadedObject !== null) {
       const expected = {
         key: job.inputObjectKey,

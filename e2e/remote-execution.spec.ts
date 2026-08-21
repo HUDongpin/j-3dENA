@@ -8,6 +8,8 @@ const DATASET_ID = "dataset-remote-e2e";
 const DATASET_CAPABILITY = "dataset-capability-remote-e2e";
 const JOB_ID = "job-remote-e2e";
 const JOB_CAPABILITY = "job-capability-remote-e2e";
+const DERIVED_JOB_ID = "job-derived-remote-e2e";
+const DERIVED_JOB_CAPABILITY = "job-derived-capability-remote-e2e";
 const APPROVAL_MANIFEST = "a".repeat(64);
 const GIT_COMMIT = "b".repeat(40);
 const FLY_IMAGE = `sha256:${"c".repeat(64)}`;
@@ -40,30 +42,35 @@ function canonicalJson(value: unknown): string {
   }).join(",")}}`;
 }
 
-async function resultArtifact(
+async function sourceResultArtifact(
   datasetHash: string,
   specHash: string,
   runId: string,
-): Promise<Buffer> {
+): Promise<Readonly<{ bytes: Buffer; result: Record<string, unknown>; resultHash: string }>> {
+  const groupValue = (value: string) => ({
+    canonical: JSON.stringify(["string", value]),
+    display: value,
+    value,
+  });
   const entity = (group: string, participant: string) => ({
     canonical: JSON.stringify([["string", group], ["string", participant]]),
     display: `${group} · ${participant}`,
-    columns: ["group", "participant"],
+    columns: ["Group", "Name"],
     values: [group, participant],
   });
   const rowEntity = (group: string, participant: string) => ({
-    canonical: JSON.stringify([["string", group], ["string", participant], ["string", "T1"]]),
-    display: `${group} · ${participant} · T1`,
-    columns: ["group", "participant", "time"],
-    values: [group, participant, "T1"],
+    canonical: JSON.stringify([["string", group], ["string", participant], ["number", "1"]]),
+    display: `${group} · ${participant} · 1`,
+    columns: ["Group", "Name", "Lesson"],
+    values: [group, participant, 1],
   });
   const identities = [
-    ["A", "synthetic-1"],
-    ["A", "synthetic-2"],
-    ["B", "synthetic-3"],
-    ["B", "synthetic-4"],
+    ["Experimental", "synthetic-1"],
+    ["Experimental", "synthetic-2"],
+    ["Control", "synthetic-3"],
+    ["Control", "synthetic-4"],
   ] as const;
-  const edgeColumns = ["A & B", "A & C", "B & C"];
+  const edgeColumns = ["EC & ICT", "EC & MCO", "ICT & MCO"];
   const result = {
     schemaVersion: "3dena.analysis-result.v1",
     dimensions: ["SVD1", "SVD2", "SVD3"],
@@ -75,61 +82,57 @@ async function resultArtifact(
         id: key,
         unit: key,
         participantLabel: key,
-        coordinates: [index === 0 ? -0.75 : 0.25, 0, 0],
-        fullCoordinates: [index === 0 ? -0.75 : 0.25, 0, 0],
-        lineWeights: index === 0 ? [1, 0, 0] : [0.577, 0.577, 0.577],
+        group: groupValue(group),
+        coordinates: [index === 0 ? -0.75 : 0.25, index < 2 ? 0.2 : -0.2, 0],
+        fullCoordinates: [index === 0 ? -0.75 : 0.25, index < 2 ? 0.2 : -0.2, 0],
+        lineWeights: index < 2 ? [1, 0.2, 0.4] : [0.4, 0.8, 0.6],
         metadata: {},
       };
     }),
     nodes: [
-      { index: 0, code: "A", coordinates: [-0.5, 0, 0], fullCoordinates: [-0.5, 0, 0] },
-      { index: 1, code: "B", coordinates: [0, 0.5, 0], fullCoordinates: [0, 0.5, 0] },
-      { index: 2, code: "C", coordinates: [0.5, 0, 0], fullCoordinates: [0.5, 0, 0] },
+      { index: 0, code: "EC", coordinates: [-0.5, 0, 0], fullCoordinates: [-0.5, 0, 0] },
+      { index: 1, code: "ICT", coordinates: [0, 0.5, 0], fullCoordinates: [0, 0.5, 0] },
+      { index: 2, code: "MCO", coordinates: [0.5, 0, 0], fullCoordinates: [0.5, 0, 0] },
     ],
     edges: [
-      { index: 0, id: "edge:0:1", column: edgeColumns[0], source: "A", target: "B", sourceIndex: 0, targetIndex: 1, meanWeight: 0.683 },
-      { index: 1, id: "edge:0:2", column: edgeColumns[1], source: "A", target: "C", sourceIndex: 0, targetIndex: 2, meanWeight: 0.433 },
-      { index: 2, id: "edge:1:2", column: edgeColumns[2], source: "B", target: "C", sourceIndex: 1, targetIndex: 2, meanWeight: 0.433 },
+      { index: 0, id: "edge:0:1", column: edgeColumns[0], source: "EC", target: "ICT", sourceIndex: 0, targetIndex: 1, meanWeight: 0.7 },
+      { index: 1, id: "edge:0:2", column: edgeColumns[1], source: "EC", target: "MCO", sourceIndex: 0, targetIndex: 2, meanWeight: 0.5 },
+      { index: 2, id: "edge:1:2", column: edgeColumns[2], source: "ICT", target: "MCO", sourceIndex: 1, targetIndex: 2, meanWeight: 0.5 },
     ],
     accumulation: {
       modelCounts: {
         rowKeys: identities.map(([group, participant]) => entity(group, participant)),
         columns: edgeColumns,
-        values: [[1, 0, 0], [1, 1, 1], [1, 1, 1], [1, 1, 1]],
+        values: [[1, 0.2, 0.4], [1, 0.2, 0.4], [0.4, 0.8, 0.6], [0.4, 0.8, 0.6]],
       },
       rowCounts: {
         rowKeys: identities.map(([group, participant]) => rowEntity(group, participant)),
-        columns: ["A", "B", "C", ...edgeColumns],
-        values: [
-          [1, 1, 0, 1, 0, 0],
-          [1, 0, 1, 1, 1, 1],
-          [0, 1, 1, 1, 1, 1],
-          [1, 1, 1, 1, 1, 1],
-        ],
+        columns: ["EC", "ICT", "MCO", ...edgeColumns],
+        values: [[1, 1, 0, 1, 0, 0], [1, 0, 1, 1, 1, 1], [0, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1]],
       },
     },
     variance: [
-      { axis: "SVD1", proportion: 1, eigenvalue: 0.21, displayed: true },
-      { axis: "SVD2", proportion: 0, eigenvalue: 0, displayed: true },
-      { axis: "SVD3", proportion: 0, eigenvalue: 0, displayed: true },
+      { axis: "SVD1", proportion: 0.7, eigenvalue: 0.21, displayed: true },
+      { axis: "SVD2", proportion: 0.2, eigenvalue: 0.06, displayed: true },
+      { axis: "SVD3", proportion: 0.1, eigenvalue: 0.03, displayed: true },
     ],
     rotation: {
       method: "svd",
       columns: ["SVD1", "SVD2", "SVD3"],
       matrix: [[-0.46, 0.81, -0.37], [0.63, 0.59, 0.51], [0.63, 0, -0.78]],
-      eigenvalues: [0.21, 0, 0],
-      centerVector: [0.683, 0.433, 0.433],
+      eigenvalues: [0.21, 0.06, 0.03],
+      centerVector: [0.7, 0.5, 0.5],
     },
     summary: {
       inputRows: 4,
-      inputColumns: 6,
+      inputColumns: 7,
       units: 4,
       points: 4,
       nodes: 3,
       edges: 3,
       modelCountRows: 4,
       rowCountRows: 4,
-      groups: 0,
+      groups: 2,
       timePoints: 0,
       participantPeriods: 0,
       trajectoryCentroids: 0,
@@ -221,12 +224,124 @@ async function resultArtifact(
       generatedAt: "2026-08-21T00:00:00.000Z",
     },
   } as const;
-  return Buffer.from(JSON.stringify({
-    version: "3dena.compute-scientific-result-artifact.v1",
+  return {
+    bytes: Buffer.from(JSON.stringify({
+      version: "3dena.compute-scientific-result-artifact.v1",
+      owner,
+      taskKind: "ena-model",
+      envelope,
+    })),
+    result,
+    resultHash,
+  };
+}
+
+async function derivedResultArtifact(input: Readonly<{
+  activatedTask: Record<string, unknown>;
+  datasetReceipt: Readonly<{ sha256: string }>;
+  sourceResultHash: string;
+}>): Promise<Readonly<{ bytes: Buffer; owner: Record<string, unknown> }>> {
+  const { runId } = input.activatedTask;
+  if (typeof runId !== "string") throw new Error("Derived E2E task did not include a runId.");
+  if (input.activatedTask.sourceResultHash !== input.sourceResultHash) {
+    throw new Error("Derived E2E task was not bound to the retained source hash.");
+  }
+  const scientificSpec = Object.fromEntries(Object.entries(input.activatedTask).filter(
+    ([field]) => !["schemaVersion", "runId", "deadlineEpochMilliseconds"].includes(field),
+  ));
+  const specHash = createHash("sha256").update(canonicalJson(scientificSpec)).digest("hex");
+  const owner = {
+    contractVersion: ANALYSIS_CONTRACT_VERSION_V1,
+    datasetHash: input.datasetReceipt.sha256,
+    specHash,
+    runId,
+    taskId: DERIVED_JOB_ID,
+  } as const;
+  const groupA = { canonical: (input.activatedTask.groups as string[])[0], display: "Experimental", value: "Experimental" };
+  const groupB = { canonical: (input.activatedTask.groups as string[])[1], display: "Control", value: "Control" };
+  const result = {
+    schemaVersion: "3dena.network-comparison.v1",
+    direction: "group-a-minus-group-b",
+    groupA,
+    groupB,
+    meanA: {
+      pointCount: 2,
+      pointIndexes: [0, 1],
+      meanCoordinates: [-0.25, 0.2, 0],
+      edges: [
+        { index: 0, id: "edge:0:1", column: "EC & ICT", source: "EC", target: "ICT", meanWeight: 1 },
+        { index: 1, id: "edge:0:2", column: "EC & MCO", source: "EC", target: "MCO", meanWeight: 0.2 },
+        { index: 2, id: "edge:1:2", column: "ICT & MCO", source: "ICT", target: "MCO", meanWeight: 0.4 },
+      ],
+    },
+    meanB: {
+      pointCount: 2,
+      pointIndexes: [2, 3],
+      meanCoordinates: [0.25, -0.2, 0],
+      edges: [
+        { index: 0, id: "edge:0:1", column: "EC & ICT", source: "EC", target: "ICT", meanWeight: 0.4 },
+        { index: 1, id: "edge:0:2", column: "EC & MCO", source: "EC", target: "MCO", meanWeight: 0.8 },
+        { index: 2, id: "edge:1:2", column: "ICT & MCO", source: "ICT", target: "MCO", meanWeight: 0.6 },
+      ],
+    },
+    differenceEdges: [
+      { index: 0, id: "edge:0:1", column: "EC & ICT", source: "EC", target: "ICT", meanWeight: 0.6, groupAMeanWeight: 1, groupBMeanWeight: 0.4, semanticOwner: "group-a" },
+      { index: 1, id: "edge:0:2", column: "EC & MCO", source: "EC", target: "MCO", meanWeight: -0.6, groupAMeanWeight: 0.2, groupBMeanWeight: 0.8, semanticOwner: "group-b" },
+      { index: 2, id: "edge:1:2", column: "ICT & MCO", source: "ICT", target: "MCO", meanWeight: -0.2, groupAMeanWeight: 0.4, groupBMeanWeight: 0.6, semanticOwner: "group-b" },
+    ],
+    diagnostics: [],
+  };
+  const resultHash = createHash("sha256").update(canonicalJson(result)).digest("hex");
+  const envelope = {
+    schemaVersion: "3dena.analysis-result-envelope.v1",
     owner,
-    taskKind: "ena-model",
-    envelope,
-  }));
+    taskKind: "network-comparison",
+    result,
+    diagnostics: [],
+    evidence: {
+      schemaVersion: "3dena.evidence-stamp.v1",
+      scope: "feature",
+      status: "IMPLEMENTED_UNVERIFIED",
+      datasetHash: input.datasetReceipt.sha256,
+      specHash,
+      buildId: FLY_BUILD,
+      approvedForParity: false,
+    },
+    provenance: {
+      schemaVersion: "3dena.provenance-manifest.v1",
+      datasetHash: input.datasetReceipt.sha256,
+      specHash,
+      resultHash,
+      adapterVersion: "remote-e2e-adapter",
+      jenaPackage: "jena-js",
+      jenaVersion: "0.6.3",
+      jenaCommit: "d".repeat(40),
+      sourceKind: "raw-jena",
+      jenaExecuted: true,
+      sdkPackage: "@3dena/analysis",
+      sdkVersion: "0.1.0",
+      appVersion: "0.1.0",
+      contractVersion: ANALYSIS_CONTRACT_VERSION_V1,
+      buildId: FLY_BUILD,
+      seed: null,
+      toleranceContract: null,
+      schemaVersions: [
+        "3dena.analysis-result-envelope.v1",
+        "3dena.network-comparison.v1",
+        "3dena.analysis-task.v1",
+      ],
+      generatedAt: "2026-08-21T00:01:00.000Z",
+    },
+  };
+  return {
+    bytes: Buffer.from(JSON.stringify({
+      version: "3dena.compute-scientific-result-artifact.v1",
+      owner,
+      taskKind: "network-comparison",
+      envelope,
+    })),
+    owner,
+  };
 }
 
 test("remote calibration verifies the mocked service build and fails closed without dataset workflow", async ({
@@ -278,13 +393,16 @@ test("remote calibration verifies the mocked service build and fails closed with
   ]));
 });
 
-test("mocked remote service closes upload through formal verified download without a Worker", async ({
+test("mocked remote service closes ENA, source-bound derived analysis, formal download, and deletion without a Worker", async ({
   page,
 }) => {
   let preflight: Record<string, unknown> | null = null;
-  let executeBody: Record<string, unknown> | null = null;
-  let artifact: Buffer | null = null;
-  let owner: Record<string, unknown> | null = null;
+  let sourceExecuteBody: Record<string, unknown> | null = null;
+  let derivedExecuteBody: Record<string, unknown> | null = null;
+  let sourceArtifact: Awaited<ReturnType<typeof sourceResultArtifact>> | null = null;
+  let derivedArtifact: Awaited<ReturnType<typeof derivedResultArtifact>> | null = null;
+  let sourceOwner: Record<string, unknown> | null = null;
+  let derivedOwner: Record<string, unknown> | null = null;
   const mutations: string[] = [];
   await page.addInitScript(() => {
     const NativeWorker = window.Worker;
@@ -312,7 +430,11 @@ test("mocked remote service closes upload through formal verified download witho
         flyImageDigest: FLY_IMAGE,
         flyBuildId: FLY_BUILD,
         role: "api",
-        contractVersions: ["3dena.compute-dataset-http.v1", "3dena.contract.v1"],
+        contractVersions: [
+          "3dena.compute-dataset-http.v1",
+          "3dena.compute-source-result-job-http.v1",
+          "3dena.contract.v1",
+        ],
       });
       return;
     }
@@ -489,6 +611,22 @@ test("mocked remote service closes upload through formal verified download witho
       return;
     }
     if (path === "/v1/jobs" && method === "POST") {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      if (body.schemaVersion === "3dena.create-source-result-job-request.v1") {
+        if (body.sourceJobId !== JOB_ID || body.sourceResultHash !== sourceArtifact?.resultHash) {
+          await fulfillJson(route, { code: "SOURCE_RESULT_MISMATCH" }, 409);
+          return;
+        }
+        await fulfillJson(route, {
+          schemaVersion: "3dena.source-result-job-capability.v1",
+          jobId: DERIVED_JOB_ID,
+          capabilityToken: DERIVED_JOB_CAPABILITY,
+          sourceJobId: JOB_ID,
+          sourceResultHash: sourceArtifact.resultHash,
+          expiresAt: "2026-08-22T00:00:00.000Z",
+        }, 201);
+        return;
+      }
       await fulfillJson(route, {
         schemaVersion: "3dena.job-capability.v1",
         jobId: JOB_ID,
@@ -499,17 +637,17 @@ test("mocked remote service closes upload through formal verified download witho
       return;
     }
     if (path === `/v1/jobs/${JOB_ID}/execute` && method === "POST") {
-      executeBody = request.postDataJSON() as Record<string, unknown>;
-      const task = executeBody.task as { runId: string; spec: unknown };
+      sourceExecuteBody = request.postDataJSON() as Record<string, unknown>;
+      const task = sourceExecuteBody.task as { runId: string; spec: unknown };
       const specHash = "8".repeat(64);
-      owner = {
+      sourceOwner = {
         contractVersion: ANALYSIS_CONTRACT_VERSION_V1,
         datasetHash: String(preflight?.sha256),
         specHash,
         runId: task.runId,
         taskId: JOB_ID,
       };
-      artifact = await resultArtifact(String(preflight?.sha256), specHash, task.runId);
+      sourceArtifact = await sourceResultArtifact(String(preflight?.sha256), specHash, task.runId);
       await fulfillJson(route, {
         schemaVersion: "3dena.job-status.v1",
         jobId: JOB_ID,
@@ -524,12 +662,35 @@ test("mocked remote service closes upload through formal verified download witho
       }, 202);
       return;
     }
+    if (path === `/v1/jobs/${DERIVED_JOB_ID}/execute` && method === "POST") {
+      derivedExecuteBody = request.postDataJSON() as Record<string, unknown>;
+      if (sourceArtifact === null) throw new Error("Derived job ran before its source artifact existed.");
+      derivedArtifact = await derivedResultArtifact({
+        activatedTask: derivedExecuteBody.task as Record<string, unknown>,
+        datasetReceipt: datasetReceipt(),
+        sourceResultHash: sourceArtifact.resultHash,
+      });
+      derivedOwner = derivedArtifact.owner;
+      await fulfillJson(route, {
+        schemaVersion: "3dena.job-status.v1",
+        jobId: DERIVED_JOB_ID,
+        state: "QUEUED",
+        owner: null,
+        progress: null,
+        createdAt: "2026-08-21T00:01:00.000Z",
+        updatedAt: "2026-08-21T00:01:00.000Z",
+        expiresAt: "2026-08-22T00:00:00.000Z",
+        resultAvailable: false,
+        errorCode: null,
+      }, 202);
+      return;
+    }
     if (path === `/v1/jobs/${JOB_ID}` && method === "GET") {
       await fulfillJson(route, {
         schemaVersion: "3dena.job-status.v1",
         jobId: JOB_ID,
         state: "SUCCEEDED",
-        owner,
+        owner: sourceOwner,
         progress: { phase: "complete", completed: 1, total: 1 },
         createdAt: "2026-08-21T00:00:00.000Z",
         updatedAt: "2026-08-21T00:01:00.000Z",
@@ -539,27 +700,70 @@ test("mocked remote service closes upload through formal verified download witho
       });
       return;
     }
+    if (path === `/v1/jobs/${DERIVED_JOB_ID}` && method === "GET") {
+      await fulfillJson(route, {
+        schemaVersion: "3dena.job-status.v1",
+        jobId: DERIVED_JOB_ID,
+        state: "SUCCEEDED",
+        owner: derivedOwner,
+        progress: { phase: "complete", completed: 1, total: 1 },
+        createdAt: "2026-08-21T00:01:00.000Z",
+        updatedAt: "2026-08-21T00:02:00.000Z",
+        expiresAt: "2026-08-22T00:00:00.000Z",
+        resultAvailable: true,
+        errorCode: null,
+      });
+      return;
+    }
     if (path === `/v1/jobs/${JOB_ID}/result` && method === "GET") {
-      const resultBytes = artifact!;
+      const resultBytes = sourceArtifact!.bytes;
       await fulfillJson(route, {
         schemaVersion: "3dena.job-result-reference.v1",
         jobId: JOB_ID,
         sha256: createHash("sha256").update(resultBytes).digest("hex"),
         byteLength: resultBytes.byteLength,
-        resultUrl: new URL("/__remote_calibration__/objects/result.json", request.url()).toString(),
+        resultUrl: new URL("/__remote_calibration__/objects/source-result.json", request.url()).toString(),
         exportUrl: null,
         expiresAt: "2026-08-22T00:00:00.000Z",
       });
       return;
     }
-    if (path === "/objects/result.json" && method === "GET") {
-      await route.fulfill({ status: 200, contentType: "application/json", body: artifact! });
+    if (path === `/v1/jobs/${DERIVED_JOB_ID}/result` && method === "GET") {
+      const resultBytes = derivedArtifact!.bytes;
+      await fulfillJson(route, {
+        schemaVersion: "3dena.job-result-reference.v1",
+        jobId: DERIVED_JOB_ID,
+        sha256: createHash("sha256").update(resultBytes).digest("hex"),
+        byteLength: resultBytes.byteLength,
+        resultUrl: new URL("/__remote_calibration__/objects/derived-result.json", request.url()).toString(),
+        exportUrl: null,
+        expiresAt: "2026-08-22T00:00:00.000Z",
+      });
+      return;
+    }
+    if (path === "/objects/source-result.json" && method === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: sourceArtifact!.bytes });
+      return;
+    }
+    if (path === "/objects/derived-result.json" && method === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: derivedArtifact!.bytes });
       return;
     }
     if (path === `/v1/jobs/${JOB_ID}` && method === "DELETE") {
       await fulfillJson(route, {
         schemaVersion: "3dena.job-deletion-receipt.v1",
         jobId: JOB_ID,
+        cancelled: false,
+        inputDeleted: true,
+        resultDeleted: true,
+        deletedAt: "2026-08-21T00:02:00.000Z",
+      });
+      return;
+    }
+    if (path === `/v1/jobs/${DERIVED_JOB_ID}` && method === "DELETE") {
+      await fulfillJson(route, {
+        schemaVersion: "3dena.job-deletion-receipt.v1",
+        jobId: DERIVED_JOB_ID,
         cancelled: false,
         inputDeleted: true,
         resultDeleted: true,
@@ -604,6 +808,28 @@ test("mocked remote service closes upload through formal verified download witho
     );
   }
   await expect(page.getByTestId("analysis-result")).toBeVisible();
+  await expect(page.getByTestId("remote-source-delete")).toBeEnabled();
+
+  await page.getByTestId("remote-task-kind").selectOption("network-comparison");
+  await expect(page.getByTestId("remote-derived-controls")).toBeVisible();
+  await page.getByTestId("remote-derived-run").click();
+  await expect.poll(
+    () => page.getByTestId("remote-runtime-status").getAttribute("data-state"),
+    { timeout: 30_000 },
+  ).toMatch(/^(completed|error)$/u);
+  const terminalDerivedState = await page.getByTestId("remote-runtime-status").getAttribute("data-state");
+  if (terminalDerivedState === "error") {
+    throw new Error(
+      `Mocked derived service failed: ${await page.getByTestId("remote-analysis-error").innerText()}`,
+    );
+  }
+  await expect(page.getByTestId("remote-derived-result")).toHaveAttribute(
+    "data-task-kind",
+    "network-comparison",
+  );
+  await expect(page.getByTestId("remote-derived-visualization")).toBeVisible();
+  await expect(page.getByTestId("remote-derived-table")).toBeVisible();
+
   const downloadEvent = page.waitForEvent("download");
   await page.getByTestId("remote-verified-download").click();
   const download = await downloadEvent;
@@ -612,11 +838,27 @@ test("mocked remote service closes upload through formal verified download witho
   const chunks: Buffer[] = [];
   for await (const chunk of stream) chunks.push(Buffer.from(chunk));
   expect([...Buffer.concat(chunks).subarray(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04]);
-  expect(executeBody).toMatchObject({
+  expect(sourceExecuteBody).toMatchObject({
     schemaVersion: "3dena.execute-activated-job-request.v1",
     task: { kind: "ena-model", schemaVersion: "3dena.activated-ena-model-task-spec.v1" },
   });
-  expect(JSON.stringify(executeBody)).not.toMatch(/rows|sourceEnvelope/u);
+  expect(derivedExecuteBody).toMatchObject({
+    schemaVersion: "3dena.execute-activated-job-request.v1",
+    task: {
+      kind: "network-comparison",
+      schemaVersion: "3dena.activated-network-comparison-task-spec.v1",
+      sourceResultHash: sourceArtifact?.resultHash,
+    },
+  });
+  expect(JSON.stringify({ sourceExecuteBody, derivedExecuteBody })).not.toMatch(
+    /rows|sourceEnvelope|capabilityToken|resultUrl/u,
+  );
+
+  await page.getByTestId("remote-source-delete").click();
+  await expect(page.getByTestId("remote-runtime-status")).toHaveAttribute("data-state", "idle");
+  await expect(page.getByTestId("remote-source-delete")).toHaveCount(0);
+  await expect(page.getByText("No service dataset is active.")).toBeVisible();
+
   expect(mutations).toEqual(expect.arrayContaining([
     "POST /v1/datasets",
     `PUT /v1/datasets/${DATASET_ID}/content`,
@@ -626,6 +868,9 @@ test("mocked remote service closes upload through formal verified download witho
     `POST /v1/datasets/${DATASET_ID}/activate`,
     "POST /v1/jobs",
     `POST /v1/jobs/${JOB_ID}/execute`,
+    `POST /v1/jobs/${DERIVED_JOB_ID}/execute`,
+    `DELETE /v1/jobs/${DERIVED_JOB_ID}`,
+    `DELETE /v1/datasets/${DATASET_ID}`,
     `DELETE /v1/jobs/${JOB_ID}`,
   ]));
   expect(await page.evaluate(() =>

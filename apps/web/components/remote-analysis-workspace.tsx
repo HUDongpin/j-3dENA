@@ -13,7 +13,10 @@ import {
   type AnalysisClientV1,
   type AnalysisTaskV1,
 } from "@3dena/analysis";
-import type { ActivatedEnaModelTaskSpecV1 } from "@3dena/compute-service-http";
+import type {
+  ActivatedAnalysisTaskSpecV1,
+  ActivatedEnaModelTaskSpecV1,
+} from "@3dena/compute-service-http";
 import {
   Ban,
   CheckCircle2,
@@ -28,6 +31,10 @@ import {
   Upload,
 } from "lucide-react";
 import { AnalysisResults } from "@/components/analysis-results";
+import {
+  RemoteDerivedControls,
+  RemoteDerivedResult,
+} from "@/components/remote-derived-analysis";
 import type { AnalysisMapping } from "@/lib/analysis-contract";
 import type { WebExecutionPolicy } from "@/lib/execution-policy";
 import {
@@ -50,6 +57,7 @@ import {
   type RemoteDatasetInventory,
   type RemoteDatasetPreview,
   type RemoteDatasetWorkflowAdapter,
+  type RemoteEnaSourceResult,
   type RemoteParsedWorksheet,
   type RemoteWorksheetSummary,
 } from "@/lib/remote-dataset-workflow";
@@ -74,12 +82,12 @@ type RemoteTaskKind = AnalysisTaskV1["kind"];
 
 const REMOTE_TASK_OPTIONS = Object.freeze([
   { kind: "ena-model", label: "ENA model", readiness: "ready" },
-  { kind: "network-comparison", label: "Network comparison", readiness: "blocked" },
-  { kind: "change-network", label: "Change network", readiness: "blocked" },
-  { kind: "statistics", label: "Statistics", readiness: "blocked" },
-  { kind: "trajectory", label: "Trajectory", readiness: "blocked" },
-  { kind: "trajectory-comparison", label: "Trajectory comparison", readiness: "blocked" },
-  { kind: "bootstrap", label: "Bootstrap", readiness: "blocked" },
+  { kind: "network-comparison", label: "Network comparison", readiness: "ready" },
+  { kind: "change-network", label: "Change network", readiness: "ready" },
+  { kind: "statistics", label: "Statistics", readiness: "ready" },
+  { kind: "trajectory", label: "Trajectory", readiness: "ready" },
+  { kind: "trajectory-comparison", label: "Trajectory comparison", readiness: "ready" },
+  { kind: "bootstrap", label: "Bootstrap", readiness: "ready" },
 ] satisfies ReadonlyArray<{
   kind: RemoteTaskKind;
   label: string;
@@ -168,7 +176,10 @@ export function RemoteAnalysisWorkspace({
   const [selectedTaskKind, setSelectedTaskKind] = useState<RemoteTaskKind>("ena-model");
   const [cleanupPending, setCleanupPending] = useState(false);
   const [downloadPending, setDownloadPending] = useState(false);
+  const [sourceDeleting, setSourceDeleting] = useState(false);
   const [result, setResult] = useState<VerifiedRemoteAnalysisResult | null>(null);
+  const [enaSource, setEnaSource] = useState<RemoteEnaSourceResult | null>(null);
+  const [enaSourceResult, setEnaSourceResult] = useState<VerifiedRemoteAnalysisResult | null>(null);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const generationRef = useRef(0);
@@ -177,7 +188,12 @@ export function RemoteAnalysisWorkspace({
     client: AnalysisClientV1;
     reference: Parameters<typeof cancelRemoteAnalysis>[1];
   } | null>(null);
+  const sourceJobRef = useRef<{
+    client: AnalysisClientV1;
+    reference: Parameters<typeof deleteRemoteJobData>[1];
+  } | null>(null);
   const workflowIdRef = useRef<string | null>(null);
+  const activeWorkflowIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (policy.blocker || !client) return;
@@ -220,8 +236,14 @@ export function RemoteAnalysisWorkspace({
     requestAbortRef.current?.abort();
     const activeJob = activeJobRef.current;
     if (activeJob) void cancelRemoteAnalysis(activeJob.client, activeJob.reference).catch(() => undefined);
+    const sourceJob = sourceJobRef.current;
+    if (sourceJob) void deleteRemoteJobData(sourceJob.client, sourceJob.reference).catch(() => undefined);
     const workflowId = workflowIdRef.current;
     if (workflowId) void workflow.discard(workflowId).catch(() => undefined);
+    const activeWorkflowId = activeWorkflowIdRef.current;
+    if (activeWorkflowId && activeWorkflowId !== workflowId) {
+      void workflow.discard(activeWorkflowId).catch(() => undefined);
+    }
   }, [workflow]);
 
   function abortRequests(): void {
@@ -349,7 +371,27 @@ export function RemoteAnalysisWorkspace({
     requestAbortRef.current = controller;
     setError(null);
     setMessage("Atomically activating the reviewed service candidate…");
+    let previousSourceDeleted = false;
     try {
+      const retainedSource = sourceJobRef.current;
+      if (retainedSource) {
+        if (active?.workflowId === preview.workflowId) {
+          throw new Error("The original raw bytes were deleted after ENA publication. Choose and upload the dataset again before refitting or remapping it.");
+        }
+        setMessage("Deleting the previous service-owned ENA source before activating its replacement…");
+        await deleteRemoteJobData(retainedSource.client, retainedSource.reference);
+        if (generation !== generationRef.current) return;
+        previousSourceDeleted = true;
+        sourceJobRef.current = null;
+        setEnaSource(null);
+        setEnaSourceResult(null);
+        setResult(null);
+        setActive(null);
+        setActiveMapping(null);
+        if (active?.workflowId) await workflow.discard(active.workflowId, controller.signal);
+        if (generation !== generationRef.current) return;
+        activeWorkflowIdRef.current = null;
+      }
       const next = await workflow.activate(
         preview,
         active?.activationIdentity ?? null,
@@ -357,6 +399,7 @@ export function RemoteAnalysisWorkspace({
       );
       if (generation !== generationRef.current) return;
       setActive(next);
+      activeWorkflowIdRef.current = next.workflowId;
       setActiveMapping({
         ...mapping,
         unitColumns: [...mapping.unitColumns],
@@ -369,13 +412,15 @@ export function RemoteAnalysisWorkspace({
     } catch (activationError) {
       if (generation !== generationRef.current) return;
       setStatus("error");
-      setError(`${activationError instanceof Error ? activationError.message : "Activation failed."} The previous active dataset was preserved.`);
+      setError(`${activationError instanceof Error ? activationError.message : "Activation failed."} ${previousSourceDeleted
+        ? "The previous ENA source was already attested deleted; it was not preserved. Upload and activate the dataset again before another ENA run."
+        : "The previous active dataset was preserved."}`);
     }
   }
 
   async function runAnalysis(): Promise<void> {
     if (!active || !activeMapping || !client || status === "blocked"
-        || selectedTaskKind !== "ena-model") return;
+        || selectedTaskKind !== "ena-model" || enaSource) return;
     abortRequests();
     const generation = generationRef.current;
     const controller = new AbortController();
@@ -427,14 +472,19 @@ export function RemoteAnalysisWorkspace({
         },
       });
       if (generation !== generationRef.current) return;
-      await deleteRemoteJobData(client, binding.reference);
-      if (generation !== generationRef.current) return;
+      sourceJobRef.current = { client, reference: binding.reference };
       activeJobRef.current = null;
       setCleanupPending(false);
+      setEnaSource({
+        reference: binding.reference,
+        datasetReceipt: binding.datasetReceipt,
+        sourceResultHash: verified.envelope.provenance.resultHash,
+      });
+      setEnaSourceResult(verified);
       setResult(verified);
       setProgress(100);
       setStatus("completed");
-      setMessage("Remote analysis completed. Exact result bytes passed SHA-256, schema, variant, and ownership validation; service input and result objects are attested deleted.");
+      setMessage("Remote ENA completed. Exact result bytes passed SHA-256, schema, variant, build, and ownership validation. Raw activation bytes are deleted at terminal publication; the service-owned ENA result remains capability-bound only for this derived-analysis session.");
     } catch (runError) {
       if (generation !== generationRef.current) return;
       const cleanup = activeJobRef.current;
@@ -454,6 +504,69 @@ export function RemoteAnalysisWorkspace({
       }
       setStatus("error");
       setError(runError instanceof Error ? runError.message : "Remote analysis failed.");
+    }
+  }
+
+  async function runDerivedAnalysis(task: ActivatedAnalysisTaskSpecV1): Promise<void> {
+    if (!client || !enaSource || !enaSourceResult || task.kind === "ena-model"
+        || task.kind !== selectedTaskKind || status === "blocked") return;
+    abortRequests();
+    const generation = generationRef.current;
+    const controller = new AbortController();
+    requestAbortRef.current = controller;
+    setStatus("running");
+    setResult(null);
+    setError(null);
+    setProgress(0);
+    setMessage("Authorizing a derived job against the retained service-owned ENA result hash…");
+    try {
+      const binding = await workflow.bindDerivedExecution(enaSource, task, controller.signal);
+      if (generation !== generationRef.current) return;
+      activeJobRef.current = { client, reference: binding.reference };
+      setCleanupPending(true);
+      const verified = await runRemoteAnalysis({
+        client,
+        binding,
+        approvedRemoteBuild: policy.approvedRemoteBuild,
+        currentWebBuildId: webBuildId ?? null,
+        signal: controller.signal,
+        onProgress(update) {
+          if (generation !== generationRef.current) return;
+          const percent = update.total && update.total > 0
+            ? Math.round((update.completed / update.total) * 100)
+            : 0;
+          setProgress(Math.max(0, Math.min(100, percent)));
+          setMessage(`Remote ${update.phase}: ${update.completed}${update.total === null ? "" : ` of ${update.total}`}.`);
+        },
+      });
+      if (generation !== generationRef.current) return;
+      await deleteRemoteJobData(client, binding.reference);
+      if (generation !== generationRef.current) return;
+      activeJobRef.current = null;
+      setCleanupPending(false);
+      setResult(verified);
+      setProgress(100);
+      setStatus("completed");
+      setMessage("Derived analysis completed. Exact result bytes and ownership passed verification; its derived job objects are attested deleted. The ENA source remains capability-bound for another reviewed derived task.");
+    } catch (runError) {
+      if (generation !== generationRef.current) return;
+      const cleanup = activeJobRef.current;
+      if (cleanup) {
+        try {
+          await deleteRemoteJobData(cleanup.client, cleanup.reference);
+          if (generation !== generationRef.current) return;
+          activeJobRef.current = null;
+          setCleanupPending(false);
+        } catch (cleanupError) {
+          if (generation !== generationRef.current) return;
+          setCleanupPending(true);
+          setStatus("error");
+          setError(`${runError instanceof Error ? runError.message : "Remote derived analysis failed."} Cleanup is still required: ${cleanupError instanceof Error ? cleanupError.message : "service deletion was not observed."}`);
+          return;
+        }
+      }
+      setStatus("error");
+      setError(runError instanceof Error ? runError.message : "Remote derived analysis failed.");
     }
   }
 
@@ -489,6 +602,39 @@ export function RemoteAnalysisWorkspace({
     }
   }
 
+  async function endSourceSession(): Promise<void> {
+    const sourceJob = sourceJobRef.current;
+    if (!sourceJob || status === "running" || status === "cancelling") return;
+    abortRequests();
+    setSourceDeleting(true);
+    setStatus("cancelling");
+    setError(null);
+    setMessage("Deleting the retained ENA source result and closing its dataset session…");
+    try {
+      if (activeWorkflowIdRef.current) {
+        await workflow.discard(activeWorkflowIdRef.current);
+        activeWorkflowIdRef.current = null;
+        workflowIdRef.current = null;
+        setActive(null);
+        setActiveMapping(null);
+      }
+      await deleteRemoteJobData(sourceJob.client, sourceJob.reference);
+      sourceJobRef.current = null;
+      setEnaSource(null);
+      setEnaSourceResult(null);
+      setResult(null);
+      setSelectedTaskKind("ena-model");
+      setProgress(0);
+      setStatus("idle");
+      setMessage("The ENA source result and dataset session are attested deleted. Upload the dataset again to begin another analysis session.");
+    } catch (deleteError) {
+      setStatus("error");
+      setError(deleteError instanceof Error ? deleteError.message : "Source-session deletion was not observed.");
+    } finally {
+      setSourceDeleting(false);
+    }
+  }
+
   async function downloadVerifiedResult(): Promise<void> {
     if (!result || !active || !policy.approvedRemoteBuild || !webBuildId) return;
     setDownloadPending(true);
@@ -496,6 +642,7 @@ export function RemoteAnalysisWorkspace({
     try {
       const bundle = await createRemoteFormalDownload({
         verified: result,
+        sourceVerified: enaSourceResult ?? result,
         activeDataset: active,
         approvedBuild: policy.approvedRemoteBuild,
         currentWebBuildId: webBuildId,
@@ -517,10 +664,12 @@ export function RemoteAnalysisWorkspace({
     (option) => option.kind === selectedTaskKind,
   )?.label ?? selectedTaskKind;
   const taskProductBlocker = selectedTaskKind === "ena-model"
-    ? null
-    : result?.envelope.taskKind === "ena-model"
-      ? `${selectedTaskLabel} is present in the seven-task remote HTTP contract and can reference the verified source result hash, but its independently reviewed scientific controls and result presentation are not closed in this Web UI. Execution remains disabled.`
-      : `${selectedTaskLabel} requires a checksum-verified, service-owned ENA source result plus independently reviewed scientific controls. Run ENA first; execution remains disabled until those controls are closed.`;
+    ? enaSource
+      ? "This ENA source is already frozen and its raw activation bytes are deleted. Use a derived task, or activate a replacement dataset before refitting."
+      : null
+    : enaSource && enaSourceResult
+      ? null
+      : `${selectedTaskLabel} requires a checksum-verified, service-owned ENA source result. Run ENA first; no derived job will be allocated before that source binding exists.`;
   const effectiveExecutionBlocker = executionBlocker ?? taskProductBlocker;
 
   return (
@@ -768,13 +917,13 @@ export function RemoteAnalysisWorkspace({
             >
               {REMOTE_TASK_OPTIONS.map((option) => (
                 <option key={option.kind} value={option.kind}>
-                  {option.label}{option.readiness === "blocked" ? " — controls blocked" : " — ready"}
+                  {option.label} — ready
                 </option>
               ))}
             </select>
             <p className="validation-hint">
               All seven public task discriminators use the persistent remote route.
-              Tasks without reviewed controls fail closed and never enter a browser Worker.
+              Derived tasks bind a verified service-owned ENA source and never enter a browser Worker.
             </p>
             {effectiveExecutionBlocker && (
               <p className="validation-hint" role="note" data-testid="remote-execution-blocker">
@@ -787,9 +936,9 @@ export function RemoteAnalysisWorkspace({
                 type="button"
                 className="button button--primary"
                 onClick={() => void runAnalysis()}
-                disabled={!active || Boolean(effectiveExecutionBlocker) || cleanupPending || status === "running" || status === "cancelling"}
+                disabled={!active || selectedTaskKind !== "ena-model" || Boolean(effectiveExecutionBlocker) || cleanupPending || sourceDeleting || status === "running" || status === "cancelling"}
                 data-testid="remote-analysis-run"
-              ><Play size={18} aria-hidden="true" /> Run on approved service</button>
+              ><Play size={18} aria-hidden="true" /> {selectedTaskKind === "ena-model" ? "Run ENA on approved service" : "Use scientific controls below"}</button>
               <button
                 type="button"
                 className="button button--danger"
@@ -807,19 +956,42 @@ export function RemoteAnalysisWorkspace({
                 data-testid="remote-verified-download"
               ><Download size={18} aria-hidden="true" /> {downloadPending ? "Building formal bundle…" : "Download formal verified ZIP"}</button>
             )}
+            {enaSource && (
+              <button
+                type="button"
+                className="button button--danger remote-download"
+                onClick={() => void endSourceSession()}
+                disabled={sourceDeleting || status === "running" || status === "cancelling"}
+                data-testid="remote-source-delete"
+              ><Square size={17} aria-hidden="true" /> {sourceDeleting ? "Deleting source session…" : "End session and delete ENA source"}</button>
+            )}
           </section>
         </aside>
       </div>
 
-      {result && active
-        && result.envelope.taskKind === "ena-model"
-        && result.envelope.result.schemaVersion === "3dena.analysis-result.v1" && (
+      {enaSource && enaSourceResult && selectedTaskKind !== "ena-model" && (
+        <RemoteDerivedControls
+          key={`${enaSource.sourceResultHash}-${selectedTaskKind}`}
+          kind={selectedTaskKind}
+          source={enaSourceResult}
+          running={status === "running"}
+          onRun={(task) => void runDerivedAnalysis(task)}
+        />
+      )}
+
+      {result && result.envelope.taskKind !== "ena-model" && (
+        <RemoteDerivedResult verified={result} />
+      )}
+
+      {enaSourceResult && active
+        && enaSourceResult.envelope.taskKind === "ena-model"
+        && enaSourceResult.envelope.result.schemaVersion === "3dena.analysis-result.v1" && (
         <AnalysisResults
-          result={result.envelope.result}
+          result={enaSourceResult.envelope.result}
           owner={{
-            datasetHash: result.envelope.owner.datasetHash,
-            specHash: result.envelope.owner.specHash,
-            runId: result.envelope.owner.runId,
+            datasetHash: enaSourceResult.envelope.owner.datasetHash,
+            specHash: enaSourceResult.envelope.owner.specHash,
+            runId: enaSourceResult.envelope.owner.runId,
           }}
           datasetName={selectedFile?.name ?? "remote-dataset"}
           buildId={policy.approvedRemoteBuild?.approvalManifestSha256}
@@ -827,6 +999,7 @@ export function RemoteAnalysisWorkspace({
           datasetColumns={active.receipt.columns}
           datasetSchema={active.receipt.schema}
           datasetLimits={active.receipt.limits}
+          browserDerivedEnabled={false}
         />
       )}
     </div>

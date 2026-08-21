@@ -1,6 +1,8 @@
 import {
   createExportBundle,
+  hashAnalysisValueV1,
   type AnalysisResult,
+  type AnalysisExportPortfolioV1,
 } from "@3dena/analysis";
 import { createDeterministicZip } from "@3dena/export";
 import type { ApprovedRemoteBuildIdentity } from "./execution-policy";
@@ -11,6 +13,7 @@ const ENCODER = new TextEncoder();
 
 export interface CreateRemoteFormalDownloadOptions {
   readonly verified: VerifiedRemoteAnalysisResult;
+  readonly sourceVerified?: VerifiedRemoteAnalysisResult;
   readonly activeDataset: RemoteActiveDataset;
   readonly approvedBuild: ApprovedRemoteBuildIdentity;
   readonly currentWebBuildId: string;
@@ -50,31 +53,70 @@ export async function createRemoteFormalDownload(
   options: CreateRemoteFormalDownloadOptions,
 ): Promise<RemoteFormalDownload> {
   const { verified, activeDataset, approvedBuild, currentWebBuildId } = options;
+  const sourceVerified = options.sourceVerified ?? verified;
   const { envelope, reference, exactBytes } = verified;
+  const sourceEnvelope = sourceVerified.envelope;
   if (currentWebBuildId !== approvedBuild.webBuildId) {
     throw new Error("The Web build does not match the active build approval.");
   }
-  if (envelope.taskKind !== "ena-model"
-      || envelope.result.schemaVersion !== "3dena.analysis-result.v1") {
-    throw new Error("A standalone formal download requires a verified ENA source result.");
+  if (sourceEnvelope.taskKind !== "ena-model"
+      || sourceEnvelope.result.schemaVersion !== "3dena.analysis-result.v1") {
+    throw new Error("A formal remote download requires its verified ENA source result.");
   }
-  if (envelope.owner.datasetHash !== activeDataset.receipt.sha256
+  if (sourceEnvelope.owner.datasetHash !== activeDataset.receipt.sha256
+      || sourceEnvelope.provenance.datasetHash !== sourceEnvelope.owner.datasetHash
+      || sourceEnvelope.provenance.specHash !== sourceEnvelope.owner.specHash
+      || sourceEnvelope.provenance.buildId !== approvedBuild.flyBuildId
+      || sourceEnvelope.provenance.sourceKind !== "raw-jena"
+      || sourceEnvelope.provenance.jenaExecuted !== true
+      || envelope.owner.datasetHash !== sourceEnvelope.owner.datasetHash
       || envelope.provenance.datasetHash !== envelope.owner.datasetHash
       || envelope.provenance.specHash !== envelope.owner.specHash
       || envelope.provenance.buildId !== approvedBuild.flyBuildId
       || envelope.provenance.sourceKind !== "raw-jena"
-      || envelope.provenance.jenaExecuted !== true) {
-    throw new Error("The verified result is not bound to the active dataset and approved compute build.");
+      || (envelope.taskKind !== "ena-model"
+        && verified.sourceResultHash !== sourceEnvelope.provenance.resultHash)) {
+    throw new Error("The verified task and ENA source are not bound to the active dataset and approved compute build.");
   }
   if (reference.byteLength !== exactBytes.byteLength
       || reference.sha256 !== await sha256(exactBytes)) {
     throw new Error("The exact result artifact no longer matches its verified receipt.");
   }
+  if (sourceVerified.reference.byteLength !== sourceVerified.exactBytes.byteLength
+      || sourceVerified.reference.sha256 !== await sha256(sourceVerified.exactBytes)) {
+    throw new Error("The exact ENA source artifact no longer matches its verified receipt.");
+  }
 
+  const sourceAnalysis = sourceEnvelope.result as AnalysisResult;
+  let scientificInput: AnalysisResult | AnalysisExportPortfolioV1 = sourceAnalysis;
+  if (envelope.taskKind !== "ena-model") {
+    const portfolio: AnalysisExportPortfolioV1 = {
+      schemaVersion: "3dena.analysis-export-portfolio.v1",
+      analysis: sourceAnalysis,
+    };
+    if (envelope.result.schemaVersion === "3dena.network-comparison.v1") portfolio.comparison = envelope.result;
+    else if (envelope.result.schemaVersion === "3dena.change-network.v1") portfolio.change = envelope.result;
+    else if (envelope.result.schemaVersion === "3dena.statistics-task-result.v1") portfolio.statistics = envelope.result;
+    else if (envelope.result.schemaVersion === "3dena.trajectory-dynamics.v1"
+        || envelope.result.schemaVersion === "3dena.trajectory-path-statistics.v1") portfolio.trajectory = envelope.result;
+    else if (envelope.result.schemaVersion === "3dena.trajectory-comparison.v1") portfolio.trajectoryComparison = envelope.result;
+    else if (envelope.result.schemaVersion === "3dena.trajectory-bootstrap.v1") portfolio.bootstrap = envelope.result;
+    else throw new Error("The verified derived result is not supported by the formal export portfolio.");
+    scientificInput = portfolio;
+  }
+  const exportProvenance = {
+    ...envelope.provenance,
+    resultHash: await hashAnalysisValueV1(scientificInput),
+    schemaVersions: [...new Set([
+      ...sourceEnvelope.provenance.schemaVersions,
+      ...envelope.provenance.schemaVersions,
+      scientificInput.schemaVersion,
+    ])],
+  };
   const scientific = await createExportBundle(
-    envelope.result as AnalysisResult,
+    scientificInput,
     {
-      provenance: envelope.provenance,
+      provenance: exportProvenance,
       fileName: `3dena-scientific-${safeRunId(envelope.owner.runId)}.zip`,
     },
   );
@@ -97,11 +139,24 @@ export async function createRemoteFormalDownload(
       byteLength: reference.byteLength,
       expiresAt: reference.expiresAt,
     },
+    verifiedSourceArtifact: {
+      schemaVersion: "3dena.verified-source-result-object-receipt.v1",
+      taskKind: sourceEnvelope.taskKind,
+      owner: sourceEnvelope.owner,
+      resultHash: sourceEnvelope.provenance.resultHash,
+      sha256: sourceVerified.reference.sha256,
+      byteLength: sourceVerified.reference.byteLength,
+      expiresAt: sourceVerified.reference.expiresAt,
+    },
+    sourceResultBinding: envelope.taskKind === "ena-model" ? null : {
+      schemaVersion: "3dena.verified-source-result-binding.v1",
+      sourceResultHash: verified.sourceResultHash,
+    },
     buildApproval: {
       ...approvedBuild,
       currentWebBuildId,
     },
-    provenance: envelope.provenance,
+    provenance: exportProvenance,
     scientificBundle: {
       schemaVersion: scientific.schemaVersion,
       fileName: scientific.fileName,
@@ -120,9 +175,15 @@ export async function createRemoteFormalDownload(
       data: jsonBytes(receipt),
     },
     {
-      path: "receipts/verified-result-artifact.json",
+      path: envelope.taskKind === "ena-model"
+        ? "receipts/verified-source-result-artifact.json"
+        : "receipts/verified-derived-result-artifact.json",
       data: Uint8Array.from(exactBytes),
     },
+    ...(envelope.taskKind === "ena-model" ? [] : [{
+      path: "receipts/verified-source-result-artifact.json",
+      data: Uint8Array.from(sourceVerified.exactBytes),
+    }]),
   ]);
   return Object.freeze({
     schemaVersion: "3dena.remote-formal-download.v1",

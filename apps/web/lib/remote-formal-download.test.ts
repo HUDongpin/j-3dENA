@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   ANALYSIS_CONTRACT_VERSION_V1,
   analyzeRows,
+  compareGroupNetworks,
   hashAnalysisValueV1,
   type AnalysisResultEnvelopeV1,
 } from "@3dena/analysis";
@@ -54,9 +55,15 @@ async function fixture() {
       units: ["group", "participant"],
       conversation: ["time"],
       codes: ["A", "B", "C"],
+      trajectory: {
+        participant: ["participant"],
+        group: "group",
+        time: "time",
+        timeOrder: ["T1"],
+      },
     },
     config: {
-      model: "EndPoint",
+      model: "AccumulatedTrajectory",
       window: "MovingStanzaWindow",
       weightBy: "binary",
       windowSizeBack: 4,
@@ -187,7 +194,7 @@ describe("remote formal download", () => {
     expect([...outer.keys()].sort()).toEqual([
       "formal/formal-scientific-export.zip",
       "receipts/remote-execution-receipt.json",
-      "receipts/verified-result-artifact.json",
+      "receipts/verified-source-result-artifact.json",
     ]);
     const formal = zipEntries(outer.get("formal/formal-scientific-export.zip")!);
     expect(formal.has("manifest.json")).toBe(true);
@@ -205,6 +212,104 @@ describe("remote formal download", () => {
       },
     });
     expect(JSON.stringify(receipt)).not.toContain("resultUrl");
+  });
+
+  it("packages a derived result with its exact verified ENA source and formal portfolio CSV", async () => {
+    const options = await fixture();
+    const source = options.verified.envelope.result;
+    const groups = [...new Set(source.points.flatMap((point) =>
+      point.group ? [point.group.canonical] : []))];
+    const result = compareGroupNetworks(source, [groups[0]!, groups[1]!]);
+    const resultHash = await hashAnalysisValueV1(result);
+    const envelope: AnalysisResultEnvelopeV1<typeof result> = {
+      ...options.verified.envelope,
+      owner: {
+        ...options.verified.envelope.owner,
+        specHash: "8".repeat(64),
+        runId: "remote-derived-1",
+        taskId: "job-derived-1",
+      },
+      taskKind: "network-comparison",
+      result,
+      diagnostics: result.diagnostics,
+      provenance: {
+        ...options.verified.envelope.provenance,
+        specHash: "8".repeat(64),
+        resultHash,
+        schemaVersions: [
+          ...options.verified.envelope.provenance.schemaVersions,
+          "3dena.network-comparison.v1",
+        ],
+      },
+    };
+    const exactBytes = new TextEncoder().encode(JSON.stringify(envelope));
+    const verified = {
+      envelope,
+      exactBytes: Uint8Array.from(exactBytes),
+      sourceResultHash: options.verified.envelope.provenance.resultHash,
+      reference: {
+        ...options.verified.reference,
+        jobId: envelope.owner.taskId,
+        sha256: createHash("sha256").update(exactBytes).digest("hex"),
+        byteLength: exactBytes.byteLength,
+      },
+    };
+    const bundle = await createRemoteFormalDownload({
+      ...options,
+      verified,
+      sourceVerified: options.verified,
+    });
+    const outer = zipEntries(bundle.bytes);
+    expect([...outer.keys()].sort()).toEqual([
+      "formal/formal-scientific-export.zip",
+      "receipts/remote-execution-receipt.json",
+      "receipts/verified-derived-result-artifact.json",
+      "receipts/verified-source-result-artifact.json",
+    ]);
+    const formal = zipEntries(outer.get("formal/formal-scientific-export.zip")!);
+    expect(formal.has("comparison.csv")).toBe(true);
+    const receipt = JSON.parse(new TextDecoder().decode(
+      outer.get("receipts/remote-execution-receipt.json"),
+    )) as {
+      taskKind: string;
+      verifiedSourceArtifact: { resultHash: string };
+      sourceResultBinding: { sourceResultHash: string };
+    };
+    expect(receipt.taskKind).toBe("network-comparison");
+    expect(receipt.verifiedSourceArtifact.resultHash).toBe(
+      options.verified.envelope.provenance.resultHash,
+    );
+    expect(receipt.sourceResultBinding.sourceResultHash).toBe(
+      options.verified.envelope.provenance.resultHash,
+    );
+  });
+
+  it("fails closed when a derived result lacks its exact source-result binding", async () => {
+    const options = await fixture();
+    const source = options.verified.envelope.result;
+    const groups = [...new Set(source.points.flatMap((point) =>
+      point.group ? [point.group.canonical] : []))];
+    const result = compareGroupNetworks(source, [groups[0]!, groups[1]!]);
+    const envelope = {
+      ...options.verified.envelope,
+      taskKind: "network-comparison" as const,
+      result,
+      diagnostics: result.diagnostics,
+    };
+    const exactBytes = new TextEncoder().encode(JSON.stringify(envelope));
+    await expect(createRemoteFormalDownload({
+      ...options,
+      verified: {
+        envelope,
+        exactBytes: Uint8Array.from(exactBytes),
+        reference: {
+          ...options.verified.reference,
+          sha256: createHash("sha256").update(exactBytes).digest("hex"),
+          byteLength: exactBytes.byteLength,
+        },
+      },
+      sourceVerified: options.verified,
+    })).rejects.toThrow(/not bound/u);
   });
 
   it("fails closed for a mixed Web/build approval identity", async () => {

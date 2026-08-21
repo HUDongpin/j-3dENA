@@ -6,6 +6,7 @@ export {
 export {
   COMPUTE_DATASET_ACTIVATION_RECEIPT_VERSION,
   COMPUTE_DATASET_HTTP_VERSION,
+  COMPUTE_SOURCE_RESULT_JOB_HTTP_VERSION,
 } from "./dataset-contracts";
 export { ComputeHttpError } from "./errors";
 export {
@@ -38,6 +39,8 @@ export type {
   ComputeDatasetUploadResultV1,
   ComputeDatasetWorksheetResultV1,
   CreateActivatedAnalysisJobRequestV1,
+  CreateSourceResultAnalysisJobRequestV1,
+  SourceResultAnalysisJobCapabilityV1,
   ActivatedEnaModelTaskSpecV1,
   ActivatedAnalysisTaskSpecV1,
   ActivatedNetworkComparisonTaskSpecV1,

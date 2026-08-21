@@ -2,6 +2,7 @@ import type {
   AnalysisMapping,
 } from "@/lib/analysis-contract";
 import type {
+  AnalysisJobReferenceV1,
   DatasetReceiptV1,
   TypedScalarV1,
 } from "@3dena/analysis";
@@ -61,6 +62,12 @@ export interface RemoteActiveDataset {
   readonly receipt: DatasetReceiptV1;
 }
 
+export interface RemoteEnaSourceResult {
+  readonly reference: AnalysisJobReferenceV1;
+  readonly datasetReceipt: DatasetReceiptV1;
+  readonly sourceResultHash: string;
+}
+
 export interface RemoteDatasetWorkflowCapability {
   readonly available: boolean;
   readonly contractVersion: string | null;
@@ -103,11 +110,18 @@ export interface RemoteDatasetWorkflowAdapter {
     task: ActivatedAnalysisTaskSpecV1,
     signal: AbortSignal,
   ): Promise<RemoteExecutionBinding>;
+  bindDerivedExecution(
+    source: RemoteEnaSourceResult,
+    task: ActivatedAnalysisTaskSpecV1,
+    signal: AbortSignal,
+  ): Promise<RemoteExecutionBinding>;
   discard(workflowId: string, signal?: AbortSignal): Promise<void>;
 }
 
 export const REMOTE_DATASET_WORKFLOW_REQUIRED_CONTRACT =
   "3dena.compute-dataset-http.v1";
+export const REMOTE_DERIVED_EXECUTION_REQUIRED_CONTRACT =
+  "3dena.compute-source-result-job-http.v1";
 
 /**
  * The current public job client deliberately has no worksheet/mapping routes.
@@ -135,6 +149,7 @@ export function createUnavailableRemoteDatasetWorkflowAdapter(): RemoteDatasetWo
     prepare: unavailable,
     activate: unavailable,
     bindExecution: unavailable,
+    bindDerivedExecution: unavailable,
     async discard() {
       // No remote workflow was created, so there is nothing to delete.
     },

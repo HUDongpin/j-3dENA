@@ -53,10 +53,11 @@ function harness() {
   const objectStore = new InMemoryComputeObjectStore();
   const clock = new ManualComputeClock(NOW);
   const codec = new HmacComputeHttpCapabilityCodec("dataset-router-test-secret-that-is-long-enough");
+  const supervisor = new InMemoryComputeProcessSupervisor();
   const core = new ComputeServiceCore({
     repository: new InMemoryComputeTaskRepository(),
     objectStore,
-    processSupervisor: new InMemoryComputeProcessSupervisor(),
+    processSupervisor: supervisor,
     auditSink: new InMemoryComputeAuditSink(),
     clock,
     idFactory: new SequenceComputeIdFactory(),
@@ -111,10 +112,21 @@ function harness() {
       gitCommit: "8".repeat(40),
       flyImageDigest: `sha256:${"7".repeat(64)}`,
       flyBuildId: "dataset-router-build",
-      contractVersions: ["3dena.compute-dataset-http.v1"],
+      contractVersions: [
+        "3dena.compute-dataset-http.v1",
+        "3dena.compute-source-result-job-http.v1",
+      ],
     },
   });
-  return { router, repository, objectStore, core, sourceResults, sourceBindingOverrides };
+  return {
+    router,
+    repository,
+    objectStore,
+    core,
+    supervisor,
+    sourceResults,
+    sourceBindingOverrides,
+  };
 }
 
 async function json(response: Response) {
@@ -126,7 +138,7 @@ async function json(response: Response) {
 describe("Compute dataset HTTP workflow", () => {
   it("closes upload -> inventory -> selection -> mapping -> preview -> activation -> job binding", async () => {
     const {
-      router, repository, objectStore, core, sourceResults, sourceBindingOverrides,
+      router, repository, objectStore, core, supervisor, sourceResults, sourceBindingOverrides,
     } = harness();
     const bytes = new TextEncoder().encode(
       "participant,group,conversation,A,B,C\n" +
@@ -315,6 +327,48 @@ describe("Compute dataset HTTP workflow", () => {
       hash: sourceResultHash,
       result: rawResult,
     });
+    const sourceLease = await core.claimTask(job.jobId, {
+      leaseId: "source-result-lease",
+      holderId: "worker-source",
+      durationMs: 30_000,
+    });
+    const sourceRunning = await core.executeTask(job.jobId, sourceLease);
+    const sourceResultKey = sourceRunning.execution?.resultObjectKey;
+    const sourceChildId = sourceRunning.execution?.childId;
+    if (sourceResultKey === undefined || sourceChildId === undefined) {
+      throw new Error("Expected a running source ENA task.");
+    }
+    const sourceArtifact = await objectStore.putImmutable(
+      sourceResultKey,
+      new TextEncoder().encode('{"sourceResult":true}'),
+    );
+    await core.publishResult(job.jobId, sourceLease, sourceArtifact.descriptor);
+    supervisor.observeTermination(sourceChildId, {
+      kind: "completed",
+      observedAtMs: NOW,
+      exitCode: 0,
+      signal: null,
+    });
+    await core.settleBackground();
+    sourceBindingOverrides.owner = execute.owner;
+
+    const sourceStatus = await json(await router.handle(new Request(
+      `${BASE}/v1/jobs/${job.jobId}`,
+      { headers: requestHeaders(job.capabilityToken) },
+    )));
+    expect(sourceStatus).toMatchObject({ state: "SUCCEEDED", resultAvailable: true });
+
+    const staleActivationCreate = await router.handle(new Request(`${BASE}/v1/jobs`, {
+      method: "POST",
+      headers: requestHeaders(created.capabilityToken, "stale-activation-after-source"),
+      body: JSON.stringify({
+        schemaVersion: "3dena.create-activated-job-request.v1",
+        activationReceipt: activation,
+        processingPolicyConfirmed: true,
+      }),
+    }));
+    expect(staleActivationCreate.status).toBe(401);
+
     const derivedSpecs = [
       {
         schemaVersion: "3dena.activated-network-comparison-task-spec.v1",
@@ -374,15 +428,23 @@ describe("Compute dataset HTTP workflow", () => {
       },
     ] as const;
     for (const [index, scientific] of derivedSpecs.entries()) {
+      sourceBindingOverrides.owner = execute.owner;
       const derivedJob = await json(await router.handle(new Request(`${BASE}/v1/jobs`, {
         method: "POST",
-        headers: requestHeaders(created.capabilityToken, `derived-create-000${index}`),
+        headers: requestHeaders(job.capabilityToken, `derived-create-000${index}`),
         body: JSON.stringify({
-          schemaVersion: "3dena.create-activated-job-request.v1",
-          activationReceipt: activation,
+          schemaVersion: "3dena.create-source-result-job-request.v1",
+          sourceJobId: job.jobId,
+          sourceResultHash,
           processingPolicyConfirmed: true,
         }),
       })));
+      expect(derivedJob).toMatchObject({
+        schemaVersion: "3dena.source-result-job-capability.v1",
+        sourceJobId: job.jobId,
+        sourceResultHash,
+      });
+      expect(derivedJob).not.toHaveProperty("uploadUrl");
       const derivedStatus = await json(await router.handle(new Request(
         `${BASE}/v1/jobs/${derivedJob.jobId}/execute`,
         {
@@ -412,33 +474,17 @@ describe("Compute dataset HTTP workflow", () => {
       });
     }
 
-    const missingSourceJob = await json(await router.handle(new Request(`${BASE}/v1/jobs`, {
+    sourceBindingOverrides.owner = execute.owner;
+    const missingSource = await router.handle(new Request(`${BASE}/v1/jobs`, {
       method: "POST",
-      headers: requestHeaders(created.capabilityToken, "missing-source-create"),
+      headers: requestHeaders(job.capabilityToken, "missing-source-create"),
       body: JSON.stringify({
-        schemaVersion: "3dena.create-activated-job-request.v1",
-        activationReceipt: activation,
+        schemaVersion: "3dena.create-source-result-job-request.v1",
+        sourceJobId: job.jobId,
+        sourceResultHash: "f".repeat(64),
         processingPolicyConfirmed: true,
       }),
-    })));
-    const missingSource = await router.handle(new Request(
-      `${BASE}/v1/jobs/${missingSourceJob.jobId}/execute`,
-      {
-        method: "POST",
-        headers: requestHeaders(missingSourceJob.capabilityToken, "missing-source-execute"),
-        body: JSON.stringify({
-          schemaVersion: "3dena.execute-activated-job-request.v1",
-          task: {
-            schemaVersion: "3dena.activated-network-comparison-task-spec.v1",
-            kind: "network-comparison",
-            runId: "missing-source-run",
-            deadlineEpochMilliseconds: NOW + 30 * 60_000,
-            sourceResultHash: "f".repeat(64),
-            groups: ["group-a", "group-b"],
-          },
-        }),
-      },
-    ));
+    }));
     expect(missingSource.status).toBe(409);
     await expect(missingSource.json()).resolves.toMatchObject({ code: "DATASET_RECEIPT_MISMATCH" });
 
@@ -447,36 +493,25 @@ describe("Compute dataset HTTP workflow", () => {
       overrides: Record<string, unknown>,
     ): Promise<void> => {
       for (const key of Object.keys(sourceBindingOverrides)) delete sourceBindingOverrides[key];
-      Object.assign(sourceBindingOverrides, overrides);
-      const rejectedJob = await json(await router.handle(new Request(`${BASE}/v1/jobs`, {
+      Object.assign(sourceBindingOverrides, {
+        owner: execute.owner,
+        ...overrides,
+      });
+      const response = await router.handle(new Request(`${BASE}/v1/jobs`, {
         method: "POST",
-        headers: requestHeaders(created.capabilityToken, `${label}-create-key`),
+        headers: requestHeaders(job.capabilityToken, `${label}-create-key`),
         body: JSON.stringify({
-          schemaVersion: "3dena.create-activated-job-request.v1",
-          activationReceipt: activation,
+          schemaVersion: "3dena.create-source-result-job-request.v1",
+          sourceJobId: job.jobId,
+          sourceResultHash,
           processingPolicyConfirmed: true,
         }),
-      })));
-      const response = await router.handle(new Request(
-        `${BASE}/v1/jobs/${rejectedJob.jobId}/execute`,
-        {
-          method: "POST",
-          headers: requestHeaders(rejectedJob.capabilityToken, `${label}-execute-key`),
-          body: JSON.stringify({
-            schemaVersion: "3dena.execute-activated-job-request.v1",
-            task: {
-              ...derivedSpecs[0],
-              runId: `${label}-run`,
-              deadlineEpochMilliseconds: NOW + 30 * 60_000,
-            },
-          }),
-        },
-      ));
+      }));
       expect(response.status).toBe(409);
       await expect(response.json()).resolves.toMatchObject({ code: "DATASET_RECEIPT_MISMATCH" });
     };
     await expectRejectedSourceBinding("wrong-owner", {
-      owner: { datasetHash: "e".repeat(64) },
+      owner: { ...execute.owner, datasetHash: "e".repeat(64) },
     });
     await expectRejectedSourceBinding("wrong-build", { buildId: "another-fly-build" });
     await expectRejectedSourceBinding("stale-source", { expiresAtMs: NOW });

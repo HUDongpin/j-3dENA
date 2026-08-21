@@ -20,6 +20,8 @@ import type {
 import type { ImmutableObjectDescriptor } from "@3dena/compute-service-core";
 
 export const COMPUTE_DATASET_HTTP_VERSION = "3dena.compute-dataset-http.v1" as const;
+export const COMPUTE_SOURCE_RESULT_JOB_HTTP_VERSION =
+  "3dena.compute-source-result-job-http.v1" as const;
 export const COMPUTE_DATASET_ACTIVATION_RECEIPT_VERSION =
   "3dena.compute-dataset-activation-receipt.v1" as const;
 
@@ -93,6 +95,27 @@ export interface CreateActivatedAnalysisJobRequestV1 {
   readonly schemaVersion: "3dena.create-activated-job-request.v1";
   readonly activationReceipt: ComputeDatasetActivationReceiptV1;
   readonly processingPolicyConfirmed: true;
+}
+
+/**
+ * Creates a derived-analysis job from a successful, capability-authorized ENA
+ * result after the original raw activation has been deleted. No raw rows,
+ * activation capability, or result bytes cross this request boundary.
+ */
+export interface CreateSourceResultAnalysisJobRequestV1 {
+  readonly schemaVersion: "3dena.create-source-result-job-request.v1";
+  readonly sourceJobId: string;
+  readonly sourceResultHash: string;
+  readonly processingPolicyConfirmed: true;
+}
+
+export interface SourceResultAnalysisJobCapabilityV1 {
+  readonly schemaVersion: "3dena.source-result-job-capability.v1";
+  readonly jobId: string;
+  readonly capabilityToken: string;
+  readonly sourceJobId: string;
+  readonly sourceResultHash: string;
+  readonly expiresAt: string;
 }
 
 /**

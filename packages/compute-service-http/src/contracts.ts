@@ -4,6 +4,7 @@ import type {
   AnalysisJobStatusV1,
   AnalysisTaskV1,
   CreateAnalysisJobRequestV1,
+  DatasetReceiptV1,
   TaskOwnerV1,
 } from "@3dena/analysis";
 
@@ -36,6 +37,11 @@ export interface ComputeHttpJobRecordV1 {
   readonly activatedDatasetId?: string;
   readonly activationReceiptSha256?: string;
   readonly activatedDatasetContentUrl?: string;
+  /** Non-row activation metadata retained after terminal raw-input deletion. */
+  readonly activatedDatasetReceipt?: DatasetReceiptV1;
+  /** Successful ENA job whose service-owned result authorizes this derived job. */
+  readonly sourceJobId?: string;
+  readonly sourceResultHash?: string;
   readonly createdAtMs: number;
   readonly updatedAtMs: number;
   readonly expiresAtMs: number;

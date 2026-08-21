@@ -14,11 +14,13 @@ import type {
   ComputeDatasetUploadResultV1,
   ComputeDatasetWorksheetResultV1,
   CreateActivatedAnalysisJobRequestV1,
+  CreateSourceResultAnalysisJobRequestV1,
   CreateComputeDatasetRequestV1,
   ExecuteActivatedAnalysisJobRequestV1,
   PreviewComputeDatasetRequestV1,
   PutComputeDatasetMappingRequestV1,
   SelectComputeDatasetWorksheetRequestV1,
+  SourceResultAnalysisJobCapabilityV1,
 } from "@3dena/compute-service-http";
 import {
   createBrowserPreflightReceipt,
@@ -30,10 +32,12 @@ import {
 import type { AnalysisMapping } from "@/lib/analysis-contract";
 import {
   REMOTE_DATASET_WORKFLOW_REQUIRED_CONTRACT,
+  REMOTE_DERIVED_EXECUTION_REQUIRED_CONTRACT,
   type RemoteActiveDataset,
   type RemoteDatasetInventory,
   type RemoteDatasetPreview,
   type RemoteDatasetWorkflowAdapter,
+  type RemoteEnaSourceResult,
   type RemoteParsedWorksheet,
   type RemoteWorkflowProgress,
   type RemoteWorksheetSummary,
@@ -224,6 +228,32 @@ function assertJobCapability(value: unknown, expectedOrigin: string): AnalysisJo
     fail("INVALID_RESPONSE", "Analysis job capability is invalid.");
   }
   return item as unknown as AnalysisJobCapabilityV1;
+}
+
+function assertSourceResultJobCapability(
+  value: unknown,
+  source: RemoteEnaSourceResult,
+): SourceResultAnalysisJobCapabilityV1 {
+  const item = record(value, "source-result job capability");
+  exact(item, [
+    "schemaVersion",
+    "jobId",
+    "capabilityToken",
+    "sourceJobId",
+    "sourceResultHash",
+    "expiresAt",
+  ], "source-result job capability");
+  if (item.schemaVersion !== "3dena.source-result-job-capability.v1"
+      || typeof item.jobId !== "string"
+      || !OPAQUE_ID.test(item.jobId)
+      || typeof item.capabilityToken !== "string"
+      || !/^[A-Za-z0-9_-]{16,512}$/u.test(item.capabilityToken)
+      || item.sourceJobId !== source.reference.jobId
+      || item.sourceResultHash !== source.sourceResultHash
+      || Number.isNaN(Date.parse(String(item.expiresAt)))) {
+    fail("INVALID_RESPONSE", "Source-result job capability is invalid.");
+  }
+  return item as unknown as SourceResultAnalysisJobCapabilityV1;
 }
 
 function assertInspected(
@@ -551,6 +581,15 @@ export function createHttpRemoteDatasetWorkflowAdapter(
     return output;
   };
 
+  const jobHeaders = (
+    capabilityToken: string,
+    idempotencyKey: string,
+  ): Headers => {
+    const output = headers(undefined, idempotencyKey);
+    output.set("authorization", `Bearer ${capabilityToken}`);
+    return output;
+  };
+
   const invokeJson = async (
     url: string,
     init: RequestInit,
@@ -669,6 +708,15 @@ export function createHttpRemoteDatasetWorkflowAdapter(
           blocker: "The allowlisted compute build does not advertise the reviewed dataset workflow contract. No file was uploaded.",
           executionAvailable: false,
           executionBlocker: "Activated service execution is unavailable because the dataset workflow contract is missing.",
+        };
+      }
+      if (!build.contractVersions.includes(REMOTE_DERIVED_EXECUTION_REQUIRED_CONTRACT)) {
+        return {
+          available: true,
+          contractVersion: REMOTE_DATASET_WORKFLOW_REQUIRED_CONTRACT,
+          blocker: null,
+          executionAvailable: false,
+          executionBlocker: "The allowlisted compute build does not advertise the reviewed service-owned source-result job contract. Analysis execution remains fail-closed.",
         };
       }
       return {
@@ -902,6 +950,12 @@ export function createHttpRemoteDatasetWorkflowAdapter(
       task: ActivatedAnalysisTaskSpecV1,
       signal: AbortSignal,
     ) {
+      if (task.kind !== "ena-model") {
+        fail(
+          "SOURCE_RESULT_REQUIRED",
+          "Derived analysis must bind a verified service-owned ENA source result, not a raw activation.",
+        );
+      }
       const session = sessionFor(active.workflowId);
       const activation = session.activation;
       if (!activation
@@ -951,6 +1005,71 @@ export function createHttpRemoteDatasetWorkflowAdapter(
             {
               method: "POST",
               headers: jobHeaders,
+              body: JSON.stringify(executeRequest),
+            },
+            startSignal,
+          );
+        },
+      };
+    },
+
+    async bindDerivedExecution(
+      source: RemoteEnaSourceResult,
+      task: ActivatedAnalysisTaskSpecV1,
+      signal: AbortSignal,
+    ) {
+      if (task.kind === "ena-model"
+          || !("sourceResultHash" in task)
+          || task.sourceResultHash !== source.sourceResultHash
+          || !SHA256.test(source.sourceResultHash)
+          || !OPAQUE_ID.test(source.reference.jobId)
+          || !/^[A-Za-z0-9_-]{16,512}$/u.test(source.reference.capabilityToken)) {
+        fail("SOURCE_RESULT_MISMATCH", "Derived task does not match its verified ENA source binding.");
+      }
+      assertDatasetReceiptV1(source.datasetReceipt);
+      const createRequest: CreateSourceResultAnalysisJobRequestV1 = {
+        schemaVersion: "3dena.create-source-result-job-request.v1",
+        sourceJobId: source.reference.jobId,
+        sourceResultHash: source.sourceResultHash,
+        processingPolicyConfirmed: true,
+      };
+      const capability = assertSourceResultJobCapability(
+        await invokeJson(
+          serviceUrl("/v1/jobs"),
+          {
+            method: "POST",
+            headers: jobHeaders(
+              source.reference.capabilityToken,
+              randomIdempotencyKey("source-result-job"),
+            ),
+            body: JSON.stringify(createRequest),
+          },
+          signal,
+        ),
+        source,
+      );
+      const executeRequest: ExecuteActivatedAnalysisJobRequestV1 = {
+        schemaVersion: "3dena.execute-activated-job-request.v1",
+        task,
+      };
+      return {
+        reference: {
+          jobId: capability.jobId,
+          capabilityToken: capability.capabilityToken,
+        },
+        datasetReceipt: source.datasetReceipt,
+        taskKind: task.kind,
+        runId: task.runId,
+        sourceResultHash: source.sourceResultHash,
+        async start(startSignal?: AbortSignal) {
+          await invokeJson(
+            serviceUrl(`/v1/jobs/${encodeURIComponent(capability.jobId)}/execute`),
+            {
+              method: "POST",
+              headers: jobHeaders(
+                capability.capabilityToken,
+                randomIdempotencyKey("source-result-execute"),
+              ),
               body: JSON.stringify(executeRequest),
             },
             startSignal,

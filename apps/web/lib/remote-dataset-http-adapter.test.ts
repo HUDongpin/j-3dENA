@@ -51,11 +51,16 @@ function receipt(sha256: string, byteLength: number): DatasetReceiptV1 {
   };
 }
 
-function remoteHarness() {
+function remoteHarness(contractVersions: string[] = [
+  "3dena.compute-dataset-http.v1",
+  "3dena.compute-source-result-job-http.v1",
+  "3dena.contract.v1",
+]) {
   let preflight: Record<string, unknown> | null = null;
   let mappingBody: Record<string, unknown> | null = null;
   let jobRequests = 0;
   let activatedExecuteBody: Record<string, unknown> | null = null;
+  let sourceCreateBody: Record<string, unknown> | null = null;
   const requests: Array<{ url: string; method: string; headers: Headers }> = [];
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
@@ -72,7 +77,7 @@ function remoteHarness() {
         flyImageDigest: `sha256:${"3".repeat(64)}`,
         flyBuildId: "fly-build-20260821",
         role: "api",
-        contractVersions: ["3dena.contract.v1", "3dena.compute-dataset-http.v1"],
+        contractVersions,
       });
     }
     if (url === `${BASE}/v1/datasets` && method === "POST") {
@@ -219,6 +224,18 @@ function remoteHarness() {
     }
     if (url === `${BASE}/v1/jobs`) {
       jobRequests += 1;
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      if (body.schemaVersion === "3dena.create-source-result-job-request.v1") {
+        sourceCreateBody = body;
+        return json({
+          schemaVersion: "3dena.source-result-job-capability.v1",
+          jobId: "derived-job-12345678",
+          capabilityToken: "derived-capability-token-12345678",
+          sourceJobId: body.sourceJobId,
+          sourceResultHash: body.sourceResultHash,
+          expiresAt: "2026-08-22T00:00:00.000Z",
+        }, 201);
+      }
       return json({
         schemaVersion: "3dena.job-capability.v1",
         jobId: "job-12345678",
@@ -227,7 +244,8 @@ function remoteHarness() {
         expiresAt: "2026-08-22T00:00:00.000Z",
       }, 201);
     }
-    if (url === `${BASE}/v1/jobs/job-12345678/execute`) {
+    if (url === `${BASE}/v1/jobs/job-12345678/execute`
+        || url === `${BASE}/v1/jobs/derived-job-12345678/execute`) {
       jobRequests += 1;
       activatedExecuteBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
       return json({
@@ -260,10 +278,26 @@ function remoteHarness() {
     mappingBody: () => mappingBody,
     jobRequests: () => jobRequests,
     activatedExecuteBody: () => activatedExecuteBody,
+    sourceCreateBody: () => sourceCreateBody,
   };
 }
 
 describe("HTTP remote dataset workflow adapter", () => {
+  it("keeps inspection available but fails execution closed without the source-result contract", async () => {
+    const target = remoteHarness([
+      "3dena.compute-dataset-http.v1",
+      "3dena.contract.v1",
+    ]);
+    await expect(target.adapter.capabilities()).resolves.toEqual({
+      available: true,
+      contractVersion: "3dena.compute-dataset-http.v1",
+      blocker: null,
+      executionAvailable: false,
+      executionBlocker: "The allowlisted compute build does not advertise the reviewed service-owned source-result job contract. Analysis execution remains fail-closed.",
+    });
+    expect(target.fetchMock).toHaveBeenCalledOnce();
+  });
+
   it("binds exact service inventory, mapping, preview, activation, and deletion contracts", async () => {
     const target = remoteHarness();
     await expect(target.adapter.capabilities()).resolves.toMatchObject({
@@ -360,6 +394,11 @@ describe("HTTP remote dataset workflow adapter", () => {
     expect(JSON.stringify(target.activatedExecuteBody())).not.toContain("rows");
 
     const sourceResultHash = "f".repeat(64);
+    const source = {
+      reference: binding.reference,
+      datasetReceipt: receipt(inventory.sha256, inventory.byteLength),
+      sourceResultHash,
+    };
     const derivedTasks: ActivatedAnalysisTaskSpecV1[] = [
       {
         schemaVersion: "3dena.activated-network-comparison-task-spec.v1",
@@ -431,11 +470,17 @@ describe("HTTP remote dataset workflow adapter", () => {
       },
     ];
     for (const task of derivedTasks) {
-      const derived = await target.adapter.bindExecution(
-        active,
+      const derived = await target.adapter.bindDerivedExecution(
+        source,
         task,
         new AbortController().signal,
       );
+      expect(target.sourceCreateBody()).toEqual({
+        schemaVersion: "3dena.create-source-result-job-request.v1",
+        sourceJobId: binding.reference.jobId,
+        sourceResultHash,
+        processingPolicyConfirmed: true,
+      });
       await derived.start();
       expect(target.activatedExecuteBody()).toMatchObject({
         schemaVersion: "3dena.execute-activated-job-request.v1",
@@ -453,13 +498,20 @@ describe("HTTP remote dataset workflow adapter", () => {
     const mutations = target.requests.filter((request) => request.method !== "GET");
     expect(mutations.every((request) => request.headers.get("idempotency-key"))).toBe(true);
     const datasetOwnedMutations = mutations.filter((request) =>
-      !request.url.endsWith("/v1/datasets")
-      && !request.url.endsWith("/v1/jobs/job-12345678/execute"));
+      request.url.includes(`/v1/datasets/${DATASET_ID}`));
     expect(datasetOwnedMutations.every((request) =>
       request.headers.get("authorization") === `Bearer ${CAPABILITY}`)).toBe(true);
-    const executeMutations = mutations.filter((request) =>
+    const jobCreates = mutations.filter((request) => request.url.endsWith("/v1/jobs"));
+    expect(jobCreates[0]?.headers.get("authorization")).toBe(`Bearer ${CAPABILITY}`);
+    expect(jobCreates.slice(1).every((request) =>
+      request.headers.get("authorization") === "Bearer job-capability-token-12345678")).toBe(true);
+    const sourceExecuteMutations = mutations.filter((request) =>
+      request.url.endsWith("/v1/jobs/derived-job-12345678/execute"));
+    expect(sourceExecuteMutations.every((request) =>
+      request.headers.get("authorization") === "Bearer derived-capability-token-12345678")).toBe(true);
+    const enaExecuteMutations = mutations.filter((request) =>
       request.url.endsWith("/v1/jobs/job-12345678/execute"));
-    expect(executeMutations.every((request) =>
+    expect(enaExecuteMutations.every((request) =>
       request.headers.get("authorization") === "Bearer job-capability-token-12345678")).toBe(true);
   });
 

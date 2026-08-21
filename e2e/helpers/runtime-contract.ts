@@ -181,7 +181,17 @@ export function observeAnalysisTransport(page: Page) {
         && url.searchParams.has("_rsc")
         && headers["rsc"] === "1"
         && headers["next-router-prefetch"] === "1";
-      if (isNextRoutePrefetch) return;
+      // WebKit reports the module Worker's own same-origin Next.js chunk load
+      // as `fetch`; Chromium and Firefox report it as a worker/script request.
+      // Exempt only the exact immutable framework asset namespace and emitted
+      // Worker chunk naming shape. Any application endpoint, cross-origin URL,
+      // non-GET request, or Worker-issued data fetch remains observable.
+      const isNextWorkerChunk = request.method() === "GET"
+        && url.origin === new URL(page.url()).origin
+        && /^\/_next\/static\/chunks\/_app-pages-browser_workers_[A-Za-z0-9_-]+_worker_ts\.js$/u.test(
+          url.pathname,
+        );
+      if (isNextRoutePrefetch || isNextWorkerChunk) return;
       fetchOrXhr.push(`${request.method()} ${request.url()}`);
     }
   });

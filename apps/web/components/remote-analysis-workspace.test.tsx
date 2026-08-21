@@ -7,10 +7,10 @@ import {
 } from "@testing-library/react";
 import type {
   AnalysisClientV1,
-  AnalysisResult,
   AnalysisResultEnvelopeV1,
   DatasetReceiptV1,
 } from "@3dena/analysis";
+import { analyzeRows, compareGroupNetworks } from "@3dena/analysis";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RemoteAnalysisWorkspace } from "./remote-analysis-workspace";
 import type { WebExecutionPolicy } from "@/lib/execution-policy";
@@ -23,12 +23,19 @@ import type {
 import {
   assertApprovedComputeBuild,
   cancelRemoteAnalysis,
+  deleteRemoteJobData,
   runRemoteAnalysis,
   type RemoteExecutionBinding,
 } from "@/lib/remote-analysis-runtime";
 
 vi.mock("@/components/analysis-results", () => ({
   AnalysisResults: () => <div data-testid="mock-remote-analysis-result">Remote result</div>,
+}));
+
+vi.mock("next/dynamic", () => ({
+  default: () => function PlotStub() {
+    return <div data-testid="workspace-plot-stub" />;
+  },
 }));
 
 vi.mock("@/lib/remote-analysis-runtime", async () => {
@@ -164,6 +171,32 @@ const preview: RemoteDatasetPreview = {
 
 const client = {} as AnalysisClientV1;
 
+const sourceAnalysis = analyzeRows({
+  rows: [
+    { group: "A", participant: "p1", time: 1, A: 1, B: 1, C: 0 },
+    { group: "A", participant: "p1", time: 2, A: 1, B: 0, C: 1 },
+    { group: "A", participant: "p2", time: 1, A: 1, B: 1, C: 1 },
+    { group: "A", participant: "p2", time: 2, A: 0, B: 1, C: 1 },
+    { group: "B", participant: "p3", time: 1, A: 0, B: 1, C: 1 },
+    { group: "B", participant: "p3", time: 2, A: 1, B: 1, C: 0 },
+    { group: "B", participant: "p4", time: 1, A: 1, B: 0, C: 1 },
+    { group: "B", participant: "p4", time: 2, A: 0, B: 1, C: 1 },
+  ],
+  mapping: {
+    units: ["group", "participant"],
+    conversation: ["time"],
+    codes: ["A", "B", "C"],
+    trajectory: {
+      participant: ["participant"],
+      group: "group",
+      time: "time",
+      timeOrder: [1, 2],
+      cohortPolicy: "available",
+    },
+  },
+  config: { model: "AccumulatedTrajectory", windowSizeBack: 4 },
+});
+
 function workflow(available = true): RemoteDatasetWorkflowAdapter {
   return {
     capabilities: vi.fn(async () => ({
@@ -191,6 +224,13 @@ function workflow(available = true): RemoteDatasetWorkflowAdapter {
       runId: task.runId,
       start: vi.fn(async () => undefined),
     })),
+    bindDerivedExecution: vi.fn(async (_source, task): Promise<RemoteExecutionBinding> => ({
+      reference: { jobId: "derived-job-1", capabilityToken: "derived-capability-1" },
+      datasetReceipt: receipt,
+      taskKind: task.kind,
+      runId: task.runId,
+      start: vi.fn(async () => undefined),
+    })),
     discard: vi.fn(async () => undefined),
   };
 }
@@ -207,10 +247,12 @@ function completedResult(): Awaited<ReturnType<typeof runRemoteAnalysis>> {
         taskId: "task-1",
       },
       taskKind: "ena-model",
-      result: { schemaVersion: "3dena.analysis-result.v1" } as AnalysisResult,
+      result: sourceAnalysis,
       diagnostics: [],
       evidence: {} as AnalysisResultEnvelopeV1["evidence"],
-      provenance: {} as AnalysisResultEnvelopeV1["provenance"],
+      provenance: {
+        resultHash: "e".repeat(64),
+      } as AnalysisResultEnvelopeV1["provenance"],
     },
     reference: {
       schemaVersion: "3dena.job-result-reference.v1",
@@ -220,6 +262,30 @@ function completedResult(): Awaited<ReturnType<typeof runRemoteAnalysis>> {
       resultUrl: "https://objects.example.test/result.json",
       exportUrl: null,
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    },
+    exactBytes: new TextEncoder().encode("{}"),
+  };
+}
+
+function completedDerivedResult(): Awaited<ReturnType<typeof runRemoteAnalysis>> {
+  const [groupA, groupB] = sourceAnalysis.trajectory!.groupOrder;
+  const derived = compareGroupNetworks(sourceAnalysis, [groupA!.canonical, groupB!.canonical]);
+  return {
+    envelope: {
+      ...completedResult().envelope,
+      owner: {
+        ...completedResult().envelope.owner,
+        runId: "remote-derived-run-1",
+        taskId: "derived-job-1",
+      },
+      taskKind: "network-comparison",
+      result: derived,
+      diagnostics: derived.diagnostics,
+    },
+    reference: {
+      ...completedResult().reference,
+      jobId: "derived-job-1",
+      sha256: "f".repeat(64),
     },
     exactBytes: new TextEncoder().encode("{}"),
   };
@@ -295,6 +361,68 @@ describe("RemoteAnalysisWorkspace", () => {
     expect(target.bindExecution).not.toHaveBeenCalled();
     fireEvent.change(taskSelect, { target: { value: "ena-model" } });
     expect(screen.getByTestId("remote-analysis-run")).toBeEnabled();
+  });
+
+  it("retains the verified ENA source, then runs and deletes a source-bound derived job", async () => {
+    const target = workflow();
+    await reachActivation(target);
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+    await waitFor(() => expect(runRemoteAnalysis).toHaveBeenCalledOnce());
+    expect(target.bindExecution).toHaveBeenCalledOnce();
+    expect(deleteRemoteJobData).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByTestId("remote-task-kind"), {
+      target: { value: "network-comparison" },
+    });
+    expect(await screen.findByTestId("remote-derived-controls")).toBeInTheDocument();
+    vi.mocked(runRemoteAnalysis).mockResolvedValueOnce(completedDerivedResult());
+    fireEvent.click(screen.getByTestId("remote-derived-run"));
+    await waitFor(() => expect(target.bindDerivedExecution).toHaveBeenCalledOnce());
+    await screen.findByTestId("remote-derived-result");
+    expect(screen.getByTestId("remote-derived-table")).toBeInTheDocument();
+    expect(deleteRemoteJobData).toHaveBeenCalledOnce();
+    expect(target.bindDerivedExecution).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceResultHash: "e".repeat(64) }),
+      expect.objectContaining({
+        kind: "network-comparison",
+        sourceResultHash: "e".repeat(64),
+      }),
+      expect.any(AbortSignal),
+    );
+  });
+
+  it("closes the dataset workflow before deleting the retained ENA source", async () => {
+    const target = workflow();
+    await reachActivation(target);
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+    await waitFor(() => expect(runRemoteAnalysis).toHaveBeenCalledOnce());
+
+    fireEvent.click(screen.getByTestId("remote-source-delete"));
+    await waitFor(() => expect(screen.getByTestId("remote-runtime-status")).toHaveAttribute("data-state", "idle"));
+
+    expect(target.discard).toHaveBeenCalledWith(inventory.workflowId);
+    expect(deleteRemoteJobData).toHaveBeenCalledWith(client, expect.objectContaining({ jobId: "job-1" }));
+    expect(vi.mocked(target.discard).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(deleteRemoteJobData).mock.invocationCallOrder[0]!,
+    );
+    expect(screen.queryByTestId("remote-source-delete")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("remote-activation-receipt")).not.toBeInTheDocument();
+    expect(screen.getByText("No service dataset is active.")).toBeInTheDocument();
+  });
+
+  it("preserves a usable ENA source when dataset-session closure is not observed", async () => {
+    const target = workflow();
+    await reachActivation(target);
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+    await waitFor(() => expect(runRemoteAnalysis).toHaveBeenCalledOnce());
+    vi.mocked(target.discard).mockRejectedValueOnce(new Error("DATASET_DELETE_UNOBSERVED"));
+
+    fireEvent.click(screen.getByTestId("remote-source-delete"));
+    expect(await screen.findByTestId("remote-analysis-error")).toHaveTextContent("DATASET_DELETE_UNOBSERVED");
+
+    expect(deleteRemoteJobData).not.toHaveBeenCalled();
+    expect(screen.getByTestId("remote-source-delete")).toBeEnabled();
+    expect(screen.getByTestId("remote-activation-receipt")).toBeInTheDocument();
   });
 
   it("does not call cancellation complete until the deletion receipt resolves", async () => {

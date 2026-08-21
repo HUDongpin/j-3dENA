@@ -23,6 +23,8 @@ export interface RemoteExecutionBinding {
   readonly datasetReceipt: DatasetReceiptV1;
   readonly taskKind: AnalysisTaskV1["kind"];
   readonly runId: string;
+  /** Present only for a derived job authorized against an exact source hash. */
+  readonly sourceResultHash?: string;
   readonly start: (signal?: AbortSignal) => Promise<void>;
 }
 
@@ -37,6 +39,8 @@ export interface VerifiedRemoteAnalysisResult {
   readonly envelope: AnalysisResultEnvelopeV1<AnalysisTaskResultV1>;
   readonly reference: AnalysisJobResultReferenceV1;
   readonly exactBytes: Uint8Array<ArrayBuffer>;
+  /** Client-observed immutable binding used to create a derived service job. */
+  readonly sourceResultHash?: string;
 }
 
 export interface RunRemoteAnalysisOptions {
@@ -245,6 +249,9 @@ export async function runRemoteAnalysis(
     envelope: envelopeValue as AnalysisResultEnvelopeV1<AnalysisTaskResultV1>,
     reference,
     exactBytes,
+    ...(binding.sourceResultHash === undefined
+      ? {}
+      : { sourceResultHash: binding.sourceResultHash }),
   };
 }
 
