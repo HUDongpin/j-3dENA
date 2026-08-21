@@ -130,6 +130,12 @@ function generatedAt() {
   return new Date(milliseconds).toISOString();
 }
 
+const sourceIdentity = Object.freeze({
+  repositoryHead: readGit(["rev-parse", "HEAD"], "unavailable"),
+  dirtyWorktree: readGit(["status", "--porcelain=v1", "--untracked-files=all"], "").length > 0,
+  generatedAt: generatedAt(),
+});
+
 assertSafeDistributionPath();
 await rm(distributionDirectory, { recursive: true, force: true });
 await mkdir(packageDirectory, { recursive: true });
@@ -279,8 +285,6 @@ await writeFile(resolve(packageDirectory, "package.json"), `${JSON.stringify(pub
 const indexBytes = await readFile(resolve(packageDirectory, "index.js"));
 const sourceMapBytes = await readFile(resolve(packageDirectory, "index.js.map"));
 const schemaIndexBytes = await readFile(resolve(packageDirectory, "schemas/index.json"));
-const gitHead = readGit(["rev-parse", "HEAD"], "unavailable");
-const dirtyStatus = readGit(["status", "--porcelain=v1", "--untracked-files=all"], "");
 const provenance = {
   schemaVersion: "3dena.public-package-provenance.v1",
   productStatus: "IMPLEMENTED_UNVERIFIED",
@@ -289,11 +293,7 @@ const provenance = {
     version: publicManifest.version,
     buildId: process.env.THREEDENA_PACKAGE_BUILD_ID ?? "local-unpublished"
   },
-  source: {
-    repositoryHead: gitHead,
-    dirtyWorktree: dirtyStatus.length > 0,
-    generatedAt: generatedAt()
-  },
+  source: sourceIdentity,
   contracts: {
     analysis: "3dena.analysis-task.v1",
     result: "3dena.analysis-result-envelope.v1",
