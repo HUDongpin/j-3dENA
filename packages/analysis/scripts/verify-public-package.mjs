@@ -135,7 +135,7 @@ export async function verifyPublicPackage(packageDirectory) {
   if (provenance.runtimeBoundary?.r !== false || provenance.runtimeBoundary?.rena !== false || provenance.runtimeBoundary?.rWebFramework !== false) {
     fail("runtime boundary is not explicit");
   }
-  if (provenance.dependencies?.jenaJs?.version !== "0.6.2") fail("jENA version drifted");
+  if (provenance.dependencies?.jenaJs?.version !== "0.6.3") fail("jENA version drifted");
   if (provenance.dependencies?.sheetJs?.sha256 !== "8dc73fc3b00203e72d176e85b50938627c7b086e607c682e8d3c22c02bb99fe8") {
     fail("SheetJS custody hash drifted");
   }

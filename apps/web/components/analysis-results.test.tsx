@@ -72,7 +72,7 @@ const result = {
   provenance: {
     adapter: "@3dena/analysis",
     adapterVersion: "0.1.0",
-    jenaVersion: "0.6.2",
+    jenaVersion: "0.6.3",
     resolvedConfig: {
       model: "AccumulatedTrajectory",
       window: "MovingStanzaWindow",
@@ -91,7 +91,7 @@ const governedResult = {
   provenance: {
     ...result.provenance,
     jenaPackage: "jena-js",
-    jenaCommit: "2f63db4c6ccf5684afc8437ae81ed1a3ccd0c1a3",
+    jenaCommit: "57b7794ec3873c251c33086454523e5a3949836f",
     parityContract: "3dena.parity-contract.v1",
     legacyGoldenContract: "legacy-application-golden-v1",
     legacyGoldenStatus: "not-assessed",

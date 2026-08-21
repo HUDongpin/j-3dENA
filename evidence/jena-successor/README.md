@@ -51,8 +51,10 @@ has zero findings.
 The j-3dENA product now pins exactly `jena-js: "0.6.3"`. Its lock entry resolves
 only to the public registry tarball and exact SRI above, contains no runtime
 dependency/self edge, and `npm ls jena-js --all` returns one registry instance.
-Both the four-case fail-closed successor contract suite and the actual product
-successor gate pass.
+The publication receipt recorded the initial four-case product successor
+contract suite. The integrated product gate now passes a fifteen-test matrix
+that also rejects malformed lockfile, workspace, source-manifest, installed
+manifest, and dependency-field shapes fail-closed.
 
 ## Historical candidate material
 

@@ -13,6 +13,7 @@ import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { build } from "vite";
+import { inspectJenaSuccessor } from "../../../scripts/verify-jena-successor.mjs";
 import { verifyPublicPackage } from "./verify-public-package.mjs";
 
 const require = createRequire(import.meta.url);
@@ -134,9 +135,9 @@ await rm(distributionDirectory, { recursive: true, force: true });
 await mkdir(packageDirectory, { recursive: true });
 
 const sourceManifest = JSON.parse(await readFile(resolve(analysisDirectory, "package.json"), "utf8"));
-const jenaManifest = JSON.parse(await readFile(resolve(repositoryRoot, "node_modules/jena-js/package.json"), "utf8"));
-if (jenaManifest.version !== "0.6.2" || jenaManifest.dependencies?.["jena-js"] !== "^0.6.0") {
-  fail("audited jena-js 0.6.2 self-dependency snapshot changed");
+const jenaSuccessor = inspectJenaSuccessor({ root: repositoryRoot, requireInstalledTree: true });
+if (!jenaSuccessor.ok) {
+  fail(`reviewed public jENA successor contract failed: ${jenaSuccessor.findings.map(({ rule }) => rule).join(", ")}`);
 }
 
 const sheetArchivePath = resolve(repositoryRoot, "vendor/sheetjs/xlsx-0.20.3.tgz");
@@ -301,10 +302,10 @@ const provenance = {
   },
   dependencies: {
     jenaJs: {
-      version: "0.6.2",
-      auditedCommit: "2f63db4c6ccf5684afc8437ae81ed1a3ccd0c1a3",
+      version: "0.6.3",
+      auditedCommit: "57b7794ec3873c251c33086454523e5a3949836f",
       license: "GPL-3.0-only",
-      packagingDisposition: "bundled-once-self-dependency-removed"
+      packagingDisposition: "bundled-from-public-successor-zero-runtime-dependencies"
     },
     sheetJs: {
       package: "xlsx",

@@ -5,7 +5,7 @@ promote a broader milestone.
 
 | Boundary | Fixture / evidence | Current state | Closure requirement |
 |---|---|---|---|
-| Frozen source versions | contract v1 | `IMPLEMENTED_UNVERIFIED` | verify packed `jena-js@0.6.2` integrity and exact oracle environments |
+| Frozen source versions | contract v1 plus public successor receipt | `IMPLEMENTED_UNVERIFIED` | the independently reviewed, byte-identical `jena-js@0.6.3` public successor is exact-integrity pinned; independently execute and approve the exact rENA 0.2.7 and 0.3.1 oracle environments |
 | small-raw source custody | CSV + generated manifest + exact hash validation | `PARITY_CANDIDATE` | independent approval record |
 | raw mapping and limits | analysis unit tests | `PARITY_CANDIDATE` | integrated parser/security cases |
 | AccumulatedTrajectory, moving back 4 | governed model/row count and line-weight comparison | `PARITY_CANDIDATE` | independently approved fixture |
@@ -34,7 +34,7 @@ promote a broader milestone.
 | persistent compute orchestration | in-memory lease/fencing/CAS/cancel/TTL and framework-neutral HTTP candidates plus a real single-host Node supervisor and publish-acknowledged scientific child | `IMPLEMENTED_UNVERIFIED` | PostgreSQL/S3 adapters, distributed capacity, restart reattachment/acknowledgement replay, complete task matrix and hardened container evidence |
 | transactional spreadsheet workflow | exact browser/service byte custody, parsed-content hash, inventory/sheet selection, typed mapping preview and atomic in-memory activation | `IMPLEMENTED_UNVERIFIED` | HTTP/UI, durable encrypted adapters, real XLS/XLSX workflow integration, restart/TTL/deletion and browser evidence |
 | Plotly structural semantics | pure compiler tests for roles, axes, 2D/3D layout, camera, filters and prepared provenance | `IMPLEMENTED_UNVERIFIED` | centralized Web use plus confidence/network/trajectory structural and browser matrix |
-| public SDK package | local prerelease tarball with bundled runtime, declarations/maps/schemas/notices/provenance; fresh Node/TS/Vite/Next smoke; exact dirty snapshot fresh-dependency full check | `IMPLEMENTED_UNVERIFIED` | clean-checkout reproduction, registry provenance, public API approval and release gates |
+| public SDK package | local prerelease tarball with bundled runtime, declarations/maps/schemas/notices/provenance; fresh Node/TS/Vite/Next smoke; exact dirty snapshot fresh-dependency full check; bundled runtime now comes from exact public `jena-js@0.6.3` successor provenance | `IMPLEMENTED_UNVERIFIED` | clean-checkout reproduction, `@3dena/analysis` registry publication, public API approval and release gates |
 | production contains no R | runtime-boundary verifier and artifact/package candidates | `IMPLEMENTED_UNVERIFIED` | clean exact Web/Compute/SDK image dependency and filesystem scans |
 
 Current package-level conclusion: the reusable facade and its local task,

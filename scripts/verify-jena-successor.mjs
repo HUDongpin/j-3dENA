@@ -21,6 +21,10 @@ function readJson(pathname) {
   return JSON.parse(readFileSync(pathname, "utf8"));
 }
 
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function lockPathIsJena(lockPath, metadata) {
   return (
     metadata?.name === JENA_SUCCESSOR_CONTRACT.packageName ||
@@ -52,7 +56,104 @@ export function inspectJenaSuccessor({
     return { ok: false, findings, evidence: { lockInstances: 0 } };
   }
 
-  const entries = Object.entries(lock.packages ?? {}).filter(([lockPath, metadata]) =>
+  if (!isRecord(lock) || lock.lockfileVersion !== 3) {
+    findings.push(
+      finding(
+        "package-lock.json",
+        "unsupported-lockfile-shape",
+        "The successor gate requires a non-array npm lockfile v3 object.",
+      ),
+    );
+    return { ok: false, findings, evidence: { lockInstances: 0 } };
+  }
+  if (!isRecord(lock.packages)) {
+    findings.push(
+      finding(
+        "package-lock.json#packages",
+        "invalid-lock-packages",
+        "The successor gate requires a non-array packages object.",
+      ),
+    );
+    return { ok: false, findings, evidence: { lockInstances: 0 } };
+  }
+  if (!Object.hasOwn(lock.packages, "") || !isRecord(lock.packages[""])) {
+    findings.push(
+      finding(
+        "package-lock.json#packages/",
+        "invalid-lock-root",
+        "The lockfile must contain a non-array root package object.",
+      ),
+    );
+  }
+
+  let sourceManifest;
+  try {
+    sourceManifest = readJson(join(resolve(root), "packages", "analysis", "package.json"));
+  } catch {
+    findings.push(
+      finding(
+        "packages/analysis/package.json",
+        "invalid-analysis-manifest",
+        "A readable @3dena/analysis package manifest is required.",
+      ),
+    );
+  }
+  if (sourceManifest !== undefined) {
+    if (!isRecord(sourceManifest)) {
+      findings.push(
+        finding(
+          "packages/analysis/package.json",
+          "invalid-analysis-manifest",
+          "The @3dena/analysis manifest must be a non-array object.",
+        ),
+      );
+    } else if (!isRecord(sourceManifest.dependencies)) {
+      findings.push(
+        finding(
+          "packages/analysis/package.json#dependencies",
+          "invalid-analysis-dependencies",
+          "The @3dena/analysis runtime dependency map must be a non-array object.",
+        ),
+      );
+    } else if (sourceManifest.dependencies[JENA_SUCCESSOR_CONTRACT.packageName] !== JENA_SUCCESSOR_CONTRACT.version) {
+      findings.push(
+        finding(
+          "packages/analysis/package.json#dependencies/jena-js",
+          "analysis-successor-pin",
+          `@3dena/analysis must pin exactly ${JENA_SUCCESSOR_CONTRACT.packageName}@${JENA_SUCCESSOR_CONTRACT.version}.`,
+        ),
+      );
+    }
+  }
+
+  const analysisLock = lock.packages["packages/analysis"];
+  if (!isRecord(analysisLock)) {
+    findings.push(
+      finding(
+        "package-lock.json#packages/packages/analysis",
+        "invalid-analysis-lock-entry",
+        "The lockfile must contain a non-array @3dena/analysis workspace entry.",
+      ),
+    );
+  } else if (!isRecord(analysisLock.dependencies)) {
+    findings.push(
+      finding(
+        "package-lock.json#packages/packages/analysis/dependencies",
+        "invalid-analysis-lock-dependencies",
+        "The analysis workspace lock dependency map must be a non-array object.",
+      ),
+    );
+  } else if (analysisLock.dependencies[JENA_SUCCESSOR_CONTRACT.packageName] !== JENA_SUCCESSOR_CONTRACT.version) {
+    findings.push(
+      finding(
+        "package-lock.json#packages/packages/analysis/dependencies/jena-js",
+        "analysis-lock-successor-pin",
+        `The workspace lock entry must pin exactly ${JENA_SUCCESSOR_CONTRACT.version}.`,
+      ),
+    );
+  }
+
+  const entries = Object.entries(lock.packages).filter(([lockPath, metadata]) =>
     lockPathIsJena(lockPath, metadata),
   );
 
@@ -68,6 +169,16 @@ export function inspectJenaSuccessor({
 
   for (const [lockPath, metadata] of entries) {
     const path = `package-lock.json#packages/${lockPath}`;
+    if (!isRecord(metadata)) {
+      findings.push(
+        finding(
+          path,
+          "invalid-jena-lock-entry",
+          "The jena-js lock entry must be a non-array object.",
+        ),
+      );
+      continue;
+    }
     if (metadata?.version !== JENA_SUCCESSOR_CONTRACT.version) {
       findings.push(
         finding(
@@ -95,7 +206,17 @@ export function inspectJenaSuccessor({
         ),
       );
     }
-    const dependencies = metadata?.dependencies ?? {};
+    const dependencies = Object.hasOwn(metadata, "dependencies") ? metadata.dependencies : {};
+    if (!isRecord(dependencies)) {
+      findings.push(
+        finding(
+          `${path}/dependencies`,
+          "invalid-jena-runtime-dependencies",
+          "The runtime dependency field must be absent or a non-array object.",
+        ),
+      );
+      continue;
+    }
     if (Object.hasOwn(dependencies, JENA_SUCCESSOR_CONTRACT.packageName)) {
       findings.push(
         finding(
@@ -141,7 +262,15 @@ export function inspectJenaSuccessor({
       );
     }
     if (installed !== undefined) {
-      if (
+      if (!isRecord(installed)) {
+        findings.push(
+          finding(
+            "node_modules/jena-js/package.json",
+            "invalid-installed-successor",
+            "The installed successor manifest must be a non-array object.",
+          ),
+        );
+      } else if (
         installed.name !== JENA_SUCCESSOR_CONTRACT.packageName ||
         installed.version !== JENA_SUCCESSOR_CONTRACT.version
       ) {
@@ -153,7 +282,20 @@ export function inspectJenaSuccessor({
           ),
         );
       }
-      if (Object.keys(installed.dependencies ?? {}).length > 0) {
+      const installedDependencies = isRecord(installed)
+        ? Object.hasOwn(installed, "dependencies")
+          ? installed.dependencies
+          : {}
+        : undefined;
+      if (installedDependencies !== undefined && !isRecord(installedDependencies)) {
+        findings.push(
+          finding(
+            "node_modules/jena-js/package.json#dependencies",
+            "invalid-installed-runtime-dependencies",
+            "The installed runtime dependency field must be absent or a non-array object.",
+          ),
+        );
+      } else if (isRecord(installedDependencies) && Object.keys(installedDependencies).length > 0) {
         findings.push(
           finding(
             "node_modules/jena-js/package.json",
@@ -162,7 +304,7 @@ export function inspectJenaSuccessor({
           ),
         );
       }
-      if (installed.license !== JENA_SUCCESSOR_CONTRACT.license) {
+      if (isRecord(installed) && installed.license !== JENA_SUCCESSOR_CONTRACT.license) {
         findings.push(
           finding(
             "node_modules/jena-js/package.json",

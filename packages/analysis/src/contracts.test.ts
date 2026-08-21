@@ -238,8 +238,8 @@ describe("versioned public contracts", () => {
         resultHash: "c".repeat(64),
         adapterVersion: "0.1.0",
         jenaPackage: "jena-js",
-        jenaVersion: "0.6.2",
-        jenaCommit: "2f63db4c6ccf5684afc8437ae81ed1a3ccd0c1a3",
+        jenaVersion: "0.6.3",
+        jenaCommit: "57b7794ec3873c251c33086454523e5a3949836f",
         sourceKind: "raw-jena",
         jenaExecuted: true,
         sdkPackage: "@3dena/analysis",
@@ -299,7 +299,7 @@ describe("versioned public contracts", () => {
     const raw = {
       schemaVersion: "3dena.provenance-manifest.v1",
       datasetHash: "a".repeat(64), specHash: "b".repeat(64), resultHash: "c".repeat(64),
-      adapterVersion: "0.1.0", jenaPackage: "jena-js", jenaVersion: "0.6.2", jenaCommit: "commit",
+      adapterVersion: "0.1.0", jenaPackage: "jena-js", jenaVersion: "0.6.3", jenaCommit: "commit",
       sourceKind: "raw-jena", jenaExecuted: true, sdkPackage: "@3dena/analysis", sdkVersion: "0.1.0",
       appVersion: "test", contractVersion: ANALYSIS_CONTRACT_VERSION_V1, buildId: "build", seed: null,
       toleranceContract: null, schemaVersions: ["3dena.analysis-result.v1"], generatedAt: "2026-08-20T12:00:00.000Z"

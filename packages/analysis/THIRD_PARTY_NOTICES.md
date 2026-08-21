@@ -4,18 +4,22 @@ This candidate distribution bundles reviewed runtime bytes from the following
 third-party packages. The exact versions and source-integrity records are also
 captured in `PROVENANCE.json`.
 
-## jena-js 0.6.2
+## jena-js 0.6.3
 
 - Project: <https://github.com/HUDongpin/jENA>
-- Audited source commit: `2f63db4c6ccf5684afc8437ae81ed1a3ccd0c1a3`
+- Audited source commit: `57b7794ec3873c251c33086454523e5a3949836f`
+- Public npm tarball SHA-256:
+  `0387c7958718e1d8a70a29f056da1ffe78e94ceb14ac957a3a360b586ac23121`
 - License: GPL-3.0-only
 - Purpose: ENA model, accumulation, rotation, and node-position computation
 
-The published 0.6.2 manifest declares an erroneous self-dependency on
-`jena-js@^0.6.0`. The public `@3dena/analysis` build bundles the audited 0.6.2
-implementation exactly once and publishes no runtime dependency on jena-js.
-This packaging correction does not authorize numerical changes. The upstream
-license and provenance files are reproduced under `THIRD_PARTY/`.
+The independently reviewed 0.6.3 successor removes the erroneous 0.6.2
+self-dependency and declares zero runtime dependencies. Its `dist/` tree is
+byte-identical to the frozen 0.6.2 numerical baseline. The public
+`@3dena/analysis` build bundles that reviewed implementation exactly once and
+publishes no runtime dependency on jena-js. This packaging correction does not
+authorize numerical changes. The upstream license and provenance files are
+reproduced under `THIRD_PARTY/`.
 
 ## SheetJS Community Edition (xlsx) 0.20.3
 
