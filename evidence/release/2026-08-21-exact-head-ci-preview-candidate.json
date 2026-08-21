@@ -1,0 +1,168 @@
+{
+  "schemaVersion": "3dena.exact-head-ci-preview-candidate.v1",
+  "recordedAtUtc": "2026-08-21T13:24:04Z",
+  "operatorRole": "implementation-operator",
+  "source": {
+    "repository": "https://github.com/HUDongpin/j-3dENA",
+    "branch": "codex/strict-gap-closure-20260821",
+    "commit": "e8f0884cbf79a7fc04993477d65c554ba9fd6d7b",
+    "pullRequest": "https://github.com/HUDongpin/j-3dENA/pull/1",
+    "pullRequestState": "draft"
+  },
+  "github": {
+    "ci": {
+      "runId": 32485144515,
+      "runUrl": "https://github.com/HUDongpin/j-3dENA/actions/runs/32485144515",
+      "conclusion": "success",
+      "mainJob": {
+        "jobId": 96779859970,
+        "conclusion": "success",
+        "duration": "3m14s",
+        "verifiedSteps": [
+          "npm ci, lint, typecheck, unit tests, and npm audit",
+          "single-artifact public facade build and fail-closed package verification",
+          "fresh tarball consumers in Node, TypeScript, Vite, and Next.js webpack",
+          "golden, oracle-custody, and synthetic Class 1 custody contract tests",
+          "production build and R-free production runtime boundary",
+          "immutable GitHub Action pins, security, SBOM, parser-fuzz, jENA-successor, release-receipt, Playwright-evidence, and image-scan contract tests",
+          "deterministic production dependency SBOM generation and verification"
+        ]
+      },
+      "publicPackage": {
+        "schemaVersion": "3dena.public-package-smoke-receipt.v1",
+        "packageVersion": "0.1.0-implemented-unverified.0",
+        "tarballSha256": "00700ff3e94a698d74a69aa04398f2d9c98fcffe612bd9eaac4f62eeba2b3dfb",
+        "indexJsSha256": "913121c9c01af4bb67c0354748018952b28fcda1b732824fe38a784179242f61",
+        "packedSize": 1356566,
+        "unpackedSize": 6461433,
+        "fileCount": 121,
+        "nodeRuntime": "pass",
+        "typeDeclarations": "pass",
+        "browserBundler": "pass",
+        "nextWebpack": "pass"
+      },
+      "browserAndAccessibilityJob": {
+        "jobId": 96780691862,
+        "conclusion": "success",
+        "duration": "13m6s",
+        "installedRuntimes": {
+          "chromium": "Chrome for Testing 151.0.7922.34 / Playwright chromium 1234",
+          "firefox": "Firefox 153.0 / Playwright firefox 1538",
+          "webkit": "WebKit 26.5 / Playwright webkit 2336"
+        },
+        "multiBrowser": {
+          "passed": 70,
+          "frozenSkipped": 3,
+          "duration": "9.6m"
+        },
+        "accessibility": {
+          "viewportsCssPixels": [390, 768, 1280],
+          "passed": 22,
+          "duration": "2.4m"
+        },
+        "immutableEvidenceVerifier": {
+          "passed": 92,
+          "frozenSkipped": 3,
+          "sourceHeadCommit": "e8f0884cbf79a7fc04993477d65c554ba9fd6d7b"
+        }
+      },
+      "artifacts": [
+        {
+          "id": 9447640876,
+          "name": "package-and-sbom-evidence",
+          "sizeBytes": 1430824,
+          "createdAtUtc": "2026-08-21T13:09:38Z",
+          "expiresAtUtc": "2026-09-04T13:09:37Z"
+        },
+        {
+          "id": 9448048823,
+          "name": "playwright-evidence",
+          "sizeBytes": 874312,
+          "createdAtUtc": "2026-08-21T13:22:48Z",
+          "expiresAtUtc": "2026-09-04T13:22:48Z"
+        }
+      ]
+    },
+    "securityRuns": {
+      "codeql": {
+        "runId": 32485144559,
+        "url": "https://github.com/HUDongpin/j-3dENA/actions/runs/32485144559",
+        "conclusion": "success"
+      },
+      "parserFuzz": {
+        "runId": 32485144496,
+        "url": "https://github.com/HUDongpin/j-3dENA/actions/runs/32485144496",
+        "conclusion": "success"
+      },
+      "trivyRepositorySecretAndMisconfiguration": {
+        "runId": 32485144569,
+        "url": "https://github.com/HUDongpin/j-3dENA/actions/runs/32485144569",
+        "conclusion": "success"
+      }
+    },
+    "openAnnotation": {
+      "status": "non-failing-warning",
+      "summary": "GitHub forced official checkout, setup-node, and upload-artifact actions whose target metadata is Node.js 20 to run on Node.js 24.",
+      "requiredDisposition": "Update and re-pin successor action commits before final release approval when official Node.js 24-targeting releases are available and reviewed."
+    }
+  },
+  "vercelPreview": {
+    "team": "peter-dongpin-hu-s-projects",
+    "project": "j-3dena",
+    "projectId": "prj_Jk1wn5olpWaflDEIZBH1F35wrk81",
+    "deploymentDashboardId": "42UopGyGC7qGyQw4GsLBix3j7jcS",
+    "deploymentLogFilterId": "dpl_42UopGyGC7qGyQw4GsLBix3j7jcS",
+    "dashboardUrl": "https://vercel.com/peter-dongpin-hu-s-projects/j-3dena/42UopGyGC7qGyQw4GsLBix3j7jcS",
+    "status": "Ready",
+    "environment": "Preview",
+    "createdAtUtc": "2026-08-21T13:06:51Z",
+    "buildDuration": "24s",
+    "deploymentUrl": "https://j-3dena-39pvrlanu-peter-dongpin-hu-s-projects.vercel.app",
+    "branchUrl": "https://j-3dena-git-codex-strict-gap-1a0f1c-peter-dongpin-hu-s-projects.vercel.app",
+    "source": {
+      "owner": "HUDongpin",
+      "repository": "HUDongpin/j-3dENA",
+      "branch": "codex/strict-gap-closure-20260821",
+      "commit": "e8f0884cbf79a7fc04993477d65c554ba9fd6d7b",
+      "commitMessage": "fix: keep public analysis facade single-file"
+    },
+    "deploymentChecks": [
+      {
+        "name": "Lint",
+        "duration": "10s",
+        "status": "pass"
+      },
+      {
+        "name": "TypeCheck",
+        "duration": "10s",
+        "status": "pass"
+      }
+    ],
+    "provisioningIntegration": {
+      "name": "j-3dena-postgres-sin1",
+      "action": "Create database branch for deployment",
+      "duration": "2s",
+      "provider": "Neon",
+      "neonProjectId": "frosty-recipe-69276050",
+      "neonBranchId": "br-aged-glade-b3h9zp11"
+    },
+    "runtimeProbe": {
+      "path": "/build-info",
+      "status": "not-executed",
+      "browserObservation": "The Browser client rejected direct navigation with net::ERR_BLOCKED_BY_CLIENT.",
+      "unauthenticatedHttpObservation": "HTTP 302 redirected to Vercel SSO and did not expose application runtime content.",
+      "claim": "Dashboard provenance and build checks passed; no preview application HTTP or product-flow pass is claimed."
+    }
+  },
+  "limitations": [
+    "This is implementation-operator evidence assembled from current GitHub and authenticated Vercel provider surfaces; it is not an independent release approval or provider-signed attestation.",
+    "The three frozen Playwright skips remain explicit and were accepted only by the current verifier; this receipt does not reinterpret them as passes.",
+    "Playwright WebKit is not the real macOS Safari application, and automated accessibility checks are not VoiceOver or NVDA execution.",
+    "The Trivy run covered the repository, secrets, and misconfiguration; it was not a digest-bound production container image scan.",
+    "The Vercel preview is access-protected, and no authenticated preview /build-info or end-to-end product-flow HTTP probe was completed.",
+    "No active signed BuildApprovalV1 binds this receipt, so it is intentionally excluded from active-release-receipts.json.",
+    "No Fly Machines, two-hour stress, 24-hour soak, canary, production probe, rollback drill, legal approval, DPA, region approval, or deletion probe is established by this receipt."
+  ],
+  "releaseGateEffect": "candidate-evidence-only",
+  "overallStatus": "IMPLEMENTED_UNVERIFIED"
+}
