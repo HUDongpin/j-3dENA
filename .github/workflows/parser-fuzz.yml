@@ -1,0 +1,64 @@
+name: Parser fuzz
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "29 4 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: parser-fuzz-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parser-fuzz:
+    name: Exact-byte JSON, CSV, XLS, and XLSX parser fuzz
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Use the frozen npm release
+        run: npm install --global npm@11.16.0
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Run source-bound parser fuzz matrix
+        env:
+          PARSER_FUZZ_OUTPUT: ${{ runner.temp }}/parser-fuzz-evidence
+        run: |
+          node scripts/run-parser-fuzz.mjs \
+            --output "$PARSER_FUZZ_OUTPUT" \
+            --seeds "3de02026,${GITHUB_SHA:0:8},${GITHUB_SHA:8:8}" \
+            --cases-per-seed 512
+
+      - name: Verify exact parser fuzz receipt
+        if: always()
+        env:
+          PARSER_FUZZ_OUTPUT: ${{ runner.temp }}/parser-fuzz-evidence
+        run: |
+          node scripts/verify-parser-fuzz-receipt.mjs \
+            --receipt "$PARSER_FUZZ_OUTPUT/parser-fuzz-receipt.json" \
+            --report "$PARSER_FUZZ_OUTPUT/vitest-report.json"
+
+      - name: Upload immutable parser fuzz evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: parser-fuzz-evidence
+          path: ${{ runner.temp }}/parser-fuzz-evidence
+          if-no-files-found: error
+          retention-days: 14

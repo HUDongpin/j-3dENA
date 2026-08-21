@@ -26,7 +26,14 @@ export const REQUIRED_RELEASE_RECEIPTS = Object.freeze({
   "secret-scan": {},
   "npm-audit": {},
   "sbom-lock-graph": {},
-  "parser-fuzz": {},
+  "parser-fuzz": {
+    contract: "3dena.parser-fuzz-execution.v1",
+    minimumCases: 6_912,
+    minimumSeeds: 3,
+    targetCount: 2,
+    strategyCount: 6,
+    maximumHeapMb: 1_024,
+  },
   "container-scan": {},
   "license-legal": { decision: "approved" },
   preview: { environment: "preview" },
@@ -121,6 +128,43 @@ function validateDetails(receipt, required, path, findings) {
       receipt.details.maxDeletionLagMs > 24 * 60 * 60 * 1000
     ) {
       findings.push(finding("deletion-lag", `${path}.details.maxDeletionLagMs`, "Deletion lag must be observed and no greater than 24 hours."));
+    }
+  }
+  if (receipt.kind === "parser-fuzz") {
+    if (receipt.details.contract !== required.contract) {
+      findings.push(finding("parser-fuzz-contract", `${path}.details.contract`, "Exact parser fuzz execution contract is required."));
+    }
+    for (const [field, minimum] of [
+      ["totalCases", required.minimumCases],
+      ["seedCount", required.minimumSeeds],
+    ]) {
+      if (!Number.isSafeInteger(receipt.details[field]) || receipt.details[field] < minimum) {
+        findings.push(finding("parser-fuzz-minimum", `${path}.details.${field}`, `Expected at least ${minimum}.`));
+      }
+    }
+    for (const [field, expected] of [
+      ["targetCount", required.targetCount],
+      ["strategyCount", required.strategyCount],
+      ["failedTests", 0],
+      ["pendingTests", 0],
+      ["rawMarkerLeaks", 0],
+      ["nonContractExceptions", 0],
+    ]) {
+      if (receipt.details[field] !== expected) {
+        findings.push(finding("parser-fuzz-invariant", `${path}.details.${field}`, `Expected ${expected}.`));
+      }
+    }
+    if (
+      !Number.isSafeInteger(receipt.details.maxOldSpaceMb) ||
+      receipt.details.maxOldSpaceMb < 256 ||
+      receipt.details.maxOldSpaceMb > required.maximumHeapMb
+    ) {
+      findings.push(finding("parser-fuzz-heap", `${path}.details.maxOldSpaceMb`, `Expected a heap ceiling no greater than ${required.maximumHeapMb} MiB.`));
+    }
+    for (const hashField of ["sourceBundleSha256", "vitestReportSha256"]) {
+      if (!SHA256.test(receipt.details[hashField])) {
+        findings.push(finding("parser-fuzz-hash", `${path}.details.${hashField}`, "Exact parser fuzz source and report SHA-256 values are required."));
+      }
     }
   }
   if (receipt.kind === "rollback") {

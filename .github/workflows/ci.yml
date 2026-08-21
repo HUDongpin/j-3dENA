@@ -78,6 +78,9 @@ jobs:
       - name: Test release-security and SBOM contracts
         run: npm run test:release-security:unit
 
+      - name: Test parser fuzz receipt contracts
+        run: npm run test:parser-fuzz:unit
+
       - name: Test the fail-closed jENA successor gate
         run: npm run test:jena-successor:unit
 

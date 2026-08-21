@@ -32,6 +32,22 @@ function details(kind, required) {
     value.expiredReadableObjects = 0;
     value.maxDeletionLagMs = 23 * 60 * 60 * 1000;
   }
+  if (kind === "parser-fuzz") {
+    Object.assign(value, {
+      contract: required.contract,
+      totalCases: required.minimumCases,
+      seedCount: required.minimumSeeds,
+      targetCount: required.targetCount,
+      strategyCount: required.strategyCount,
+      failedTests: 0,
+      pendingTests: 0,
+      rawMarkerLeaks: 0,
+      nonContractExceptions: 0,
+      maxOldSpaceMb: required.maximumHeapMb,
+      sourceBundleSha256: "d".repeat(64),
+      vitestReportSha256: "e".repeat(64),
+    });
+  }
   if (kind === "rollback") {
     Object.assign(value, {
       vercelRestored: true,
@@ -118,4 +134,20 @@ test("rejects shortened soak, canary order drift, deletion failure and incomplet
   assert.ok(rules.has("canary-order"));
   assert.ok(rules.has("expired-object-readable"));
   assert.ok(rules.has("rollback-invariant"));
+});
+
+test("rejects a weakened or unbound parser fuzz receipt", () => {
+  const manifest = validManifest();
+  const fuzz = manifest.receipts.find(({ kind }) => kind === "parser-fuzz");
+  fuzz.details.totalCases = 128;
+  fuzz.details.rawMarkerLeaks = 1;
+  fuzz.details.maxOldSpaceMb = 8_192;
+  fuzz.details.vitestReportSha256 = "not-a-hash";
+  const result = inspectReleaseReceipts(manifest);
+  assert.equal(result.ok, false);
+  const rules = new Set(result.findings.map(({ rule }) => rule));
+  assert.ok(rules.has("parser-fuzz-minimum"));
+  assert.ok(rules.has("parser-fuzz-invariant"));
+  assert.ok(rules.has("parser-fuzz-heap"));
+  assert.ok(rules.has("parser-fuzz-hash"));
 });
