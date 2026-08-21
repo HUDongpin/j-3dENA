@@ -163,6 +163,8 @@ try {
     "next@16.3.1",
     "react@19.2.4",
     "react-dom@19.2.4",
+    "typescript@5.9.3",
+    "@types/node@24.10.13",
     "@types/react@19.2.14",
     "@types/react-dom@19.2.3"
   ], nextConsumer);

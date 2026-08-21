@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 concurrency:
   group: security-scan-${{ github.workflow }}-${{ github.ref }}
@@ -37,9 +36,15 @@ jobs:
           ignore-unfixed: true
           exit-code: 1
 
-      - name: Upload repository scan result
-        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@9e3211c9a3b9311dfe05da2ed48eea3386f042dd # v4.37.6
+      - name: Verify repository scan result
+        if: always()
+        run: node scripts/verify-sarif-results.mjs --path trivy-repository.sarif --maximum-results 0
+
+      - name: Upload immutable repository scan evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          sarif_file: trivy-repository.sarif
-          category: trivy-repository
+          name: trivy-repository-sarif-evidence
+          path: trivy-repository.sarif
+          if-no-files-found: error
+          retention-days: 14
