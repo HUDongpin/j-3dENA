@@ -14,6 +14,19 @@ const expectedFiles = new Set([
   "package.json"
 ]);
 
+const expectedManifestFiles = [
+  "index.js",
+  "index.js.map",
+  "index.d.ts",
+  "types",
+  "README.md",
+  "LICENSE",
+  "THIRD_PARTY_NOTICES.md",
+  "THIRD_PARTY",
+  "schemas",
+  "PROVENANCE.json"
+];
+
 function fail(message) {
   throw new Error(`PUBLIC_PACKAGE_INVALID: ${message}`);
 }
@@ -47,6 +60,9 @@ export async function verifyPublicPackage(packageDirectory) {
   if (manifest.dependencies !== undefined || manifest.optionalDependencies !== undefined || manifest.peerDependencies !== undefined) {
     fail("public facade must not publish runtime dependency edges");
   }
+  if (JSON.stringify(manifest.files) !== JSON.stringify(expectedManifestFiles)) {
+    fail("public facade package inventory changed");
+  }
 
   const manifestText = JSON.stringify(manifest);
   if (manifestText.includes("file:") || manifestText.includes("workspace:")) {
@@ -79,6 +95,13 @@ export async function verifyPublicPackage(packageDirectory) {
   if (files.some((file) => file.endsWith(".test.d.ts") || file.endsWith(".test.d.ts.map"))) {
     fail("test declarations leaked into the package");
   }
+  const unexpectedRuntimeArtifacts = files.filter((file) =>
+    /\.(?:c|m)?js(?:\.map)?$/u.test(file)
+    && file !== "index.js"
+    && file !== "index.js.map");
+  if (unexpectedRuntimeArtifacts.length > 0) {
+    fail(`single-artifact runtime contains unexpected JavaScript: ${unexpectedRuntimeArtifacts.join(", ")}`);
+  }
 
   const javascript = await readFile(resolve(directory, "index.js"), "utf8");
   const declarationFiles = files.filter((file) => file.endsWith(".d.ts"));
@@ -92,6 +115,10 @@ export async function verifyPublicPackage(packageDirectory) {
   }
   if (/from\s*["']xlsx(?:\/[^"']*)?["']/u.test(javascript) || /import\s*\(\s*["']xlsx(?:\/[^"']*)?["']/u.test(javascript)) {
     fail("SheetJS was not bundled into the single public artifact");
+  }
+  if (/(?:from\s*|import\s*)["']\.{1,2}\//u.test(javascript)
+      || /import\s*\(\s*["']\.{1,2}\//u.test(javascript)) {
+    fail("single public runtime artifact contains a relative JavaScript import");
   }
 
   const sourceMap = JSON.parse(await readFile(resolve(directory, "index.js.map"), "utf8"));

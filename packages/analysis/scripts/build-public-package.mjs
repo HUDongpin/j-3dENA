@@ -171,7 +171,13 @@ await build({
       fileName: () => "index.js"
     },
     rollupOptions: {
-      external: []
+      external: [],
+      // The published facade is deliberately one self-contained runtime
+      // artifact. Source-level lazy imports may keep jENA out of derived-only
+      // consumers, but they must not create an unlisted package chunk.
+      output: {
+        codeSplitting: false
+      }
     }
   }
 });
