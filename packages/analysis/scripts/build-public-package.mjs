@@ -277,7 +277,7 @@ const publicManifest = {
   publishConfig: { access: "public", provenance: true },
   repository: {
     type: "git",
-    url: "https://github.com/HUDongpin/j-3dENA.git"
+    url: "git+https://github.com/HUDongpin/j-3dENA.git"
   }
 };
 await writeFile(resolve(packageDirectory, "package.json"), `${JSON.stringify(publicManifest, null, 2)}\n`, "utf8");

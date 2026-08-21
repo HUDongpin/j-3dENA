@@ -56,7 +56,7 @@ export async function verifyPublicPackage(packageDirectory) {
   if (manifest.type !== "module") fail("package must be ESM-only");
   if (manifest.license !== "GPL-3.0-only") fail("license must be GPL-3.0-only");
   if (manifest.engines?.node !== ">=20.9.0") fail("Node engine contract changed");
-  if (manifest.repository?.url !== "https://github.com/HUDongpin/j-3dENA.git") {
+  if (manifest.repository?.url !== "git+https://github.com/HUDongpin/j-3dENA.git") {
     fail("repository provenance does not point to the owner repository");
   }
   if (Object.keys(manifest.exports ?? {}).join(",") !== ".") fail("only the root export is public");
