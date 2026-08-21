@@ -67,8 +67,17 @@ claiming with `SKIP LOCKED`, fencing, lost-ack recovery, and worker capacity
 release only after observed termination. The HTTP suite proves job operations
 fail closed when readiness is false.
 
-Still external and therefore not claimed here: live Neon migrations, two real
-Fly Machines, Vercel Private Blob Beta/legal/region approval, container/image
-scans, egress controls, production secrets,
-Class 1 custody, 2-hour stress, 24-hour soak, canary, rollback, and independent
-`BuildApprovalV1` activation. Status remains `IMPLEMENTED_UNVERIFIED`.
+The `0001-persistent-compute` expand migration has now been executed on the
+Owner's Singapore Neon `main` branch as a technical candidate. The source hash,
+target identifiers, exact registry result, append-only probe, transaction
+rollback, child-branch reset/deletion probe and evidence limitations are recorded in
+`evidence/cloud/2026-08-21-neon-migration-execution.json`. This implementation-
+operator receipt is not independent approval or a signed `BuildApprovalV1`.
+
+Still external and therefore not claimed here: BuildApproval-bound Vercel
+Preview/database isolation, two real Fly Machines, Vercel Private Blob
+Beta/legal/region approval,
+container/image scans, egress controls, production secrets, Class 1 custody,
+restart/capacity/TTL/deletion probes, 2-hour stress, 24-hour soak, canary, full
+rollback, and independent `BuildApprovalV1` activation. Status remains
+`IMPLEMENTED_UNVERIFIED`.
