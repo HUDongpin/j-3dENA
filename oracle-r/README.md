@@ -82,3 +82,17 @@ prints raw bytes, mapping values, actor identities, or signature bytes. Its unit
 tests use synthetic data only. A passing synthetic test is not a Class 1 receipt,
 and no raw file, mapping values, private key, or participant identifier belongs
 in Git or ordinary CI.
+
+The non-sensitive legacy source-lineage investigation is independently
+fail-closed. It records only prepared-file hashes and the preparation-script
+semantics; it cannot promote prepared data to raw parity or close any of the 55
+scientific quantities:
+
+```bash
+node oracle-r/verify-class1-source-lineage.mjs \
+  --receipt evidence/scientific/2026-08-21-class1-source-lineage-investigation.json
+```
+
+Pass `--legacy-root` only in the authorized local environment to rehash the two
+prepared legacy copies. This is a bounded path/history investigation, not proof
+that a raw source does not exist in private or external storage.

@@ -22,7 +22,7 @@
     "test:e2e": "playwright test",
     "test:e2e:a11y": "playwright test --project=a11y",
     "test:oracle-custody": "node --test oracle-r/verify-small-raw-custody.test.mjs && node oracle-r/verify-small-raw-custody.mjs",
-    "test:class1-custody:unit": "node --test oracle-r/verify-class1-custody-receipt.test.mjs",
+    "test:class1-custody:unit": "node --test oracle-r/verify-class1-custody-receipt.test.mjs oracle-r/verify-class1-source-lineage.test.mjs && node oracle-r/verify-class1-source-lineage.mjs --receipt evidence/scientific/2026-08-21-class1-source-lineage-investigation.json",
     "build:public": "npm run build:public --workspace @3dena/analysis",
     "verify:public-package": "npm run pack:check --workspace @3dena/analysis",
     "test:public-package": "npm run test:public-package --workspace @3dena/analysis",

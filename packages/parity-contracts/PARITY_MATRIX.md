@@ -26,7 +26,7 @@ promote a broader milestone.
 | display filter invariant | object-identity unit test | `IMPLEMENTED_UNVERIFIED` | UI structural + export invariance test |
 | SVD sign indeterminacy | synthetic comparator test | `IMPLEMENTED_UNVERIFIED` | real oracle fixture pass |
 | Fixture custody and approval gate | synthetic generated/approved/tamper tests | `PARITY_CANDIDATE` | independently reviewed real oracle fixture plus CI approved-only gate |
-| Class 1 exchange custody | legacy prepared candidate quarantined as `sensitive-excluded`; no tracked artifact, aggregate receipt, or approval | blocked | written authorization, de-identification review, exact-byte private custody and independently approved aggregate/hash-only receipts; prepared input can never substitute for raw Class 1 parity |
+| Class 1 exchange custody | bounded source-lineage receipt binds two byte-identical 13,176-byte legacy prepared copies and the preparation script that discards raw caches; no exact raw source, frozen raw mapping, custody signature, or independent approval was located in the named checkout scope | blocked | written authorization, de-identification review, exact-byte private custody and independently approved aggregate/hash-only receipts; prepared input can never substitute for raw Class 1 parity |
 | degenerate SVD subspace | strict candidate comparator uses rank-checked orthogonal projectors and passes rotation/sign/permutation versus different-subspace tests | `IMPLEMENTED_UNVERIFIED` | governed tied-spectrum oracle fixture, tolerance decision and independent approval |
 | trajectory path comparison | package-level typed paired/independent candidate tests | `IMPLEMENTED_UNVERIFIED` | oracle, service/Worker, UI, Plotly and export closure |
 | bootstrap clusters/RNG/quantiles | package-level participant-history/type-7 candidate tests; RNG parity explicitly false | `IMPLEMENTED_UNVERIFIED` | fixed resample-plan oracle, policy approval, lifecycle, UI and export closure |
@@ -79,3 +79,14 @@ de-identification review for this release. Its disposition is
 aggregate oracle evidence, has no independent approval, and provides no raw
 parity. Future release evidence may retain only privacy-reviewed hash-only or
 approved aggregate receipts; exact bytes remain in private custody.
+
+The later non-sensitive source-lineage investigation under
+`evidence/scientific/` records only the two prepared RData identities and the
+legacy preparation-script semantics. Both copies are 13,176 bytes with SHA-256
+`16c74f4e2ab4580f5742f2c46684e24bb7ab3417c0c0b66ba99f7bb2fed9debc`.
+The script accepts a private `INPUT.RData`, pseudonymizes Speaker and Condition,
+and round-trips through the public exchange contract specifically to discard
+raw-input caches. The bounded checkout/history search found no exact raw
+coded-row source, frozen raw mapping, custody signature, or independent
+scientific approval. That is a scoped negative finding, not a claim that the
+private raw source does not exist; it closes 0 of 55 scientific quantities.
