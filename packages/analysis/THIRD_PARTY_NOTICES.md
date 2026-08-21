@@ -15,8 +15,8 @@ captured in `PROVENANCE.json`.
 
 The independently reviewed 0.6.3 successor removes the erroneous 0.6.2
 self-dependency and declares zero runtime dependencies. Its `dist/` tree is
-byte-identical to the frozen 0.6.2 numerical baseline. The public
-`@3dena/analysis` build bundles that reviewed implementation exactly once and
+byte-identical to the frozen 0.6.2 numerical baseline. The public `j-3dena`
+build bundles that reviewed implementation exactly once and
 publishes no runtime dependency on jena-js. This packaging correction does not
 authorize numerical changes. The upstream license and provenance files are
 reproduced under `THIRD_PARTY/`.

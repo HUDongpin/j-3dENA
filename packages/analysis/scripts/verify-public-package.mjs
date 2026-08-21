@@ -51,11 +51,14 @@ export async function verifyPublicPackage(packageDirectory) {
   if (!(await stat(directory)).isDirectory()) fail("staging path is not a directory");
 
   const manifest = JSON.parse(await readFile(resolve(directory, "package.json"), "utf8"));
-  if (manifest.name !== "@3dena/analysis") fail("unexpected package name");
+  if (manifest.name !== "j-3dena") fail("unexpected package name");
   if (manifest.private !== undefined) fail("staged public manifest must not contain private");
   if (manifest.type !== "module") fail("package must be ESM-only");
   if (manifest.license !== "GPL-3.0-only") fail("license must be GPL-3.0-only");
   if (manifest.engines?.node !== ">=20.9.0") fail("Node engine contract changed");
+  if (manifest.repository?.url !== "https://github.com/HUDongpin/j-3dENA.git") {
+    fail("repository provenance does not point to the owner repository");
+  }
   if (Object.keys(manifest.exports ?? {}).join(",") !== ".") fail("only the root export is public");
   if (manifest.dependencies !== undefined || manifest.optionalDependencies !== undefined || manifest.peerDependencies !== undefined) {
     fail("public facade must not publish runtime dependency edges");
@@ -132,6 +135,12 @@ export async function verifyPublicPackage(packageDirectory) {
   const provenance = JSON.parse(await readFile(resolve(directory, "PROVENANCE.json"), "utf8"));
   if (provenance.schemaVersion !== "3dena.public-package-provenance.v1") fail("unexpected provenance schema");
   if (provenance.productStatus !== "IMPLEMENTED_UNVERIFIED") fail("candidate status was inflated");
+  if (
+    provenance.package?.name !== manifest.name ||
+    provenance.package?.version !== manifest.version
+  ) {
+    fail("package manifest and provenance identity differ");
+  }
   if (provenance.runtimeBoundary?.r !== false || provenance.runtimeBoundary?.rena !== false || provenance.runtimeBoundary?.rWebFramework !== false) {
     fail("runtime boundary is not explicit");
   }

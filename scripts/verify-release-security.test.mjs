@@ -118,7 +118,7 @@ function publicPackageFixture() {
   writeFileSync(join(directory, "index.js"), "export const ok = true;\n");
   writeFileSync(join(directory, "index.js.map"), sourceMap);
   writeJson(join(directory, "package.json"), {
-    name: "@3dena/analysis",
+    name: "j-3dena",
     version: "0.1.0",
     type: "module",
     license: "GPL-3.0-only",
@@ -128,7 +128,7 @@ function publicPackageFixture() {
     publishConfig: { access: "public", provenance: true },
   });
   writeJson(join(directory, "PROVENANCE.json"), {
-    package: { name: "@3dena/analysis", version: "0.1.0" },
+    package: { name: "j-3dena", version: "0.1.0" },
     artifacts: { indexJsMapSha256: sha256(sourceMap) },
   });
   return { root, directory };
@@ -267,7 +267,7 @@ test("public layout rejects local dependencies, extra exports, and private trees
   const { root, directory } = publicPackageFixture();
   const manifestPath = join(directory, "package.json");
   const manifest = {
-    name: "@3dena/analysis",
+    name: "j-3dena",
     version: "0.1.0",
     type: "module",
     license: "GPL-3.0-only",

@@ -77,7 +77,7 @@ try {
       createAnalysisClient,
       compilePlotlySpec,
       createExportBundle
-    } from "@3dena/analysis";
+    } from "j-3dena";
     const inspection = await inspectDataset(
       new TextEncoder().encode("unit,conversation,A,B\\nu1,c1,1,0\\n"),
       { name: "consumer.csv" }
@@ -97,7 +97,7 @@ try {
       type AnalysisTaskV1,
       type DatasetInspectionV1,
       type DisplaySpecV1
-    } from "@3dena/analysis";
+    } from "j-3dena";
 
     const client = createAnalysisClient({ baseUrl: "http://127.0.0.1:8787" });
     const inspection: Promise<DatasetInspectionV1> = inspectDataset(new Uint8Array([117]), { name: "x.csv" });
@@ -133,7 +133,7 @@ try {
       createAnalysisClient,
       compilePlotlySpec,
       createExportBundle
-    } from "@3dena/analysis";
+    } from "j-3dena";
     Object.assign(globalThis, {
       __THREEDENA_PUBLIC_SMOKE__: {
         inspectDataset,
@@ -175,7 +175,7 @@ try {
     }
   `);
   await writeFile(resolve(nextConsumer, "app/page.tsx"), `
-    import { createAnalysisClient } from "@3dena/analysis";
+    import { createAnalysisClient } from "j-3dena";
     const client = createAnalysisClient({ baseUrl: "http://127.0.0.1:8787" });
     export default function Page() {
       return <main data-analysis-client={typeof client.getBuildInfo}>j-3dENA package consumer</main>;

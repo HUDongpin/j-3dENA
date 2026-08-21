@@ -1,6 +1,6 @@
-# @3dena/analysis
+# j-3dena
 
-`@3dena/analysis` is the public TypeScript facade for the j-3dENA successor.
+`j-3dena` is the public TypeScript package for the j-3dENA successor.
 It exposes one ESM root entry for dataset inspection, local analysis execution,
 remote compute-service clients, pure Plotly-spec compilation, and deterministic
 exports. Internal workspace packages are bundled implementation details and do
@@ -9,6 +9,14 @@ not define public subpath APIs.
 The package requires Node.js 20.9 or newer. Its browser-compatible entry can be
 consumed by modern ESM bundlers. Scientific computation is pure TypeScript; R,
 rENA, Shiny, and R subprocesses are not runtime dependencies.
+
+```ts
+import { executeAnalysisTask, inspectDataset } from "j-3dena";
+```
+
+The package is self-contained and has zero runtime npm dependencies. Its
+internal scientific adapter identity remains `@3dena/analysis` for compatibility
+with the versioned result contracts; consumers install and import `j-3dena`.
 
 ## Evidence status
 

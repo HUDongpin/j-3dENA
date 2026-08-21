@@ -243,7 +243,7 @@ await writeFile(
 const publicVersion = process.env.THREEDENA_PUBLIC_VERSION ?? `${sourceManifest.version}-implemented-unverified.0`;
 if (!/^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/u.test(publicVersion)) fail("public package build requires a prerelease SemVer");
 const publicManifest = {
-  name: "@3dena/analysis",
+  name: "j-3dena",
   version: publicVersion,
   description: "Public TypeScript analysis facade for the j-3dENA successor",
   type: "module",
@@ -271,7 +271,7 @@ const publicManifest = {
   publishConfig: { access: "public", provenance: true },
   repository: {
     type: "git",
-    url: "https://github.com/3dENA/j-3dENA.git"
+    url: "https://github.com/HUDongpin/j-3dENA.git"
   }
 };
 await writeFile(resolve(packageDirectory, "package.json"), `${JSON.stringify(publicManifest, null, 2)}\n`, "utf8");
