@@ -13,9 +13,9 @@ import { fileURLToPath } from "node:url";
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const DEFAULT_ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const UUID_NAMESPACE = Buffer.from("6ba7b8109dad11d180b400c04fd430c8", "hex");
+const UUID_V8_DOMAIN = Buffer.from("3dena.release-sbom.uuidv8.sha256\0", "utf8");
 
-export const RELEASE_SBOM_CONTRACT = "3dena.release-sbom.cyclonedx-1.5.v1";
+export const RELEASE_SBOM_CONTRACT = "3dena.release-sbom.cyclonedx-1.5.v2";
 export const SBOM_PROPERTY = Object.freeze({
   contract: "3dena:sbom:contract",
   graphSha256: "3dena:sbom:production-graph-sha256",
@@ -43,13 +43,15 @@ function sha256(text) {
   return createHash("sha256").update(text).digest("hex");
 }
 
-function uuidV5(name) {
-  const bytes = createHash("sha1")
-    .update(UUID_NAMESPACE)
+// RFC 9562 UUIDv8 permits application-defined deterministic bits. Domain-
+// separated SHA-256 keeps the SBOM identity stable without relying on SHA-1.
+function deterministicUuidV8(name) {
+  const bytes = createHash("sha256")
+    .update(UUID_V8_DOMAIN)
     .update(Buffer.from(name, "utf8"))
     .digest()
     .subarray(0, 16);
-  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[6] = (bytes[6] & 0x0f) | 0x80;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = bytes.toString("hex");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
@@ -183,7 +185,7 @@ export function createReleaseSbom({ graph, dispositions }) {
     $schema: "http://cyclonedx.org/schema/bom-1.5.schema.json",
     bomFormat: "CycloneDX",
     specVersion: "1.5",
-    serialNumber: `urn:uuid:${uuidV5(`${RELEASE_SBOM_CONTRACT}:${graphDigest}`)}`,
+    serialNumber: `urn:uuid:${deterministicUuidV8(`${RELEASE_SBOM_CONTRACT}:${graphDigest}`)}`,
     version: 1,
     metadata: {
       component: {

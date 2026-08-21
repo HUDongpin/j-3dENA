@@ -325,7 +325,10 @@ test("release SBOM generation is deterministic and omits local filesystem paths"
   const first = createReleaseSbom(fixture);
   const second = createReleaseSbom(fixture);
   assert.deepEqual(first, second);
-  assert.match(first.serialNumber, /^urn:uuid:[0-9a-f-]{36}$/u);
+  assert.match(
+    first.serialNumber,
+    /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+  );
   const serialized = JSON.stringify(first);
   assert.doesNotMatch(serialized, /\/Volumes\/|\/Users\/|node_modules\//u);
 });

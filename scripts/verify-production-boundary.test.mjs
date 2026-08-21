@@ -98,6 +98,79 @@ test("rejects direct R executable invocation in a production package script", ()
   );
 });
 
+test("rejects quoted assignments and nested shell R commands without backtracking", () => {
+  const root = fixture();
+  writeFileSync(
+    join(root, "apps", "web", "package.json"),
+    JSON.stringify({
+      private: true,
+      dependencies: { react: "19.2.4" },
+      scripts: {
+        direct: 'env R_LIBS_USER="/opt/legacy libraries" R --vanilla service.R',
+        nested: "bash -c 'env R_PROFILE=legacy R --quiet service.R'",
+      },
+    }),
+  );
+  const result = inspect(root);
+  assert.equal(result.ok, false);
+  assert.deepEqual(
+    result.findings
+      .filter(({ rule }) => rule === "direct-r-executable")
+      .map(({ path }) => path)
+      .sort(),
+    [
+      "apps/web/package.json#scripts.direct",
+      "apps/web/package.json#scripts.nested",
+    ],
+  );
+});
+
+test("rejects direct and nested R commands in production shell files", () => {
+  const root = fixture();
+  writeFileSync(
+    join(root, "apps", "web", "src", "start.sh"),
+    [
+      "#!/bin/sh",
+      'env R_PROFILE="legacy profile" R --vanilla service.R',
+      "bash -c 'R --quiet service.R'",
+      "",
+    ].join("\n"),
+  );
+  const result = inspect(root);
+  assert.equal(result.ok, false);
+  assert.deepEqual(
+    result.findings
+      .filter(
+        ({ path, rule }) =>
+          path === "apps/web/src/start.sh" && rule === "direct-r-executable",
+      )
+      .map(({ line }) => line),
+    [2, 3],
+  );
+});
+
+test(
+  "scans adversarial quoted shell assignments in linear time",
+  { timeout: 2_000 },
+  () => {
+    const root = fixture();
+    const assignments = Array.from(
+      { length: 2_000 },
+      (_, index) => `VALUE_${index}="quoted-${index}"`,
+    ).join(" ");
+    writeFileSync(
+      join(root, "apps", "web", "package.json"),
+      JSON.stringify({
+        private: true,
+        dependencies: { react: "19.2.4" },
+        scripts: { inspect: `env ${assignments} Report --version` },
+      }),
+    );
+    const result = inspect(root);
+    assert.equal(result.ok, true, JSON.stringify(result.findings, null, 2));
+  },
+);
+
 test("allows historical prose in docs, oracle-r, and parity text", () => {
   const root = fixture();
   mkdirSync(join(root, "docs"), { recursive: true });
