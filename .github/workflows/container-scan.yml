@@ -1,0 +1,112 @@
+name: Exact compute image scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_ref:
+        description: Fly registry image pinned by sha256 digest
+        required: true
+        type: string
+      source_head_commit:
+        description: Full lowercase Git SHA used to build the image
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-scan-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  exact-image:
+    name: Trivy exact Fly OCI image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the exact source head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_head_commit }}
+          persist-credentials: false
+
+      - name: Validate immutable source and image identity
+        env:
+          IMAGE_REF: ${{ inputs.image_ref }}
+          SOURCE_HEAD_COMMIT: ${{ inputs.source_head_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$IMAGE_REF" =~ ^registry\.fly\.io/[a-z0-9-]+@sha256:[a-f0-9]{64}$ ]]; then
+            echo "image_ref must be a registry.fly.io image pinned by sha256 digest" >&2
+            exit 64
+          fi
+          if [[ ! "$SOURCE_HEAD_COMMIT" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "source_head_commit must be a full lowercase Git SHA" >&2
+            exit 64
+          fi
+          CHECKED_OUT_COMMIT="$(git rev-parse HEAD)"
+          if [[ "$CHECKED_OUT_COMMIT" != "$SOURCE_HEAD_COMMIT" ]]; then
+            echo "checked-out source does not match source_head_commit" >&2
+            exit 65
+          fi
+
+      - name: Authenticate to the private Fly registry
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FLY_API_TOKEN"
+          echo "$FLY_API_TOKEN" | docker login registry.fly.io --username x --password-stdin
+
+      - name: Pull and inspect the exact image
+        env:
+          IMAGE_REF: ${{ inputs.image_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p output/container-scan
+          docker pull "$IMAGE_REF"
+          docker image inspect "$IMAGE_REF" > output/container-scan/docker-inspect.json
+
+      - name: Scan exact image for vulnerabilities, misconfiguration, and secrets
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          version: v0.70.0
+          scan-type: image
+          image-ref: ${{ inputs.image_ref }}
+          scanners: vuln,misconfig,secret
+          format: sarif
+          output: output/container-scan/trivy-exact-image.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+
+      - name: Verify source- and digest-bound image evidence
+        if: always()
+        env:
+          IMAGE_REF: ${{ inputs.image_ref }}
+          SOURCE_HEAD_COMMIT: ${{ inputs.source_head_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/verify-container-scan-evidence.mjs \
+            --sarif output/container-scan/trivy-exact-image.sarif \
+            --inspect output/container-scan/docker-inspect.json \
+            --output output/container-scan/receipt.json \
+            --image-ref "$IMAGE_REF" \
+            --repository "$GITHUB_REPOSITORY" \
+            --source-head-commit "$SOURCE_HEAD_COMMIT" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT"
+
+      - name: Upload exact-image scan evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: trivy-exact-image-evidence
+          path: output/container-scan
+          if-no-files-found: error
+          retention-days: 14

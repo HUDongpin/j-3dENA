@@ -30,6 +30,16 @@ const PROHIBITED_NATIVE_R_NAMES = [
   /\.(?:R|RData|Rda|Rds|Rproj)$/i,
 ];
 
+// The previously bundled Class 1 prepared exchange contains row-level
+// participant identities and has no authorization/de-identification approval
+// binding for Git, CI, or a public application artifact. Keep this exact
+// identity out of every repository/package/Next boundary. Generic user-uploaded
+// .ena3d.json bytes are handled at runtime and are not repository assets.
+const PROHIBITED_SENSITIVE_ARTIFACT_NAMES = [
+  /(?:^|\/)class1-timepoints\.ena3d\.json(?:\.(?:provenance\.json|sha256))?$/i,
+  /(?:^|\/)public\/.*\.ena3d\.json$/i,
+];
+
 const PROHIBITED_DEPENDENCY_NAME =
   /(?:^|[/_-])(?:rscript|rena|shiny|rserve|opencpu)(?:$|[/_-])/i;
 
@@ -117,11 +127,152 @@ const TEXT_EXTENSIONS = new Set([
 
 const SHELL_EXTENSIONS = new Set([".bash", ".sh", ".zsh"]);
 
-const DIRECT_R_SHELL_COMMAND =
-  /(?:^|&&|\|\||[;|])\s*(?:(?:env|command|exec|nohup)\s+)?(?:(?:[A-Za-z_][A-Za-z0-9_]*)=(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s;&|]+)\s+)*R(?=\s|$)/gm;
+const SHELL_COMMAND_PREFIXES = new Set(["command", "env", "exec", "nohup"]);
+const NESTED_SHELL_EXECUTABLES = new Set(["bash", "sh", "zsh"]);
 
-const DIRECT_R_NESTED_SHELL_COMMAND =
-  /(?:^|&&|\|\||[;|])\s*(?:sh|bash|zsh)\s+-c\s*(["'])\s*(?:(?:env|command|exec|nohup)\s+)?(?:(?:[A-Za-z_][A-Za-z0-9_]*)=(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s;&|]+)\s+)*R(?=\s|$)/gm;
+function isShellSeparatorStart(character) {
+  return (
+    character === "\n" ||
+    character === "\r" ||
+    character === ";" ||
+    character === "|" ||
+    character === "&"
+  );
+}
+
+// This deliberately small tokenizer recognizes only the shell structure this
+// boundary needs: words, quoting/escaping, and command separators. Keeping the
+// scan deterministic and single-pass avoids using ambiguous repeated regular
+// expression alternatives on repository-controlled package scripts.
+function tokenizeShellCommands(text) {
+  const tokens = [];
+  let index = 0;
+
+  while (index < text.length) {
+    const character = text[index];
+    if (/[^\S\r\n]/u.test(character)) {
+      index += 1;
+      continue;
+    }
+    if (isShellSeparatorStart(character)) {
+      const start = index;
+      index += 1;
+      if (
+        (character === "&" || character === "|") &&
+        text[index] === character
+      ) {
+        index += 1;
+      } else if (character === "\r" && text[index] === "\n") {
+        index += 1;
+      }
+      tokens.push({ type: "separator", start, end: index });
+      continue;
+    }
+
+    const start = index;
+    const offsets = [];
+    let quote = null;
+    let value = "";
+    while (index < text.length) {
+      const current = text[index];
+      if (quote === null) {
+        if (/\s/u.test(current) || isShellSeparatorStart(current)) break;
+        if (current === "'" || current === '"') {
+          quote = current;
+          index += 1;
+          continue;
+        }
+        if (current === "\\" && index + 1 < text.length) {
+          index += 1;
+          value += text[index];
+          offsets.push(index);
+          index += 1;
+          continue;
+        }
+      } else if (current === quote) {
+        quote = null;
+        index += 1;
+        continue;
+      } else if (quote === '"' && current === "\\" && index + 1 < text.length) {
+        index += 1;
+        value += text[index];
+        offsets.push(index);
+        index += 1;
+        continue;
+      }
+
+      value += current;
+      offsets.push(index);
+      index += 1;
+    }
+    tokens.push({ type: "word", start, end: index, value, offsets });
+  }
+
+  return tokens;
+}
+
+function isShellAssignment(value) {
+  const equals = value.indexOf("=");
+  if (equals <= 0) return false;
+  const name = value.slice(0, equals);
+  return /^[A-Za-z_][A-Za-z0-9_]*$/u.test(name);
+}
+
+function inspectShellSegment(words, mapIndex, depth, findings) {
+  let index = 0;
+  let sawPrefix = false;
+  while (index < words.length) {
+    const value = words[index].value;
+    if (isShellAssignment(value)) {
+      index += 1;
+      continue;
+    }
+    if (SHELL_COMMAND_PREFIXES.has(value)) {
+      sawPrefix = true;
+      index += 1;
+      continue;
+    }
+    if (sawPrefix && value === "--") {
+      index += 1;
+      continue;
+    }
+    break;
+  }
+
+  const executable = words[index];
+  if (executable === undefined) return;
+  if (executable.value === "R") {
+    findings.push(mapIndex(executable.start));
+    return;
+  }
+  if (depth >= 4 || !NESTED_SHELL_EXECUTABLES.has(executable.value)) return;
+
+  const commandFlag = words[index + 1];
+  const commandText = words[index + 2];
+  if (commandFlag?.value !== "-c" || commandText === undefined) return;
+  const childMap = (childIndex) =>
+    mapIndex(commandText.offsets[childIndex] ?? commandText.start);
+  scanShellCommands(commandText.value, childMap, depth + 1, findings);
+}
+
+function scanShellCommands(text, mapIndex, depth, findings) {
+  let words = [];
+  for (const token of tokenizeShellCommands(text)) {
+    if (token.type === "word") {
+      words.push(token);
+      continue;
+    }
+    inspectShellSegment(words, mapIndex, depth, findings);
+    words = [];
+  }
+  inspectShellSegment(words, mapIndex, depth, findings);
+}
+
+export function findDirectRShellCommands(text) {
+  const findings = [];
+  scanShellCommands(text, (index) => index, 0, findings);
+  return [...new Set(findings)].sort((left, right) => left - right);
+}
 
 const SOURCE_EXCLUDED_SEGMENTS = new Set([
   ".git",
@@ -256,10 +407,7 @@ function findTextViolations(root, pathname, scope, findings) {
   }
 
   if (SHELL_EXTENSIONS.has(extension)) {
-    DIRECT_R_SHELL_COMMAND.lastIndex = 0;
-    let match;
-    while ((match = DIRECT_R_SHELL_COMMAND.exec(text)) !== null) {
-      const commandIndex = match.index + match[0].lastIndexOf("R");
+    for (const commandIndex of findDirectRShellCommands(text)) {
       const { line, excerpt } = lineAndExcerpt(text, commandIndex);
       findings.push({
         scope,
@@ -268,7 +416,6 @@ function findTextViolations(root, pathname, scope, findings) {
         rule: "direct-r-executable",
         detail: `Direct R executable invocation in a shell command: ${excerpt}`,
       });
-      if (match[0].length === 0) DIRECT_R_SHELL_COMMAND.lastIndex += 1;
     }
   }
 }
@@ -331,20 +478,13 @@ function scanDeclaredDependencies(root, findings, evidence) {
     }
     for (const [scriptName, command] of Object.entries(manifest.scripts ?? {})) {
       if (typeof command !== "string") continue;
-      for (const pattern of [
-        DIRECT_R_SHELL_COMMAND,
-        DIRECT_R_NESTED_SHELL_COMMAND,
-      ]) {
-        pattern.lastIndex = 0;
-        if (!pattern.test(command)) continue;
-        findings.push({
-          scope: "production-dependency",
-          path: `${rel}#scripts.${scriptName}`,
-          rule: "direct-r-executable",
-          detail: `Production package script directly invokes the R executable: ${command}`,
-        });
-        break;
-      }
+      if (findDirectRShellCommands(command).length === 0) continue;
+      findings.push({
+        scope: "production-dependency",
+        path: `${rel}#scripts.${scriptName}`,
+        rule: "direct-r-executable",
+        detail: `Production package script directly invokes the R executable: ${command}`,
+      });
     }
   }
 }
@@ -496,6 +636,16 @@ function scanNativeRArtifacts(root, findings, evidence) {
           "Native R scripts/workspaces/serialized objects are allowed only under oracle-r and never as production/parity fixtures",
       });
     }
+    if (PROHIBITED_SENSITIVE_ARTIFACT_NAMES.some((pattern) => pattern.test(rel))) {
+      evidence.sensitiveArtifactCandidates += 1;
+      findings.push({
+        scope: "sensitive-artifact",
+        path: rel,
+        rule: "class1-participant-artifact",
+        detail:
+          "Class 1 participant-level prepared artifacts require private custody and may not enter Git, CI, public assets, packages, or production output",
+      });
+    }
   }
 }
 
@@ -560,6 +710,14 @@ function scanNextOutput(root, findings, evidence) {
           detail: "Native R artifact emitted into the Next.js output",
         });
       }
+      if (PROHIBITED_SENSITIVE_ARTIFACT_NAMES.some((pattern) => pattern.test(rel))) {
+        findings.push({
+          scope: "next-output",
+          path: rel,
+          rule: "class1-participant-artifact",
+          detail: "A custody-excluded Class 1 prepared artifact was emitted into the Next.js output",
+        });
+      }
       findTextViolations(root, path, "next-output", findings);
     }
   }
@@ -582,6 +740,7 @@ export function inspectProductionBoundary({
     nextRoots: 0,
     nextFiles: 0,
     nativeArtifactCandidates: 0,
+    sensitiveArtifactCandidates: 0,
   };
 
   scanDeclaredDependencies(resolvedRoot, findings, evidence);
@@ -650,7 +809,7 @@ function printHuman(result) {
     [
       `Production boundary evidence: ${evidence.manifests} manifests; ${dependencyEvidence}; ${evidence.sourceFiles} source files; ${evidence.nextRoots} .next roots / ${evidence.nextFiles} emitted files.`,
       result.ok
-        ? "PASS: production runtime is browser-only; no R/rENA/Shiny service boundary was detected."
+        ? "PASS: production runtime is TypeScript-only at the audited boundary; no R/rENA/Shiny service boundary was detected."
         : `FAIL: ${findings.length} prohibited production-runtime finding(s).`,
     ].join("\n") + "\n",
   );

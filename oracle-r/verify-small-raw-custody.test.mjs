@@ -75,6 +75,15 @@ test("Class 1 wrapper records its commit and enforces its own Git custody", () =
   assert.match(source, /paste0\("wrapper_commit=", wrapper_commit\)/);
   assert.match(source, /wrapperCommit = wrapper_commit/);
   assert.match(source, /gitCommit = wrapper_commit/);
+  assert.doesNotMatch(source, /EXPECTED_EXCHANGE_SHA256\s*<-/);
+  assert.doesNotMatch(source, /EXPECTED_EXCHANGE_BYTES\s*<-/);
+  assert.doesNotMatch(source, /INPUT_SHA256\s*<-/);
+  assert.doesNotMatch(source, /INPUT_BYTES\s*<-/);
+  assert.match(source, /--expected-input-sha256/);
+  assert.match(source, /--expected-input-bytes/);
+  assert.match(source, /--expected-exchange-sha256/);
+  assert.match(source, /--expected-exchange-bytes/);
+  assert.match(source, /generated-matches-external-identity-unapproved/);
 });
 
 test("passes only for the exact committed generator and frozen input", () => {

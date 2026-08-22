@@ -2,16 +2,37 @@
   "manifest": {
     "schemaVersion": "3dena.parity-fixture.v1",
     "fixtureId": "small-raw-rena-0.2.7-accumulated-back4",
-    "status": "pending",
-    "availableFields": [],
-    "pendingReason": "The frozen rENA 0.2.7 oracle has not yet generated and hashed the numeric analysis payload.",
+    "status": "generated",
+    "availableFields": ["connectionCounts", "rowConnectionCounts", "lineWeights", "centerVector", "rotationMatrix", "points", "nodes", "variance", "eigenvalues"],
     "legacyCommit": "d02019ad872c5ece3840be2b4028ef27af38b2ff",
     "rVersion": "4.4.1",
     "rENAVersion": "0.2.7",
     "jenaCommit": "2f63db4c6ccf5684afc8437ae81ed1a3ccd0c1a3",
     "jenaVersion": "0.6.2",
+    "scientificOracle": {
+      "role": "offline-fixture-generator-only",
+      "legacyProductCommit": "d02019ad872c5ece3840be2b4028ef27af38b2ff",
+      "R": "4.4.1",
+      "rENA": "0.2.7",
+      "jsonlite": "2.0.0",
+      "digest": "0.6.37",
+      "platform": "aarch64-apple-darwin20"
+    },
+    "generator": {
+      "path": "oracle-r/generate-small-raw-golden.R",
+      "gitCommit": "4a0f0a6c79b8872e0a07d6ac239b5a4e863a6d48",
+      "sha256": "43404b4640e53b3fe9ff2926902e46c3ee58f8250711e1015e320c36f2d4d849"
+    },
+    "generatedAtUtc": "2026-08-20T09:27:22Z",
+    "numericalRuntime": {
+      "platform": "aarch64-apple-darwin20",
+      "BLAS": "/Library/Frameworks/R.framework/Versions/4.4-arm64/Resources/lib/libRblas.0.dylib",
+      "LAPACK": "/Library/Frameworks/R.framework/Versions/4.4-arm64/Resources/lib/libRlapack.dylib"
+    },
+    "command": "Rscript oracle-r/generate-small-raw-golden.R --legacy-checkout <clean-d020-checkout> --output packages/parity-contracts/fixtures/small-raw.rena-0.2.7.golden.json",
     "input": {
       "path": "small-raw.csv",
+      "bytes": 743,
       "sha256": "163ee849ac316d380e2664067e7389a8114e30d97877c97d6d912e3706c72f16"
     },
     "spec": {
@@ -28,8 +49,138 @@
       "weightBy": "binary",
       "rotation": "svd",
       "dimensions": 3,
+      "dimensionColumns": ["SVD1", "SVD2", "SVD3"],
       "centerAlignToOrigin": true
+    },
+    "analysisPayloadSha256": "b8d5708d3bf71341f39013f73c450bd66d5b145e06cdd95bf6e5cea77d0d3e5d",
+    "analysisPayload": {
+      "hashAlgorithm": "sha256",
+      "hashScope": "compact-json-utf8-of-top-level-analysis",
+      "sha256": "b8d5708d3bf71341f39013f73c450bd66d5b145e06cdd95bf6e5cea77d0d3e5d"
     }
   },
-  "analysis": null
+  "analysis": {
+    "connectionCounts": {
+      "rowKeys": ["[[\"string\",\"Experimental\"],[\"string\",\"Student 1\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 1\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 1\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 1\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 2\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 2\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 2\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 2\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 3\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 3\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 3\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 3\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 4\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 4\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 4\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 4\"],[\"string\",\"Lesson 2\"]]"],
+      "columns": ["EC & ICT", "EC & MCO", "ICT & MCO", "EC & ATT", "ICT & ATT", "MCO & ATT"],
+      "values": [
+        [0, 0, 0, 0, 0, 1],
+        [0, 0, 0, 0, 0, 1],
+        [0, 1, 0, 1, 0, 1],
+        [1, 2, 1, 1, 0, 1],
+        [0, 1, 0, 1, 0, 1],
+        [0, 1, 0, 2, 1, 2],
+        [1, 1, 1, 1, 1, 1],
+        [2, 2, 2, 2, 2, 2],
+        [1, 1, 1, 0, 1, 1],
+        [1, 1, 1, 1, 2, 2],
+        [1, 1, 0, 1, 1, 1],
+        [2, 2, 1, 2, 2, 2],
+        [0, 1, 1, 0, 0, 1],
+        [1, 2, 2, 1, 1, 2],
+        [1, 1, 0, 1, 0, 0],
+        [2, 2, 1, 2, 1, 1]
+      ]
+    },
+    "rowConnectionCounts": {
+      "rowKeys": ["[[\"string\",\"Experimental\"],[\"string\",\"Student 1\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 1\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 1\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 1\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 2\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 2\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 2\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 2\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 3\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 3\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 3\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 3\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 4\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 4\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 4\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 4\"],[\"string\",\"Lesson 2\"]]"],
+      "columns": ["EC", "ICT", "MCO", "ATT", "EC & ICT", "EC & MCO", "ICT & MCO", "EC & ATT", "ICT & ATT", "MCO & ATT"],
+      "values": [
+        [0, 0, 1, 1, 0, 0, 0, 0, 0, 1],
+        [1, 0, 0, 1, 0, 1, 0, 1, 0, 1],
+        [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        [1, 1, 1, 0, 1, 1, 1, 0, 0, 0],
+        [1, 0, 1, 1, 0, 1, 0, 1, 0, 1],
+        [1, 1, 0, 1, 1, 1, 1, 1, 1, 1],
+        [0, 0, 0, 1, 0, 0, 0, 1, 1, 1],
+        [1, 1, 1, 0, 1, 1, 1, 1, 1, 1],
+        [0, 1, 1, 0, 1, 1, 1, 0, 1, 1],
+        [1, 0, 0, 1, 1, 1, 0, 1, 1, 1],
+        [0, 0, 0, 1, 0, 0, 0, 1, 1, 1],
+        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        [0, 0, 1, 0, 0, 1, 1, 0, 0, 1],
+        [1, 0, 0, 0, 1, 1, 0, 1, 0, 0],
+        [1, 1, 0, 1, 1, 1, 1, 1, 1, 1],
+        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+      ]
+    },
+    "lineWeights": {
+      "rowKeys": ["[[\"string\",\"Experimental\"],[\"string\",\"Student 1\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 1\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 1\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 1\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 2\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 2\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 2\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 2\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 3\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 3\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 3\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 3\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 4\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 4\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 4\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 4\"],[\"string\",\"Lesson 2\"]]"],
+      "columns": ["EC & ICT", "EC & MCO", "ICT & MCO", "EC & ATT", "ICT & ATT", "MCO & ATT"],
+      "values": [
+        [0, 0, 0, 0, 0, 1],
+        [0, 0, 0, 0, 0, 1],
+        [0, 0.57735026918962584, 0, 0.57735026918962584, 0, 0.57735026918962584],
+        [0.35355339059327373, 0.70710678118654746, 0.35355339059327373, 0.35355339059327373, 0, 0.35355339059327373],
+        [0, 0.57735026918962584, 0, 0.57735026918962584, 0, 0.57735026918962584],
+        [0, 0.31622776601683794, 0, 0.63245553203367588, 0.31622776601683794, 0.63245553203367588],
+        [0.40824829046386307, 0.40824829046386307, 0.40824829046386307, 0.40824829046386307, 0.40824829046386307, 0.40824829046386307],
+        [0.40824829046386307, 0.40824829046386307, 0.40824829046386307, 0.40824829046386307, 0.40824829046386307, 0.40824829046386307],
+        [0.44721359549995793, 0.44721359549995793, 0.44721359549995793, 0, 0.44721359549995793, 0.44721359549995793],
+        [0.28867513459481292, 0.28867513459481292, 0.28867513459481292, 0.28867513459481292, 0.57735026918962584, 0.57735026918962584],
+        [0.44721359549995793, 0.44721359549995793, 0, 0.44721359549995793, 0.44721359549995793, 0.44721359549995793],
+        [0.43643578047198478, 0.43643578047198478, 0.21821789023599239, 0.43643578047198478, 0.43643578047198478, 0.43643578047198478],
+        [0, 0.57735026918962584, 0.57735026918962584, 0, 0, 0.57735026918962584],
+        [0.2581988897471611, 0.5163977794943222, 0.5163977794943222, 0.2581988897471611, 0.2581988897471611, 0.5163977794943222],
+        [0.57735026918962584, 0.57735026918962584, 0, 0.57735026918962584, 0, 0],
+        [0.5163977794943222, 0.5163977794943222, 0.2581988897471611, 0.5163977794943222, 0.2581988897471611, 0.2581988897471611]
+      ]
+    },
+    "centerVector": {
+      "columns": ["EC & ICT", "EC & MCO", "ICT & MCO", "EC & ATT", "ICT & ATT", "MCO & ATT"],
+      "values": [0.25884593850117638, 0.42509786687156087, 0.21725647064267953, 0.34259234318323706, 0.22233346044377578, 0.51358538881416027]
+    },
+    "rotationMatrix": {
+      "rowKeys": ["EC & ICT", "EC & MCO", "ICT & MCO", "EC & ATT", "ICT & ATT", "MCO & ATT"],
+      "columns": ["SVD1", "SVD2", "SVD3", "SVD4", "SVD5", "SVD6"],
+      "values": [
+        [0.48861142118611323, 0.22294634536633073, 0.23966584467140703, 0.58168265060670121, -0.035290152871420163, 0.56081546712416808],
+        [0.39100199592581264, -0.14295859480212963, -0.49585731099523045, -0.28726385593903941, 0.65339046523263455, 0.26714449929004236],
+        [0.18231801454942229, 0.62828582339852135, -0.42109980509396272, -0.36351339733665994, -0.49886153824180696, 0.11699228802277835],
+        [0.35433213375265149, -0.59687337903209037, 0.24517686389177418, -0.43813331400462674, -0.45133733702871331, 0.24982598177222412],
+        [0.23306250978004356, 0.41452336309355509, 0.66311068046762323, -0.44267165824539656, 0.3298873869174615, -0.17132597110024511],
+        [-0.62870268439429677, 0.083828648020019131, 0.13976156496801312, -0.24303041611401541, 0.10218410283899473, 0.71320896190013705]
+      ]
+    },
+    "points": {
+      "rowKeys": ["[[\"string\",\"Experimental\"],[\"string\",\"Student 1\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 1\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 1\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 1\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 2\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 2\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 2\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 2\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 3\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 3\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 3\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 3\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 4\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Experimental\"],[\"string\",\"Student 4\"],[\"string\",\"Lesson 2\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 4\"],[\"string\",\"Lesson 1\"]]", "[[\"string\",\"Control\"],[\"string\",\"Student 4\"],[\"string\",\"Lesson 2\"]]"],
+      "columns": ["SVD1", "SVD2", "SVD3"],
+      "values": [
+        [-0.811318206713178, 0.019660792141003889, 0.07679267087117421],
+        [-0.811318206713178, 0.019660792141003889, 0.07679267087117421],
+        [-0.11527832598809211, -0.44291155262713394, -0.12700794055594941],
+        [0.23406937885256901, -0.045687532418953646, -0.34164326638562803],
+        [-0.11527832598809211, -0.44291155262713394, -0.12700794055594941],
+        [-0.15879617040955052, -0.30276951418265119, 0.23337770411492872],
+        [0.23405223218254648, 0.18476243984510116, 0.088392359405843265],
+        [0.23405223218254648, 0.18476243984510116, 0.088392359405843265],
+        [0.11535898639533676, 0.47545151044519574, -0.0068073751799293441],
+        [-0.0021984082670349243, 0.25571427815408682, 0.27582892817737575],
+        [0.19228603912097125, -0.072456341533658875, 0.29116060955491735],
+        [0.22303599132577973, 0.064846617213193777, 0.19073460330374578],
+        [-0.21459072401449289, 0.26443444269632704, -0.51168295474963177],
+        [0.066608559118465374, 0.24022490217791054, -0.16791066039943764],
+        [0.52980327363812363, -0.36259191261520002, -0.06932817777599927],
+        [0.39951167527727915, -0.040189808654191576, 0.029916409897522506]
+      ]
+    },
+    "nodes": {
+      "rowKeys": ["EC", "ICT", "MCO", "ATT"],
+      "columns": ["SVD1", "SVD2", "SVD3"],
+      "values": [
+        [1.3284354824360431, -1.4648434745041943, -0.50921692219182657],
+        [1.0887009211239322, 2.1514369741491652, 0.80977376359197972],
+        [-0.9109991273474024, 0.55320840027217311, -1.8200371655284913],
+        [-0.74621003376354755, -0.51314435046819451, 1.9471494857182545]
+      ]
+    },
+    "variance": {
+      "columns": ["SVD1", "SVD2", "SVD3", "SVD4", "SVD5", "SVD6"],
+      "values": [0.48344558695594247, 0.25425557510709124, 0.16480326096132694, 0.077055874770719471, 0.014536899083161943, 0.0059028031217580167]
+    },
+    "eigenvalues": {
+      "columns": ["SVD1", "SVD2", "SVD3", "SVD4", "SVD5", "SVD6"],
+      "values": [0.14156244746908306, 0.074451070536091526, 0.04825766043179857, 0.022563487016395694, 0.0042566921042367749, 0.0017284577197316723]
+    }
+  }
 }

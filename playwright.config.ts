@@ -1,11 +1,43 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Match the hostname announced by `next dev`. Next.js rejects development
-// resources from a different origin (for example 127.0.0.1 versus localhost),
-// which would leave acceptance tests exercising only server-rendered markup.
-const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+function configuredPort(): number {
+  const raw = process.env.PLAYWRIGHT_PORT ?? "3217";
+  if (!/^\d{4,5}$/u.test(raw)) {
+    throw new Error("PLAYWRIGHT_PORT must be a numeric TCP port.");
+  }
+  const port = Number(raw);
+  if (!Number.isSafeInteger(port) || port < 1024 || port > 65_535) {
+    throw new Error("PLAYWRIGHT_PORT must be between 1024 and 65535.");
+  }
+  return port;
+}
+
+function artifactRoot(): string {
+  const segment = process.env.PLAYWRIGHT_REPORT_SEGMENT;
+  if (segment === undefined) return "output/playwright";
+  if (!/^[a-z0-9][a-z0-9-]{0,31}$/u.test(segment)) {
+    throw new Error(
+      "PLAYWRIGHT_REPORT_SEGMENT must be 1-32 lowercase letters, digits, or hyphens.",
+    );
+  }
+  return `output/playwright/${segment}`;
+}
+
+// A managed run owns a dedicated, configurable port. An explicitly supplied
+// base URL may target a separately managed build, but the setup project still
+// requires the j-3dENA /build-info identity before any product test runs.
+const localPort = configuredPort();
+const baseURL = (
+  process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${localPort}`
+).replace(/\/+$/u, "");
 const suppliedServer = Boolean(process.env.PLAYWRIGHT_BASE_URL);
 const chromiumChannel = process.env.PLAYWRIGHT_CHROMIUM_CHANNEL;
+const evidenceRoot = artifactRoot();
+const managedBuildId = process.env.PLAYWRIGHT_EXPECTED_BUILD_ID
+  ?? `playwright-managed-${localPort}`;
+if (!suppliedServer && !process.env.PLAYWRIGHT_EXPECTED_BUILD_ID) {
+  process.env.PLAYWRIGHT_EXPECTED_BUILD_ID = managedBuildId;
+}
 
 export default defineConfig({
   testDir: "./e2e",
@@ -22,14 +54,15 @@ export default defineConfig({
   expect: {
     timeout: 10_000,
   },
-  outputDir: "output/playwright/test-results",
+  outputDir: `${evidenceRoot}/test-results`,
   reporter: process.env.CI
     ? [
         ["github"],
+        ["json", { outputFile: `${evidenceRoot}/report.json` }],
         [
           "html",
           {
-            outputFolder: "output/playwright/report",
+            outputFolder: `${evidenceRoot}/report`,
             open: "never",
           },
         ],
@@ -39,7 +72,7 @@ export default defineConfig({
         [
           "html",
           {
-            outputFolder: "output/playwright/report",
+            outputFolder: `${evidenceRoot}/report`,
             open: "never",
           },
         ],
@@ -54,15 +87,37 @@ export default defineConfig({
   },
   projects: [
     {
+      name: "app-identity",
+      testMatch: /app-identity\.setup\.ts$/,
+    },
+    {
       name: "chromium",
-      testIgnore: /\.a11y\.spec\.ts$/,
+      dependencies: ["app-identity"],
+      testIgnore: [/\.a11y\.spec\.ts$/, /app-identity\.setup\.ts$/],
       use: {
         ...devices["Desktop Chrome"],
         ...(chromiumChannel ? { channel: chromiumChannel } : {}),
       },
     },
     {
+      name: "firefox",
+      dependencies: ["app-identity"],
+      testIgnore: [/\.a11y\.spec\.ts$/, /app-identity\.setup\.ts$/],
+      use: {
+        ...devices["Desktop Firefox"],
+      },
+    },
+    {
+      name: "webkit",
+      dependencies: ["app-identity"],
+      testIgnore: [/\.a11y\.spec\.ts$/, /app-identity\.setup\.ts$/],
+      use: {
+        ...devices["Desktop Safari"],
+      },
+    },
+    {
       name: "a11y",
+      dependencies: ["app-identity"],
       testMatch: /\.a11y\.spec\.ts$/,
       use: {
         ...devices["Desktop Chrome"],
@@ -75,9 +130,12 @@ export default defineConfig({
     : {
         command:
           process.env.PLAYWRIGHT_WEB_SERVER_COMMAND ??
-          "npm run dev --workspace @3dena/web",
-        url: baseURL,
-        reuseExistingServer: !process.env.CI,
+          `npm run dev --workspace @3dena/web -- --hostname 127.0.0.1 --port ${localPort}`,
+        url: `${baseURL}/build-info`,
+        env: {
+          THREEDENA_BUILD_ID: managedBuildId,
+        },
+        reuseExistingServer: false,
         timeout: 180_000,
         stdout: "pipe",
         stderr: "pipe",

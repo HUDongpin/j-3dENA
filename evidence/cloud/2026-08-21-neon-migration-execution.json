@@ -1,0 +1,132 @@
+{
+  "schemaVersion": "3dena.neon-migration-execution-receipt.v1",
+  "recordedAtUtc": "2026-08-21T07:23:28.456949Z",
+  "operatorRole": "implementation-operator",
+  "provider": "Neon",
+  "provisioningSurface": "Vercel Marketplace SSO",
+  "source": {
+    "repository": "https://github.com/HUDongpin/j-3dENA",
+    "branch": "codex/strict-gap-closure-20260821",
+    "commit": "f6cf1dca0a77e0ceb05e6f2ef53645e7cb0cc0a8",
+    "migrationPath": "packages/compute-service-persistent/migrations/0001_persistent_compute.sql",
+    "migrationVersion": "0001-persistent-compute",
+    "migrationByteLength": 10002,
+    "migrationSha256": "2ada0828852d69dfebfaf3da96d41ba69dd91b522117fd868fad1665239e568e"
+  },
+  "vercelBinding": {
+    "team": "peter-dongpin-hu-s-projects",
+    "project": "j-3dena",
+    "projectId": "prj_Jk1wn5olpWaflDEIZBH1F35wrk81",
+    "gitSource": "HUDongpin/j-3dENA",
+    "environments": [
+      "production",
+      "preview"
+    ],
+    "requireActiveResourceBeforeDeploy": true,
+    "createDatabaseBranchForDeployment": {
+      "preview": true,
+      "production": false,
+      "configurationObservedAtUtc": "2026-08-21T07:34:06Z"
+    },
+    "environmentVariablesSensitive": true,
+    "databaseResource": "j-3dena-postgres-sin1",
+    "integrationConfigurationId": "icfg_7GxI6Qlqvez2AAQplaxI470x"
+  },
+  "target": {
+    "neonProjectName": "j-3dena-postgres-sin1",
+    "neonProjectId": "frosty-recipe-69276050",
+    "plan": "Launch",
+    "region": "AWS Asia Pacific 1 (Singapore)",
+    "branch": "main",
+    "branchId": "br-shiny-bread-b3mfrwib",
+    "database": "neondb",
+    "postgresVersion": "18.6 (3484359)",
+    "serverTimezone": "GMT"
+  },
+  "execution": {
+    "surface": "Neon SQL Editor opened through Vercel SSO",
+    "migrationStatements": 37,
+    "registryStatements": 1,
+    "verificationStatements": 1,
+    "statementResults": "39/39 successful",
+    "migrationRegistryRows": 1,
+    "activeMigrationVersion": "0001-persistent-compute",
+    "activeMigrationSha256": "2ada0828852d69dfebfaf3da96d41ba69dd91b522117fd868fad1665239e568e",
+    "computeTableCount": 17,
+    "providerObservedAtUtc": "2026-08-21T07:23:28.456949Z"
+  },
+  "probes": {
+    "appendOnlyRegistry": {
+      "status": "pass",
+      "method": "A nested exception block attempted an UPDATE and accepted only the exact append-only trigger rejection.",
+      "postProbeRegistryRows": 1,
+      "postProbeMigrationSha256": "2ada0828852d69dfebfaf3da96d41ba69dd91b522117fd868fad1665239e568e"
+    },
+    "transactionRollback": {
+      "status": "pass",
+      "method": "A sentinel compute_capacity_slots row was inserted inside a transaction and then rolled back.",
+      "sentinelSlotNumber": 2147483647,
+      "postRollbackRows": 0
+    },
+    "branchIsolationResetAndDeletion": {
+      "status": "pass",
+      "branchName": "codex-rollback-probe-20260821",
+      "branchId": "br-damp-rain-b37llxmu",
+      "parentBranch": "main",
+      "forkDurationSeconds": 1.35,
+      "configuredAutoDeleteDisplay": "Aug 22, 2026 3:27 pm (GMT+8)",
+      "sentinelSlotNumber": 2147483646,
+      "childRowsBeforeReset": 1,
+      "childRowsBeforeResetObservedAtUtc": "2026-08-21T07:28:16.349282Z",
+      "mainRowsBeforeReset": 0,
+      "mainRowsBeforeResetObservedAtUtc": "2026-08-21T07:29:00.703456Z",
+      "resetMethod": "Neon Reset from parent",
+      "childRowsAfterReset": 0,
+      "childRowsAfterResetObservedAtUtc": "2026-08-21T07:30:41.536329Z",
+      "postResetMigrationRows": 1,
+      "postResetMigrationSha256": "2ada0828852d69dfebfaf3da96d41ba69dd91b522117fd868fad1665239e568e",
+      "branchDeleted": true,
+      "deletionObservedAtUtc": "2026-08-21T07:31:43Z",
+      "postDeletionProjectBranchCount": 1,
+      "remainingBranch": "main"
+    },
+    "automaticVercelPreviewBranch": {
+      "status": "pass",
+      "triggerCommit": "5a1b66d5709f0a814b118e8ac8e2b9b67a99a1cc",
+      "sourceRepository": "https://github.com/HUDongpin/j-3dENA",
+      "sourceBranch": "codex/strict-gap-closure-20260821",
+      "vercelDeploymentId": "dpl_HWWu9US9HEAZgX5cBHPsXrsCNqTf",
+      "vercelDeploymentUrl": "https://vercel.com/peter-dongpin-hu-s-projects/j-3dena/HWWu9US9HEAZgX5cBHPsXrsCNqTf",
+      "vercelEnvironment": "Preview",
+      "vercelStatus": "Ready",
+      "vercelCreatedAtUtc": "2026-08-21T07:36:02Z",
+      "vercelBuildDurationSeconds": 25,
+      "integrationProvisioningDurationSeconds": 3,
+      "neonBranchName": "preview/codex/strict-gap-closure-20260821",
+      "neonBranchId": "br-aged-glade-b3h9zp11",
+      "parentBranch": "main",
+      "createdBy": "Vercel",
+      "database": "neondb",
+      "readOnlyVerificationObservedAtUtc": "2026-08-21T07:37:57.744344Z",
+      "migrationRows": 1,
+      "migrationVersion": "0001-persistent-compute",
+      "migrationSha256": "2ada0828852d69dfebfaf3da96d41ba69dd91b522117fd868fad1665239e568e",
+      "computeTableCount": 17
+    }
+  },
+  "secretHandling": {
+    "connectionStringRead": false,
+    "secretRevealControlUsed": false,
+    "secretCopied": false,
+    "secretStoredInRepository": false
+  },
+  "limitations": [
+    "This receipt was produced by the implementation operator and is not independent approval.",
+    "This receipt is not a provider-signed immutable artifact or a signed BuildApprovalV1.",
+    "Vercel Preview branch creation is enabled; an exact Preview deployment automatically created a Neon child branch that inherited the expected migration, and the manual isolation/reset/deletion probe also passed.",
+    "The automatic Preview branch and deployment remain implementation-operator candidates without independent approval or a signed BuildApprovalV1.",
+    "DPA and region approval, two real Fly Machines, object storage, restart, capacity, TTL, object deletion, stress, soak, canary, production and the same-BuildApproval full rollback receipt remain open.",
+    "The expand migration remains in place by design; no improvised down migration was executed."
+  ],
+  "overallStatus": "IMPLEMENTED_UNVERIFIED"
+}

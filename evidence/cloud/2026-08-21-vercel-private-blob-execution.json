@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "3dena.vercel-private-blob-execution-receipt.v1",
+  "recordedAtUtc": "2026-08-21T12:36:49Z",
+  "operatorRole": "implementation-operator",
+  "provider": "Vercel Blob",
+  "source": {
+    "repository": "https://github.com/HUDongpin/j-3dENA",
+    "branch": "codex/strict-gap-closure-20260821",
+    "commit": "69d9de69ac3b66961c0c984cc651e43cc26e34a5",
+    "adapter": "packages/compute-service-persistent/src/official-vercel-blob.ts",
+    "runtimeConfiguration": "packages/compute-service-persistent/src/runtime-config.ts"
+  },
+  "vercelBinding": {
+    "team": "peter-dongpin-hu-s-projects",
+    "project": "j-3dena",
+    "projectId": "prj_Jk1wn5olpWaflDEIZBH1F35wrk81",
+    "gitSource": "HUDongpin/j-3dENA",
+    "storeName": "j-3dena-blob",
+    "storeId": "store_lHG29noKbB1Rol8C",
+    "storeUrl": "https://vercel.com/peter-dongpin-hu-s-projects/j-3dena/stores/blob/store_lHG29noKbB1Rol8C/manage-blobs",
+    "access": "private",
+    "region": "SIN1",
+    "environments": [
+      "production",
+      "preview"
+    ],
+    "environmentVariableNames": [
+      "BLOB_READ_WRITE_TOKEN",
+      "BLOB_STORE_ID",
+      "BLOB_WEBHOOK_PUBLIC_KEY"
+    ],
+    "oidcEnabled": true,
+    "readWriteTokenRetainedForExternalFlyRuntime": true,
+    "firewallDisplay": "Not Protected"
+  },
+  "exactHeadPreview": {
+    "deploymentId": "dpl_HoM6kmVwUyfZj69DZCbeu2mTynmv",
+    "deploymentUrl": "https://vercel.com/peter-dongpin-hu-s-projects/j-3dena/HoM6kmVwUyfZj69DZCbeu2mTynmv",
+    "environment": "Preview",
+    "status": "Ready",
+    "durationSeconds": 31,
+    "sourceRepository": "https://github.com/HUDongpin/j-3dENA",
+    "sourceBranch": "codex/strict-gap-closure-20260821",
+    "sourceCommit": "69d9de69ac3b66961c0c984cc651e43cc26e34a5",
+    "integrationProvisioningDurationSeconds": 5,
+    "neonPreviewBranchId": "br-aged-glade-b3h9zp11"
+  },
+  "probe": {
+    "surface": "Vercel authenticated Blob management UI",
+    "payload": {
+      "repositoryPath": "packages/parity-contracts/fixtures/small-raw.csv",
+      "classification": "governed synthetic public fixture; no Class 1 or participant-secret data",
+      "sha256": "163ee849ac316d380e2664067e7389a8114e30d97877c97d6d912e3706c72f16",
+      "byteLength": 743,
+      "contentType": "text/csv"
+    },
+    "put": {
+      "status": "pass",
+      "pathname": "small-raw.csv",
+      "providerDisplayedByteLength": 743,
+      "providerDisplayedETag": "ee58e0c9f1713d11c661928be9f2925b"
+    },
+    "listAndRead": {
+      "status": "pass",
+      "pathnameListed": true,
+      "authenticatedContentRendered": true,
+      "contentType": "text/csv",
+      "contentDisposition": "attachment; filename=\"small-raw.csv\""
+    },
+    "delete": {
+      "status": "pass",
+      "confirmationTarget": "small-raw.csv",
+      "providerRequiredTypedConfirmation": "delete blob",
+      "postDeleteListEmpty": true,
+      "providerDisplayAfterDelete": "There are no blobs in this store yet"
+    }
+  },
+  "secretHandling": {
+    "tokenValueRead": false,
+    "tokenValueCopied": false,
+    "environmentFilePulled": false,
+    "secretStoredInRepository": false,
+    "secretPrintedToLogs": false
+  },
+  "limitations": [
+    "This receipt was produced by the implementation operator and is not independent approval or a provider-signed immutable artifact.",
+    "The provider UI put/list/authenticated-read/delete probe passed, but the repository VercelPrivateBlobObjectStore adapter has not yet executed against this real store from the Fly runtime.",
+    "The store is private, but the Vercel dashboard displayed its firewall state as Not Protected; a separate reviewed firewall decision remains open.",
+    "Automatic TTL expiry was not configured or observed. The persistent service retention sweeper, Fly restart, capacity, two-Machine, TTL and deletion lifecycle matrix remain open.",
+    "Production and Preview received the named environment variables, but no Production deployment or production probe was triggered.",
+    "The read-write token remains intentionally present because the planned Fly Machines execute outside Vercel OIDC; its value was not exposed or retained locally."
+  ],
+  "overallStatus": "IMPLEMENTED_UNVERIFIED"
+}

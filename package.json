@@ -21,9 +21,28 @@
     "test:golden": "npm run test --workspace @3dena/parity-contracts",
     "test:e2e": "playwright test",
     "test:e2e:a11y": "playwright test --project=a11y",
+    "test:oracle-custody": "node --test oracle-r/verify-small-raw-custody.test.mjs && node oracle-r/verify-small-raw-custody.mjs",
+    "test:class1-custody:unit": "node --test oracle-r/verify-class1-custody-receipt.test.mjs oracle-r/verify-class1-source-lineage.test.mjs && node oracle-r/verify-class1-source-lineage.mjs --receipt evidence/scientific/2026-08-21-class1-source-lineage-investigation.json",
+    "build:public": "npm run build:public --workspace @3dena/analysis",
+    "verify:public-package": "npm run pack:check --workspace @3dena/analysis",
+    "test:public-package": "npm run test:public-package --workspace @3dena/analysis",
     "test:runtime-boundary:unit": "node --test scripts/verify-production-boundary.test.mjs",
     "test:runtime-boundary": "node scripts/verify-production-boundary.mjs",
-    "check": "npm run lint && npm run typecheck && npm run test && npm run test:golden && npm run build && npm run test:runtime-boundary:unit && npm run test:runtime-boundary"
+    "test:release-security:unit": "node --test scripts/verify-release-security.test.mjs",
+    "test:release-security": "node scripts/verify-release-security.mjs",
+    "test:parser-fuzz:unit": "node --test scripts/parser-fuzz-receipt.test.mjs",
+    "test:parser-fuzz": "node scripts/run-parser-fuzz.mjs",
+    "test:jena-successor:unit": "node --test scripts/verify-jena-successor.test.mjs",
+    "test:jena-successor": "node scripts/verify-jena-successor.mjs",
+    "test:release-receipts:unit": "node --test scripts/verify-release-receipts.test.mjs",
+    "test:release-receipts": "node scripts/verify-release-receipts.mjs",
+    "test:playwright-evidence:unit": "node --test scripts/verify-playwright-evidence.test.mjs",
+    "test:container-scan-evidence:unit": "node --test scripts/verify-container-scan-evidence.test.mjs",
+    "test:strict-closure": "npm run release:strict-closure --workspace @3dena/parity-contracts",
+    "release:gate": "npm run check && npm run test:jena-successor && npm run test:strict-closure && npm run test:release-receipts",
+    "test:ci-action-pins": "node scripts/verify-ci-action-pins.mjs",
+    "evidence:worktree": "node scripts/capture-worktree-inventory.mjs",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run test:golden && npm run test:oracle-custody && npm run test:class1-custody:unit && npm run build && npm run build:public && npm run verify:public-package && npm run test:public-package && npm run test:runtime-boundary:unit && npm run test:runtime-boundary && npm run test:release-security:unit && npm run test:release-security && npm run test:parser-fuzz:unit && npm run test:jena-successor:unit && npm run test:release-receipts:unit && npm run test:playwright-evidence:unit && npm run test:container-scan-evidence:unit && npm run test:ci-action-pins"
   },
   "dependencies": {
     "plotly.js": "3.7.0"
@@ -36,5 +55,21 @@
     "eslint-config-next": "16.3.1",
     "typescript": "6.0.3",
     "vitest": "4.1.11"
-  }
+  },
+  "description": "3DENA Next is the TypeScript successor to [3DENA](https://github.com/HUDongpin/3DENA). The target production runtime uses Next.js/React in the browser and a persistent Node.js compute service for jENA, Stats, trajectory and bootstrap work, with Plotly.js for analytical views. Browser Workers remain local preflight, calibration and SDK-compatibility executors; they are not the target public product's default scientific authority. Production has no R process, rENA dependency, Shiny server, native R serialization path, or R-service fallback.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HUDongpin/j-3dENA.git"
+  },
+  "keywords": [],
+  "author": "",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/HUDongpin/j-3dENA/issues"
+  },
+  "homepage": "https://github.com/HUDongpin/j-3dENA#readme"
 }

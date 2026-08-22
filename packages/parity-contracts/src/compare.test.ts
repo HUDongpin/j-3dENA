@@ -125,7 +125,7 @@ function signFlippedActual(): GoldenAnalysis {
 }
 
 describe("fixture custody and comparison", () => {
-  it("binds the tracked CSV bytes to the provenance and pending manifest", () => {
+  it("binds the tracked CSV bytes to the provenance and governed manifest", () => {
     const csvPath = new URL("../fixtures/small-raw.csv", import.meta.url);
     const provenancePath = new URL("../fixtures/small-raw.provenance.json", import.meta.url);
     const goldenPath = new URL("../fixtures/small-raw.rena-0.2.7.golden.json", import.meta.url);
@@ -251,15 +251,24 @@ describe("fixture custody and comparison", () => {
     expect(comparison.fields.find((field) => field.field === "points")?.message).toMatch(/row keys or order differ/);
   });
 
-  it("keeps the tracked oracle fixture pending without requiring generated evidence", () => {
+  it("validates the tracked generated fixture without treating an empty comparison as approval", () => {
     const path = new URL("../fixtures/small-raw.rena-0.2.7.golden.json", import.meta.url);
-    const fixture = JSON.parse(readFileSync(path, "utf8")) as GoldenFixture;
-    const comparison = compareGoldenAnalysis({}, fixture);
-    expect(comparison.status).toBe("pending");
-    expect(comparison.fixtureStatus).toBe("pending");
-    expect(comparison.numericStatus).toBe("not-run");
+    const fixtureJson = readFileSync(path, "utf8");
+    const fixture = JSON.parse(fixtureJson) as GoldenFixture;
+    const evidence = {
+      fixtureJson,
+      inputBytes: readFileSync(new URL("../fixtures/small-raw.csv", import.meta.url)),
+      generatorBytes: readFileSync(new URL("../../../oracle-r/generate-small-raw-golden.R", import.meta.url))
+    };
+    const validation = validateParityFixture(fixture, evidence);
+    const comparison = compareGoldenAnalysis({}, fixture, undefined, evidence);
+    expect(validation.valid).toBe(true);
+    expect(validation.issues).toEqual([]);
+    expect(comparison.status).toBe("candidate-invalid");
+    expect(comparison.fixtureStatus).toBe("generated");
+    expect(comparison.numericStatus).toBe("fail");
     expect(comparison.approvedForParity).toBe(false);
-    expect(comparison.messages.join(" ")).toMatch(/frozen rENA 0.2.7 oracle/i);
+    expect(fixture.manifest.approval).toBeUndefined();
   });
 
   it("returns validation diagnostics instead of throwing on a malformed runtime envelope", () => {

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AnalysisWorkspace } from "@/components/analysis-workspace";
+import { resolveBuildId } from "@/lib/build-identity";
 
 export const metadata: Metadata = {
   title: "Workspace",
@@ -13,7 +14,7 @@ export default function WorkspacePage() {
       className="site-main workspace-page"
       data-testid="route-main"
     >
-      <AnalysisWorkspace />
+      <AnalysisWorkspace webBuildId={resolveBuildId()} />
     </main>
   );
 }

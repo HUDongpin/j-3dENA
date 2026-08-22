@@ -1,5 +1,3 @@
-import type { Row } from "jena-js";
-
 import {
   AnalysisValidationError,
   type AnalysisConfig,
@@ -16,31 +14,38 @@ import {
 
 export const INTERNAL_UNIT_COLUMN = "__3dena_unit_key_v1";
 export const INTERNAL_CONVERSATION_COLUMN = "__3dena_conversation_key_v1";
+export const INTERNAL_SOURCE_ROW_OCCURRENCE_COLUMN = "@3dena/source-row-occurrence";
 
 export const DEFAULT_ANALYSIS_LIMITS: AnalysisResourceLimits = Object.freeze({
   maxRows: 100_000,
   maxColumns: 256,
   maxCells: 5_000_000,
+  maxAccumulationCells: 5_000_000,
   maxCodes: 64,
   maxEdges: 2_016,
   maxStringLength: 32_768,
   maxUnits: 50_000,
   maxGroups: 200,
   maxTimePoints: 512,
-  maxOutputPoints: 100_000
+  maxOutputPoints: 100_000,
+  maxDimensions: 200,
+  maxCoordinateCells: 5_000_000
 });
 
 export const HARD_ANALYSIS_LIMITS: AnalysisResourceLimits = Object.freeze({
   maxRows: 500_000,
   maxColumns: 1_024,
   maxCells: 20_000_000,
+  maxAccumulationCells: 20_000_000,
   maxCodes: 128,
   maxEdges: 8_128,
   maxStringLength: 1_000_000,
   maxUnits: 200_000,
   maxGroups: 1_000,
   maxTimePoints: 10_000,
-  maxOutputPoints: 500_000
+  maxOutputPoints: 500_000,
+  maxDimensions: 500,
+  maxCoordinateCells: 20_000_000
 });
 
 export interface UnitContext {
@@ -56,7 +61,8 @@ export interface ConversationContext {
 }
 
 export interface PreparedAnalysisInput {
-  rows: Row[];
+  /** Adapter-owned scalar rows; no jENA object type crosses this boundary. */
+  rows: RawRow[];
   mapping: RawRowMapping;
   config: Required<AnalysisConfig>;
   limits: AnalysisResourceLimits;
@@ -212,7 +218,7 @@ function validateMapping(mapping: RawRowMapping, config: Required<AnalysisConfig
       else owners.set(column, role);
     }
   }
-  for (const reserved of [INTERNAL_UNIT_COLUMN, INTERNAL_CONVERSATION_COLUMN]) {
+  for (const reserved of [INTERNAL_UNIT_COLUMN, INTERNAL_CONVERSATION_COLUMN, INTERNAL_SOURCE_ROW_OCCURRENCE_COLUMN]) {
     if (owners.has(reserved)) issues.push(issue("RESERVED_COLUMN", "mapping", `${JSON.stringify(reserved)} is reserved by @3dena/analysis`));
   }
   const edgeCount = (codes.length * (codes.length - 1)) / 2;
@@ -298,7 +304,7 @@ export function prepareAnalysisInput(input: AnalyzeRowsInput): PreparedAnalysisI
   const inputColumnSet = new Set<string>();
   const unitContexts = new Map<string, UnitContext>();
   const conversationContexts = new Map<string, ConversationContext>();
-  const normalizedRows: Row[] = [];
+  const normalizedRows: RawRow[] = [];
   const observedGroups = new Set<string>();
   const observedTimes = new Set<string>();
   const predictedPointKeys = new Set<string>();
@@ -362,6 +368,36 @@ export function prepareAnalysisInput(input: AnalyzeRowsInput): PreparedAnalysisI
   if (inputColumns.length > limits.maxColumns) throw new AnalysisValidationError([issue("COLUMN_LIMIT_EXCEEDED", "rows", `${inputColumns.length} exceeds maxColumns=${limits.maxColumns}`)]);
   const cells = input.rows.length * inputColumns.length;
   if (!Number.isSafeInteger(cells) || cells > limits.maxCells) throw new AnalysisValidationError([issue("CELL_LIMIT_EXCEEDED", "rows", `${cells} exceeds maxCells=${limits.maxCells}`)]);
+  const edgeCount = (input.mapping.codes.length * (input.mapping.codes.length - 1)) / 2;
+  if (edgeCount > limits.maxDimensions) {
+    throw new AnalysisValidationError([
+      issue(
+        "DIMENSION_LIMIT_EXCEEDED",
+        "mapping.codes",
+        `${edgeCount} modeled dimensions exceeds maxDimensions=${limits.maxDimensions}`
+      )
+    ]);
+  }
+  const coordinateCells = (predictedPointKeys.size + input.mapping.codes.length) * edgeCount;
+  if (!Number.isSafeInteger(coordinateCells) || coordinateCells > limits.maxCoordinateCells) {
+    throw new AnalysisValidationError([
+      issue(
+        "COORDINATE_CELL_LIMIT_EXCEEDED",
+        "rows",
+        `${coordinateCells} retained point/node coordinate cells exceeds maxCoordinateCells=${limits.maxCoordinateCells}`
+      )
+    ]);
+  }
+  const accumulationCells = predictedPointKeys.size * edgeCount + input.rows.length * (input.mapping.codes.length + edgeCount);
+  if (!Number.isSafeInteger(accumulationCells) || accumulationCells > limits.maxAccumulationCells) {
+    throw new AnalysisValidationError([
+      issue(
+        "ACCUMULATION_CELL_LIMIT_EXCEEDED",
+        "rows",
+        `${accumulationCells} implied public accumulation cells exceeds maxAccumulationCells=${limits.maxAccumulationCells}`
+      )
+    ]);
+  }
   if (unitContexts.size > limits.maxUnits) throw new AnalysisValidationError([issue("UNIT_LIMIT_EXCEEDED", "rows", `${unitContexts.size} exceeds maxUnits=${limits.maxUnits}`)]);
   if (predictedPointKeys.size > limits.maxOutputPoints) throw new AnalysisValidationError([issue("OUTPUT_POINT_LIMIT_EXCEEDED", "rows", `${predictedPointKeys.size} implied model points exceeds maxOutputPoints=${limits.maxOutputPoints}`)]);
   if (observedGroups.size > limits.maxGroups) throw new AnalysisValidationError([issue("GROUP_LIMIT_EXCEEDED", "rows", `${observedGroups.size} exceeds maxGroups=${limits.maxGroups}`)]);

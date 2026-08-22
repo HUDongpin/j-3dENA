@@ -1,0 +1,196 @@
+{
+  "$id": "https://3dena.com/schemas/dataset-receipt.v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "sha256",
+    "byteLength",
+    "format",
+    "sheet",
+    "rows",
+    "columns",
+    "schema",
+    "limits",
+    "warnings",
+    "activationIdentity"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "3dena.dataset-receipt.v1"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "byteLength": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "format": {
+      "enum": [
+        "csv",
+        "xlsx",
+        "xls",
+        "ena3d-json"
+      ]
+    },
+    "sheet": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "index",
+            "name"
+          ],
+          "properties": {
+            "index": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "rows": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "columns": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "headers",
+        "columns"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "3dena.dataset-schema.v1"
+        },
+        "headers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "inferredType",
+              "roles"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "inferredType": {
+                "enum": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "mixed",
+                  "null"
+                ]
+              },
+              "roles": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "unit",
+                    "conversation",
+                    "time",
+                    "code",
+                    "group",
+                    "metadata",
+                    "unmapped"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "maxFileBytes",
+        "maxWorksheets",
+        "maxRows",
+        "maxColumns",
+        "maxCells"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "3dena.dataset-limits.v1"
+        },
+        "maxFileBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "maxWorksheets": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "maxRows": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "maxColumns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "maxCells": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "activationIdentity": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

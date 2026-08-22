@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "3dena.real-safari-voiceover-local-execution.v1",
+  "recordedAtUtc": "2026-08-21T11:39:09Z",
+  "operatorRole": "implementation-operator",
+  "source": {
+    "repository": "https://github.com/HUDongpin/j-3dENA",
+    "branch": "codex/strict-gap-closure-20260821",
+    "commit": "e3ee7dbc85830a157344a49fe471d48abb107623"
+  },
+  "build": {
+    "command": "THREEDENA_BUILD_ID=e3ee7dbc85830a157344a49fe471d48abb107623 NEXT_PUBLIC_3DENA_WEB_GIT_COMMIT=e3ee7dbc85830a157344a49fe471d48abb107623 npm run build",
+    "framework": "Next.js 16.3.1",
+    "bundler": "webpack",
+    "serverUrl": "http://127.0.0.1:3417",
+    "rootStatus": 200,
+    "appStatus": 200,
+    "buildInfo": {
+      "schemaVersion": "3dena.web-build-info.v2",
+      "appId": "j-3dena-next",
+      "role": "web",
+      "webBuildId": "e3ee7dbc85830a157344a49fe471d48abb107623",
+      "webGitCommit": "e3ee7dbc85830a157344a49fe471d48abb107623",
+      "executionMode": "remote",
+      "production": true,
+      "remoteConfigured": false,
+      "blocker": "Remote compute is required, but NEXT_PUBLIC_3DENA_COMPUTE_BASE_URL is missing or unsafe.",
+      "activeBuildApproval": null,
+      "productStatus": "IMPLEMENTED_UNVERIFIED",
+      "evidenceScopeVersion": "3dena.small-raw-evidence-scope.v2"
+    }
+  },
+  "environment": {
+    "browser": "Safari",
+    "browserVersion": "26.5.2",
+    "browserBuild": "21624.2.5.11.8",
+    "operatingSystem": "macOS 26.5.2",
+    "operatingSystemBuild": "25F84"
+  },
+  "realSafari": {
+    "status": "partial",
+    "executionSurface": "real Safari application controlled through macOS accessibility automation",
+    "verified": [
+      "The exact local optimized build exposed commit e3ee7dbc85830a157344a49fe471d48abb107623 at /build-info.",
+      "The /app accessibility tree exposed the Workspace title, skip link, navigation, headings, remote-workflow steps, fail-closed service readiness, build identity, disabled consent/upload/run controls, progress indicator, and product status.",
+      "The analysis-task control exposed seven task choices: ENA model, Network comparison, Change network, Statistics, Trajectory, Trajectory comparison, and Bootstrap.",
+      "Selecting Trajectory updated the product state and retained the source-binding requirement with scientific controls disabled fail-closed."
+    ],
+    "screenshot": {
+      "captured": true,
+      "byteLength": 133438,
+      "sha256": "066c0f9ea4c1dbea39ce2dd9a82e2d5626dc72b368a42b6b6ba79c17c09a20d3",
+      "repositoryArtifact": false,
+      "temporaryOperatorPath": "/var/folders/wh/t87tdn3n7r36rdtvzdqqcxc40000gn/T/com.openai.sky.CUAService/Safari Screenshot 2026-08-21 at 7.32.48 PM.jpeg"
+    }
+  },
+  "voiceOver": {
+    "status": "execution-only-partial",
+    "activation": {
+      "systemSetting": "AX_VOICEOVER_ENABLED",
+      "observedValue": "on",
+      "processPid": 76512,
+      "processPath": "/System/Library/CoreServices/VoiceOver.app/Contents/MacOS/VoiceOver",
+      "launchdState": "running"
+    },
+    "interaction": {
+      "status": "not-verified",
+      "reason": "While VoiceOver was running, the automation surface could no longer obtain the Safari accessibility state and reported noWindowsAvailable or timeout. No VoiceOver focus order, spoken output, control activation, table navigation, download flow, or error-announcement acceptance is claimed."
+    },
+    "restoration": {
+      "systemSetting": "AX_VOICEOVER_ENABLED",
+      "observedValue": "off",
+      "processPresent": false,
+      "launchdState": "not running",
+      "lastExitCode": 0,
+      "observedAtUtc": "2026-08-21T11:38:33Z"
+    }
+  },
+  "limitations": [
+    "This is implementation-operator evidence, not independent browser or accessibility approval.",
+    "This candidate is not bound to an active signed BuildApprovalV1 and is intentionally excluded from active-release-receipts.json.",
+    "The execution used a local optimized build, not the Vercel Preview deployment or a production deployment.",
+    "The Vercel Preview deployment is access-protected and was not exercised by this receipt.",
+    "Remote compute was not configured, so upload, activation, analysis execution, accessible result tables, formal downloads, cancellation, timeout, restart, and capacity were not exercised.",
+    "The screenshot is hash-recorded from a temporary automation path but is not preserved as a repository artifact or immutable CI artifact.",
+    "VoiceOver process activation alone does not satisfy the VoiceOver acceptance gate; assistive-technology navigation remains open.",
+    "Real Safari release acceptance must be repeated on the final exact build and environment, independently approved, and bound to the same signed BuildApprovalV1 as the other release receipts."
+  ],
+  "releaseGateEffect": "none",
+  "overallStatus": "IMPLEMENTED_UNVERIFIED"
+}

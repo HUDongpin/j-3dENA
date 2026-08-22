@@ -1,0 +1,37 @@
+{
+  "name": "@3dena/analysis",
+  "version": "0.1.0-implemented-unverified.0",
+  "description": "Public TypeScript analysis facade for the j-3dENA successor",
+  "type": "module",
+  "license": "GPL-3.0-only",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.js.map",
+    "index.d.ts",
+    "types",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "THIRD_PARTY",
+    "schemas",
+    "PROVENANCE.json"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/3dENA/j-3dENA.git"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "3dena.worktree-sensitive-exclusion.v1",
+  "supersedesAttributionForPaths": "3dena.worktree-attribution.v1",
+  "baselineInventorySha256": "de0b56b09bc05569eeed72c727a967fe359fabed5e9535e669fa76834be15815",
+  "recordedAt": "2026-08-20T20:28:52.000Z",
+  "status": "sensitive-excluded",
+  "reason": "The prepared Class 1 exchange contains row-level participant identity fields and has no authorization/de-identification approval binding for Git or a public application artifact.",
+  "contentInspection": {
+    "rawValuesRecordedInReceipt": false,
+    "participantIdentityObserved": true,
+    "publicRuntimeImportAllowed": false,
+    "gitCommitAllowed": false,
+    "ordinaryCiArtifactAllowed": false
+  },
+  "localQuarantine": {
+    "path": ".sensitive-excluded/class1-20260821",
+    "gitignored": true,
+    "directoryMode": "0700",
+    "fileMode": "0600",
+    "custodyApprovalClaimed": false,
+    "limitation": "This is only a reversible local exclusion from Git and production builds; it is not the authorized encrypted Class 1 custody store required by G1."
+  },
+  "paths": [
+    {
+      "path": "apps/web/public/data/class1-timepoints.ena3d.json",
+      "sha256": "704b940865fbf09a7c5e42949105c935f3a64f5831a65e9af489af04e695c909",
+      "byteLength": 52073,
+      "disposition": "remove-from-public-runtime-and-place-in-local-gitignored-quarantine-outside-production-trees"
+    },
+    {
+      "path": "packages/parity-contracts/fixtures/class1-timepoints.ena3d.json",
+      "sha256": "704b940865fbf09a7c5e42949105c935f3a64f5831a65e9af489af04e695c909",
+      "byteLength": 52073,
+      "disposition": "exclude-from-git-and-place-in-local-gitignored-quarantine-outside-package-trees"
+    },
+    {
+      "path": "packages/parity-contracts/fixtures/class1-timepoints.ena3d.json.provenance.json",
+      "sha256": "092b8f5cd78aea1d877fc4f3789ba6726a7f339f5e64aed5d0dcd6bd7b9c3d8a",
+      "byteLength": 1409,
+      "disposition": "exclude-pending-authorized-privacy-review"
+    },
+    {
+      "path": "packages/parity-contracts/fixtures/class1-timepoints.ena3d.json.sha256",
+      "sha256": "feb1c2bce21219893085aa052eb156b262f3abea4099bff9e492d681330d49cc",
+      "byteLength": 94,
+      "disposition": "exclude-pending-authorized-privacy-review"
+    }
+  ],
+  "completionEffect": "This correction prevents the prepared artifact from being used as Class 1 raw parity evidence and keeps G1 blocked until authorized exact-byte custody and independent review exist."
+}

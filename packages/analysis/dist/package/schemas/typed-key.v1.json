@@ -1,0 +1,40 @@
+{
+  "$id": "https://3dena.com/schemas/typed-key.v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "components",
+    "canonical"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "3dena.typed-key.v1"
+    },
+    "components": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "value"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "$ref": "https://3dena.com/schemas/typed-scalar.v1.json"
+          }
+        }
+      }
+    },
+    "canonical": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

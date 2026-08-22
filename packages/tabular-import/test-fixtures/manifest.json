@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "sourceRepository": "https://github.com/SheetJS/SheetJS.github.io/tree/master/test_files",
+  "retrieved": "2026-08-20",
+  "license": "Apache-2.0",
+  "fixtures": [
+    {
+      "path": "with-various-data.xlsx",
+      "sourceUrl": "https://raw.githubusercontent.com/SheetJS/SheetJS.github.io/master/test_files/apachepoi_WithVariousData.xlsx",
+      "bytes": 10603,
+      "sha256": "1440a832bb810c09687d3498b841782964b0b697e9242428fed1072ab22d078a"
+    },
+    {
+      "path": "simple-with-colours.xls",
+      "sourceUrl": "https://raw.githubusercontent.com/SheetJS/SheetJS.github.io/master/test_files/apachepoi_SimpleWithColours.xls",
+      "bytes": 6144,
+      "sha256": "350ea9306c60c4d4bf7949858e75f3277cf702f7b684a8b0597d7b2ec718070e"
+    },
+    {
+      "path": "two-sheets-one-hidden.xlsx",
+      "sourceUrl": "https://raw.githubusercontent.com/SheetJS/SheetJS.github.io/master/test_files/apachepoi_TwoSheetsOneHidden.xlsx",
+      "bytes": 7962,
+      "sha256": "3e9749837cac5a19a7628d7e60c1a1c6d0ff7657f27fa7904b217b96e0dc534f"
+    },
+    {
+      "path": "date-cell.xlsx",
+      "sourceUrl": "https://raw.githubusercontent.com/SheetJS/SheetJS.github.io/master/test_files/xlsx-stream-d-date-cell.xlsx",
+      "bytes": 6127,
+      "sha256": "bc49c22f652505139825b2630008290ecf2d4368f994df62824c0e312ed3ce65"
+    }
+  ]
+}

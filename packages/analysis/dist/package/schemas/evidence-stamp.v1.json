@@ -1,0 +1,53 @@
+{
+  "$id": "https://3dena.com/schemas/evidence-stamp.v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "scope",
+    "status",
+    "approvedForParity"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "3dena.evidence-stamp.v1"
+    },
+    "scope": {
+      "enum": [
+        "fixture",
+        "feature",
+        "build",
+        "deployment"
+      ]
+    },
+    "status": {
+      "enum": [
+        "IMPLEMENTED_UNVERIFIED",
+        "PARITY_CANDIDATE",
+        "VERIFIED_PARITY",
+        "PRODUCTION_CANDIDATE",
+        "PRODUCTION_READY",
+        "PRECOMPUTED_COMPATIBILITY_CANDIDATE"
+      ]
+    },
+    "datasetHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "specHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "fixtureId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "buildId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "approvedForParity": {
+      "type": "boolean"
+    }
+  }
+}

@@ -32,6 +32,12 @@ const AXES = [
   },
 ] as const;
 
+const AXIS_COLORS: Record<string, string> = {
+  SVD1: "#b91c1c",
+  SVD2: "#1d4ed8",
+  SVD3: "#15803d",
+};
+
 export type PlotTraceRole =
   | "axis-shaft"
   | "axis-arrowhead"
@@ -42,7 +48,7 @@ export type PlotTraceRole =
 
 export interface PlotTraceMeta {
   role: PlotTraceRole;
-  axis?: "SVD1" | "SVD2" | "SVD3";
+  axis?: string;
   groupCanonical?: string;
   segmentStepPairs?: Array<[number, number]>;
 }
@@ -75,14 +81,27 @@ export function groupColor(canonical: string): string {
   return GROUP_COLORS[hashString(canonical) % GROUP_COLORS.length] ?? "#2563eb";
 }
 
+export function axisColor(label: string): string {
+  return AXIS_COLORS[label] ?? "#475569";
+}
+
 /** Three shafts, three positive-direction cone heads, and three direct labels. */
-export function axisTraces3d(extent: number): Data[] {
+export function axisTraces3d(
+  extent: number,
+  labels: readonly [string, string, string] = ["SVD1", "SVD2", "SVD3"],
+): Data[] {
   const safeExtent = Math.max(0.001, Math.abs(extent));
   const shaftExtent = safeExtent * 0.88;
   const labelExtent = safeExtent * 1.08;
   const coneSize = safeExtent * 0.1;
 
-  const shafts = AXES.map((axis) =>
+  const axes = AXES.map((axis, index) => ({
+    ...axis,
+    label: labels[index] ?? axis.label,
+    color: axisColor(labels[index] ?? axis.label),
+  }));
+
+  const shafts = axes.map((axis) =>
     traceWithMeta(
       {
         type: "scatter3d",
@@ -99,7 +118,7 @@ export function axisTraces3d(extent: number): Data[] {
     ),
   );
 
-  const arrowheads = AXES.map((axis) =>
+  const arrowheads = axes.map((axis) =>
     traceWithMeta(
       {
         type: "cone",
@@ -125,7 +144,7 @@ export function axisTraces3d(extent: number): Data[] {
     ),
   );
 
-  const labels = AXES.map((axis) =>
+  const axisLabels = axes.map((axis) =>
     traceWithMeta(
       {
         type: "scatter3d",
@@ -144,7 +163,7 @@ export function axisTraces3d(extent: number): Data[] {
     ),
   );
 
-  return [...shafts, ...arrowheads, ...labels];
+  return [...shafts, ...arrowheads, ...axisLabels];
 }
 
 export function trajectorySegments(

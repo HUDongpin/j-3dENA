@@ -1,0 +1,52 @@
+{
+  "schemaVersion": "3dena.worktree-attribution.v1",
+  "inventory": "evidence/worktree/2026-08-21-post-integration-inventory.json",
+  "inventorySha256": "a28919fd6cecdadd74dfa8c709d6891098c3c70d1e221747f0f3a02d3ccf4f30",
+  "repositoryHeadAtCapture": "a71cce8970555c77462cac899232ddebbdc97669",
+  "counts": {
+    "changedPaths": 125,
+    "trackedPaths": 0,
+    "untrackedPaths": 125,
+    "generatedReleaseArtifactPaths": 125,
+    "unexplainedPaths": 0
+  },
+  "attributionPolicy": {
+    "matchMode": "exactly-one-prefix",
+    "defaultDisposition": "reject-unexplained",
+    "productionRuntimeImportAllowed": false,
+    "commitGeneratedArtifacts": false,
+    "releaseUseRequiresExactBuildApproval": true
+  },
+  "rules": [
+    {
+      "pathPrefix": "output/compute-service/",
+      "pathCount": 3,
+      "attribution": "generated-release-artifact",
+      "rebuildCommand": "node packages/compute-service-persistent/scripts/build-runtime.mjs packages/compute-service-persistent/deploy/runtime-build-input.example.json output/compute-service",
+      "reviewStatus": "candidate-unapproved",
+      "notes": "The three-file container input is reproducible from committed TypeScript and explicit build input. It is not an approved OCI image or a Fly deployment receipt."
+    },
+    {
+      "pathPrefix": "output/sbom.cdx.json",
+      "pathCount": 1,
+      "attribution": "generated-release-artifact",
+      "rebuildCommand": "node scripts/generate-release-sbom.mjs --output output/sbom.cdx.json",
+      "reviewStatus": "candidate-unapproved",
+      "notes": "The deterministic CycloneDX candidate is not a signed exact-build approval or container scan receipt."
+    },
+    {
+      "pathPrefix": "packages/analysis/dist/package/",
+      "pathCount": 121,
+      "attribution": "generated-release-artifact",
+      "rebuildCommand": "npm run build:public --workspace @3dena/analysis",
+      "reviewStatus": "candidate-unapproved",
+      "notes": "The public-package staging tree is reproducible from committed sources and remains excluded from Git."
+    }
+  ],
+  "assertions": [
+    "Every inventory entry matches exactly one rule.",
+    "No inventory entry is sensitive/excluded or pre-existing-user-change.",
+    "No generated artifact may be used for release without rebuilding from a clean exact checkout and binding it to BuildApprovalV1."
+  ],
+  "overallStatus": "IMPLEMENTED_UNVERIFIED"
+}

@@ -1,8 +1,9 @@
 # 3DENA numerical parity contract v1
 
-Status: `IMPLEMENTED_UNVERIFIED` until a frozen rENA 0.2.7 payload is generated,
-reviewed, adopted, and compared in CI. The presence of this contract and the
-passing synthetic comparator tests do not establish scientific parity.
+Status: `PARITY_CANDIDATE`. A governed generated payload passes the complete
+nine-field package comparison, but it has no independent approval record. The
+presence of this contract and a `candidate-pass` do not establish verified
+scientific parity.
 
 ## 1. Frozen authorities
 
@@ -83,6 +84,12 @@ The following are exact contracts:
 - available versus complete cohort membership;
 - explicit missing expected periods as path gaps rather than zero coordinates;
 - diagnostic codes and result schema version.
+
+Source-grain accumulation rows use the complete typed unit/conversation tuple.
+If that base tuple occurs more than once, every member of the duplicate group
+adds a typed one-based source-row occurrence component; unique rows keep the
+unextended oracle key. This prevents ambiguous public row identities without
+changing the reviewed small-raw keys.
 
 ## 5. Numeric comparison
 

@@ -4,9 +4,12 @@ Status: normative for 3DENA Next production builds.
 
 ## Decision
 
-3DENA Next runs analysis entirely in the browser. Its production runtime is
-Next.js, React, TypeScript/JavaScript, jENA, Web Workers, and Plotly.js. It has
-no R executable, R package, Shiny process, native R object loader, or remote
+3DENA Next uses Next.js/React/Plotly in the browser and a persistent Node.js
+TypeScript compute service for production scientific tasks. jENA, Stats,
+trajectory and bootstrap code execute in isolated compute children. Browser
+Workers are limited to byte preflight, hashing, lightweight inspection,
+development calibration and SDK/browser compatibility. No production role has
+an R executable, R package, Shiny process, native R object loader, or remote
 R-backed analysis service.
 
 The old R application and its pinned rENA installation are a migration-only
@@ -16,14 +19,19 @@ an isolated offline workflow. They are not a fallback production path.
 ## Allowed production data flow
 
 ```text
-local CSV/JSON
-    -> browser parser and validation
-    -> immutable AnalysisSpec
-    -> dedicated Web Worker
-    -> jENA + shared SVD
-    -> typed result owned by datasetHash + specHash + runId
-    -> Plotly.js rendering
+local CSV/XLS/XLSX/JSON
+    -> browser exact-byte preflight, hash and explicit upload consent
+    -> persistent Compute API + immutable encrypted object
+    -> PostgreSQL queue/lease + isolated Node.js compute child
+    -> jENA / Stats / trajectory / bootstrap TypeScript core
+    -> checksummed result owned by datasetHash + specHash + runId + taskId
+    -> short-lived result reference -> browser Plotly/download
 ```
+
+The same pure TypeScript core may run locally for Node SDK consumers. The
+public Web product does not silently switch between a Worker fit and a remote
+fit. The local Worker calibration flow is governed separately by
+`browser-vertical-slice-contract.md` and is not production-topology evidence.
 
 The product may read governed JSON/CSV fixtures. It must never read `.RData`,
 `.rds`, `.rda`, or other native R serialization.

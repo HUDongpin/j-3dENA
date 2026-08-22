@@ -1,0 +1,192 @@
+{
+  "$id": "https://3dena.com/schemas/typed-scalar.v1.json",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "null"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "value"
+      ],
+      "properties": {
+        "type": {
+          "const": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "value"
+      ],
+      "properties": {
+        "type": {
+          "const": "boolean"
+        },
+        "value": {
+          "type": "boolean"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "value"
+      ],
+      "properties": {
+        "type": {
+          "const": "int64"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^-?(?:0|[1-9][0-9]*)$"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "ieee754Hex"
+      ],
+      "properties": {
+        "type": {
+          "const": "double"
+        },
+        "ieee754Hex": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{16}$"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "value"
+      ],
+      "properties": {
+        "type": {
+          "const": "date"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "epochMilliseconds",
+        "timeZone",
+        "offsetMinutes",
+        "fold"
+      ],
+      "properties": {
+        "type": {
+          "const": "instant"
+        },
+        "epochMilliseconds": {
+          "type": "string",
+          "pattern": "^-?(?:0|[1-9][0-9]*)$"
+        },
+        "timeZone": {
+          "type": "string",
+          "minLength": 1
+        },
+        "offsetMinutes": {
+          "type": "integer",
+          "minimum": -1440,
+          "maximum": 1440
+        },
+        "fold": {
+          "enum": [
+            0,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "value",
+        "unit"
+      ],
+      "properties": {
+        "type": {
+          "const": "duration"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$"
+        },
+        "unit": {
+          "enum": [
+            "nanoseconds",
+            "microseconds",
+            "milliseconds",
+            "seconds",
+            "minutes",
+            "hours",
+            "days"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "value",
+        "levels",
+        "ordered"
+      ],
+      "properties": {
+        "type": {
+          "const": "factor"
+        },
+        "value": {
+          "type": "string"
+        },
+        "levels": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "ordered": {
+          "type": "boolean"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "3dena.compute-runtime-build-input.v1",
+  "migrationPath": "packages/compute-service-persistent/migrations/0001_persistent_compute.sql",
+  "migrationVersion": "0001-persistent-compute",
+  "contractVersions": [
+    "3dena.compute-dataset-http.v1",
+    "3dena.compute-http.v1",
+    "3dena.compute-prepared-import-http.v1",
+    "3dena.compute-source-result-job-http.v1",
+    "3dena.contract.v1"
+  ]
+}
