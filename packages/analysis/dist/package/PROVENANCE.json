@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "3dena.public-package-provenance.v1",
+  "productStatus": "IMPLEMENTED_UNVERIFIED",
+  "package": {
+    "name": "@3dena/analysis",
+    "version": "0.1.0-implemented-unverified.0",
+    "buildId": "local-unpublished"
+  },
+  "source": {
+    "repositoryHead": "f923c6eceb9999a91f5ef208637d795a9e15fc63",
+    "dirtyWorktree": true,
+    "generatedAt": "2026-08-21T12:37:51.000Z"
+  },
+  "contracts": {
+    "analysis": "3dena.analysis-task.v1",
+    "result": "3dena.analysis-result-envelope.v1",
+    "evidence": "3dena.evidence-stamp.v1",
+    "provenance": "3dena.provenance-manifest.v1"
+  },
+  "dependencies": {
+    "jenaJs": {
+      "version": "0.6.2",
+      "auditedCommit": "2f63db4c6ccf5684afc8437ae81ed1a3ccd0c1a3",
+      "license": "GPL-3.0-only",
+      "packagingDisposition": "bundled-once-self-dependency-removed"
+    },
+    "sheetJs": {
+      "package": "xlsx",
+      "version": "0.20.3",
+      "sha256": "8dc73fc3b00203e72d176e85b50938627c7b086e607c682e8d3c22c02bb99fe8",
+      "source": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+      "license": "Apache-2.0",
+      "packagingDisposition": "bundled-from-vendored-custody-archive"
+    }
+  },
+  "runtimeBoundary": {
+    "r": false,
+    "rena": false,
+    "rWebFramework": false,
+    "runtimeNpmDependencies": 0
+  },
+  "artifacts": {
+    "indexJsSha256": "913121c9c01af4bb67c0354748018952b28fcda1b732824fe38a784179242f61",
+    "indexJsMapSha256": "9259c06218df1da5634d505a1e89f59269cd8c40ae097019ea296202d4168395",
+    "schemaIndexSha256": "d4bd8b7257002d3138a97bdda6a08dcef4af285d574ca3106a67051c9d1daa10"
+  }
+}

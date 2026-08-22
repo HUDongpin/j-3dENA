@@ -1,0 +1,3808 @@
+{
+  "$id": "https://3dena.com/schemas/analysis-execution-dataset.v2.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "receipt",
+    "specHash",
+    "buildId"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "3dena.analysis-execution-dataset.v2"
+    },
+    "receipt": {
+      "$ref": "https://3dena.com/schemas/dataset-receipt.v1.json"
+    },
+    "specHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "buildId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "minLength": 1,
+      "format": "date-time"
+    },
+    "sourceResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sourceKind",
+            "hash",
+            "result"
+          ],
+          "properties": {
+            "sourceKind": {
+              "const": "raw-jena"
+            },
+            "hash": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "result": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "schemaVersion",
+                "dimensions",
+                "axes",
+                "points",
+                "nodes",
+                "edges",
+                "accumulation",
+                "variance",
+                "rotation",
+                "summary",
+                "diagnostics",
+                "provenance"
+              ],
+              "properties": {
+                "schemaVersion": {
+                  "const": "3dena.analysis-result.v1"
+                },
+                "dimensions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "minItems": 3,
+                  "uniqueItems": true
+                },
+                "axes": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "const": "SVD1"
+                    },
+                    {
+                      "const": "SVD2"
+                    },
+                    {
+                      "const": "SVD3"
+                    }
+                  ],
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "points": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "index",
+                      "id",
+                      "unit",
+                      "participantLabel",
+                      "coordinates",
+                      "fullCoordinates",
+                      "lineWeights",
+                      "metadata"
+                    ],
+                    "properties": {
+                      "index": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "id": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "canonical",
+                          "display",
+                          "columns",
+                          "values"
+                        ],
+                        "properties": {
+                          "canonical": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "display": {
+                            "type": "string"
+                          },
+                          "columns": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "minItems": 1,
+                            "uniqueItems": true
+                          },
+                          "values": {
+                            "type": "array",
+                            "items": {
+                              "oneOf": [
+                                {
+                                  "type": "null"
+                                },
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                {
+                                  "type": "number",
+                                  "not": {
+                                    "type": "integer"
+                                  }
+                                }
+                              ]
+                            },
+                            "minItems": 1
+                          }
+                        }
+                      },
+                      "unit": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "canonical",
+                          "display",
+                          "columns",
+                          "values"
+                        ],
+                        "properties": {
+                          "canonical": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "display": {
+                            "type": "string"
+                          },
+                          "columns": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "minItems": 1,
+                            "uniqueItems": true
+                          },
+                          "values": {
+                            "type": "array",
+                            "items": {
+                              "oneOf": [
+                                {
+                                  "type": "null"
+                                },
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                {
+                                  "type": "number",
+                                  "not": {
+                                    "type": "integer"
+                                  }
+                                }
+                              ]
+                            },
+                            "minItems": 1
+                          }
+                        }
+                      },
+                      "participantLabel": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "canonical",
+                          "display",
+                          "columns",
+                          "values"
+                        ],
+                        "properties": {
+                          "canonical": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "display": {
+                            "type": "string"
+                          },
+                          "columns": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "minItems": 1,
+                            "uniqueItems": true
+                          },
+                          "values": {
+                            "type": "array",
+                            "items": {
+                              "oneOf": [
+                                {
+                                  "type": "null"
+                                },
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                {
+                                  "type": "number",
+                                  "not": {
+                                    "type": "integer"
+                                  }
+                                }
+                              ]
+                            },
+                            "minItems": 1
+                          }
+                        }
+                      },
+                      "step": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "canonical",
+                          "display",
+                          "columns",
+                          "values"
+                        ],
+                        "properties": {
+                          "canonical": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "display": {
+                            "type": "string"
+                          },
+                          "columns": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "minItems": 1,
+                            "uniqueItems": true
+                          },
+                          "values": {
+                            "type": "array",
+                            "items": {
+                              "oneOf": [
+                                {
+                                  "type": "null"
+                                },
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                {
+                                  "type": "number",
+                                  "not": {
+                                    "type": "integer"
+                                  }
+                                }
+                              ]
+                            },
+                            "minItems": 1
+                          }
+                        }
+                      },
+                      "group": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "canonical",
+                          "display",
+                          "value"
+                        ],
+                        "properties": {
+                          "canonical": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "display": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "number",
+                                "not": {
+                                  "type": "integer"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "time": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "canonical",
+                          "display",
+                          "value"
+                        ],
+                        "properties": {
+                          "canonical": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "display": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "number",
+                                "not": {
+                                  "type": "integer"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "coordinates": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 3,
+                        "maxItems": 3
+                      },
+                      "fullCoordinates": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 1
+                      },
+                      "lineWeights": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 1
+                      },
+                      "metadata": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "oneOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "number",
+                              "not": {
+                                "type": "integer"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "minItems": 1
+                },
+                "nodes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "index",
+                      "code",
+                      "coordinates",
+                      "fullCoordinates"
+                    ],
+                    "properties": {
+                      "index": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "code": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "coordinates": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 3,
+                        "maxItems": 3
+                      },
+                      "fullCoordinates": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 1
+                      }
+                    }
+                  },
+                  "minItems": 3
+                },
+                "edges": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "index",
+                      "id",
+                      "column",
+                      "source",
+                      "target",
+                      "sourceIndex",
+                      "targetIndex",
+                      "meanWeight"
+                    ],
+                    "properties": {
+                      "index": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "column": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "source": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "target": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "sourceIndex": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "targetIndex": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "meanWeight": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "minItems": 1
+                },
+                "accumulation": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "modelCounts",
+                    "rowCounts"
+                  ],
+                  "properties": {
+                    "modelCounts": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "rowKeys",
+                        "columns",
+                        "values"
+                      ],
+                      "properties": {
+                        "rowKeys": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "columns",
+                              "values"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "columns": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "minItems": 1,
+                                "uniqueItems": true
+                              },
+                              "values": {
+                                "type": "array",
+                                "items": {
+                                  "oneOf": [
+                                    {
+                                      "type": "null"
+                                    },
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    },
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "number",
+                                      "not": {
+                                        "type": "integer"
+                                      }
+                                    }
+                                  ]
+                                },
+                                "minItems": 1
+                              }
+                            }
+                          }
+                        },
+                        "columns": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "minItems": 1,
+                          "uniqueItems": true
+                        },
+                        "values": {
+                          "type": "array",
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            },
+                            "minItems": 1
+                          }
+                        }
+                      }
+                    },
+                    "rowCounts": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "rowKeys",
+                        "columns",
+                        "values"
+                      ],
+                      "properties": {
+                        "rowKeys": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "columns",
+                              "values"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "columns": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "minItems": 1,
+                                "uniqueItems": true
+                              },
+                              "values": {
+                                "type": "array",
+                                "items": {
+                                  "oneOf": [
+                                    {
+                                      "type": "null"
+                                    },
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    },
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "number",
+                                      "not": {
+                                        "type": "integer"
+                                      }
+                                    }
+                                  ]
+                                },
+                                "minItems": 1
+                              }
+                            }
+                          }
+                        },
+                        "columns": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "minItems": 1,
+                          "uniqueItems": true
+                        },
+                        "values": {
+                          "type": "array",
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            },
+                            "minItems": 1
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "variance": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "axis",
+                      "proportion",
+                      "eigenvalue",
+                      "displayed"
+                    ],
+                    "properties": {
+                      "axis": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "proportion": {
+                        "type": "number"
+                      },
+                      "eigenvalue": {
+                        "type": "number"
+                      },
+                      "displayed": {
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "minItems": 3
+                },
+                "rotation": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "method",
+                    "columns",
+                    "matrix",
+                    "eigenvalues",
+                    "centerVector"
+                  ],
+                  "properties": {
+                    "method": {
+                      "const": "svd"
+                    },
+                    "columns": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "minItems": 3,
+                      "uniqueItems": true
+                    },
+                    "matrix": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 1
+                      },
+                      "minItems": 1
+                    },
+                    "eigenvalues": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      },
+                      "minItems": 1
+                    },
+                    "centerVector": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      },
+                      "minItems": 1
+                    }
+                  }
+                },
+                "trajectory": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "space",
+                    "dimensions",
+                    "cohortPolicy",
+                    "groupOrder",
+                    "timeOrder",
+                    "participantPeriods",
+                    "centroids",
+                    "paths"
+                  ],
+                  "properties": {
+                    "space": {
+                      "const": "analysis-result-rotation"
+                    },
+                    "dimensions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "minItems": 3,
+                      "uniqueItems": true
+                    },
+                    "cohortPolicy": {
+                      "enum": [
+                        "available",
+                        "complete"
+                      ]
+                    },
+                    "groupOrder": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "canonical",
+                          "display",
+                          "value"
+                        ],
+                        "properties": {
+                          "canonical": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "display": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "number",
+                                "not": {
+                                  "type": "integer"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "minItems": 1
+                    },
+                    "timeOrder": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "canonical",
+                          "display",
+                          "value"
+                        ],
+                        "properties": {
+                          "canonical": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "display": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "number",
+                                "not": {
+                                  "type": "integer"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "minItems": 1
+                    },
+                    "participantPeriods": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "index",
+                          "participant",
+                          "participantLabel",
+                          "group",
+                          "time",
+                          "coordinates",
+                          "fullCoordinates",
+                          "sourcePointIndexes",
+                          "includedInCohort"
+                        ],
+                        "properties": {
+                          "index": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "participant": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "columns",
+                              "values"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "columns": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "minItems": 1,
+                                "uniqueItems": true
+                              },
+                              "values": {
+                                "type": "array",
+                                "items": {
+                                  "oneOf": [
+                                    {
+                                      "type": "null"
+                                    },
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    },
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "number",
+                                      "not": {
+                                        "type": "integer"
+                                      }
+                                    }
+                                  ]
+                                },
+                                "minItems": 1
+                              }
+                            }
+                          },
+                          "participantLabel": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "columns",
+                              "values"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "columns": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "minItems": 1,
+                                "uniqueItems": true
+                              },
+                              "values": {
+                                "type": "array",
+                                "items": {
+                                  "oneOf": [
+                                    {
+                                      "type": "null"
+                                    },
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    },
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "number",
+                                      "not": {
+                                        "type": "integer"
+                                      }
+                                    }
+                                  ]
+                                },
+                                "minItems": 1
+                              }
+                            }
+                          },
+                          "group": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "value"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "type": "null"
+                                  },
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "number",
+                                    "not": {
+                                      "type": "integer"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "time": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "value"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "type": "null"
+                                  },
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "number",
+                                    "not": {
+                                      "type": "integer"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "coordinates": {
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            },
+                            "minItems": 3,
+                            "maxItems": 3
+                          },
+                          "fullCoordinates": {
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            },
+                            "minItems": 1
+                          },
+                          "sourcePointIndexes": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "minItems": 1,
+                            "uniqueItems": true
+                          },
+                          "includedInCohort": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "centroids": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "index",
+                          "group",
+                          "time",
+                          "coordinates",
+                          "fullCoordinates",
+                          "participantCount",
+                          "participantPeriodIndexes"
+                        ],
+                        "properties": {
+                          "index": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "group": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "value"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "type": "null"
+                                  },
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "number",
+                                    "not": {
+                                      "type": "integer"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "time": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "value"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "type": "null"
+                                  },
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "number",
+                                    "not": {
+                                      "type": "integer"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "coordinates": {
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            },
+                            "minItems": 3,
+                            "maxItems": 3
+                          },
+                          "fullCoordinates": {
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            },
+                            "minItems": 1
+                          },
+                          "participantCount": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 9007199254740991
+                          },
+                          "participantPeriodIndexes": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "minItems": 1,
+                            "uniqueItems": true
+                          }
+                        }
+                      }
+                    },
+                    "paths": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "group",
+                          "steps"
+                        ],
+                        "properties": {
+                          "group": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "value"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "type": "null"
+                                  },
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "number",
+                                    "not": {
+                                      "type": "integer"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "steps": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "time",
+                                "centroidIndex"
+                              ],
+                              "properties": {
+                                "time": {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": [
+                                    "canonical",
+                                    "display",
+                                    "value"
+                                  ],
+                                  "properties": {
+                                    "canonical": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "display": {
+                                      "type": "string"
+                                    },
+                                    "value": {
+                                      "oneOf": [
+                                        {
+                                          "type": "null"
+                                        },
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "boolean"
+                                        },
+                                        {
+                                          "type": "integer",
+                                          "minimum": -9007199254740991,
+                                          "maximum": 9007199254740991
+                                        },
+                                        {
+                                          "type": "number",
+                                          "not": {
+                                            "type": "integer"
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "centroidIndex": {
+                                  "oneOf": [
+                                    {
+                                      "type": "null"
+                                    },
+                                    {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 9007199254740991
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "minItems": 1
+                          }
+                        }
+                      },
+                      "minItems": 1
+                    }
+                  }
+                },
+                "summary": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "inputRows",
+                    "inputColumns",
+                    "units",
+                    "points",
+                    "nodes",
+                    "edges",
+                    "modelCountRows",
+                    "rowCountRows",
+                    "groups",
+                    "timePoints",
+                    "participantPeriods",
+                    "trajectoryCentroids",
+                    "dimensions"
+                  ],
+                  "properties": {
+                    "inputRows": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "inputColumns": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "units": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "points": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "nodes": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "edges": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "modelCountRows": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "rowCountRows": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "groups": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "timePoints": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "participantPeriods": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "trajectoryCentroids": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "dimensions": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  }
+                },
+                "diagnostics": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "code",
+                      "severity",
+                      "message"
+                    ],
+                    "properties": {
+                      "code": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "severity": {
+                        "enum": [
+                          "info",
+                          "warning"
+                        ]
+                      },
+                      "message": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "path": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "count": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    }
+                  }
+                },
+                "provenance": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "adapter",
+                    "adapterVersion",
+                    "jenaPackage",
+                    "jenaVersion",
+                    "jenaCommit",
+                    "coreGoldenContract",
+                    "legacyGoldenContract",
+                    "legacyGoldenStatus",
+                    "parityContract",
+                    "resultSemantics",
+                    "resolvedConfig",
+                    "resolvedLimits"
+                  ],
+                  "properties": {
+                    "adapter": {
+                      "const": "@3dena/analysis"
+                    },
+                    "adapterVersion": {
+                      "const": "0.1.0"
+                    },
+                    "jenaPackage": {
+                      "const": "jena-js"
+                    },
+                    "jenaVersion": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "jenaCommit": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "coreGoldenContract": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "legacyGoldenContract": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "legacyGoldenStatus": {
+                      "const": "not-assessed"
+                    },
+                    "parityContract": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "resultSemantics": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "resolvedConfig": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "model",
+                        "window",
+                        "weightBy",
+                        "windowSizeBack",
+                        "windowSizeForward",
+                        "centerAlignToOrigin"
+                      ],
+                      "properties": {
+                        "model": {
+                          "enum": [
+                            "EndPoint",
+                            "AccumulatedTrajectory",
+                            "SeparateTrajectory"
+                          ]
+                        },
+                        "window": {
+                          "enum": [
+                            "MovingStanzaWindow",
+                            "Conversation"
+                          ]
+                        },
+                        "weightBy": {
+                          "enum": [
+                            "binary",
+                            "sum"
+                          ]
+                        },
+                        "windowSizeBack": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "windowSizeForward": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "centerAlignToOrigin": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "resolvedLimits": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "maxRows",
+                        "maxColumns",
+                        "maxCells",
+                        "maxAccumulationCells",
+                        "maxCodes",
+                        "maxEdges",
+                        "maxStringLength",
+                        "maxUnits",
+                        "maxGroups",
+                        "maxTimePoints",
+                        "maxOutputPoints",
+                        "maxDimensions",
+                        "maxCoordinateCells"
+                      ],
+                      "properties": {
+                        "maxRows": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "maxColumns": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "maxCells": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "maxAccumulationCells": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "maxCodes": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "maxEdges": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "maxStringLength": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "maxUnits": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "maxGroups": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "maxTimePoints": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "maxOutputPoints": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "maxDimensions": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "maxCoordinateCells": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sourceKind",
+            "hash",
+            "result"
+          ],
+          "properties": {
+            "sourceKind": {
+              "const": "prepared-exchange"
+            },
+            "hash": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "result": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "schemaVersion",
+                "sourceKind",
+                "rawJenaRecompute",
+                "sourceReceipt",
+                "artifacts",
+                "fullSpace",
+                "displaySpace",
+                "summary",
+                "diagnostics",
+                "provenance"
+              ],
+              "properties": {
+                "schemaVersion": {
+                  "const": "3dena.prepared-space-result.v1"
+                },
+                "sourceKind": {
+                  "const": "prepared-exchange"
+                },
+                "rawJenaRecompute": {
+                  "const": false
+                },
+                "sourceReceipt": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "name",
+                    "sha256",
+                    "byteLength"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "byteLength": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    }
+                  }
+                },
+                "artifacts": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "rotation",
+                    "eigenvalues",
+                    "variance"
+                  ],
+                  "properties": {
+                    "rotation": {
+                      "const": "not-present"
+                    },
+                    "eigenvalues": {
+                      "const": "not-present"
+                    },
+                    "variance": {
+                      "const": "not-present"
+                    }
+                  }
+                },
+                "fullSpace": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "dimensions",
+                    "points",
+                    "nodes",
+                    "edges",
+                    "lineWeights"
+                  ],
+                  "properties": {
+                    "dimensions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true
+                    },
+                    "points": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "index",
+                          "id",
+                          "participant",
+                          "participantLabel",
+                          "group",
+                          "time",
+                          "metadata",
+                          "coordinates"
+                        ],
+                        "properties": {
+                          "index": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "id": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "columns",
+                              "columnTypes",
+                              "values"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "columns": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "minItems": 1,
+                                "uniqueItems": true
+                              },
+                              "columnTypes": {
+                                "type": "array",
+                                "items": {
+                                  "enum": [
+                                    "logical",
+                                    "integer",
+                                    "double",
+                                    "character",
+                                    "date",
+                                    "datetime",
+                                    "difftime",
+                                    "factor",
+                                    "ordered"
+                                  ]
+                                },
+                                "minItems": 1
+                              },
+                              "values": {
+                                "type": "array",
+                                "items": {
+                                  "oneOf": [
+                                    {
+                                      "type": "null"
+                                    },
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    },
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "number",
+                                      "not": {
+                                        "type": "integer"
+                                      }
+                                    }
+                                  ]
+                                },
+                                "minItems": 1
+                              }
+                            }
+                          },
+                          "participant": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "columns",
+                              "columnTypes",
+                              "values"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "columns": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "minItems": 1,
+                                "uniqueItems": true
+                              },
+                              "columnTypes": {
+                                "type": "array",
+                                "items": {
+                                  "enum": [
+                                    "logical",
+                                    "integer",
+                                    "double",
+                                    "character",
+                                    "date",
+                                    "datetime",
+                                    "difftime",
+                                    "factor",
+                                    "ordered"
+                                  ]
+                                },
+                                "minItems": 1
+                              },
+                              "values": {
+                                "type": "array",
+                                "items": {
+                                  "oneOf": [
+                                    {
+                                      "type": "null"
+                                    },
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    },
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "number",
+                                      "not": {
+                                        "type": "integer"
+                                      }
+                                    }
+                                  ]
+                                },
+                                "minItems": 1
+                              }
+                            }
+                          },
+                          "participantLabel": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "column",
+                              "columnType",
+                              "value"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "column": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "columnType": {
+                                "enum": [
+                                  "logical",
+                                  "integer",
+                                  "double",
+                                  "character",
+                                  "date",
+                                  "datetime",
+                                  "difftime",
+                                  "factor",
+                                  "ordered"
+                                ]
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "type": "null"
+                                  },
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "number",
+                                    "not": {
+                                      "type": "integer"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "group": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "column",
+                              "columnType",
+                              "value"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "column": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "columnType": {
+                                "enum": [
+                                  "logical",
+                                  "integer",
+                                  "double",
+                                  "character",
+                                  "date",
+                                  "datetime",
+                                  "difftime",
+                                  "factor",
+                                  "ordered"
+                                ]
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "type": "null"
+                                  },
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "number",
+                                    "not": {
+                                      "type": "integer"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "time": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "column",
+                              "columnType",
+                              "value"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "column": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "columnType": {
+                                "enum": [
+                                  "logical",
+                                  "integer",
+                                  "double",
+                                  "character",
+                                  "date",
+                                  "datetime",
+                                  "difftime",
+                                  "factor",
+                                  "ordered"
+                                ]
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "type": "null"
+                                  },
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "number",
+                                    "not": {
+                                      "type": "integer"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "metadata": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "oneOf": [
+                                {
+                                  "type": "null"
+                                },
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                {
+                                  "type": "number",
+                                  "not": {
+                                    "type": "integer"
+                                  }
+                                }
+                              ]
+                            }
+                          },
+                          "coordinates": {
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            },
+                            "minItems": 1
+                          }
+                        }
+                      },
+                      "minItems": 1
+                    },
+                    "nodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "index",
+                          "code",
+                          "coordinates"
+                        ],
+                        "properties": {
+                          "index": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "code": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "coordinates": {
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            },
+                            "minItems": 1
+                          }
+                        }
+                      },
+                      "minItems": 1
+                    },
+                    "edges": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "index",
+                          "id",
+                          "column",
+                          "source",
+                          "target",
+                          "sourceIndex",
+                          "targetIndex",
+                          "meanWeight"
+                        ],
+                        "properties": {
+                          "index": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "column": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "source": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "target": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "sourceIndex": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "targetIndex": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "meanWeight": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      "minItems": 1
+                    },
+                    "lineWeights": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "rowKeys",
+                        "columns",
+                        "values"
+                      ],
+                      "properties": {
+                        "rowKeys": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "columns",
+                              "columnTypes",
+                              "values"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "columns": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "minItems": 1,
+                                "uniqueItems": true
+                              },
+                              "columnTypes": {
+                                "type": "array",
+                                "items": {
+                                  "enum": [
+                                    "logical",
+                                    "integer",
+                                    "double",
+                                    "character",
+                                    "date",
+                                    "datetime",
+                                    "difftime",
+                                    "factor",
+                                    "ordered"
+                                  ]
+                                },
+                                "minItems": 1
+                              },
+                              "values": {
+                                "type": "array",
+                                "items": {
+                                  "oneOf": [
+                                    {
+                                      "type": "null"
+                                    },
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    },
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "number",
+                                      "not": {
+                                        "type": "integer"
+                                      }
+                                    }
+                                  ]
+                                },
+                                "minItems": 1
+                              }
+                            }
+                          },
+                          "minItems": 1
+                        },
+                        "columns": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "minItems": 1,
+                          "uniqueItems": true
+                        },
+                        "values": {
+                          "type": "array",
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            },
+                            "minItems": 1
+                          },
+                          "minItems": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                "displaySpace": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "dimensions",
+                    "points",
+                    "nodes",
+                    "trajectory"
+                  ],
+                  "properties": {
+                    "dimensions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "minItems": 3,
+                      "maxItems": 3,
+                      "uniqueItems": true
+                    },
+                    "points": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "pointIndex",
+                          "id",
+                          "group",
+                          "time",
+                          "coordinates"
+                        ],
+                        "properties": {
+                          "pointIndex": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "id": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "columns",
+                              "columnTypes",
+                              "values"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "columns": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "minItems": 1,
+                                "uniqueItems": true
+                              },
+                              "columnTypes": {
+                                "type": "array",
+                                "items": {
+                                  "enum": [
+                                    "logical",
+                                    "integer",
+                                    "double",
+                                    "character",
+                                    "date",
+                                    "datetime",
+                                    "difftime",
+                                    "factor",
+                                    "ordered"
+                                  ]
+                                },
+                                "minItems": 1
+                              },
+                              "values": {
+                                "type": "array",
+                                "items": {
+                                  "oneOf": [
+                                    {
+                                      "type": "null"
+                                    },
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    },
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "number",
+                                      "not": {
+                                        "type": "integer"
+                                      }
+                                    }
+                                  ]
+                                },
+                                "minItems": 1
+                              }
+                            }
+                          },
+                          "group": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "column",
+                              "columnType",
+                              "value"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "column": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "columnType": {
+                                "enum": [
+                                  "logical",
+                                  "integer",
+                                  "double",
+                                  "character",
+                                  "date",
+                                  "datetime",
+                                  "difftime",
+                                  "factor",
+                                  "ordered"
+                                ]
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "type": "null"
+                                  },
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "number",
+                                    "not": {
+                                      "type": "integer"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "time": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "column",
+                              "columnType",
+                              "value"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "column": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "columnType": {
+                                "enum": [
+                                  "logical",
+                                  "integer",
+                                  "double",
+                                  "character",
+                                  "date",
+                                  "datetime",
+                                  "difftime",
+                                  "factor",
+                                  "ordered"
+                                ]
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "type": "null"
+                                  },
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "number",
+                                    "not": {
+                                      "type": "integer"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "coordinates": {
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            },
+                            "minItems": 3,
+                            "maxItems": 3
+                          }
+                        }
+                      },
+                      "minItems": 1
+                    },
+                    "nodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "nodeIndex",
+                          "code",
+                          "coordinates"
+                        ],
+                        "properties": {
+                          "nodeIndex": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "code": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "coordinates": {
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            },
+                            "minItems": 3,
+                            "maxItems": 3
+                          }
+                        }
+                      },
+                      "minItems": 1
+                    },
+                    "trajectory": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "space",
+                        "dimensions",
+                        "cohortPolicy",
+                        "groupOrder",
+                        "timeOrder",
+                        "participantPeriods",
+                        "centroids",
+                        "paths"
+                      ],
+                      "properties": {
+                        "space": {
+                          "const": "prepared-exchange-display-space"
+                        },
+                        "dimensions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "minItems": 3,
+                          "maxItems": 3,
+                          "uniqueItems": true
+                        },
+                        "cohortPolicy": {
+                          "enum": [
+                            "available",
+                            "complete"
+                          ]
+                        },
+                        "groupOrder": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "column",
+                              "columnType",
+                              "value"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "column": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "columnType": {
+                                "enum": [
+                                  "logical",
+                                  "integer",
+                                  "double",
+                                  "character",
+                                  "date",
+                                  "datetime",
+                                  "difftime",
+                                  "factor",
+                                  "ordered"
+                                ]
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "type": "null"
+                                  },
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "number",
+                                    "not": {
+                                      "type": "integer"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "minItems": 1
+                        },
+                        "timeOrder": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "canonical",
+                              "display",
+                              "column",
+                              "columnType",
+                              "value"
+                            ],
+                            "properties": {
+                              "canonical": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "display": {
+                                "type": "string"
+                              },
+                              "column": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "columnType": {
+                                "enum": [
+                                  "logical",
+                                  "integer",
+                                  "double",
+                                  "character",
+                                  "date",
+                                  "datetime",
+                                  "difftime",
+                                  "factor",
+                                  "ordered"
+                                ]
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "type": "null"
+                                  },
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "number",
+                                    "not": {
+                                      "type": "integer"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "minItems": 1
+                        },
+                        "participantPeriods": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "index",
+                              "participant",
+                              "participantLabel",
+                              "group",
+                              "time",
+                              "coordinates",
+                              "sourcePointIndexes",
+                              "includedInCohort"
+                            ],
+                            "properties": {
+                              "index": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "participant": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "canonical",
+                                  "display",
+                                  "columns",
+                                  "columnTypes",
+                                  "values"
+                                ],
+                                "properties": {
+                                  "canonical": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "display": {
+                                    "type": "string"
+                                  },
+                                  "columns": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "minItems": 1,
+                                    "uniqueItems": true
+                                  },
+                                  "columnTypes": {
+                                    "type": "array",
+                                    "items": {
+                                      "enum": [
+                                        "logical",
+                                        "integer",
+                                        "double",
+                                        "character",
+                                        "date",
+                                        "datetime",
+                                        "difftime",
+                                        "factor",
+                                        "ordered"
+                                      ]
+                                    },
+                                    "minItems": 1
+                                  },
+                                  "values": {
+                                    "type": "array",
+                                    "items": {
+                                      "oneOf": [
+                                        {
+                                          "type": "null"
+                                        },
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "boolean"
+                                        },
+                                        {
+                                          "type": "integer",
+                                          "minimum": -9007199254740991,
+                                          "maximum": 9007199254740991
+                                        },
+                                        {
+                                          "type": "number",
+                                          "not": {
+                                            "type": "integer"
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "minItems": 1
+                                  }
+                                }
+                              },
+                              "participantLabel": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "canonical",
+                                  "display",
+                                  "column",
+                                  "columnType",
+                                  "value"
+                                ],
+                                "properties": {
+                                  "canonical": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "display": {
+                                    "type": "string"
+                                  },
+                                  "column": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "columnType": {
+                                    "enum": [
+                                      "logical",
+                                      "integer",
+                                      "double",
+                                      "character",
+                                      "date",
+                                      "datetime",
+                                      "difftime",
+                                      "factor",
+                                      "ordered"
+                                    ]
+                                  },
+                                  "value": {
+                                    "oneOf": [
+                                      {
+                                        "type": "null"
+                                      },
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "type": "integer",
+                                        "minimum": -9007199254740991,
+                                        "maximum": 9007199254740991
+                                      },
+                                      {
+                                        "type": "number",
+                                        "not": {
+                                          "type": "integer"
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              "group": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "canonical",
+                                  "display",
+                                  "column",
+                                  "columnType",
+                                  "value"
+                                ],
+                                "properties": {
+                                  "canonical": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "display": {
+                                    "type": "string"
+                                  },
+                                  "column": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "columnType": {
+                                    "enum": [
+                                      "logical",
+                                      "integer",
+                                      "double",
+                                      "character",
+                                      "date",
+                                      "datetime",
+                                      "difftime",
+                                      "factor",
+                                      "ordered"
+                                    ]
+                                  },
+                                  "value": {
+                                    "oneOf": [
+                                      {
+                                        "type": "null"
+                                      },
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "type": "integer",
+                                        "minimum": -9007199254740991,
+                                        "maximum": 9007199254740991
+                                      },
+                                      {
+                                        "type": "number",
+                                        "not": {
+                                          "type": "integer"
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              "time": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "canonical",
+                                  "display",
+                                  "column",
+                                  "columnType",
+                                  "value"
+                                ],
+                                "properties": {
+                                  "canonical": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "display": {
+                                    "type": "string"
+                                  },
+                                  "column": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "columnType": {
+                                    "enum": [
+                                      "logical",
+                                      "integer",
+                                      "double",
+                                      "character",
+                                      "date",
+                                      "datetime",
+                                      "difftime",
+                                      "factor",
+                                      "ordered"
+                                    ]
+                                  },
+                                  "value": {
+                                    "oneOf": [
+                                      {
+                                        "type": "null"
+                                      },
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "type": "integer",
+                                        "minimum": -9007199254740991,
+                                        "maximum": 9007199254740991
+                                      },
+                                      {
+                                        "type": "number",
+                                        "not": {
+                                          "type": "integer"
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              "coordinates": {
+                                "type": "array",
+                                "items": {
+                                  "type": "number"
+                                },
+                                "minItems": 3,
+                                "maxItems": 3
+                              },
+                              "sourcePointIndexes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "minItems": 1,
+                                "uniqueItems": true
+                              },
+                              "includedInCohort": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        },
+                        "centroids": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "index",
+                              "group",
+                              "time",
+                              "coordinates",
+                              "participantCount",
+                              "participantPeriodIndexes"
+                            ],
+                            "properties": {
+                              "index": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "group": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "canonical",
+                                  "display",
+                                  "column",
+                                  "columnType",
+                                  "value"
+                                ],
+                                "properties": {
+                                  "canonical": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "display": {
+                                    "type": "string"
+                                  },
+                                  "column": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "columnType": {
+                                    "enum": [
+                                      "logical",
+                                      "integer",
+                                      "double",
+                                      "character",
+                                      "date",
+                                      "datetime",
+                                      "difftime",
+                                      "factor",
+                                      "ordered"
+                                    ]
+                                  },
+                                  "value": {
+                                    "oneOf": [
+                                      {
+                                        "type": "null"
+                                      },
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "type": "integer",
+                                        "minimum": -9007199254740991,
+                                        "maximum": 9007199254740991
+                                      },
+                                      {
+                                        "type": "number",
+                                        "not": {
+                                          "type": "integer"
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              "time": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "canonical",
+                                  "display",
+                                  "column",
+                                  "columnType",
+                                  "value"
+                                ],
+                                "properties": {
+                                  "canonical": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "display": {
+                                    "type": "string"
+                                  },
+                                  "column": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "columnType": {
+                                    "enum": [
+                                      "logical",
+                                      "integer",
+                                      "double",
+                                      "character",
+                                      "date",
+                                      "datetime",
+                                      "difftime",
+                                      "factor",
+                                      "ordered"
+                                    ]
+                                  },
+                                  "value": {
+                                    "oneOf": [
+                                      {
+                                        "type": "null"
+                                      },
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "type": "integer",
+                                        "minimum": -9007199254740991,
+                                        "maximum": 9007199254740991
+                                      },
+                                      {
+                                        "type": "number",
+                                        "not": {
+                                          "type": "integer"
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              "coordinates": {
+                                "type": "array",
+                                "items": {
+                                  "type": "number"
+                                },
+                                "minItems": 3,
+                                "maxItems": 3
+                              },
+                              "participantCount": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 9007199254740991
+                              },
+                              "participantPeriodIndexes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "minItems": 1,
+                                "uniqueItems": true
+                              }
+                            }
+                          }
+                        },
+                        "paths": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "group",
+                              "steps"
+                            ],
+                            "properties": {
+                              "group": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "canonical",
+                                  "display",
+                                  "column",
+                                  "columnType",
+                                  "value"
+                                ],
+                                "properties": {
+                                  "canonical": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "display": {
+                                    "type": "string"
+                                  },
+                                  "column": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "columnType": {
+                                    "enum": [
+                                      "logical",
+                                      "integer",
+                                      "double",
+                                      "character",
+                                      "date",
+                                      "datetime",
+                                      "difftime",
+                                      "factor",
+                                      "ordered"
+                                    ]
+                                  },
+                                  "value": {
+                                    "oneOf": [
+                                      {
+                                        "type": "null"
+                                      },
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "type": "integer",
+                                        "minimum": -9007199254740991,
+                                        "maximum": 9007199254740991
+                                      },
+                                      {
+                                        "type": "number",
+                                        "not": {
+                                          "type": "integer"
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              "steps": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": [
+                                    "time",
+                                    "centroidIndex"
+                                  ],
+                                  "properties": {
+                                    "time": {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "required": [
+                                        "canonical",
+                                        "display",
+                                        "column",
+                                        "columnType",
+                                        "value"
+                                      ],
+                                      "properties": {
+                                        "canonical": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "display": {
+                                          "type": "string"
+                                        },
+                                        "column": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "columnType": {
+                                          "enum": [
+                                            "logical",
+                                            "integer",
+                                            "double",
+                                            "character",
+                                            "date",
+                                            "datetime",
+                                            "difftime",
+                                            "factor",
+                                            "ordered"
+                                          ]
+                                        },
+                                        "value": {
+                                          "oneOf": [
+                                            {
+                                              "type": "null"
+                                            },
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "boolean"
+                                            },
+                                            {
+                                              "type": "integer",
+                                              "minimum": -9007199254740991,
+                                              "maximum": 9007199254740991
+                                            },
+                                            {
+                                              "type": "number",
+                                              "not": {
+                                                "type": "integer"
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    "centroidIndex": {
+                                      "oneOf": [
+                                        {
+                                          "type": "null"
+                                        },
+                                        {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "minItems": 1
+                              }
+                            }
+                          },
+                          "minItems": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                "summary": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "dimensions",
+                    "points",
+                    "nodes",
+                    "edges",
+                    "lineWeightRows",
+                    "groups",
+                    "timePoints",
+                    "participantPeriods",
+                    "trajectoryCentroids"
+                  ],
+                  "properties": {
+                    "dimensions": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "points": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "nodes": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "edges": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "lineWeightRows": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "groups": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "timePoints": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "participantPeriods": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "trajectoryCentroids": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  }
+                },
+                "diagnostics": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "code",
+                      "severity",
+                      "message"
+                    ],
+                    "properties": {
+                      "code": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "severity": {
+                        "enum": [
+                          "info",
+                          "warning"
+                        ]
+                      },
+                      "message": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "path": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "count": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    }
+                  }
+                },
+                "provenance": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "adapter",
+                    "adapterVersion",
+                    "coordinateSpace",
+                    "computation",
+                    "jenaExecuted",
+                    "resolvedMapping"
+                  ],
+                  "properties": {
+                    "adapter": {
+                      "const": "@3dena/analysis"
+                    },
+                    "adapterVersion": {
+                      "const": "0.1.0"
+                    },
+                    "coordinateSpace": {
+                      "const": "precomputed-import"
+                    },
+                    "computation": {
+                      "const": "reduction-only"
+                    },
+                    "jenaExecuted": {
+                      "const": false
+                    },
+                    "resolvedMapping": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "participant",
+                        "participantLabel",
+                        "group",
+                        "time",
+                        "timeOrder",
+                        "cohortPolicy",
+                        "displayDimensions",
+                        "missingDisplayCoordinates"
+                      ],
+                      "properties": {
+                        "participant": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "minItems": 1,
+                          "uniqueItems": true
+                        },
+                        "participantLabel": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "group": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "time": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "timeOrder": {
+                          "type": "array",
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "number",
+                                "not": {
+                                  "type": "integer"
+                                }
+                              }
+                            ]
+                          },
+                          "minItems": 1,
+                          "uniqueItems": true
+                        },
+                        "cohortPolicy": {
+                          "enum": [
+                            "available",
+                            "complete"
+                          ]
+                        },
+                        "displayDimensions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "minItems": 3,
+                          "maxItems": 3,
+                          "uniqueItems": true
+                        },
+                        "missingDisplayCoordinates": {
+                          "const": "reject"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "sourceResult"
+        ],
+        "properties": {
+          "sourceResult": {
+            "required": [
+              "sourceKind"
+            ],
+            "properties": {
+              "sourceKind": {
+                "const": "prepared-exchange"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "receipt": {
+            "properties": {
+              "format": {
+                "const": "ena3d-json"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

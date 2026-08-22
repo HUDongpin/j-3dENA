@@ -55,5 +55,21 @@
     "eslint-config-next": "16.3.1",
     "typescript": "6.0.3",
     "vitest": "4.1.11"
-  }
+  },
+  "description": "3DENA Next is the TypeScript successor to [3DENA](https://github.com/HUDongpin/3DENA). The target production runtime uses Next.js/React in the browser and a persistent Node.js compute service for jENA, Stats, trajectory and bootstrap work, with Plotly.js for analytical views. Browser Workers remain local preflight, calibration and SDK-compatibility executors; they are not the target public product's default scientific authority. Production has no R process, rENA dependency, Shiny server, native R serialization path, or R-service fallback.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HUDongpin/j-3dENA.git"
+  },
+  "keywords": [],
+  "author": "",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/HUDongpin/j-3dENA/issues"
+  },
+  "homepage": "https://github.com/HUDongpin/j-3dENA#readme"
 }
