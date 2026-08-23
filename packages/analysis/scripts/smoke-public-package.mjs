@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +11,7 @@ const require = createRequire(import.meta.url);
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(scriptDirectory, "../../..");
 const packageDirectory = resolve(process.argv[2] ?? resolve(scriptDirectory, "../dist/package"));
+const jenaTarball = resolve(repositoryRoot, "vendor/jena-js/jena-js-0.7.0-ona.0.tgz");
 const npmCli = process.env.npm_execpath;
 if (!npmCli) throw new Error("PUBLIC_PACKAGE_SMOKE_FAILED: npm_execpath is required");
 
@@ -37,6 +38,13 @@ function runNpm(args, cwd) {
 
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+async function linkInstalledPackage(packageName, consumerDirectory) {
+  const sourceDirectory = dirname(require.resolve(`${packageName}/package.json`));
+  const targetDirectory = resolve(consumerDirectory, "node_modules", ...packageName.split("/"));
+  await mkdir(dirname(targetDirectory), { recursive: true });
+  await symlink(sourceDirectory, targetDirectory, "dir");
 }
 
 const verification = await verifyPublicPackage(packageDirectory);
@@ -67,16 +75,24 @@ try {
   const nodeConsumer = resolve(temporaryRoot, "node-consumer");
   await mkdir(nodeConsumer);
   await writeFile(resolve(nodeConsumer, "package.json"), `${JSON.stringify({ name: "3dena-node-consumer", private: true, type: "module" }, null, 2)}\n`);
-  runNpm(["install", "--ignore-scripts", "--package-lock=false", "--no-audit", "--no-fund", tarball], nodeConsumer);
+  runNpm(["install", "--ignore-scripts", "--package-lock=false", "--no-audit", "--no-fund", tarball, jenaTarball], nodeConsumer);
   const nodeSmoke = `
     import {
+      adaptFittedJenaTrajectoryResultV2,
       inspectDataset,
       executeAnalysisTask,
       assertAnalysisExecutionDatasetV2,
       assertAnalysisResultEnvelopeV1,
       createAnalysisClient,
       compilePlotlySpec,
-      createExportBundle
+      createExportBundle,
+      assertTrajectoryRunSpecV2,
+      assertLongitudinalAnalysisBundleV2,
+      verifyLongitudinalAnalysisBundleV2,
+      executeLongitudinalAnalysisV2,
+      compileTrajectoryPlotlySpec,
+      getAnalysisBuildIdentityV2,
+      hashAnalysisValueV1
     } from "j-3dena";
     const inspection = await inspectDataset(
       new TextEncoder().encode("unit,conversation,A,B\\nu1,c1,1,0\\n"),
@@ -84,7 +100,7 @@ try {
     );
     if (inspection.kind !== "tabular" || inspection.inventory.receipt.byteLength < 1) throw new Error("inspection failed");
     const client = createAnalysisClient({ baseUrl: "http://127.0.0.1:8787" });
-    for (const candidate of [executeAnalysisTask, assertAnalysisExecutionDatasetV2, assertAnalysisResultEnvelopeV1, compilePlotlySpec, createExportBundle, client.getBuildInfo]) {
+    for (const candidate of [adaptFittedJenaTrajectoryResultV2, executeAnalysisTask, assertAnalysisExecutionDatasetV2, assertAnalysisResultEnvelopeV1, compilePlotlySpec, createExportBundle, assertTrajectoryRunSpecV2, assertLongitudinalAnalysisBundleV2, verifyLongitudinalAnalysisBundleV2, executeLongitudinalAnalysisV2, compileTrajectoryPlotlySpec, hashAnalysisValueV1, getAnalysisBuildIdentityV2, client.getBuildInfo]) {
       if (typeof candidate !== "function") throw new Error("public runtime export missing");
     }
   `;
@@ -92,18 +108,23 @@ try {
 
   await writeFile(resolve(nodeConsumer, "consumer.ts"), `
     import {
+      adaptFittedJenaTrajectoryResultV2,
       createAnalysisClient,
       inspectDataset,
       type AnalysisTaskV1,
       type DatasetInspectionV1,
-      type DisplaySpecV1
+      type DisplaySpecV1,
+      type TrajectoryRunSpecV2,
+      type LongitudinalAnalysisBundleV2
     } from "j-3dena";
 
     const client = createAnalysisClient({ baseUrl: "http://127.0.0.1:8787" });
     const inspection: Promise<DatasetInspectionV1> = inspectDataset(new Uint8Array([117]), { name: "x.csv" });
     const task: AnalysisTaskV1 | null = null;
     const display: DisplaySpecV1 | null = null;
-    void [client, inspection, task, display];
+    const trajectorySpec: TrajectoryRunSpecV2 | null = null;
+    const trajectoryBundle: LongitudinalAnalysisBundleV2 | null = null;
+    void [client, inspection, task, display, trajectorySpec, trajectoryBundle];
   `);
   await writeFile(resolve(nodeConsumer, "tsconfig.json"), `${JSON.stringify({
     compilerOptions: {
@@ -122,27 +143,35 @@ try {
   const browserConsumer = resolve(temporaryRoot, "browser-consumer");
   await mkdir(resolve(browserConsumer, "src"), { recursive: true });
   await writeFile(resolve(browserConsumer, "package.json"), `${JSON.stringify({ name: "3dena-browser-consumer", private: true, type: "module" }, null, 2)}\n`);
-  runNpm(["install", "--ignore-scripts", "--package-lock=false", "--no-audit", "--no-fund", tarball], browserConsumer);
+  runNpm(["install", "--ignore-scripts", "--package-lock=false", "--no-audit", "--no-fund", tarball, jenaTarball], browserConsumer);
   await writeFile(resolve(browserConsumer, "index.html"), "<main id=app>3dENA browser consumer</main><script type=module src=/src/main.ts></script>\n");
   await writeFile(resolve(browserConsumer, "src/main.ts"), `
     import {
+      adaptFittedJenaTrajectoryResultV2,
       inspectDataset,
       executeAnalysisTask,
       assertAnalysisExecutionDatasetV2,
       assertAnalysisResultEnvelopeV1,
       createAnalysisClient,
       compilePlotlySpec,
-      createExportBundle
+      createExportBundle,
+      compileTrajectoryPlotlySpec,
+      executeLongitudinalAnalysisV2,
+      getAnalysisBuildIdentityV2
     } from "j-3dena";
     Object.assign(globalThis, {
       __THREEDENA_PUBLIC_SMOKE__: {
         inspectDataset,
+        adaptFittedJenaTrajectoryResultV2,
         executeAnalysisTask,
         assertAnalysisExecutionDatasetV2,
         assertAnalysisResultEnvelopeV1,
         createAnalysisClient,
         compilePlotlySpec,
-        createExportBundle
+        createExportBundle,
+        compileTrajectoryPlotlySpec,
+        executeLongitudinalAnalysisV2,
+        getAnalysisBuildIdentityV2
       }
     });
   `);
@@ -153,21 +182,28 @@ try {
   const nextConsumer = resolve(temporaryRoot, "next-consumer");
   await mkdir(resolve(nextConsumer, "app"), { recursive: true });
   await writeFile(resolve(nextConsumer, "package.json"), `${JSON.stringify({ name: "3dena-next-consumer", private: true, type: "module" }, null, 2)}\n`);
-  runNpm([
-    "install",
-    "--ignore-scripts",
-    "--package-lock=false",
-    "--no-audit",
-    "--no-fund",
-    tarball,
-    "next@16.3.1",
-    "react@19.2.4",
-    "react-dom@19.2.4",
-    "typescript@5.9.3",
-    "@types/node@24.10.13",
-    "@types/react@19.2.14",
-    "@types/react-dom@19.2.3"
-  ], nextConsumer);
+  await mkdir(resolve(nextConsumer, "node_modules"));
+  await cp(
+    resolve(nodeConsumer, "node_modules/j-3dena"),
+    resolve(nextConsumer, "node_modules/j-3dena"),
+    { recursive: true },
+  );
+  await cp(
+    resolve(nodeConsumer, "node_modules/jena-js"),
+    resolve(nextConsumer, "node_modules/jena-js"),
+    { recursive: true },
+  );
+  for (const packageName of [
+    "next",
+    "react",
+    "react-dom",
+    "typescript",
+    "@types/node",
+    "@types/react",
+    "@types/react-dom",
+  ]) {
+    await linkInstalledPackage(packageName, nextConsumer);
+  }
   await writeFile(resolve(nextConsumer, "app/layout.tsx"), `
     import type { ReactNode } from "react";
     export default function Layout({ children }: { children: ReactNode }) {
@@ -198,6 +234,7 @@ try {
     typeDeclarations: "pass",
     browserBundler: "pass",
     nextWebpack: "pass",
+    frameworkDependencySource: "repository-lockfile-installed-packages",
     status: "IMPLEMENTED_UNVERIFIED"
   };
   process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);

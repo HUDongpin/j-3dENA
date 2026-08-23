@@ -41,6 +41,30 @@ function series(
 }
 
 describe("trajectory descriptive/path statistics", () => {
+  it("supports an explicit weighted-participant estimand without giving duplicate source rows extra weight", () => {
+    const weighted = series([
+      { ...point("P1", "A", [0, 0, 0, 0]), weight: 1 },
+      { ...point("P1", "A", [2, 0, 0, 2]), weight: 1 },
+      { ...point("P2", "A", [10, 0, 0, 10]), weight: 3 },
+    ], {
+      timeOrder: [time("A")],
+      estimand: "weighted-participant",
+    });
+    const result = analyzeTrajectoryPath(weighted);
+
+    expect(result.estimand).toBe("weighted-participant");
+    expect(result.participantPeriods.map((row) => row.participantWeight)).toEqual([1, 3]);
+    expect(result.periods[0]!.selectedCentroid).toEqual([7.75, 0, 0]);
+    expect(result.periods[0]!.fullCentroid).toEqual([7.75, 0, 0, 7.75]);
+
+    const unstable = structuredClone(weighted);
+    unstable.points[1]!.weight = 2;
+    expect(() => analyzeTrajectoryPath(unstable)).toThrowError(expect.objectContaining({ code: "UNSTABLE_PARTICIPANT_PERIOD_WEIGHT" }));
+    const nonPositive = structuredClone(weighted);
+    nonPositive.points[0]!.weight = 0;
+    expect(() => analyzeTrajectoryPath(nonPositive)).toThrowError(expect.objectContaining({ code: "INVALID_PARTICIPANT_WEIGHT" }));
+  });
+
   it("reduces duplicates, preserves lossless string IDs, and distinguishes selected from full distance", () => {
     const input = series([
       point("9007199254740992", "A", [0, 0, 0, 0]),

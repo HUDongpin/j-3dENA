@@ -10,6 +10,11 @@ export {
 } from "./dataset-inspection";
 export { selectAnalysisDisplay } from "./display";
 export {
+  adaptFittedJenaTrajectoryResultV2,
+  getAnalysisBuildIdentityV2,
+} from "./fitted-jena-adapter-v2";
+export type * from "./fitted-jena-adapter-v2";
+export {
   ExportBundleError,
   createExportBundle
 } from "./export-bundle";
@@ -31,6 +36,7 @@ export {
   PlotlySpecCompilationError,
   compilePlotlySpec
 } from "./plotly-spec";
+export * from "./longitudinal-v2";
 export { selectTrajectoryDisplay } from "./trajectory";
 export * from "./trajectory-statistics";
 export {

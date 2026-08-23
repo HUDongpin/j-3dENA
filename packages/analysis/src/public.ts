@@ -6,15 +6,28 @@ export { createAnalysisClient } from "./analysis-client";
 export { inspectDataset } from "./dataset-inspection";
 export { createExportBundle } from "./export-bundle";
 export { compilePlotlySpec } from "./plotly-spec";
+export {
+  adaptFittedJenaTrajectoryResultV2,
+  getAnalysisBuildIdentityV2,
+} from "./fitted-jena-adapter-v2";
+export {
+  assertLongitudinalAnalysisBundleV2,
+  assertTrajectoryRunSpecV2,
+  compileTrajectoryPlotlySpec,
+  executeLongitudinalAnalysisV2,
+  verifyLongitudinalAnalysisBundleV2,
+} from "./longitudinal-v2";
 export { assertAnalysisResultEnvelopeV1 } from "./contracts";
-export { assertAnalysisExecutionDatasetV2, executeAnalysisTask } from "./task-executor";
+export { assertAnalysisExecutionDatasetV2, executeAnalysisTask, hashAnalysisValueV1 } from "./task-executor";
 
 export type * from "./analysis-client";
 export type * from "./contracts";
 export type * from "./dataset-inspection";
 export type * from "./export-bundle";
+export type * from "./fitted-jena-adapter-v2";
 export type * from "./network-analysis";
 export type * from "./plotly-spec";
+export type * from "./longitudinal-v2";
 export type * from "./prepared-types";
 export type * from "./task-executor";
 export type * from "./trajectory-series-adapters";

@@ -127,7 +127,7 @@ export interface DimensionVariance {
     displayed: boolean;
 }
 export interface AnalysisRotation {
-    method: "svd";
+    method: "svd" | "mean" | "reference";
     columns: string[];
     matrix: number[][];
     eigenvalues: number[];
@@ -259,10 +259,10 @@ export interface AnalysisSummary {
 }
 export interface AnalysisProvenance {
     adapter: "@3dena/analysis";
-    adapterVersion: "0.1.0";
+    adapterVersion: string;
     jenaPackage: "jena-js";
-    jenaVersion: "0.6.2";
-    jenaCommit: "2f63db4c6ccf5684afc8437ae81ed1a3ccd0c1a3";
+    jenaVersion: string;
+    jenaCommit: string;
     coreGoldenContract: "jena-package-golden-v1";
     legacyGoldenContract: "legacy-application-golden-v1";
     /**
@@ -271,15 +271,19 @@ export interface AnalysisProvenance {
      */
     legacyGoldenStatus: "not-assessed";
     parityContract: "3dena.parity-contract.v1";
-    resultSemantics: "one shared SVD rotation; participant-period reduction before group-time centroids";
-    resolvedConfig: Required<AnalysisConfig>;
+    resultSemantics: "one shared SVD rotation; participant-period reduction before group-time centroids" | "one immutable fitted jENA rotation; fixed projectIn full-space recovery; participant-period reduction before group-time centroids";
+    resolvedConfig: Omit<Required<AnalysisConfig>, "windowSizeBack"> & {
+        /** JSON-safe representation of jENA's unbounded Conversation window. */
+        windowSizeBack: number | "Infinity";
+    };
     resolvedLimits: AnalysisResourceLimits;
 }
 export interface AnalysisResult {
     schemaVersion: "3dena.analysis-result.v1";
     /** Complete modeled rotation inventory retained from the single jENA fit. */
     dimensions: string[];
-    axes: [AxisName, AxisName, AxisName];
+    /** The first three display dimensions exposed by this fitted rotation. */
+    axes: [string, string, string];
     points: AnalysisPoint[];
     nodes: AnalysisNode[];
     edges: AnalysisEdge[];

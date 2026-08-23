@@ -1,0 +1,200 @@
+{
+  "$id": "https://3dena.com/schemas/trajectory-inference-task.v2.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "datasetHash",
+    "specHash",
+    "sourceResultHash",
+    "runId",
+    "requests",
+    "adjustment"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "3dena.trajectory-inference-task.v2"
+    },
+    "kind": {
+      "const": "trajectory-inference-v2"
+    },
+    "datasetHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "specHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "sourceResultHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "adjustment": {
+      "const": "holm"
+    },
+    "requests": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "groups",
+              "periodCanonical"
+            ],
+            "properties": {
+              "kind": {
+                "const": "independent-period"
+              },
+              "groups": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "periodCanonical": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "group",
+              "earlierPeriodCanonical",
+              "laterPeriodCanonical",
+              "samePhysicalEntityConfirmed"
+            ],
+            "properties": {
+              "kind": {
+                "const": "paired-periods"
+              },
+              "group": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                ]
+              },
+              "earlierPeriodCanonical": {
+                "type": "string",
+                "minLength": 1
+              },
+              "laterPeriodCanonical": {
+                "type": "string",
+                "minLength": 1
+              },
+              "samePhysicalEntityConfirmed": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "group",
+              "periodCanonicals",
+              "samePhysicalEntityConfirmed"
+            ],
+            "properties": {
+              "kind": {
+                "const": "repeated-periods"
+              },
+              "group": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                ]
+              },
+              "periodCanonicals": {
+                "type": "array",
+                "minItems": 3,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "samePhysicalEntityConfirmed": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "design",
+              "groups",
+              "repetitions",
+              "seed",
+              "samePhysicalEntityConfirmed"
+            ],
+            "properties": {
+              "kind": {
+                "const": "path-comparison"
+              },
+              "design": {
+                "enum": [
+                  "independent",
+                  "paired"
+                ]
+              },
+              "groups": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "repetitions": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "samePhysicalEntityConfirmed": {
+                "type": "boolean"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

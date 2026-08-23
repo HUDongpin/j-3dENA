@@ -675,6 +675,1236 @@ export declare const CONTRACT_SCHEMAS_V1: Readonly<{
     analysisExecutionDatasetV2: Readonly<{
         [x: string]: unknown;
     }>;
+    trajectoryRunSpecV2: Readonly<{
+        readonly $id: "https://3dena.com/schemas/trajectory-run-spec.v2.json";
+        readonly type: "object";
+        readonly additionalProperties: false;
+        readonly required: readonly ["schemaVersion", "sourceResultHash", "participantColumns", "timeColumn", "groupColumn", "orderedPeriods", "selectedDimensions", "cohortPolicy", "missingValuePolicy", "estimand"];
+        readonly properties: {
+            readonly schemaVersion: {
+                readonly const: "3dena.trajectory-run-spec.v2";
+            };
+            readonly sourceResultHash: {
+                readonly type: "string";
+                readonly pattern: "^[a-f0-9]{64}$";
+            };
+            readonly participantColumns: {
+                readonly type: "array";
+                readonly minItems: 1;
+                readonly uniqueItems: true;
+                readonly items: {
+                    readonly type: "string";
+                    readonly minLength: 1;
+                };
+            };
+            readonly timeColumn: {
+                readonly type: "string";
+                readonly minLength: 1;
+            };
+            readonly groupColumn: {
+                readonly oneOf: readonly [{
+                    readonly type: "null";
+                }, {
+                    readonly type: "string";
+                    readonly minLength: 1;
+                }];
+            };
+            readonly orderedPeriods: {
+                readonly type: "array";
+                readonly minItems: 1;
+                readonly items: {
+                    readonly type: "object";
+                    readonly additionalProperties: false;
+                    readonly required: readonly ["identity", "sourceTimeCanonical", "displayLabel", "expected", "value"];
+                    readonly properties: {
+                        readonly identity: {
+                            readonly type: "object";
+                            readonly additionalProperties: false;
+                            readonly required: readonly ["components"];
+                            readonly properties: {
+                                readonly components: {
+                                    readonly type: "array";
+                                    readonly minItems: 1;
+                                    readonly items: {
+                                        readonly oneOf: readonly [{
+                                            readonly type: "object";
+                                            readonly additionalProperties: false;
+                                            readonly required: readonly ["name", "type", "value"];
+                                            readonly properties: {
+                                                readonly name: {
+                                                    readonly type: "string";
+                                                    readonly minLength: 1;
+                                                };
+                                                readonly type: {
+                                                    readonly const: "string";
+                                                };
+                                                readonly value: {
+                                                    readonly type: "string";
+                                                };
+                                                readonly declaredType: {
+                                                    readonly type: "string";
+                                                    readonly minLength: 1;
+                                                };
+                                            };
+                                        }, {
+                                            readonly type: "object";
+                                            readonly additionalProperties: false;
+                                            readonly required: readonly ["name", "type", "value"];
+                                            readonly properties: {
+                                                readonly name: {
+                                                    readonly type: "string";
+                                                    readonly minLength: 1;
+                                                };
+                                                readonly type: {
+                                                    readonly const: "number";
+                                                };
+                                                readonly value: {
+                                                    readonly type: "number";
+                                                };
+                                                readonly declaredType: {
+                                                    readonly type: "string";
+                                                    readonly minLength: 1;
+                                                };
+                                            };
+                                        }, {
+                                            readonly type: "object";
+                                            readonly additionalProperties: false;
+                                            readonly required: readonly ["name", "type", "value"];
+                                            readonly properties: {
+                                                readonly name: {
+                                                    readonly type: "string";
+                                                    readonly minLength: 1;
+                                                };
+                                                readonly type: {
+                                                    readonly const: "boolean";
+                                                };
+                                                readonly value: {
+                                                    readonly type: "boolean";
+                                                };
+                                                readonly declaredType: {
+                                                    readonly type: "string";
+                                                    readonly minLength: 1;
+                                                };
+                                            };
+                                        }];
+                                    };
+                                };
+                            };
+                        };
+                        readonly sourceTimeCanonical: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                        };
+                        readonly displayLabel: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                        };
+                        readonly expected: {
+                            readonly type: "boolean";
+                        };
+                        readonly value: {
+                            readonly oneOf: readonly [{
+                                readonly type: "object";
+                                readonly additionalProperties: false;
+                                readonly required: readonly ["type", "index"];
+                                readonly properties: {
+                                    readonly type: {
+                                        readonly const: "ordered-index-v2";
+                                    };
+                                    readonly index: {
+                                        readonly type: "integer";
+                                        readonly minimum: 0;
+                                        readonly maximum: number;
+                                    };
+                                };
+                            }, {
+                                readonly type: "object";
+                                readonly additionalProperties: false;
+                                readonly required: readonly ["type", "value", "unit"];
+                                readonly properties: {
+                                    readonly type: {
+                                        readonly const: "numeric-v1";
+                                    };
+                                    readonly value: {
+                                        readonly type: "number";
+                                    };
+                                    readonly unit: {
+                                        readonly type: "string";
+                                        readonly minLength: 1;
+                                    };
+                                };
+                            }, {
+                                readonly type: "object";
+                                readonly additionalProperties: false;
+                                readonly required: readonly ["type", "value"];
+                                readonly properties: {
+                                    readonly type: {
+                                        readonly const: "date-v1";
+                                    };
+                                    readonly value: {
+                                        readonly type: "string";
+                                        readonly pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$";
+                                    };
+                                };
+                            }, {
+                                readonly type: "object";
+                                readonly additionalProperties: false;
+                                readonly required: readonly ["type", "epochMilliseconds", "timeZone", "offsetMinutes", "fold", "elapsedUnit"];
+                                readonly properties: {
+                                    readonly type: {
+                                        readonly const: "instant-v1";
+                                    };
+                                    readonly epochMilliseconds: {
+                                        readonly type: "string";
+                                        readonly pattern: "^-?(?:0|[1-9][0-9]*)$";
+                                    };
+                                    readonly timeZone: {
+                                        readonly type: "string";
+                                        readonly minLength: 1;
+                                    };
+                                    readonly offsetMinutes: {
+                                        readonly type: "integer";
+                                        readonly minimum: -1440;
+                                        readonly maximum: 1440;
+                                    };
+                                    readonly fold: {
+                                        readonly enum: readonly [0, 1];
+                                    };
+                                    readonly elapsedUnit: {
+                                        readonly enum: readonly string[];
+                                    };
+                                };
+                            }, {
+                                readonly type: "object";
+                                readonly additionalProperties: false;
+                                readonly required: readonly ["type", "value", "unit", "elapsedUnit"];
+                                readonly properties: {
+                                    readonly type: {
+                                        readonly const: "difftime-v1";
+                                    };
+                                    readonly value: {
+                                        readonly type: "number";
+                                    };
+                                    readonly unit: {
+                                        readonly enum: readonly string[];
+                                    };
+                                    readonly elapsedUnit: {
+                                        readonly enum: readonly string[];
+                                    };
+                                };
+                            }];
+                        };
+                    };
+                };
+            };
+            readonly selectedDimensions: {
+                readonly type: "array";
+                readonly minItems: 3;
+                readonly maxItems: 3;
+                readonly uniqueItems: true;
+                readonly items: {
+                    readonly type: "string";
+                    readonly minLength: 1;
+                };
+            };
+            readonly cohortPolicy: {
+                readonly enum: readonly ["available", "complete"];
+            };
+            readonly missingValuePolicy: {
+                readonly const: "complete-analytical-rows";
+            };
+            readonly estimand: {
+                readonly oneOf: readonly [{
+                    readonly type: "object";
+                    readonly additionalProperties: false;
+                    readonly required: readonly ["kind"];
+                    readonly properties: {
+                        readonly kind: {
+                            readonly const: "equal-participant";
+                        };
+                    };
+                }, {
+                    readonly type: "object";
+                    readonly additionalProperties: false;
+                    readonly required: readonly ["kind", "metadataField"];
+                    readonly properties: {
+                        readonly kind: {
+                            readonly const: "weighted-participant";
+                        };
+                        readonly metadataField: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                        };
+                    };
+                }];
+            };
+        };
+    }>;
+    trajectoryPathTaskV2: Readonly<{
+        $id: "https://3dena.com/schemas/trajectory-path-task.v2.json";
+        type: "object";
+        additionalProperties: false;
+        required: string[];
+        properties: {
+            schemaVersion: {
+                const: string;
+            };
+            kind: {
+                const: string;
+            };
+            datasetHash: {
+                readonly type: "string";
+                readonly pattern: "^[a-f0-9]{64}$";
+            };
+            specHash: {
+                readonly type: "string";
+                readonly pattern: "^[a-f0-9]{64}$";
+            };
+            runId: {
+                readonly type: "string";
+                readonly minLength: 1;
+            };
+            runSpec: {
+                $ref: string;
+            };
+        };
+    }>;
+    trajectoryInferenceTaskV2: Readonly<{
+        $id: "https://3dena.com/schemas/trajectory-inference-task.v2.json";
+        type: "object";
+        additionalProperties: false;
+        required: string[];
+        properties: {
+            adjustment: {
+                const: string;
+            };
+            requests: {
+                type: string;
+                minItems: number;
+                items: {
+                    oneOf: ({
+                        type: string;
+                        additionalProperties: boolean;
+                        required: string[];
+                        properties: {
+                            kind: {
+                                const: string;
+                            };
+                            groups: {
+                                type: string;
+                                minItems: number;
+                                maxItems: number;
+                                uniqueItems: boolean;
+                                items: {
+                                    readonly type: "string";
+                                    readonly minLength: 1;
+                                };
+                            };
+                            periodCanonical: {
+                                readonly type: "string";
+                                readonly minLength: 1;
+                            };
+                            group?: never;
+                            earlierPeriodCanonical?: never;
+                            laterPeriodCanonical?: never;
+                            samePhysicalEntityConfirmed?: never;
+                            periodCanonicals?: never;
+                            design?: never;
+                            repetitions?: never;
+                            seed?: never;
+                        };
+                    } | {
+                        type: string;
+                        additionalProperties: boolean;
+                        required: string[];
+                        properties: {
+                            kind: {
+                                const: string;
+                            };
+                            group: {
+                                oneOf: ({
+                                    readonly type: "string";
+                                    readonly minLength: 1;
+                                } | {
+                                    type: string;
+                                })[];
+                            };
+                            earlierPeriodCanonical: {
+                                readonly type: "string";
+                                readonly minLength: 1;
+                            };
+                            laterPeriodCanonical: {
+                                readonly type: "string";
+                                readonly minLength: 1;
+                            };
+                            samePhysicalEntityConfirmed: {
+                                type: string;
+                            };
+                            groups?: never;
+                            periodCanonical?: never;
+                            periodCanonicals?: never;
+                            design?: never;
+                            repetitions?: never;
+                            seed?: never;
+                        };
+                    } | {
+                        type: string;
+                        additionalProperties: boolean;
+                        required: string[];
+                        properties: {
+                            kind: {
+                                const: string;
+                            };
+                            group: {
+                                oneOf: ({
+                                    readonly type: "string";
+                                    readonly minLength: 1;
+                                } | {
+                                    type: string;
+                                })[];
+                            };
+                            periodCanonicals: {
+                                type: string;
+                                minItems: number;
+                                uniqueItems: boolean;
+                                items: {
+                                    readonly type: "string";
+                                    readonly minLength: 1;
+                                };
+                            };
+                            samePhysicalEntityConfirmed: {
+                                type: string;
+                            };
+                            groups?: never;
+                            periodCanonical?: never;
+                            earlierPeriodCanonical?: never;
+                            laterPeriodCanonical?: never;
+                            design?: never;
+                            repetitions?: never;
+                            seed?: never;
+                        };
+                    } | {
+                        type: string;
+                        additionalProperties: boolean;
+                        required: string[];
+                        properties: {
+                            kind: {
+                                const: string;
+                            };
+                            design: {
+                                enum: string[];
+                            };
+                            groups: {
+                                type: string;
+                                minItems: number;
+                                maxItems: number;
+                                uniqueItems: boolean;
+                                items: {
+                                    readonly type: "string";
+                                    readonly minLength: 1;
+                                };
+                            };
+                            repetitions: {
+                                type: string;
+                                minimum: number;
+                                maximum: number;
+                            };
+                            seed: {
+                                type: string;
+                                minimum: number;
+                                maximum: number;
+                            };
+                            samePhysicalEntityConfirmed: {
+                                type: string;
+                            };
+                            periodCanonical?: never;
+                            group?: never;
+                            earlierPeriodCanonical?: never;
+                            laterPeriodCanonical?: never;
+                            periodCanonicals?: never;
+                        };
+                    })[];
+                };
+            };
+            datasetHash: {
+                readonly type: "string";
+                readonly pattern: "^[a-f0-9]{64}$";
+            };
+            specHash: {
+                readonly type: "string";
+                readonly pattern: "^[a-f0-9]{64}$";
+            };
+            sourceResultHash: {
+                readonly type: "string";
+                readonly pattern: "^[a-f0-9]{64}$";
+            };
+            runId: {
+                readonly type: "string";
+                readonly minLength: 1;
+            };
+            schemaVersion: {
+                const: string;
+            };
+            kind: {
+                const: string;
+            };
+        };
+    }>;
+    trajectoryBootstrapTaskV2: Readonly<{
+        $id: "https://3dena.com/schemas/trajectory-bootstrap-task.v2.json";
+        type: "object";
+        additionalProperties: false;
+        required: string[];
+        properties: {
+            repetitions: {
+                type: string;
+                minimum: number;
+                maximum: number;
+            };
+            confidenceLevel: {
+                type: string;
+                exclusiveMinimum: number;
+                exclusiveMaximum: number;
+            };
+            seed: {
+                type: string;
+                minimum: number;
+                maximum: number;
+            };
+            resamplingDesign: {
+                enum: string[];
+            };
+            explicitStrataField: {
+                oneOf: ({
+                    readonly type: "string";
+                    readonly minLength: 1;
+                } | {
+                    type: string;
+                })[];
+            };
+            interval: {
+                const: string;
+            };
+            rotationPolicy: {
+                const: string;
+            };
+            datasetHash: {
+                readonly type: "string";
+                readonly pattern: "^[a-f0-9]{64}$";
+            };
+            specHash: {
+                readonly type: "string";
+                readonly pattern: "^[a-f0-9]{64}$";
+            };
+            sourceResultHash: {
+                readonly type: "string";
+                readonly pattern: "^[a-f0-9]{64}$";
+            };
+            runId: {
+                readonly type: "string";
+                readonly minLength: 1;
+            };
+            schemaVersion: {
+                const: string;
+            };
+            kind: {
+                const: string;
+            };
+        };
+        allOf: {
+            if: {
+                properties: {
+                    resamplingDesign: {
+                        const: string;
+                    };
+                };
+            };
+            then: {
+                properties: {
+                    explicitStrataField: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                    };
+                };
+            };
+            else: {
+                properties: {
+                    explicitStrataField: {
+                        type: string;
+                    };
+                };
+            };
+        }[];
+    }>;
+    trajectoryNetworkOverlayTaskV2: Readonly<{
+        $id: "https://3dena.com/schemas/trajectory-network-overlay-task.v2.json";
+        type: "object";
+        additionalProperties: false;
+        required: string[];
+        properties: {
+            requests: {
+                type: string;
+                minItems: number;
+                items: {
+                    type: string;
+                    additionalProperties: boolean;
+                    required: string[];
+                    properties: {
+                        periodCanonical: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                        };
+                        groupCanonical: {
+                            oneOf: ({
+                                readonly type: "string";
+                                readonly minLength: 1;
+                            } | {
+                                type: string;
+                            })[];
+                        };
+                    };
+                };
+            };
+            datasetHash: {
+                readonly type: "string";
+                readonly pattern: "^[a-f0-9]{64}$";
+            };
+            specHash: {
+                readonly type: "string";
+                readonly pattern: "^[a-f0-9]{64}$";
+            };
+            sourceResultHash: {
+                readonly type: "string";
+                readonly pattern: "^[a-f0-9]{64}$";
+            };
+            runId: {
+                readonly type: "string";
+                readonly minLength: 1;
+            };
+            schemaVersion: {
+                const: string;
+            };
+            kind: {
+                const: string;
+            };
+        };
+    }>;
+    trajectoryDisplaySpecV2: Readonly<{
+        $id: "https://3dena.com/schemas/trajectory-display-spec.v2.json";
+        type: "object";
+        additionalProperties: false;
+        required: string[];
+        properties: {
+            schemaVersion: {
+                const: string;
+            };
+            projection: {
+                enum: string[];
+            };
+            displayedGroups: {
+                type: string;
+                uniqueItems: boolean;
+                items: {
+                    readonly type: "string";
+                    readonly minLength: 1;
+                };
+            };
+            traces: {
+                type: string;
+                additionalProperties: boolean;
+                required: string[];
+                properties: {
+                    [k: string]: {
+                        type: string;
+                    };
+                };
+            };
+            axisFlips: {
+                type: string;
+                minItems: number;
+                maxItems: number;
+                items: {
+                    type: string;
+                };
+            };
+            camera: {
+                oneOf: ({
+                    type: string;
+                    additionalProperties?: never;
+                    required?: never;
+                    properties?: never;
+                } | {
+                    type: string;
+                    additionalProperties: boolean;
+                    required: string[];
+                    properties: {
+                        [k: string]: {
+                            type: string;
+                            additionalProperties: boolean;
+                            required: string[];
+                            properties: {
+                                x: {
+                                    type: string;
+                                };
+                                y: {
+                                    type: string;
+                                };
+                                z: {
+                                    type: string;
+                                };
+                            };
+                        };
+                    };
+                })[];
+            };
+            style: {
+                type: string;
+                additionalProperties: boolean;
+                required: string[];
+                properties: {
+                    participantSize: {
+                        type: string;
+                        exclusiveMinimum: number;
+                    };
+                    participantOpacity: {
+                        type: string;
+                        minimum: number;
+                        maximum: number;
+                    };
+                    centroidSize: {
+                        type: string;
+                        exclusiveMinimum: number;
+                    };
+                    pathWidth: {
+                        type: string;
+                        exclusiveMinimum: number;
+                    };
+                };
+            };
+        };
+    }>;
+    longitudinalAnalysisBundleV2: Readonly<{
+        $id: "https://3dena.com/schemas/longitudinal-analysis-bundle.v2.json";
+        type: "object";
+        additionalProperties: false;
+        required: string[];
+        properties: {
+            schemaVersion: {
+                const: string;
+            };
+            identity: {
+                type: string;
+                additionalProperties: boolean;
+                required: string[];
+                properties: {
+                    datasetHash: {
+                        readonly type: "string";
+                        readonly pattern: "^[a-f0-9]{64}$";
+                    };
+                    specHash: {
+                        readonly type: "string";
+                        readonly pattern: "^[a-f0-9]{64}$";
+                    };
+                    sourceResultHash: {
+                        readonly type: "string";
+                        readonly pattern: "^[a-f0-9]{64}$";
+                    };
+                    resultHash: {
+                        readonly type: "string";
+                        readonly pattern: "^[a-f0-9]{64}$";
+                    };
+                    runId: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                    };
+                    jenaBuildId: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                    };
+                };
+            };
+            runSpec: {
+                $ref: string;
+            };
+            model: {
+                type: string;
+                additionalProperties: boolean;
+                required: string[];
+                properties: {
+                    type: {
+                        enum: string[];
+                    };
+                    fullRotationDimensions: {
+                        type: string;
+                        minItems: number;
+                        uniqueItems: boolean;
+                        items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                        };
+                    };
+                    selectedDimensions: {
+                        type: string;
+                        minItems: number;
+                        maxItems: number;
+                        uniqueItems: boolean;
+                        items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                        };
+                    };
+                };
+            };
+            paths: {
+                type: string;
+                minItems: number;
+                items: {
+                    type: string;
+                    additionalProperties: boolean;
+                    required: string[];
+                    properties: {
+                        group: {
+                            type: string;
+                            additionalProperties: boolean;
+                            required: string[];
+                            properties: {
+                                canonical: {
+                                    readonly type: "string";
+                                    readonly minLength: 1;
+                                };
+                                display: {
+                                    readonly type: "string";
+                                    readonly minLength: 1;
+                                };
+                            };
+                        };
+                        dynamics: {
+                            [x: string]: unknown;
+                        } | undefined;
+                    };
+                };
+            };
+            inference: {
+                type: string;
+                items: {
+                    type: string;
+                    additionalProperties: boolean;
+                    required: string[];
+                    properties: {
+                        request: {
+                            $ref: string;
+                        };
+                        status: {
+                            enum: string[];
+                        };
+                        familyId: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                        };
+                        familySize: {
+                            readonly type: "integer";
+                            readonly minimum: 0;
+                            readonly maximum: number;
+                        };
+                        rows: {
+                            type: string;
+                            items: {
+                                type: string;
+                            };
+                        };
+                        reason: {
+                            oneOf: ({
+                                readonly type: "string";
+                                readonly minLength: 1;
+                            } | {
+                                type: string;
+                            })[];
+                        };
+                    };
+                };
+            };
+            pathComparisons: {
+                type: string;
+                items: {
+                    type: string;
+                    additionalProperties: boolean;
+                    required: string[];
+                    properties: {
+                        groups: {
+                            type: string;
+                            minItems: number;
+                            maxItems: number;
+                            uniqueItems: boolean;
+                            items: {
+                                readonly type: "string";
+                                readonly minLength: 1;
+                            };
+                        };
+                        design: {
+                            enum: string[];
+                        };
+                        seed: {
+                            type: string;
+                            minimum: number;
+                            maximum: number;
+                        };
+                        planHash: {
+                            readonly type: "string";
+                            readonly pattern: "^[a-f0-9]{64}$";
+                        };
+                        identityOverlapAudit: {
+                            oneOf: ({
+                                type: string;
+                                additionalProperties?: never;
+                                required?: never;
+                                properties?: never;
+                            } | {
+                                type: string;
+                                additionalProperties: boolean;
+                                required: string[];
+                                properties: {
+                                    sideAEntities: {
+                                        readonly type: "integer";
+                                        readonly minimum: 0;
+                                        readonly maximum: number;
+                                    };
+                                    sideBEntities: {
+                                        readonly type: "integer";
+                                        readonly minimum: 0;
+                                        readonly maximum: number;
+                                    };
+                                    overlappingEntities: {
+                                        readonly type: "integer";
+                                        readonly minimum: 0;
+                                        readonly maximum: number;
+                                    };
+                                    pairedCompleteEntities: {
+                                        readonly type: "integer";
+                                        readonly minimum: 0;
+                                        readonly maximum: number;
+                                    };
+                                    sideAOnly: {
+                                        readonly type: "integer";
+                                        readonly minimum: 0;
+                                        readonly maximum: number;
+                                    };
+                                    sideBOnly: {
+                                        readonly type: "integer";
+                                        readonly minimum: 0;
+                                        readonly maximum: number;
+                                    };
+                                    excludedIncompleteOverlap: {
+                                        readonly type: "integer";
+                                        readonly minimum: 0;
+                                        readonly maximum: number;
+                                    };
+                                    samePhysicalEntityConfirmed: {
+                                        const: boolean;
+                                    };
+                                };
+                            })[];
+                        };
+                        result: {
+                            [x: string]: unknown;
+                        } | undefined;
+                    };
+                };
+            };
+            bootstrap: {
+                type: string;
+                items: {
+                    type: string;
+                    additionalProperties: boolean;
+                    required: string[];
+                    properties: {
+                        groupCanonical: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                        };
+                        status: {
+                            enum: string[];
+                        };
+                        notEstimableReason: {
+                            oneOf: ({
+                                readonly type: "string";
+                                readonly minLength: 1;
+                            } | {
+                                type: string;
+                            })[];
+                        };
+                        seed: {
+                            type: string;
+                            minimum: number;
+                            maximum: number;
+                        };
+                        planHash: {
+                            readonly type: "string";
+                            readonly pattern: "^[a-f0-9]{64}$";
+                        };
+                        finiteReplicates: {
+                            readonly type: "integer";
+                            readonly minimum: 0;
+                            readonly maximum: number;
+                        };
+                        requiredFiniteReplicates: {
+                            readonly type: "integer";
+                            readonly minimum: 1;
+                            readonly maximum: number;
+                        };
+                        totalReplicates: {
+                            readonly type: "integer";
+                            readonly minimum: 1;
+                            readonly maximum: number;
+                        };
+                        confidenceLevel: {
+                            type: string;
+                            exclusiveMinimum: number;
+                            exclusiveMaximum: number;
+                        };
+                        requestedResamplingDesign: {
+                            enum: string[];
+                        };
+                        resolvedResamplingDesign: {
+                            enum: string[];
+                        };
+                        resamplingAlgorithm: {
+                            enum: string[];
+                        };
+                        intervalContract: {
+                            const: string;
+                        };
+                        rotationPolicy: {
+                            const: string;
+                        };
+                        speedIntervals: {
+                            type: string;
+                            items: {
+                                type: string;
+                                additionalProperties: boolean;
+                                required: string[];
+                                properties: {
+                                    periodCanonical: {
+                                        readonly type: "string";
+                                        readonly minLength: 1;
+                                    };
+                                    selected: {
+                                        oneOf: {
+                                            type: string;
+                                        }[];
+                                    };
+                                    full: {
+                                        oneOf: {
+                                            type: string;
+                                        }[];
+                                    };
+                                };
+                            };
+                        };
+                        result: {
+                            [x: string]: unknown;
+                        } | undefined;
+                    };
+                };
+            };
+            networkOverlays: {
+                type: string;
+                items: {
+                    type: string;
+                    additionalProperties: boolean;
+                    required: string[];
+                    properties: {
+                        status: {
+                            enum: string[];
+                        };
+                        reason: {
+                            oneOf: ({
+                                readonly type: "string";
+                                readonly minLength: 1;
+                            } | {
+                                type: string;
+                            })[];
+                        };
+                        groupCanonical: {
+                            oneOf: ({
+                                readonly type: "string";
+                                readonly minLength: 1;
+                            } | {
+                                type: string;
+                            })[];
+                        };
+                        periodCanonical: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                        };
+                        dimensions: {
+                            type: string;
+                            minItems: number;
+                            maxItems: number;
+                            uniqueItems: boolean;
+                            items: {
+                                readonly type: "string";
+                                readonly minLength: 1;
+                            };
+                        };
+                        estimand: {
+                            enum: string[];
+                        };
+                        sourceRows: {
+                            readonly type: "integer";
+                            readonly minimum: 0;
+                            readonly maximum: number;
+                        };
+                        participantPeriods: {
+                            readonly type: "integer";
+                            readonly minimum: 0;
+                            readonly maximum: number;
+                        };
+                        effectiveParticipantN: {
+                            oneOf: ({
+                                type: string;
+                                exclusiveMinimum?: never;
+                            } | {
+                                type: string;
+                                exclusiveMinimum: number;
+                            })[];
+                        };
+                        nodes: {
+                            type: string;
+                            items: {
+                                type: string;
+                                additionalProperties: boolean;
+                                required: string[];
+                                properties: {
+                                    code: {
+                                        readonly type: "string";
+                                        readonly minLength: 1;
+                                    };
+                                    coordinates: {
+                                        type: string;
+                                        minItems: number;
+                                        maxItems: number;
+                                        items: {
+                                            type: string;
+                                        };
+                                    };
+                                    weight: {
+                                        type: string;
+                                        minimum: number;
+                                    };
+                                };
+                            };
+                        };
+                        edges: {
+                            type: string;
+                            items: {
+                                type: string;
+                                additionalProperties: boolean;
+                                required: string[];
+                                properties: {
+                                    id: {
+                                        readonly type: "string";
+                                        readonly minLength: 1;
+                                    };
+                                    sourceIndex: {
+                                        readonly type: "integer";
+                                        readonly minimum: 0;
+                                        readonly maximum: number;
+                                    };
+                                    targetIndex: {
+                                        readonly type: "integer";
+                                        readonly minimum: 0;
+                                        readonly maximum: number;
+                                    };
+                                    weight: {
+                                        type: string;
+                                    };
+                                };
+                            };
+                        };
+                    };
+                };
+            };
+            diagnostics: {
+                type: string;
+                items: {
+                    type: string;
+                    additionalProperties: boolean;
+                    required: string[];
+                    properties: {
+                        code: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                        };
+                        severity: {
+                            enum: string[];
+                        };
+                        message: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                        };
+                        path: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                        };
+                    };
+                };
+            };
+            execution: {
+                type: string;
+                additionalProperties: boolean;
+                required: string[];
+                properties: {
+                    target: {
+                        enum: string[];
+                    };
+                    jenaVersion: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                    };
+                    jenaCommit: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                    };
+                    jenaTarballIntegrity: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                    };
+                    sdkVersion: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                    };
+                    buildId: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                    };
+                    seed: {
+                        type: string;
+                        minimum: number;
+                        maximum: number;
+                    };
+                    permutationPlanHashes: {
+                        type: string;
+                        uniqueItems: boolean;
+                        items: {
+                            readonly type: "string";
+                            readonly pattern: "^[a-f0-9]{64}$";
+                        };
+                    };
+                    resamplingPlanHashes: {
+                        type: string;
+                        uniqueItems: boolean;
+                        items: {
+                            readonly type: "string";
+                            readonly pattern: "^[a-f0-9]{64}$";
+                        };
+                    };
+                    evidenceStatus: {
+                        enum: string[];
+                    };
+                };
+            };
+        };
+    }>;
     analysisSpec: Readonly<{
         $id: "https://3dena.com/schemas/analysis-spec.v1.json";
         type: "object";

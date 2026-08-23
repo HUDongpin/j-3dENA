@@ -20,7 +20,7 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
-    "@3dena/analysis": "0.1.0",
+    "@3dena/analysis": "0.2.0",
     "@3dena/tabular-import": "0.1.0"
   },
   "devDependencies": {

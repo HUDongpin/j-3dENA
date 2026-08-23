@@ -1,3 +1,4 @@
+import { ena, projectIn } from "jena-js";
 //#region \0rolldown/runtime.js
 var __defProp = Object.defineProperty;
 var __esmMin = (fn, res, err) => () => {
@@ -19,7 +20,7 @@ var __exportAll = (all, no_symbols) => {
 };
 //#endregion
 //#region src/prepared-derived.ts
-var SHA256$3 = /^[a-f0-9]{64}$/u;
+var SHA256$4 = /^[a-f0-9]{64}$/u;
 var PreparedDerivedAnalysisError = class extends Error {
 	code;
 	path;
@@ -30,13 +31,13 @@ var PreparedDerivedAnalysisError = class extends Error {
 		this.path = path;
 	}
 };
-function reject$9(code, path, message) {
+function reject$10(code, path, message) {
 	throw new PreparedDerivedAnalysisError(code, path, message);
 }
 function finiteMean(values, path) {
-	if (values.length === 0) reject$9("EMPTY_PREPARED_SELECTION", path, "contains no prepared points");
+	if (values.length === 0) reject$10("EMPTY_PREPARED_SELECTION", path, "contains no prepared points");
 	const scale = values.reduce((maximum, value) => {
-		if (!Number.isFinite(value)) reject$9("NON_FINITE_PREPARED_SOURCE", path, "contains a non-finite value");
+		if (!Number.isFinite(value)) reject$10("NON_FINITE_PREPARED_SOURCE", path, "contains a non-finite value");
 		return Math.max(maximum, Math.abs(value));
 	}, 0) || 1;
 	let sum = 0;
@@ -49,14 +50,14 @@ function finiteMean(values, path) {
 		sum = next;
 	}
 	const mean = (sum + correction) / values.length * scale;
-	if (!Number.isFinite(mean)) reject$9("PREPARED_NUMERIC_OVERFLOW", path, "mean is outside the finite numeric range");
+	if (!Number.isFinite(mean)) reject$10("PREPARED_NUMERIC_OVERFLOW", path, "mean is outside the finite numeric range");
 	return mean;
 }
 function scalarCanonical(value, path = "selector.level") {
 	if (value === null) return JSON.stringify(["null"]);
 	if (typeof value === "number") {
-		if (!Number.isFinite(value)) reject$9("NON_FINITE_PREPARED_LEVEL", path, "must be finite");
-		if (Number.isInteger(value) && !Number.isSafeInteger(value)) reject$9("UNSAFE_PREPARED_LEVEL", path, "unsafe integer identities must be supplied as source strings");
+		if (!Number.isFinite(value)) reject$10("NON_FINITE_PREPARED_LEVEL", path, "must be finite");
+		if (Number.isInteger(value) && !Number.isSafeInteger(value)) reject$10("UNSAFE_PREPARED_LEVEL", path, "unsafe integer identities must be supplied as source strings");
 		if (Object.is(value, -0)) return JSON.stringify(["number", "-0"]);
 	}
 	return JSON.stringify([typeof value, value]);
@@ -73,40 +74,40 @@ function typedValue$2(value) {
 * imported coordinates were recomputed from raw rows.
 */
 function assertPreparedDerivedSource(result) {
-	if (!result || typeof result !== "object" || result.schemaVersion !== "3dena.prepared-space-result.v1") reject$9("INVALID_PREPARED_SOURCE", "result.schemaVersion", "must be 3dena.prepared-space-result.v1");
+	if (!result || typeof result !== "object" || result.schemaVersion !== "3dena.prepared-space-result.v1") reject$10("INVALID_PREPARED_SOURCE", "result.schemaVersion", "must be 3dena.prepared-space-result.v1");
 	const provenance = result.provenance;
-	if (result.sourceKind !== "prepared-exchange" || result.rawJenaRecompute !== false || !provenance || typeof provenance !== "object" || provenance.jenaExecuted !== false || provenance.coordinateSpace !== "precomputed-import" || provenance.computation !== "reduction-only") reject$9("INVALID_PREPARED_BOUNDARY", "result", "must remain a precomputed prepared exchange with jENA execution disabled");
+	if (result.sourceKind !== "prepared-exchange" || result.rawJenaRecompute !== false || !provenance || typeof provenance !== "object" || provenance.jenaExecuted !== false || provenance.coordinateSpace !== "precomputed-import" || provenance.computation !== "reduction-only") reject$10("INVALID_PREPARED_BOUNDARY", "result", "must remain a precomputed prepared exchange with jENA execution disabled");
 	const sourceReceipt = result.sourceReceipt;
-	if (!sourceReceipt || typeof sourceReceipt !== "object" || !SHA256$3.test(sourceReceipt.sha256) || !Number.isSafeInteger(sourceReceipt.byteLength) || sourceReceipt.byteLength < 1) reject$9("INVALID_PREPARED_RECEIPT", "result.sourceReceipt", "must contain an exact SHA-256 and positive byte length");
+	if (!sourceReceipt || typeof sourceReceipt !== "object" || !SHA256$4.test(sourceReceipt.sha256) || !Number.isSafeInteger(sourceReceipt.byteLength) || sourceReceipt.byteLength < 1) reject$10("INVALID_PREPARED_RECEIPT", "result.sourceReceipt", "must contain an exact SHA-256 and positive byte length");
 	const fullSpace = result.fullSpace;
-	if (!fullSpace || typeof fullSpace !== "object") reject$9("INVALID_PREPARED_FULL_SPACE", "result.fullSpace", "must contain the imported full-space reduction");
+	if (!fullSpace || typeof fullSpace !== "object") reject$10("INVALID_PREPARED_FULL_SPACE", "result.fullSpace", "must contain the imported full-space reduction");
 	const { dimensions, points, edges, lineWeights } = fullSpace;
-	if (!Array.isArray(dimensions) || dimensions.length === 0 || dimensions.some((dimension) => typeof dimension !== "string" || dimension.trim() === "")) reject$9("INVALID_PREPARED_DIMENSIONS", "result.fullSpace.dimensions", "must contain non-empty dimension names");
-	if (new Set(dimensions).size !== dimensions.length) reject$9("DUPLICATE_PREPARED_DIMENSION", "result.fullSpace.dimensions", "must not contain duplicates");
-	if (!Array.isArray(points) || points.length === 0) reject$9("EMPTY_PREPARED_POINT_SET", "result.fullSpace.points", "must not be empty");
-	if (!Array.isArray(edges) || edges.length === 0) reject$9("EMPTY_PREPARED_EDGE_SET", "result.fullSpace.edges", "must not be empty");
-	if (!lineWeights || typeof lineWeights !== "object" || !Array.isArray(lineWeights.rowKeys) || !Array.isArray(lineWeights.values) || !Array.isArray(lineWeights.columns) || lineWeights.rowKeys.length !== points.length || lineWeights.values.length !== points.length || lineWeights.columns.length !== edges.length) reject$9("MISALIGNED_PREPARED_LINE_WEIGHTS", "result.fullSpace.lineWeights", "row keys, values, columns, points, and edges must remain exactly aligned");
+	if (!Array.isArray(dimensions) || dimensions.length === 0 || dimensions.some((dimension) => typeof dimension !== "string" || dimension.trim() === "")) reject$10("INVALID_PREPARED_DIMENSIONS", "result.fullSpace.dimensions", "must contain non-empty dimension names");
+	if (new Set(dimensions).size !== dimensions.length) reject$10("DUPLICATE_PREPARED_DIMENSION", "result.fullSpace.dimensions", "must not contain duplicates");
+	if (!Array.isArray(points) || points.length === 0) reject$10("EMPTY_PREPARED_POINT_SET", "result.fullSpace.points", "must not be empty");
+	if (!Array.isArray(edges) || edges.length === 0) reject$10("EMPTY_PREPARED_EDGE_SET", "result.fullSpace.edges", "must not be empty");
+	if (!lineWeights || typeof lineWeights !== "object" || !Array.isArray(lineWeights.rowKeys) || !Array.isArray(lineWeights.values) || !Array.isArray(lineWeights.columns) || lineWeights.rowKeys.length !== points.length || lineWeights.values.length !== points.length || lineWeights.columns.length !== edges.length) reject$10("MISALIGNED_PREPARED_LINE_WEIGHTS", "result.fullSpace.lineWeights", "row keys, values, columns, points, and edges must remain exactly aligned");
 	const pointKeys = /* @__PURE__ */ new Set();
 	points.forEach((point, index) => {
-		if (!point || typeof point !== "object") reject$9("INVALID_PREPARED_POINT", `result.fullSpace.points[${index}]`, "must be an object");
-		if (point.index !== index) reject$9("MISALIGNED_PREPARED_POINT_ORDER", `result.fullSpace.points[${index}].index`, "must equal its array position");
-		if (typeof point.id?.canonical !== "string" || point.id.canonical.length === 0 || typeof point.participant?.canonical !== "string" || point.participant.canonical.length === 0 || typeof point.participantLabel?.canonical !== "string" || point.participantLabel.canonical.length === 0 || typeof point.group?.canonical !== "string" || point.group.canonical.length === 0 || typeof point.time?.canonical !== "string" || point.time.canonical.length === 0) reject$9("INVALID_PREPARED_POINT_IDENTITY", `result.fullSpace.points[${index}]`, "must preserve non-empty point, participant, label, group, and time identities");
-		if (pointKeys.has(point.id.canonical)) reject$9("DUPLICATE_PREPARED_POINT_IDENTITY", `result.fullSpace.points[${index}].id`, "duplicates an earlier prepared point identity");
+		if (!point || typeof point !== "object") reject$10("INVALID_PREPARED_POINT", `result.fullSpace.points[${index}]`, "must be an object");
+		if (point.index !== index) reject$10("MISALIGNED_PREPARED_POINT_ORDER", `result.fullSpace.points[${index}].index`, "must equal its array position");
+		if (typeof point.id?.canonical !== "string" || point.id.canonical.length === 0 || typeof point.participant?.canonical !== "string" || point.participant.canonical.length === 0 || typeof point.participantLabel?.canonical !== "string" || point.participantLabel.canonical.length === 0 || typeof point.group?.canonical !== "string" || point.group.canonical.length === 0 || typeof point.time?.canonical !== "string" || point.time.canonical.length === 0) reject$10("INVALID_PREPARED_POINT_IDENTITY", `result.fullSpace.points[${index}]`, "must preserve non-empty point, participant, label, group, and time identities");
+		if (pointKeys.has(point.id.canonical)) reject$10("DUPLICATE_PREPARED_POINT_IDENTITY", `result.fullSpace.points[${index}].id`, "duplicates an earlier prepared point identity");
 		pointKeys.add(point.id.canonical);
-		if (!Array.isArray(point.coordinates) || point.coordinates.length !== dimensions.length || point.coordinates.some((value) => !Number.isFinite(value))) reject$9("INVALID_PREPARED_COORDINATES", `result.fullSpace.points[${index}].coordinates`, "must contain one finite value per dimension");
-		if (lineWeights.rowKeys[index]?.canonical !== point.id.canonical) reject$9("MISALIGNED_PREPARED_IDENTITY", `result.fullSpace.lineWeights.rowKeys[${index}]`, "must match the exact point identity and order");
+		if (!Array.isArray(point.coordinates) || point.coordinates.length !== dimensions.length || point.coordinates.some((value) => !Number.isFinite(value))) reject$10("INVALID_PREPARED_COORDINATES", `result.fullSpace.points[${index}].coordinates`, "must contain one finite value per dimension");
+		if (lineWeights.rowKeys[index]?.canonical !== point.id.canonical) reject$10("MISALIGNED_PREPARED_IDENTITY", `result.fullSpace.lineWeights.rowKeys[${index}]`, "must match the exact point identity and order");
 		const weights = lineWeights.values[index];
-		if (!weights || weights.length !== edges.length || weights.some((value) => !Number.isFinite(value))) reject$9("INVALID_PREPARED_LINE_WEIGHT_ROW", `result.fullSpace.lineWeights.values[${index}]`, "must contain one finite value per edge");
+		if (!weights || weights.length !== edges.length || weights.some((value) => !Number.isFinite(value))) reject$10("INVALID_PREPARED_LINE_WEIGHT_ROW", `result.fullSpace.lineWeights.values[${index}]`, "must contain one finite value per edge");
 	});
 	const edgeKeys = /* @__PURE__ */ new Set();
 	edges.forEach((edge, index) => {
-		if (!edge || typeof edge !== "object" || typeof edge.id !== "string" || edge.id.length === 0 || typeof edge.column !== "string" || edge.column.length === 0) reject$9("INVALID_PREPARED_EDGE", `result.fullSpace.edges[${index}]`, "must preserve non-empty edge and column identities");
-		if (edge.index !== index || lineWeights.columns[index] !== edge.column) reject$9("MISALIGNED_PREPARED_EDGE_ORDER", `result.fullSpace.edges[${index}]`, "must preserve imported edge and line-weight column order");
+		if (!edge || typeof edge !== "object" || typeof edge.id !== "string" || edge.id.length === 0 || typeof edge.column !== "string" || edge.column.length === 0) reject$10("INVALID_PREPARED_EDGE", `result.fullSpace.edges[${index}]`, "must preserve non-empty edge and column identities");
+		if (edge.index !== index || lineWeights.columns[index] !== edge.column) reject$10("MISALIGNED_PREPARED_EDGE_ORDER", `result.fullSpace.edges[${index}]`, "must preserve imported edge and line-weight column order");
 		const edgeKey = JSON.stringify([edge.id, edge.column]);
-		if (edgeKeys.has(edgeKey)) reject$9("DUPLICATE_PREPARED_EDGE_IDENTITY", `result.fullSpace.edges[${index}]`, "duplicates an earlier prepared edge identity");
+		if (edgeKeys.has(edgeKey)) reject$10("DUPLICATE_PREPARED_EDGE_IDENTITY", `result.fullSpace.edges[${index}]`, "duplicates an earlier prepared edge identity");
 		edgeKeys.add(edgeKey);
 	});
-	if (!result.displaySpace?.trajectory || !Array.isArray(result.displaySpace.trajectory.groupOrder)) reject$9("INVALID_PREPARED_GROUP_ORDER", "result.displaySpace.trajectory.groupOrder", "must preserve the prepared canonical group inventory");
+	if (!result.displaySpace?.trajectory || !Array.isArray(result.displaySpace.trajectory.groupOrder)) reject$10("INVALID_PREPARED_GROUP_ORDER", "result.displaySpace.trajectory.groupOrder", "must preserve the prepared canonical group inventory");
 }
 function preparedReductionDiagnostic() {
 	return {
@@ -117,20 +118,20 @@ function preparedReductionDiagnostic() {
 	};
 }
 function preparedGroupValue(result, canonical, path) {
-	if (typeof canonical !== "string" || canonical.trim() === "") reject$9("INVALID_PREPARED_GROUP", path, "must be a non-empty canonical group key");
+	if (typeof canonical !== "string" || canonical.trim() === "") reject$10("INVALID_PREPARED_GROUP", path, "must be a non-empty canonical group key");
 	const value = result.displaySpace.trajectory.groupOrder.find((candidate) => candidate.canonical === canonical) ?? result.fullSpace.points.find((point) => point.group.canonical === canonical)?.group;
-	if (!value) reject$9("UNKNOWN_PREPARED_GROUP", path, "is not present in the prepared result");
+	if (!value) reject$10("UNKNOWN_PREPARED_GROUP", path, "is not present in the prepared result");
 	return typedValue$2(value);
 }
 function preparedPointsForGroup(result, canonical, path) {
 	preparedGroupValue(result, canonical, path);
 	const points = result.fullSpace.points.filter((point) => point.group.canonical === canonical);
-	if (points.length === 0) reject$9("EMPTY_PREPARED_GROUP", path, "contains no prepared points");
+	if (points.length === 0) reject$10("EMPTY_PREPARED_GROUP", path, "contains no prepared points");
 	return points;
 }
 function preparedDimensionIndex(result, dimension, path) {
 	const index = result.fullSpace.dimensions.indexOf(dimension);
-	if (index < 0) reject$9("UNKNOWN_PREPARED_DIMENSION", path, `is not present in the imported full space: ${JSON.stringify(dimension)}`);
+	if (index < 0) reject$10("UNKNOWN_PREPARED_DIMENSION", path, `is not present in the imported full space: ${JSON.stringify(dimension)}`);
 	return index;
 }
 function rowIndexByPoint(result) {
@@ -145,13 +146,13 @@ function preparedEdgeMean(result, edge, points, rows) {
 		target: edge.target,
 		meanWeight: finiteMean(points.map((point) => {
 			const row = rows.get(point.id.canonical);
-			if (row === void 0) reject$9("MISSING_PREPARED_LINE_WEIGHT_ROW", `point.${point.id.canonical}`, "does not have an aligned line-weight row");
+			if (row === void 0) reject$10("MISSING_PREPARED_LINE_WEIGHT_ROW", `point.${point.id.canonical}`, "does not have an aligned line-weight row");
 			return result.fullSpace.lineWeights.values[row][edge.index];
 		}), `edges[${edge.index}]`)
 	};
 }
 function preparedNetworkMean(result, points) {
-	if (points.length === 0) reject$9("EMPTY_PREPARED_SELECTION", "selection", "contains no prepared points");
+	if (points.length === 0) reject$10("EMPTY_PREPARED_SELECTION", "selection", "contains no prepared points");
 	const rows = rowIndexByPoint(result);
 	return {
 		pointCount: points.length,
@@ -162,7 +163,7 @@ function preparedNetworkMean(result, points) {
 }
 function comparePreparedGroupNetworks(result, groups) {
 	assertPreparedDerivedSource(result);
-	if (!Array.isArray(groups) || groups.length !== 2 || groups[0] === groups[1]) reject$9("INVALID_PREPARED_GROUP_PAIR", "groups", "must contain two different canonical groups");
+	if (!Array.isArray(groups) || groups.length !== 2 || groups[0] === groups[1]) reject$10("INVALID_PREPARED_GROUP_PAIR", "groups", "must contain two different canonical groups");
 	const groupA = preparedGroupValue(result, groups[0], "groups[0]");
 	const groupB = preparedGroupValue(result, groups[1], "groups[1]");
 	const meanA = preparedNetworkMean(result, preparedPointsForGroup(result, groupA.canonical, "groups[0]"));
@@ -200,13 +201,13 @@ function selectedValue(point, field) {
 }
 function analyzePreparedChangeNetwork(result, selector) {
 	assertPreparedDerivedSource(result);
-	if (!selector || typeof selector.field !== "string" || selector.field.trim() === "") reject$9("INVALID_PREPARED_CHANGE_FIELD", "selector.field", "must be a non-empty metadata column name, @group, or @time");
+	if (!selector || typeof selector.field !== "string" || selector.field.trim() === "") reject$10("INVALID_PREPARED_CHANGE_FIELD", "selector.field", "must be a non-empty metadata column name, @group, or @time");
 	const levelCanonical = scalarCanonical(selector.level);
 	const selected = result.fullSpace.points.filter((point) => {
 		const value = selectedValue(point, selector.field);
 		return value !== void 0 && scalarCanonical(value) === levelCanonical;
 	});
-	if (selected.length === 0) reject$9("UNKNOWN_PREPARED_CHANGE_LEVEL", "selector.level", "does not select any prepared points");
+	if (selected.length === 0) reject$10("UNKNOWN_PREPARED_CHANGE_LEVEL", "selector.level", "does not select any prepared points");
 	return {
 		schemaVersion: "3dena.change-network.v1",
 		selector: {
@@ -507,7 +508,7 @@ var ANALYSIS_PROVENANCE_SCHEMA = exactObject([
 	"resolvedLimits"
 ], {
 	adapter: { const: "@3dena/analysis" },
-	adapterVersion: { const: "0.1.0" },
+	adapterVersion: NON_EMPTY_STRING_SCHEMA$1,
 	jenaPackage: { const: "jena-js" },
 	jenaVersion: NON_EMPTY_STRING_SCHEMA$1,
 	jenaCommit: NON_EMPTY_STRING_SCHEMA$1,
@@ -531,7 +532,7 @@ var ANALYSIS_PROVENANCE_SCHEMA = exactObject([
 		] },
 		window: { enum: ["MovingStanzaWindow", "Conversation"] },
 		weightBy: { enum: ["binary", "sum"] },
-		windowSizeBack: SAFE_NON_NEGATIVE_INTEGER_SCHEMA$1,
+		windowSizeBack: { anyOf: [SAFE_NON_NEGATIVE_INTEGER_SCHEMA$1, { const: "Infinity" }] },
 		windowSizeForward: SAFE_NON_NEGATIVE_INTEGER_SCHEMA$1,
 		centerAlignToOrigin: { type: "boolean" }
 	}),
@@ -572,13 +573,10 @@ var ENA_MODEL_RESULT_SCHEMA_V1 = { ...exactObject([
 	}),
 	axes: {
 		type: "array",
-		prefixItems: [
-			{ const: "SVD1" },
-			{ const: "SVD2" },
-			{ const: "SVD3" }
-		],
+		items: NON_EMPTY_STRING_SCHEMA$1,
 		minItems: 3,
-		maxItems: 3
+		maxItems: 3,
+		uniqueItems: true
 	},
 	points: arrayOf(ANALYSIS_POINT_SCHEMA, { minItems: 1 }),
 	nodes: arrayOf(ANALYSIS_NODE_SCHEMA, { minItems: 3 }),
@@ -605,7 +603,11 @@ var ENA_MODEL_RESULT_SCHEMA_V1 = { ...exactObject([
 		"eigenvalues",
 		"centerVector"
 	], {
-		method: { const: "svd" },
+		method: { enum: [
+			"svd",
+			"mean",
+			"reference"
+		] },
 		columns: arrayOf(NON_EMPTY_STRING_SCHEMA$1, {
 			minItems: 3,
 			uniqueItems: true
@@ -1119,6 +1121,7 @@ var TRAJECTORY_PATH_STATISTICS_SCHEMA = exactObject([
 	"schemaVersion",
 	"namespace",
 	"cohortPolicy",
+	"estimand",
 	"dimensions",
 	"selectedDimensions",
 	"distanceSemantics",
@@ -1131,6 +1134,7 @@ var TRAJECTORY_PATH_STATISTICS_SCHEMA = exactObject([
 	schemaVersion: { const: "3dena.trajectory-path-statistics.v1" },
 	namespace: NON_EMPTY_STRING_SCHEMA$1,
 	cohortPolicy: { enum: ["available", "complete"] },
+	estimand: { enum: ["equal-participant", "weighted-participant"] },
 	dimensions: arrayOf(NON_EMPTY_STRING_SCHEMA$1, {
 		minItems: 1,
 		uniqueItems: true
@@ -1144,7 +1148,7 @@ var TRAJECTORY_PATH_STATISTICS_SCHEMA = exactObject([
 		selected3d: "euclidean-selected-three-dimensions",
 		fullSpace: "euclidean-all-declared-dimensions"
 	}),
-	participantPeriods: arrayOf(trajectoryParticipantPeriodSchema(false)),
+	participantPeriods: arrayOf(trajectoryParticipantPeriodSchema(true)),
 	periods: arrayOf(TRAJECTORY_PATH_PERIOD_SCHEMA),
 	diagnostics: DIAGNOSTICS_SCHEMA,
 	summary: countObject([
@@ -1539,7 +1543,7 @@ var BOOTSTRAP_RESULT_SCHEMA = exactObject([
 			unitCount: SAFE_POSITIVE_INTEGER_SCHEMA$1
 		}), { minItems: 1 }),
 		replicateCount: SAFE_POSITIVE_INTEGER_SCHEMA$1,
-		planKind: { const: "participant-history-resample-indices-v1" },
+		planKind: { enum: ["participant-history-resample-indices-v1", "global-participant-history-resample-indices-v2"] },
 		generation: BOOTSTRAP_GENERATION_SCHEMA,
 		rngParityClaim: { const: false }
 	}),
@@ -1897,7 +1901,7 @@ var RESULT_SCHEMA_VERSION_BY_TASK_KIND_V1 = Object.freeze({
 	"trajectory-comparison": "3dena.trajectory-comparison.v1",
 	bootstrap: "3dena.trajectory-bootstrap.v1"
 });
-var SHA256$2 = /^[a-f0-9]{64}$/u;
+var SHA256$3 = /^[a-f0-9]{64}$/u;
 var SIGNED_INTEGER = /^-?(?:0|[1-9][0-9]*)$/u;
 var ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/u;
 var DURATION_UNITS = /* @__PURE__ */ new Set([
@@ -1917,53 +1921,53 @@ var TRAJECTORY_DURATION_UNITS = /* @__PURE__ */ new Set([
 	"days",
 	"weeks"
 ]);
-function contractError(path, message) {
+function contractError$1(path, message) {
 	throw new TypeError(`${path}: ${message}`);
 }
-function objectAt(value, path) {
-	if (!value || typeof value !== "object" || Array.isArray(value)) contractError(path, "must be an object");
+function objectAt$1(value, path) {
+	if (!value || typeof value !== "object" || Array.isArray(value)) contractError$1(path, "must be an object");
 	return value;
 }
-function exactFields$1(value, fields, path) {
+function exactFields$2(value, fields, path) {
 	const allowed = new Set(fields);
 	const unknown = Object.keys(value).filter((field) => !allowed.has(field));
-	if (unknown.length > 0) contractError(path, `contains unknown field ${JSON.stringify(unknown[0])}`);
+	if (unknown.length > 0) contractError$1(path, `contains unknown field ${JSON.stringify(unknown[0])}`);
 	const missing = fields.filter((field) => !Object.hasOwn(value, field));
-	if (missing.length > 0) contractError(path, `is missing required field ${JSON.stringify(missing[0])}`);
+	if (missing.length > 0) contractError$1(path, `is missing required field ${JSON.stringify(missing[0])}`);
 }
 function allowedFields(value, allowedFieldsList, requiredFieldsList, path) {
 	const allowed = new Set(allowedFieldsList);
 	const unknown = Object.keys(value).filter((field) => !allowed.has(field));
-	if (unknown.length > 0) contractError(path, `contains unknown field ${JSON.stringify(unknown[0])}`);
+	if (unknown.length > 0) contractError$1(path, `contains unknown field ${JSON.stringify(unknown[0])}`);
 	const missing = requiredFieldsList.filter((field) => !Object.hasOwn(value, field));
-	if (missing.length > 0) contractError(path, `is missing required field ${JSON.stringify(missing[0])}`);
+	if (missing.length > 0) contractError$1(path, `is missing required field ${JSON.stringify(missing[0])}`);
 }
-function nonEmptyString(value, path) {
-	if (typeof value !== "string" || value.trim() === "") contractError(path, "must be a non-empty string");
+function nonEmptyString$1(value, path) {
+	if (typeof value !== "string" || value.trim() === "") contractError$1(path, "must be a non-empty string");
 	return value;
 }
 function validateSignedInteger(value, path) {
-	if (!SIGNED_INTEGER.test(value)) contractError(path, "must be a canonical signed decimal integer");
+	if (!SIGNED_INTEGER.test(value)) contractError$1(path, "must be a canonical signed decimal integer");
 	return BigInt(value);
 }
 function validateInt64(value, path) {
 	const parsed = validateSignedInteger(value, path);
-	if (parsed < -9223372036854775808n || parsed > 9223372036854775807n) contractError(path, "must fit signed int64");
+	if (parsed < -9223372036854775808n || parsed > 9223372036854775807n) contractError$1(path, "must fit signed int64");
 }
 function validateDate(value, path) {
 	const match = ISO_DATE.exec(value);
-	if (!match) contractError(path, "must be an ISO calendar date YYYY-MM-DD");
+	if (!match) contractError$1(path, "must be an ISO calendar date YYYY-MM-DD");
 	const year = Number(match[1]);
 	const month = Number(match[2]);
 	const day = Number(match[3]);
 	const instant = /* @__PURE__ */ new Date(0);
 	instant.setUTCHours(0, 0, 0, 0);
 	instant.setUTCFullYear(year, month - 1, day);
-	if (instant.getUTCFullYear() !== year || instant.getUTCMonth() !== month - 1 || instant.getUTCDate() !== day) contractError(path, "must be a real calendar date");
+	if (instant.getUTCFullYear() !== year || instant.getUTCMonth() !== month - 1 || instant.getUTCDate() !== day) contractError$1(path, "must be a real calendar date");
 }
 /** Encodes the exact IEEE-754 bit pattern, preserving -0 and adjacent doubles. */
 function typedDoubleV1(value) {
-	if (!Number.isFinite(value)) contractError("value", "double identities must be finite");
+	if (!Number.isFinite(value)) contractError$1("value", "double identities must be finite");
 	const buffer = /* @__PURE__ */ new ArrayBuffer(8);
 	new DataView(buffer).setFloat64(0, value, false);
 	return {
@@ -1972,25 +1976,25 @@ function typedDoubleV1(value) {
 	};
 }
 function assertTaskOwnerV1(value, path = "owner") {
-	const owner = objectAt(value, path);
-	exactFields$1(owner, [
+	const owner = objectAt$1(value, path);
+	exactFields$2(owner, [
 		"contractVersion",
 		"datasetHash",
 		"specHash",
 		"runId",
 		"taskId"
 	], path);
-	if (owner.contractVersion !== "3dena.contract.v1") contractError(`${path}.contractVersion`, `must be ${ANALYSIS_CONTRACT_VERSION_V1}`);
+	if (owner.contractVersion !== "3dena.contract.v1") contractError$1(`${path}.contractVersion`, `must be ${ANALYSIS_CONTRACT_VERSION_V1}`);
 	for (const field of ["datasetHash", "specHash"]) {
-		const hash = nonEmptyString(owner[field], `${path}.${field}`);
-		if (!SHA256$2.test(hash)) contractError(`${path}.${field}`, "must be a lowercase SHA-256 hex digest");
+		const hash = nonEmptyString$1(owner[field], `${path}.${field}`);
+		if (!SHA256$3.test(hash)) contractError$1(`${path}.${field}`, "must be a lowercase SHA-256 hex digest");
 	}
-	nonEmptyString(owner.runId, `${path}.runId`);
-	nonEmptyString(owner.taskId, `${path}.taskId`);
+	nonEmptyString$1(owner.runId, `${path}.runId`);
+	nonEmptyString$1(owner.taskId, `${path}.taskId`);
 }
 function assertDatasetReceiptV1(value, path = "receipt") {
-	const receipt = objectAt(value, path);
-	exactFields$1(receipt, [
+	const receipt = objectAt$1(value, path);
+	exactFields$2(receipt, [
 		"schemaVersion",
 		"sha256",
 		"byteLength",
@@ -2003,35 +2007,35 @@ function assertDatasetReceiptV1(value, path = "receipt") {
 		"warnings",
 		"activationIdentity"
 	], path);
-	if (receipt.schemaVersion !== "3dena.dataset-receipt.v1") contractError(`${path}.schemaVersion`, `must be ${DATASET_RECEIPT_VERSION_V1}`);
-	if (typeof receipt.sha256 !== "string" || !SHA256$2.test(receipt.sha256)) contractError(`${path}.sha256`, "must be a lowercase SHA-256 hex digest");
+	if (receipt.schemaVersion !== "3dena.dataset-receipt.v1") contractError$1(`${path}.schemaVersion`, `must be ${DATASET_RECEIPT_VERSION_V1}`);
+	if (typeof receipt.sha256 !== "string" || !SHA256$3.test(receipt.sha256)) contractError$1(`${path}.sha256`, "must be a lowercase SHA-256 hex digest");
 	for (const field of [
 		"byteLength",
 		"rows",
 		"columns"
-	]) if (!Number.isSafeInteger(receipt[field]) || receipt[field] < 1) contractError(`${path}.${field}`, "must be a positive safe integer");
+	]) if (!Number.isSafeInteger(receipt[field]) || receipt[field] < 1) contractError$1(`${path}.${field}`, "must be a positive safe integer");
 	if (![
 		"csv",
 		"xlsx",
 		"xls",
 		"ena3d-json"
-	].includes(receipt.format)) contractError(`${path}.format`, "is unsupported");
+	].includes(receipt.format)) contractError$1(`${path}.format`, "is unsupported");
 	if (receipt.sheet !== null) {
-		const sheet = objectAt(receipt.sheet, `${path}.sheet`);
-		exactFields$1(sheet, ["index", "name"], `${path}.sheet`);
-		if (!Number.isSafeInteger(sheet.index) || sheet.index < 0) contractError(`${path}.sheet.index`, "must be a non-negative safe integer");
-		nonEmptyString(sheet.name, `${path}.sheet.name`);
+		const sheet = objectAt$1(receipt.sheet, `${path}.sheet`);
+		exactFields$2(sheet, ["index", "name"], `${path}.sheet`);
+		if (!Number.isSafeInteger(sheet.index) || sheet.index < 0) contractError$1(`${path}.sheet.index`, "must be a non-negative safe integer");
+		nonEmptyString$1(sheet.name, `${path}.sheet.name`);
 	}
-	const schema = objectAt(receipt.schema, `${path}.schema`);
-	exactFields$1(schema, [
+	const schema = objectAt$1(receipt.schema, `${path}.schema`);
+	exactFields$2(schema, [
 		"schemaVersion",
 		"headers",
 		"columns"
 	], `${path}.schema`);
-	if (schema.schemaVersion !== "3dena.dataset-schema.v1") contractError(`${path}.schema.schemaVersion`, "must be 3dena.dataset-schema.v1");
-	const headers = stringList(schema.headers, `${path}.schema.headers`);
-	if (headers.length !== receipt.columns) contractError(`${path}.schema.headers`, "length must equal receipt.columns");
-	if (!Array.isArray(schema.columns) || schema.columns.length !== receipt.columns) contractError(`${path}.schema.columns`, "length must equal receipt.columns");
+	if (schema.schemaVersion !== "3dena.dataset-schema.v1") contractError$1(`${path}.schema.schemaVersion`, "must be 3dena.dataset-schema.v1");
+	const headers = stringList$1(schema.headers, `${path}.schema.headers`);
+	if (headers.length !== receipt.columns) contractError$1(`${path}.schema.headers`, "length must equal receipt.columns");
+	if (!Array.isArray(schema.columns) || schema.columns.length !== receipt.columns) contractError$1(`${path}.schema.columns`, "length must equal receipt.columns");
 	const allowedTypes = /* @__PURE__ */ new Set([
 		"string",
 		"number",
@@ -2049,20 +2053,20 @@ function assertDatasetReceiptV1(value, path = "receipt") {
 		"unmapped"
 	]);
 	schema.columns.forEach((candidate, index) => {
-		const column = objectAt(candidate, `${path}.schema.columns[${index}]`);
-		exactFields$1(column, [
+		const column = objectAt$1(candidate, `${path}.schema.columns[${index}]`);
+		exactFields$2(column, [
 			"name",
 			"inferredType",
 			"roles"
 		], `${path}.schema.columns[${index}]`);
-		if (nonEmptyString(column.name, `${path}.schema.columns[${index}].name`) !== headers[index]) contractError(`${path}.schema.columns[${index}].name`, "must match the ordered header at the same index");
-		if (!allowedTypes.has(column.inferredType)) contractError(`${path}.schema.columns[${index}].inferredType`, "is unsupported");
-		if (!Array.isArray(column.roles) || column.roles.length === 0 || column.roles.some((role) => !allowedRoles.has(role))) contractError(`${path}.schema.columns[${index}].roles`, "must be a non-empty array of supported roles");
-		if (new Set(column.roles).size !== column.roles.length) contractError(`${path}.schema.columns[${index}].roles`, "must not contain duplicates");
-		if (column.roles.includes("unmapped") && column.roles.length !== 1) contractError(`${path}.schema.columns[${index}].roles`, "unmapped must stand alone");
+		if (nonEmptyString$1(column.name, `${path}.schema.columns[${index}].name`) !== headers[index]) contractError$1(`${path}.schema.columns[${index}].name`, "must match the ordered header at the same index");
+		if (!allowedTypes.has(column.inferredType)) contractError$1(`${path}.schema.columns[${index}].inferredType`, "is unsupported");
+		if (!Array.isArray(column.roles) || column.roles.length === 0 || column.roles.some((role) => !allowedRoles.has(role))) contractError$1(`${path}.schema.columns[${index}].roles`, "must be a non-empty array of supported roles");
+		if (new Set(column.roles).size !== column.roles.length) contractError$1(`${path}.schema.columns[${index}].roles`, "must not contain duplicates");
+		if (column.roles.includes("unmapped") && column.roles.length !== 1) contractError$1(`${path}.schema.columns[${index}].roles`, "unmapped must stand alone");
 	});
-	const limits = objectAt(receipt.limits, `${path}.limits`);
-	exactFields$1(limits, [
+	const limits = objectAt$1(receipt.limits, `${path}.limits`);
+	exactFields$2(limits, [
 		"schemaVersion",
 		"maxFileBytes",
 		"maxWorksheets",
@@ -2070,48 +2074,48 @@ function assertDatasetReceiptV1(value, path = "receipt") {
 		"maxColumns",
 		"maxCells"
 	], `${path}.limits`);
-	if (limits.schemaVersion !== "3dena.dataset-limits.v1") contractError(`${path}.limits.schemaVersion`, "must be 3dena.dataset-limits.v1");
+	if (limits.schemaVersion !== "3dena.dataset-limits.v1") contractError$1(`${path}.limits.schemaVersion`, "must be 3dena.dataset-limits.v1");
 	for (const field of [
 		"maxFileBytes",
 		"maxWorksheets",
 		"maxRows",
 		"maxColumns",
 		"maxCells"
-	]) if (!Number.isSafeInteger(limits[field]) || limits[field] < 1) contractError(`${path}.limits.${field}`, "must be a positive safe integer");
-	if (receipt.byteLength > limits.maxFileBytes) contractError(`${path}.byteLength`, "exceeds the activated limits contract");
-	if (receipt.rows > limits.maxRows) contractError(`${path}.rows`, "exceeds the activated limits contract");
-	if (receipt.columns > limits.maxColumns) contractError(`${path}.columns`, "exceeds the activated limits contract");
+	]) if (!Number.isSafeInteger(limits[field]) || limits[field] < 1) contractError$1(`${path}.limits.${field}`, "must be a positive safe integer");
+	if (receipt.byteLength > limits.maxFileBytes) contractError$1(`${path}.byteLength`, "exceeds the activated limits contract");
+	if (receipt.rows > limits.maxRows) contractError$1(`${path}.rows`, "exceeds the activated limits contract");
+	if (receipt.columns > limits.maxColumns) contractError$1(`${path}.columns`, "exceeds the activated limits contract");
 	const cells = receipt.rows * receipt.columns;
-	if (!Number.isSafeInteger(cells) || cells > limits.maxCells) contractError(`${path}.rows`, "implies cells above the activated limits contract");
-	if (!Array.isArray(receipt.warnings) || receipt.warnings.some((warning) => typeof warning !== "string")) contractError(`${path}.warnings`, "must be a string array");
-	if (new Set(receipt.warnings).size !== receipt.warnings.length) contractError(`${path}.warnings`, "must not contain duplicates");
-	nonEmptyString(receipt.activationIdentity, `${path}.activationIdentity`);
+	if (!Number.isSafeInteger(cells) || cells > limits.maxCells) contractError$1(`${path}.rows`, "implies cells above the activated limits contract");
+	if (!Array.isArray(receipt.warnings) || receipt.warnings.some((warning) => typeof warning !== "string")) contractError$1(`${path}.warnings`, "must be a string array");
+	if (new Set(receipt.warnings).size !== receipt.warnings.length) contractError$1(`${path}.warnings`, "must not contain duplicates");
+	nonEmptyString$1(receipt.activationIdentity, `${path}.activationIdentity`);
 }
 function lowercaseSha256(value, path) {
-	if (typeof value !== "string" || !SHA256$2.test(value)) contractError(path, "must be a lowercase SHA-256 hex digest");
+	if (typeof value !== "string" || !SHA256$3.test(value)) contractError$1(path, "must be a lowercase SHA-256 hex digest");
 	return value;
 }
 function stringPair(value, path) {
-	if (!Array.isArray(value) || value.length !== 2) contractError(path, "must contain exactly two strings");
-	const left = nonEmptyString(value[0], `${path}[0]`);
-	const right = nonEmptyString(value[1], `${path}[1]`);
-	if (left === right) contractError(path, "must contain two different values");
+	if (!Array.isArray(value) || value.length !== 2) contractError$1(path, "must contain exactly two strings");
+	const left = nonEmptyString$1(value[0], `${path}[0]`);
+	const right = nonEmptyString$1(value[1], `${path}[1]`);
+	if (left === right) contractError$1(path, "must contain two different values");
 	return [left, right];
 }
-function stringList(value, path, minimum = 1) {
-	if (!Array.isArray(value) || value.length < minimum) contractError(path, `must contain at least ${minimum} strings`);
-	const output = value.map((entry, index) => nonEmptyString(entry, `${path}[${index}]`));
-	if (new Set(output).size !== output.length) contractError(path, "must not contain duplicates");
+function stringList$1(value, path, minimum = 1) {
+	if (!Array.isArray(value) || value.length < minimum) contractError$1(path, `must contain at least ${minimum} strings`);
+	const output = value.map((entry, index) => nonEmptyString$1(entry, `${path}[${index}]`));
+	if (new Set(output).size !== output.length) contractError$1(path, "must not contain duplicates");
 	return output;
 }
-function rawScalar(value, path) {
+function rawScalar$1(value, path) {
 	if (value === null || typeof value === "string" || typeof value === "boolean") return;
-	if (typeof value !== "number" || !Number.isFinite(value)) contractError(path, "must be a finite JSON scalar or null");
-	if (Number.isInteger(value) && !Number.isSafeInteger(value)) contractError(path, "unsafe integer identities must be supplied as strings");
+	if (typeof value !== "number" || !Number.isFinite(value)) contractError$1(path, "must be a finite JSON scalar or null");
+	if (Number.isInteger(value) && !Number.isSafeInteger(value)) contractError$1(path, "unsafe integer identities must be supplied as strings");
 }
 function assertPreparedMapping(value, path) {
-	const mapping = objectAt(value, path);
-	exactFields$1(mapping, [
+	const mapping = objectAt$1(value, path);
+	exactFields$2(mapping, [
 		"participant",
 		"participantLabel",
 		"group",
@@ -2121,38 +2125,38 @@ function assertPreparedMapping(value, path) {
 		"displayDimensions",
 		"missingDisplayCoordinates"
 	], path);
-	stringList(mapping.participant, `${path}.participant`);
-	nonEmptyString(mapping.participantLabel, `${path}.participantLabel`);
-	nonEmptyString(mapping.group, `${path}.group`);
-	nonEmptyString(mapping.time, `${path}.time`);
-	if (!Array.isArray(mapping.timeOrder) || mapping.timeOrder.length === 0) contractError(`${path}.timeOrder`, "must contain at least one ordered period");
-	mapping.timeOrder.forEach((candidate, index) => rawScalar(candidate, `${path}.timeOrder[${index}]`));
-	if (mapping.cohortPolicy !== "available" && mapping.cohortPolicy !== "complete") contractError(`${path}.cohortPolicy`, "must be available or complete");
-	if (stringList(mapping.displayDimensions, `${path}.displayDimensions`, 3).length !== 3) contractError(`${path}.displayDimensions`, "must contain exactly three dimensions");
-	if (mapping.missingDisplayCoordinates !== "reject") contractError(`${path}.missingDisplayCoordinates`, "must be reject");
+	stringList$1(mapping.participant, `${path}.participant`);
+	nonEmptyString$1(mapping.participantLabel, `${path}.participantLabel`);
+	nonEmptyString$1(mapping.group, `${path}.group`);
+	nonEmptyString$1(mapping.time, `${path}.time`);
+	if (!Array.isArray(mapping.timeOrder) || mapping.timeOrder.length === 0) contractError$1(`${path}.timeOrder`, "must contain at least one ordered period");
+	mapping.timeOrder.forEach((candidate, index) => rawScalar$1(candidate, `${path}.timeOrder[${index}]`));
+	if (mapping.cohortPolicy !== "available" && mapping.cohortPolicy !== "complete") contractError$1(`${path}.cohortPolicy`, "must be available or complete");
+	if (stringList$1(mapping.displayDimensions, `${path}.displayDimensions`, 3).length !== 3) contractError$1(`${path}.displayDimensions`, "must contain exactly three dimensions");
+	if (mapping.missingDisplayCoordinates !== "reject") contractError$1(`${path}.missingDisplayCoordinates`, "must be reject");
 }
 function trajectoryDurationUnit(value, path) {
-	if (typeof value !== "string" || !TRAJECTORY_DURATION_UNITS.has(value)) contractError(path, "must be milliseconds, seconds, minutes, hours, days, or weeks");
+	if (typeof value !== "string" || !TRAJECTORY_DURATION_UNITS.has(value)) contractError$1(path, "must be milliseconds, seconds, minutes, hours, days, or weeks");
 }
 function assertTrajectoryTimeValue(value, path) {
-	const time = objectAt(value, path);
-	const type = nonEmptyString(time.type, `${path}.type`);
+	const time = objectAt$1(value, path);
+	const type = nonEmptyString$1(time.type, `${path}.type`);
 	switch (type) {
 		case "numeric-v1":
-			exactFields$1(time, [
+			exactFields$2(time, [
 				"type",
 				"value",
 				"unit"
 			], path);
-			if (typeof time.value !== "number" || !Number.isFinite(time.value)) contractError(`${path}.value`, "must be finite");
-			nonEmptyString(time.unit, `${path}.unit`);
+			if (typeof time.value !== "number" || !Number.isFinite(time.value)) contractError$1(`${path}.value`, "must be finite");
+			nonEmptyString$1(time.unit, `${path}.unit`);
 			return;
 		case "date-v1":
-			exactFields$1(time, ["type", "value"], path);
-			validateDate(nonEmptyString(time.value, `${path}.value`), `${path}.value`);
+			exactFields$2(time, ["type", "value"], path);
+			validateDate(nonEmptyString$1(time.value, `${path}.value`), `${path}.value`);
 			return;
 		case "instant-v1":
-			exactFields$1(time, [
+			exactFields$2(time, [
 				"type",
 				"epochMilliseconds",
 				"timeZone",
@@ -2160,33 +2164,33 @@ function assertTrajectoryTimeValue(value, path) {
 				"fold",
 				"elapsedUnit"
 			], path);
-			validateInt64(nonEmptyString(time.epochMilliseconds, `${path}.epochMilliseconds`), `${path}.epochMilliseconds`);
-			nonEmptyString(time.timeZone, `${path}.timeZone`);
-			if (!Number.isInteger(time.offsetMinutes) || time.offsetMinutes < -1440 || time.offsetMinutes > 1440) contractError(`${path}.offsetMinutes`, "must be an integer from -1440 through 1440");
-			if (time.fold !== 0 && time.fold !== 1) contractError(`${path}.fold`, "must be 0 or 1");
+			validateInt64(nonEmptyString$1(time.epochMilliseconds, `${path}.epochMilliseconds`), `${path}.epochMilliseconds`);
+			nonEmptyString$1(time.timeZone, `${path}.timeZone`);
+			if (!Number.isInteger(time.offsetMinutes) || time.offsetMinutes < -1440 || time.offsetMinutes > 1440) contractError$1(`${path}.offsetMinutes`, "must be an integer from -1440 through 1440");
+			if (time.fold !== 0 && time.fold !== 1) contractError$1(`${path}.fold`, "must be 0 or 1");
 			trajectoryDurationUnit(time.elapsedUnit, `${path}.elapsedUnit`);
 			return;
 		case "difftime-v1":
-			exactFields$1(time, [
+			exactFields$2(time, [
 				"type",
 				"value",
 				"unit",
 				"elapsedUnit"
 			], path);
-			if (typeof time.value !== "number" || !Number.isFinite(time.value)) contractError(`${path}.value`, "must be finite");
+			if (typeof time.value !== "number" || !Number.isFinite(time.value)) contractError$1(`${path}.value`, "must be finite");
 			trajectoryDurationUnit(time.unit, `${path}.unit`);
 			trajectoryDurationUnit(time.elapsedUnit, `${path}.elapsedUnit`);
 			return;
-		default: contractError(`${path}.type`, `unsupported trajectory time type ${JSON.stringify(type)}`);
+		default: contractError$1(`${path}.type`, `unsupported trajectory time type ${JSON.stringify(type)}`);
 	}
 }
 /** Strict runtime validator shared by SDK, remote client, service, and Worker. */
 function assertAnalysisTaskV1(value, path = "task") {
-	const task = objectAt(value, path);
-	if (task.schemaVersion !== "3dena.analysis-task.v1") contractError(`${path}.schemaVersion`, `must be ${ANALYSIS_TASK_VERSION_V1}`);
+	const task = objectAt$1(value, path);
+	if (task.schemaVersion !== "3dena.analysis-task.v1") contractError$1(`${path}.schemaVersion`, `must be ${ANALYSIS_TASK_VERSION_V1}`);
 	assertTaskOwnerV1(task.owner, `${path}.owner`);
-	if (!Number.isSafeInteger(task.deadlineEpochMilliseconds) || task.deadlineEpochMilliseconds < 0) contractError(`${path}.deadlineEpochMilliseconds`, "must be a non-negative safe integer");
-	const kind = nonEmptyString(task.kind, `${path}.kind`);
+	if (!Number.isSafeInteger(task.deadlineEpochMilliseconds) || task.deadlineEpochMilliseconds < 0) contractError$1(`${path}.deadlineEpochMilliseconds`, "must be a non-negative safe integer");
+	const kind = nonEmptyString$1(task.kind, `${path}.kind`);
 	const base = [
 		"schemaVersion",
 		"kind",
@@ -2195,24 +2199,24 @@ function assertAnalysisTaskV1(value, path = "task") {
 	];
 	switch (kind) {
 		case "ena-model":
-			exactFields$1(task, [...base, "input"], path);
-			objectAt(task.input, `${path}.input`);
+			exactFields$2(task, [...base, "input"], path);
+			objectAt$1(task.input, `${path}.input`);
 			return;
 		case "prepared-import": {
-			exactFields$1(task, [...base, "input"], path);
-			const input = objectAt(task.input, `${path}.input`);
-			exactFields$1(input, [
+			exactFields$2(task, [...base, "input"], path);
+			const input = objectAt$1(task.input, `${path}.input`);
+			exactFields$2(input, [
 				"sourceName",
 				"exactBytesBase64",
 				"mapping"
 			], `${path}.input`);
-			if (input.sourceName !== "uploaded.ena3d.json") contractError(`${path}.input.sourceName`, "must be the non-identifying service source name");
-			if (typeof input.exactBytesBase64 !== "string" || input.exactBytesBase64.length < 4 || input.exactBytesBase64.length > 7e6 || input.exactBytesBase64.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/u.test(input.exactBytesBase64)) contractError(`${path}.input.exactBytesBase64`, "must be bounded canonical base64");
+			if (input.sourceName !== "uploaded.ena3d.json") contractError$1(`${path}.input.sourceName`, "must be the non-identifying service source name");
+			if (typeof input.exactBytesBase64 !== "string" || input.exactBytesBase64.length < 4 || input.exactBytesBase64.length > 7e6 || input.exactBytesBase64.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/u.test(input.exactBytesBase64)) contractError$1(`${path}.input.exactBytesBase64`, "must be bounded canonical base64");
 			assertPreparedMapping(input.mapping, `${path}.input.mapping`);
 			return;
 		}
 		case "network-comparison":
-			exactFields$1(task, [
+			exactFields$2(task, [
 				...base,
 				"sourceResultHash",
 				"groups"
@@ -2221,18 +2225,18 @@ function assertAnalysisTaskV1(value, path = "task") {
 			stringPair(task.groups, `${path}.groups`);
 			return;
 		case "change-network":
-			exactFields$1(task, [
+			exactFields$2(task, [
 				...base,
 				"sourceResultHash",
 				"field",
 				"level"
 			], path);
 			lowercaseSha256(task.sourceResultHash, `${path}.sourceResultHash`);
-			nonEmptyString(task.field, `${path}.field`);
-			rawScalar(task.level, `${path}.level`);
+			nonEmptyString$1(task.field, `${path}.field`);
+			rawScalar$1(task.level, `${path}.level`);
 			return;
 		case "statistics":
-			exactFields$1(task, [
+			exactFields$2(task, [
 				...base,
 				"sourceResultHash",
 				"design",
@@ -2243,26 +2247,26 @@ function assertAnalysisTaskV1(value, path = "task") {
 				"samePhysicalEntityConfirmed"
 			], path);
 			lowercaseSha256(task.sourceResultHash, `${path}.sourceResultHash`);
-			if (task.design !== "independent" && task.design !== "paired") contractError(`${path}.design`, "must be independent or paired");
+			if (task.design !== "independent" && task.design !== "paired") contractError$1(`${path}.design`, "must be independent or paired");
 			stringPair(task.groups, `${path}.groups`);
-			stringList(task.dimensions, `${path}.dimensions`);
+			stringList$1(task.dimensions, `${path}.dimensions`);
 			if (![
 				"two-sided",
 				"greater",
 				"less"
-			].includes(task.alternative)) contractError(`${path}.alternative`, "is unsupported");
+			].includes(task.alternative)) contractError$1(`${path}.alternative`, "is unsupported");
 			if (![
 				"none",
 				"holm",
 				"bh",
 				"bonferroni"
-			].includes(task.adjustment)) contractError(`${path}.adjustment`, "is unsupported");
-			if (typeof task.samePhysicalEntityConfirmed !== "boolean") contractError(`${path}.samePhysicalEntityConfirmed`, "must be boolean");
-			if (task.design === "paired" && task.samePhysicalEntityConfirmed !== true) contractError(`${path}.samePhysicalEntityConfirmed`, "must be true for paired statistics");
-			if (task.design === "independent" && task.samePhysicalEntityConfirmed !== false) contractError(`${path}.samePhysicalEntityConfirmed`, "must be false for independent statistics");
+			].includes(task.adjustment)) contractError$1(`${path}.adjustment`, "is unsupported");
+			if (typeof task.samePhysicalEntityConfirmed !== "boolean") contractError$1(`${path}.samePhysicalEntityConfirmed`, "must be boolean");
+			if (task.design === "paired" && task.samePhysicalEntityConfirmed !== true) contractError$1(`${path}.samePhysicalEntityConfirmed`, "must be true for paired statistics");
+			if (task.design === "independent" && task.samePhysicalEntityConfirmed !== false) contractError$1(`${path}.samePhysicalEntityConfirmed`, "must be false for independent statistics");
 			return;
 		case "trajectory":
-			exactFields$1(task, [
+			exactFields$2(task, [
 				...base,
 				"sourceResultHash",
 				"group",
@@ -2272,32 +2276,32 @@ function assertAnalysisTaskV1(value, path = "task") {
 				"estimand"
 			], path);
 			lowercaseSha256(task.sourceResultHash, `${path}.sourceResultHash`);
-			nonEmptyString(task.group, `${path}.group`);
-			if (stringList(task.selectedDimensions, `${path}.selectedDimensions`, 3).length !== 3) contractError(`${path}.selectedDimensions`, "must contain exactly three dimensions");
-			if (task.cohortPolicy !== "available" && task.cohortPolicy !== "complete") contractError(`${path}.cohortPolicy`, "must be available or complete");
-			if (!Array.isArray(task.periods) || task.periods.length === 0) contractError(`${path}.periods`, "must contain at least one period");
+			nonEmptyString$1(task.group, `${path}.group`);
+			if (stringList$1(task.selectedDimensions, `${path}.selectedDimensions`, 3).length !== 3) contractError$1(`${path}.selectedDimensions`, "must contain exactly three dimensions");
+			if (task.cohortPolicy !== "available" && task.cohortPolicy !== "complete") contractError$1(`${path}.cohortPolicy`, "must be available or complete");
+			if (!Array.isArray(task.periods) || task.periods.length === 0) contractError$1(`${path}.periods`, "must contain at least one period");
 			{
 				const seen = /* @__PURE__ */ new Set();
 				task.periods.forEach((candidate, index) => {
-					const period = objectAt(candidate, `${path}.periods[${index}]`);
-					exactFields$1(period, ["sourceTimeCanonical", "value"], `${path}.periods[${index}]`);
-					const canonical = nonEmptyString(period.sourceTimeCanonical, `${path}.periods[${index}].sourceTimeCanonical`);
-					if (seen.has(canonical)) contractError(`${path}.periods[${index}].sourceTimeCanonical`, "duplicates an earlier source time key");
+					const period = objectAt$1(candidate, `${path}.periods[${index}]`);
+					exactFields$2(period, ["sourceTimeCanonical", "value"], `${path}.periods[${index}]`);
+					const canonical = nonEmptyString$1(period.sourceTimeCanonical, `${path}.periods[${index}].sourceTimeCanonical`);
+					if (seen.has(canonical)) contractError$1(`${path}.periods[${index}].sourceTimeCanonical`, "duplicates an earlier source time key");
 					seen.add(canonical);
 					assertTrajectoryTimeValue(period.value, `${path}.periods[${index}].value`);
 				});
 			}
 			{
-				const estimand = objectAt(task.estimand, `${path}.estimand`);
-				if (estimand.kind === "equal-participant-v1") exactFields$1(estimand, ["kind"], `${path}.estimand`);
+				const estimand = objectAt$1(task.estimand, `${path}.estimand`);
+				if (estimand.kind === "equal-participant-v1") exactFields$2(estimand, ["kind"], `${path}.estimand`);
 				else if (estimand.kind === "weighted-participant-v1") {
-					exactFields$1(estimand, ["kind", "metadataField"], `${path}.estimand`);
-					nonEmptyString(estimand.metadataField, `${path}.estimand.metadataField`);
-				} else contractError(`${path}.estimand.kind`, "must be equal-participant-v1 or weighted-participant-v1");
+					exactFields$2(estimand, ["kind", "metadataField"], `${path}.estimand`);
+					nonEmptyString$1(estimand.metadataField, `${path}.estimand.metadataField`);
+				} else contractError$1(`${path}.estimand.kind`, "must be equal-participant-v1 or weighted-participant-v1");
 			}
 			return;
 		case "trajectory-comparison":
-			exactFields$1(task, [
+			exactFields$2(task, [
 				...base,
 				"sourceResultHash",
 				"design",
@@ -2305,13 +2309,13 @@ function assertAnalysisTaskV1(value, path = "task") {
 				"samePhysicalEntityConfirmed"
 			], path);
 			lowercaseSha256(task.sourceResultHash, `${path}.sourceResultHash`);
-			if (task.design !== "independent" && task.design !== "paired") contractError(`${path}.design`, "must be independent or paired");
+			if (task.design !== "independent" && task.design !== "paired") contractError$1(`${path}.design`, "must be independent or paired");
 			stringPair(task.groups, `${path}.groups`);
-			if (typeof task.samePhysicalEntityConfirmed !== "boolean") contractError(`${path}.samePhysicalEntityConfirmed`, "must be boolean");
-			if (task.design === "paired" && task.samePhysicalEntityConfirmed !== true) contractError(`${path}.samePhysicalEntityConfirmed`, "must be true for paired comparison");
+			if (typeof task.samePhysicalEntityConfirmed !== "boolean") contractError$1(`${path}.samePhysicalEntityConfirmed`, "must be boolean");
+			if (task.design === "paired" && task.samePhysicalEntityConfirmed !== true) contractError$1(`${path}.samePhysicalEntityConfirmed`, "must be true for paired comparison");
 			return;
 		case "bootstrap":
-			exactFields$1(task, [
+			exactFields$2(task, [
 				...base,
 				"sourceResultHash",
 				"group",
@@ -2322,23 +2326,23 @@ function assertAnalysisTaskV1(value, path = "task") {
 				"rotationPolicy"
 			], path);
 			lowercaseSha256(task.sourceResultHash, `${path}.sourceResultHash`);
-			nonEmptyString(task.group, `${path}.group`);
-			if (!Number.isSafeInteger(task.replicates) || task.replicates < 200 || task.replicates > 500) contractError(`${path}.replicates`, "must be a safe integer from 200 through 500");
-			if (typeof task.confidenceLevel !== "number" || !Number.isFinite(task.confidenceLevel) || task.confidenceLevel <= 0 || task.confidenceLevel >= 1) contractError(`${path}.confidenceLevel`, "must be finite and strictly between 0 and 1");
-			if (!Number.isSafeInteger(task.seed) || task.seed < 0 || task.seed > 4294967295) contractError(`${path}.seed`, "must be an unsigned 32-bit integer");
-			if (task.interval !== "pointwise-percentile-type7") contractError(`${path}.interval`, "is unsupported in task v1");
-			if (task.rotationPolicy !== "fixed-preprojected") contractError(`${path}.rotationPolicy`, "is unsupported in task v1");
+			nonEmptyString$1(task.group, `${path}.group`);
+			if (!Number.isSafeInteger(task.replicates) || task.replicates < 200 || task.replicates > 500) contractError$1(`${path}.replicates`, "must be a safe integer from 200 through 500");
+			if (typeof task.confidenceLevel !== "number" || !Number.isFinite(task.confidenceLevel) || task.confidenceLevel <= 0 || task.confidenceLevel >= 1) contractError$1(`${path}.confidenceLevel`, "must be finite and strictly between 0 and 1");
+			if (!Number.isSafeInteger(task.seed) || task.seed < 0 || task.seed > 4294967295) contractError$1(`${path}.seed`, "must be an unsigned 32-bit integer");
+			if (task.interval !== "pointwise-percentile-type7") contractError$1(`${path}.interval`, "is unsupported in task v1");
+			if (task.rotationPolicy !== "fixed-preprojected") contractError$1(`${path}.rotationPolicy`, "is unsupported in task v1");
 			return;
-		default: contractError(`${path}.kind`, `unsupported analysis task ${JSON.stringify(kind)}`);
+		default: contractError$1(`${path}.kind`, `unsupported analysis task ${JSON.stringify(kind)}`);
 	}
 }
 function finiteRange(value, path, minimum, maximum) {
-	if (typeof value !== "number" || !Number.isFinite(value) || value < minimum || value > maximum) contractError(path, `must be finite and in [${minimum}, ${maximum}]`);
+	if (typeof value !== "number" || !Number.isFinite(value) || value < minimum || value > maximum) contractError$1(path, `must be finite and in [${minimum}, ${maximum}]`);
 	return value;
 }
 function vector3(value, path) {
-	const vector = objectAt(value, path);
-	exactFields$1(vector, [
+	const vector = objectAt$1(value, path);
+	exactFields$2(vector, [
 		"x",
 		"y",
 		"z"
@@ -2350,7 +2354,7 @@ function vector3(value, path) {
 	]) finiteRange(vector[axis], `${path}.${axis}`, -1e6, 1e6);
 }
 function assertDisplaySpecV1(value, path = "displaySpec") {
-	const spec = objectAt(value, path);
+	const spec = objectAt$1(value, path);
 	allowedFields(spec, [
 		"schemaVersion",
 		"dimensions",
@@ -2373,17 +2377,17 @@ function assertDisplaySpecV1(value, path = "displaySpec") {
 		"style",
 		"camera"
 	], path);
-	if (spec.schemaVersion !== "3dena.display-spec.v1") contractError(`${path}.schemaVersion`, "must be 3dena.display-spec.v1");
-	if (stringList(spec.dimensions, `${path}.dimensions`, 3).length !== 3) contractError(`${path}.dimensions`, "must contain exactly three dimensions");
-	if (spec.plotDimension !== 2 && spec.plotDimension !== 3) contractError(`${path}.plotDimension`, "must be 2 or 3");
-	if (spec.groups !== void 0) stringList(spec.groups, `${path}.groups`);
+	if (spec.schemaVersion !== "3dena.display-spec.v1") contractError$1(`${path}.schemaVersion`, "must be 3dena.display-spec.v1");
+	if (stringList$1(spec.dimensions, `${path}.dimensions`, 3).length !== 3) contractError$1(`${path}.dimensions`, "must contain exactly three dimensions");
+	if (spec.plotDimension !== 2 && spec.plotDimension !== 3) contractError$1(`${path}.plotDimension`, "must be 2 or 3");
+	if (spec.groups !== void 0) stringList$1(spec.groups, `${path}.groups`);
 	for (const field of [
 		"showGrid",
 		"showZeroLines",
 		"showAxes"
-	]) if (typeof spec[field] !== "boolean") contractError(`${path}.${field}`, "must be boolean");
-	const traces = objectAt(spec.traces, `${path}.traces`);
-	exactFields$1(traces, [
+	]) if (typeof spec[field] !== "boolean") contractError$1(`${path}.${field}`, "must be boolean");
+	const traces = objectAt$1(spec.traces, `${path}.traces`);
+	exactFields$2(traces, [
 		"points",
 		"nodes",
 		"network",
@@ -2398,9 +2402,9 @@ function assertDisplaySpecV1(value, path = "displaySpec") {
 		"centroids",
 		"trajectory",
 		"uncertainty"
-	]) if (typeof traces[field] !== "boolean") contractError(`${path}.traces.${field}`, "must be boolean");
-	const style = objectAt(spec.style, `${path}.style`);
-	exactFields$1(style, [
+	]) if (typeof traces[field] !== "boolean") contractError$1(`${path}.traces.${field}`, "must be boolean");
+	const style = objectAt$1(spec.style, `${path}.style`);
+	exactFields$2(style, [
 		"pointSize",
 		"pointOpacity",
 		"nodeSize",
@@ -2417,8 +2421,8 @@ function assertDisplaySpecV1(value, path = "displaySpec") {
 	finiteRange(style.edgeWidthScale, `${path}.style.edgeWidthScale`, .01, 1e3);
 	finiteRange(style.trajectoryWidth, `${path}.style.trajectoryWidth`, .1, 100);
 	if (spec.camera !== null) {
-		const camera = objectAt(spec.camera, `${path}.camera`);
-		exactFields$1(camera, [
+		const camera = objectAt$1(spec.camera, `${path}.camera`);
+		exactFields$2(camera, [
 			"eye",
 			"center",
 			"up"
@@ -2429,7 +2433,7 @@ function assertDisplaySpecV1(value, path = "displaySpec") {
 	}
 }
 function assertEvidenceStampV1(value, path = "evidence") {
-	const evidence = objectAt(value, path);
+	const evidence = objectAt$1(value, path);
 	allowedFields(evidence, [
 		"schemaVersion",
 		"scope",
@@ -2445,8 +2449,8 @@ function assertEvidenceStampV1(value, path = "evidence") {
 		"status",
 		"approvedForParity"
 	], path);
-	if (evidence.schemaVersion !== "3dena.evidence-stamp.v1") contractError(`${path}.schemaVersion`, "must be 3dena.evidence-stamp.v1");
-	if (!(evidence.scope === "fixture" || evidence.scope === "feature" || evidence.scope === "build" || evidence.scope === "deployment")) contractError(`${path}.scope`, "is unsupported");
+	if (evidence.schemaVersion !== "3dena.evidence-stamp.v1") contractError$1(`${path}.schemaVersion`, "must be 3dena.evidence-stamp.v1");
+	if (!(evidence.scope === "fixture" || evidence.scope === "feature" || evidence.scope === "build" || evidence.scope === "deployment")) contractError$1(`${path}.scope`, "is unsupported");
 	if (!(/* @__PURE__ */ new Set([
 		"IMPLEMENTED_UNVERIFIED",
 		"PARITY_CANDIDATE",
@@ -2454,27 +2458,27 @@ function assertEvidenceStampV1(value, path = "evidence") {
 		"PRODUCTION_CANDIDATE",
 		"PRODUCTION_READY",
 		"PRECOMPUTED_COMPATIBILITY_CANDIDATE"
-	])).has(evidence.status)) contractError(`${path}.status`, "is unsupported");
-	if (typeof evidence.approvedForParity !== "boolean") contractError(`${path}.approvedForParity`, "must be boolean");
+	])).has(evidence.status)) contractError$1(`${path}.status`, "is unsupported");
+	if (typeof evidence.approvedForParity !== "boolean") contractError$1(`${path}.approvedForParity`, "must be boolean");
 	for (const field of ["datasetHash", "specHash"]) if (evidence[field] !== void 0) lowercaseSha256(evidence[field], `${path}.${field}`);
-	for (const field of ["fixtureId", "buildId"]) if (evidence[field] !== void 0) nonEmptyString(evidence[field], `${path}.${field}`);
+	for (const field of ["fixtureId", "buildId"]) if (evidence[field] !== void 0) nonEmptyString$1(evidence[field], `${path}.${field}`);
 	if (evidence.scope === "fixture") {
 		for (const field of [
 			"datasetHash",
 			"specHash",
 			"fixtureId"
-		]) if (evidence[field] === void 0) contractError(`${path}.${field}`, "is required for fixture-scoped evidence");
+		]) if (evidence[field] === void 0) contractError$1(`${path}.${field}`, "is required for fixture-scoped evidence");
 	}
-	if ((evidence.scope === "build" || evidence.scope === "deployment") && evidence.buildId === void 0) contractError(`${path}.buildId`, `is required for ${evidence.scope}-scoped evidence`);
+	if ((evidence.scope === "build" || evidence.scope === "deployment") && evidence.buildId === void 0) contractError$1(`${path}.buildId`, `is required for ${evidence.scope}-scoped evidence`);
 	if (evidence.approvedForParity === true && ![
 		"VERIFIED_PARITY",
 		"PRODUCTION_CANDIDATE",
 		"PRODUCTION_READY"
-	].includes(evidence.status)) contractError(`${path}.approvedForParity`, "cannot be true below VERIFIED_PARITY");
+	].includes(evidence.status)) contractError$1(`${path}.approvedForParity`, "cannot be true below VERIFIED_PARITY");
 }
 function assertAnalysisResultEnvelopeV1(value, path = "envelope") {
-	const envelope = objectAt(value, path);
-	exactFields$1(envelope, [
+	const envelope = objectAt$1(value, path);
+	exactFields$2(envelope, [
 		"schemaVersion",
 		"owner",
 		"taskKind",
@@ -2483,7 +2487,7 @@ function assertAnalysisResultEnvelopeV1(value, path = "envelope") {
 		"evidence",
 		"provenance"
 	], path);
-	if (envelope.schemaVersion !== "3dena.analysis-result-envelope.v1") contractError(`${path}.schemaVersion`, `must be ${RESULT_ENVELOPE_VERSION_V1}`);
+	if (envelope.schemaVersion !== "3dena.analysis-result-envelope.v1") contractError$1(`${path}.schemaVersion`, `must be ${RESULT_ENVELOPE_VERSION_V1}`);
 	assertTaskOwnerV1(envelope.owner, `${path}.owner`);
 	if (![
 		"ena-model",
@@ -2494,15 +2498,15 @@ function assertAnalysisResultEnvelopeV1(value, path = "envelope") {
 		"trajectory",
 		"trajectory-comparison",
 		"bootstrap"
-	].includes(envelope.taskKind)) contractError(`${path}.taskKind`, "is unsupported");
+	].includes(envelope.taskKind)) contractError$1(`${path}.taskKind`, "is unsupported");
 	const taskKind = envelope.taskKind;
 	const expectedResultSchemaVersion = RESULT_SCHEMA_VERSION_BY_TASK_KIND_V1[taskKind];
-	const result = objectAt(envelope.result, `${path}.result`);
-	if (result.schemaVersion !== expectedResultSchemaVersion) contractError(`${path}.result.schemaVersion`, `must be ${expectedResultSchemaVersion} for taskKind ${taskKind}`);
+	const result = objectAt$1(envelope.result, `${path}.result`);
+	if (result.schemaVersion !== expectedResultSchemaVersion) contractError$1(`${path}.result.schemaVersion`, `must be ${expectedResultSchemaVersion} for taskKind ${taskKind}`);
 	assertAnalysisTaskResultV1(result, taskKind, `${path}.result`);
-	if (!Array.isArray(envelope.diagnostics)) contractError(`${path}.diagnostics`, "must be an array");
+	if (!Array.isArray(envelope.diagnostics)) contractError$1(`${path}.diagnostics`, "must be an array");
 	envelope.diagnostics.forEach((candidate, index) => {
-		const diagnostic = objectAt(candidate, `${path}.diagnostics[${index}]`);
+		const diagnostic = objectAt$1(candidate, `${path}.diagnostics[${index}]`);
 		allowedFields(diagnostic, [
 			"code",
 			"severity",
@@ -2514,28 +2518,28 @@ function assertAnalysisResultEnvelopeV1(value, path = "envelope") {
 			"severity",
 			"message"
 		], `${path}.diagnostics[${index}]`);
-		nonEmptyString(diagnostic.code, `${path}.diagnostics[${index}].code`);
-		if (diagnostic.severity !== "info" && diagnostic.severity !== "warning") contractError(`${path}.diagnostics[${index}].severity`, "is unsupported");
-		nonEmptyString(diagnostic.message, `${path}.diagnostics[${index}].message`);
-		if (diagnostic.path !== void 0) nonEmptyString(diagnostic.path, `${path}.diagnostics[${index}].path`);
-		if (diagnostic.count !== void 0 && (!Number.isSafeInteger(diagnostic.count) || diagnostic.count < 0)) contractError(`${path}.diagnostics[${index}].count`, "must be a non-negative safe integer");
+		nonEmptyString$1(diagnostic.code, `${path}.diagnostics[${index}].code`);
+		if (diagnostic.severity !== "info" && diagnostic.severity !== "warning") contractError$1(`${path}.diagnostics[${index}].severity`, "is unsupported");
+		nonEmptyString$1(diagnostic.message, `${path}.diagnostics[${index}].message`);
+		if (diagnostic.path !== void 0) nonEmptyString$1(diagnostic.path, `${path}.diagnostics[${index}].path`);
+		if (diagnostic.count !== void 0 && (!Number.isSafeInteger(diagnostic.count) || diagnostic.count < 0)) contractError$1(`${path}.diagnostics[${index}].count`, "must be a non-negative safe integer");
 	});
 	assertEvidenceStampV1(envelope.evidence, `${path}.evidence`);
 	assertProvenanceManifestV1(envelope.provenance, `${path}.provenance`);
 	const owner = envelope.owner;
 	const provenance = envelope.provenance;
 	const evidence = envelope.evidence;
-	if (owner.datasetHash !== provenance.datasetHash || owner.specHash !== provenance.specHash) contractError(`${path}.provenance`, "dataset/spec ownership does not match envelope.owner");
-	if (evidence.datasetHash !== void 0 && evidence.datasetHash !== owner.datasetHash) contractError(`${path}.evidence.datasetHash`, "does not match envelope.owner");
-	if (evidence.specHash !== void 0 && evidence.specHash !== owner.specHash) contractError(`${path}.evidence.specHash`, "does not match envelope.owner");
+	if (owner.datasetHash !== provenance.datasetHash || owner.specHash !== provenance.specHash) contractError$1(`${path}.provenance`, "dataset/spec ownership does not match envelope.owner");
+	if (evidence.datasetHash !== void 0 && evidence.datasetHash !== owner.datasetHash) contractError$1(`${path}.evidence.datasetHash`, "does not match envelope.owner");
+	if (evidence.specHash !== void 0 && evidence.specHash !== owner.specHash) contractError$1(`${path}.evidence.specHash`, "does not match envelope.owner");
 	for (const requiredSchemaVersion of [
 		ANALYSIS_TASK_VERSION_V1,
 		expectedResultSchemaVersion,
 		RESULT_ENVELOPE_VERSION_V1
-	]) if (!provenance.schemaVersions.includes(requiredSchemaVersion)) contractError(`${path}.provenance.schemaVersions`, `must include ${requiredSchemaVersion}`);
+	]) if (!provenance.schemaVersions.includes(requiredSchemaVersion)) contractError$1(`${path}.provenance.schemaVersions`, `must include ${requiredSchemaVersion}`);
 }
 function finiteNumber$1(value, path) {
-	if (typeof value !== "number" || !Number.isFinite(value)) contractError(path, "must be a finite number");
+	if (typeof value !== "number" || !Number.isFinite(value)) contractError$1(path, "must be a finite number");
 	return value;
 }
 function finiteOrNull(value, path) {
@@ -2543,16 +2547,16 @@ function finiteOrNull(value, path) {
 	return finiteNumber$1(value, path);
 }
 function nonNegativeInteger(value, path) {
-	if (!Number.isSafeInteger(value) || value < 0) contractError(path, "must be a non-negative safe integer");
+	if (!Number.isSafeInteger(value) || value < 0) contractError$1(path, "must be a non-negative safe integer");
 	return value;
 }
 function positiveInteger(value, path) {
-	if (!Number.isSafeInteger(value) || value < 1) contractError(path, "must be a positive safe integer");
+	if (!Number.isSafeInteger(value) || value < 1) contractError$1(path, "must be a positive safe integer");
 	return value;
 }
 function finiteVector(value, path, length) {
-	if (!Array.isArray(value)) contractError(path, "must be an array");
-	if (length !== void 0 && value.length !== length) contractError(path, `must contain exactly ${length} values`);
+	if (!Array.isArray(value)) contractError$1(path, "must be an array");
+	if (length !== void 0 && value.length !== length) contractError$1(path, `must contain exactly ${length} values`);
 	return value.map((entry, index) => finiteNumber$1(entry, `${path}[${index}]`));
 }
 function optionalFiniteVector(value, path, length) {
@@ -2560,21 +2564,21 @@ function optionalFiniteVector(value, path, length) {
 	return finiteVector(value, path, length);
 }
 function sameOrderedStrings(actual, expected, path) {
-	if (actual.length !== expected.length || actual.some((entry, index) => entry !== expected[index])) contractError(path, "must preserve the declared order exactly");
+	if (actual.length !== expected.length || actual.some((entry, index) => entry !== expected[index])) contractError$1(path, "must preserve the declared order exactly");
 }
 function assertRawEntityKey(value, path) {
-	const key = objectAt(value, path);
-	exactFields$1(key, [
+	const key = objectAt$1(value, path);
+	exactFields$2(key, [
 		"canonical",
 		"display",
 		"columns",
 		"values"
 	], path);
-	const canonical = nonEmptyString(key.canonical, `${path}.canonical`);
-	if (typeof key.display !== "string") contractError(`${path}.display`, "must be a string");
-	const columns = stringList(key.columns, `${path}.columns`);
-	if (!Array.isArray(key.values) || key.values.length !== columns.length) contractError(`${path}.values`, "must align one-to-one with columns");
-	key.values.forEach((entry, index) => rawScalar(entry, `${path}.values[${index}]`));
+	const canonical = nonEmptyString$1(key.canonical, `${path}.canonical`);
+	if (typeof key.display !== "string") contractError$1(`${path}.display`, "must be a string");
+	const columns = stringList$1(key.columns, `${path}.columns`);
+	if (!Array.isArray(key.values) || key.values.length !== columns.length) contractError$1(`${path}.values`, "must align one-to-one with columns");
+	key.values.forEach((entry, index) => rawScalar$1(entry, `${path}.values[${index}]`));
 	return {
 		canonical,
 		columns,
@@ -2582,19 +2586,19 @@ function assertRawEntityKey(value, path) {
 	};
 }
 function assertRawTypedValue(value, path) {
-	const typed = objectAt(value, path);
-	exactFields$1(typed, [
+	const typed = objectAt$1(value, path);
+	exactFields$2(typed, [
 		"canonical",
 		"display",
 		"value"
 	], path);
-	const canonical = nonEmptyString(typed.canonical, `${path}.canonical`);
-	if (typeof typed.display !== "string") contractError(`${path}.display`, "must be a string");
-	rawScalar(typed.value, `${path}.value`);
+	const canonical = nonEmptyString$1(typed.canonical, `${path}.canonical`);
+	if (typeof typed.display !== "string") contractError$1(`${path}.display`, "must be a string");
+	rawScalar$1(typed.value, `${path}.value`);
 	return { canonical };
 }
 function assertDiagnostic(value, path) {
-	const diagnostic = objectAt(value, path);
+	const diagnostic = objectAt$1(value, path);
 	allowedFields(diagnostic, [
 		"code",
 		"severity",
@@ -2606,18 +2610,18 @@ function assertDiagnostic(value, path) {
 		"severity",
 		"message"
 	], path);
-	nonEmptyString(diagnostic.code, `${path}.code`);
-	if (diagnostic.severity !== "info" && diagnostic.severity !== "warning") contractError(`${path}.severity`, "must be info or warning");
-	nonEmptyString(diagnostic.message, `${path}.message`);
-	if (diagnostic.path !== void 0) nonEmptyString(diagnostic.path, `${path}.path`);
+	nonEmptyString$1(diagnostic.code, `${path}.code`);
+	if (diagnostic.severity !== "info" && diagnostic.severity !== "warning") contractError$1(`${path}.severity`, "must be info or warning");
+	nonEmptyString$1(diagnostic.message, `${path}.message`);
+	if (diagnostic.path !== void 0) nonEmptyString$1(diagnostic.path, `${path}.path`);
 	if (diagnostic.count !== void 0) nonNegativeInteger(diagnostic.count, `${path}.count`);
 }
 function assertDiagnostics(value, path) {
-	if (!Array.isArray(value)) contractError(path, "must be an array");
+	if (!Array.isArray(value)) contractError$1(path, "must be an array");
 	value.forEach((entry, index) => assertDiagnostic(entry, `${path}[${index}]`));
 }
 function assertAnalysisResult(value, path) {
-	const result = objectAt(value, path);
+	const result = objectAt$1(value, path);
 	allowedFields(result, [
 		"schemaVersion",
 		"dimensions",
@@ -2646,21 +2650,17 @@ function assertAnalysisResult(value, path) {
 		"diagnostics",
 		"provenance"
 	], path);
-	if (result.schemaVersion !== "3dena.analysis-result.v1") contractError(`${path}.schemaVersion`, "must be 3dena.analysis-result.v1");
-	const dimensions = stringList(result.dimensions, `${path}.dimensions`, 3);
-	if (new Set(dimensions).size !== dimensions.length) contractError(`${path}.dimensions`, "must not contain duplicates");
-	const axes = stringList(result.axes, `${path}.axes`, 3);
-	if (axes.length !== 3 || axes.some((axis, index) => axis !== [
-		"SVD1",
-		"SVD2",
-		"SVD3"
-	][index])) contractError(`${path}.axes`, "must be the ordered SVD1, SVD2, SVD3 display axes");
-	if (!Array.isArray(result.edges) || result.edges.length === 0) contractError(`${path}.edges`, "must be a non-empty array");
+	if (result.schemaVersion !== "3dena.analysis-result.v1") contractError$1(`${path}.schemaVersion`, "must be 3dena.analysis-result.v1");
+	const dimensions = stringList$1(result.dimensions, `${path}.dimensions`, 3);
+	if (new Set(dimensions).size !== dimensions.length) contractError$1(`${path}.dimensions`, "must not contain duplicates");
+	const axes = stringList$1(result.axes, `${path}.axes`, 3);
+	if (axes.length !== 3 || axes.some((axis, index) => axis !== dimensions[index])) contractError$1(`${path}.axes`, "must be the first three fitted rotation dimensions in order");
+	if (!Array.isArray(result.edges) || result.edges.length === 0) contractError$1(`${path}.edges`, "must be a non-empty array");
 	const edgeColumns = [];
 	const edgeIds = /* @__PURE__ */ new Set();
 	result.edges.forEach((candidate, index) => {
-		const edge = objectAt(candidate, `${path}.edges[${index}]`);
-		exactFields$1(edge, [
+		const edge = objectAt$1(candidate, `${path}.edges[${index}]`);
+		exactFields$2(edge, [
 			"index",
 			"id",
 			"column",
@@ -2670,44 +2670,44 @@ function assertAnalysisResult(value, path) {
 			"targetIndex",
 			"meanWeight"
 		], `${path}.edges[${index}]`);
-		if (nonNegativeInteger(edge.index, `${path}.edges[${index}].index`) !== index) contractError(`${path}.edges[${index}].index`, "must equal its array position");
-		const id = nonEmptyString(edge.id, `${path}.edges[${index}].id`);
-		if (edgeIds.has(id)) contractError(`${path}.edges[${index}].id`, "duplicates an earlier edge identity");
+		if (nonNegativeInteger(edge.index, `${path}.edges[${index}].index`) !== index) contractError$1(`${path}.edges[${index}].index`, "must equal its array position");
+		const id = nonEmptyString$1(edge.id, `${path}.edges[${index}].id`);
+		if (edgeIds.has(id)) contractError$1(`${path}.edges[${index}].id`, "duplicates an earlier edge identity");
 		edgeIds.add(id);
-		edgeColumns.push(nonEmptyString(edge.column, `${path}.edges[${index}].column`));
-		nonEmptyString(edge.source, `${path}.edges[${index}].source`);
-		nonEmptyString(edge.target, `${path}.edges[${index}].target`);
+		edgeColumns.push(nonEmptyString$1(edge.column, `${path}.edges[${index}].column`));
+		nonEmptyString$1(edge.source, `${path}.edges[${index}].source`);
+		nonEmptyString$1(edge.target, `${path}.edges[${index}].target`);
 		nonNegativeInteger(edge.sourceIndex, `${path}.edges[${index}].sourceIndex`);
 		nonNegativeInteger(edge.targetIndex, `${path}.edges[${index}].targetIndex`);
 		finiteNumber$1(edge.meanWeight, `${path}.edges[${index}].meanWeight`);
 	});
-	if (new Set(edgeColumns).size !== edgeColumns.length) contractError(`${path}.edges`, "edge columns must be unique");
-	if (!Array.isArray(result.nodes) || result.nodes.length < 3) contractError(`${path}.nodes`, "must contain at least three nodes");
+	if (new Set(edgeColumns).size !== edgeColumns.length) contractError$1(`${path}.edges`, "edge columns must be unique");
+	if (!Array.isArray(result.nodes) || result.nodes.length < 3) contractError$1(`${path}.nodes`, "must contain at least three nodes");
 	const nodeCodes = [];
 	result.nodes.forEach((candidate, index) => {
-		const node = objectAt(candidate, `${path}.nodes[${index}]`);
-		exactFields$1(node, [
+		const node = objectAt$1(candidate, `${path}.nodes[${index}]`);
+		exactFields$2(node, [
 			"index",
 			"code",
 			"coordinates",
 			"fullCoordinates"
 		], `${path}.nodes[${index}]`);
-		if (nonNegativeInteger(node.index, `${path}.nodes[${index}].index`) !== index) contractError(`${path}.nodes[${index}].index`, "must equal its array position");
-		nodeCodes.push(nonEmptyString(node.code, `${path}.nodes[${index}].code`));
+		if (nonNegativeInteger(node.index, `${path}.nodes[${index}].index`) !== index) contractError$1(`${path}.nodes[${index}].index`, "must equal its array position");
+		nodeCodes.push(nonEmptyString$1(node.code, `${path}.nodes[${index}].code`));
 		finiteVector(node.coordinates, `${path}.nodes[${index}].coordinates`, 3);
 		finiteVector(node.fullCoordinates, `${path}.nodes[${index}].fullCoordinates`, dimensions.length);
 	});
-	if (new Set(nodeCodes).size !== nodeCodes.length) contractError(`${path}.nodes`, "node codes must be unique");
+	if (new Set(nodeCodes).size !== nodeCodes.length) contractError$1(`${path}.nodes`, "node codes must be unique");
 	result.edges.forEach((candidate, index) => {
 		const edge = candidate;
 		const sourceIndex = edge.sourceIndex;
 		const targetIndex = edge.targetIndex;
-		if (nodeCodes[sourceIndex] !== edge.source || nodeCodes[targetIndex] !== edge.target) contractError(`${path}.edges[${index}]`, "node indexes and code identities must align");
+		if (nodeCodes[sourceIndex] !== edge.source || nodeCodes[targetIndex] !== edge.target) contractError$1(`${path}.edges[${index}]`, "node indexes and code identities must align");
 	});
-	if (!Array.isArray(result.points) || result.points.length === 0) contractError(`${path}.points`, "must be a non-empty array");
+	if (!Array.isArray(result.points) || result.points.length === 0) contractError$1(`${path}.points`, "must be a non-empty array");
 	const pointIds = /* @__PURE__ */ new Set();
 	result.points.forEach((candidate, index) => {
-		const point = objectAt(candidate, `${path}.points[${index}]`);
+		const point = objectAt$1(candidate, `${path}.points[${index}]`);
 		allowedFields(point, [
 			"index",
 			"id",
@@ -2730,9 +2730,9 @@ function assertAnalysisResult(value, path) {
 			"lineWeights",
 			"metadata"
 		], `${path}.points[${index}]`);
-		if (nonNegativeInteger(point.index, `${path}.points[${index}].index`) !== index) contractError(`${path}.points[${index}].index`, "must equal its array position");
+		if (nonNegativeInteger(point.index, `${path}.points[${index}].index`) !== index) contractError$1(`${path}.points[${index}].index`, "must equal its array position");
 		const pointId = assertRawEntityKey(point.id, `${path}.points[${index}].id`).canonical;
-		if (pointIds.has(pointId)) contractError(`${path}.points[${index}].id`, "duplicates an earlier point identity");
+		if (pointIds.has(pointId)) contractError$1(`${path}.points[${index}].id`, "duplicates an earlier point identity");
 		pointIds.add(pointId);
 		assertRawEntityKey(point.unit, `${path}.points[${index}].unit`);
 		assertRawEntityKey(point.participantLabel, `${path}.points[${index}].participantLabel`);
@@ -2742,58 +2742,58 @@ function assertAnalysisResult(value, path) {
 		finiteVector(point.coordinates, `${path}.points[${index}].coordinates`, 3);
 		finiteVector(point.fullCoordinates, `${path}.points[${index}].fullCoordinates`, dimensions.length);
 		finiteVector(point.lineWeights, `${path}.points[${index}].lineWeights`, edgeColumns.length);
-		const metadata = objectAt(point.metadata, `${path}.points[${index}].metadata`);
-		for (const [field, entry] of Object.entries(metadata)) rawScalar(entry, `${path}.points[${index}].metadata.${field}`);
+		const metadata = objectAt$1(point.metadata, `${path}.points[${index}].metadata`);
+		for (const [field, entry] of Object.entries(metadata)) rawScalar$1(entry, `${path}.points[${index}].metadata.${field}`);
 	});
-	const accumulation = objectAt(result.accumulation, `${path}.accumulation`);
-	exactFields$1(accumulation, ["modelCounts", "rowCounts"], `${path}.accumulation`);
+	const accumulation = objectAt$1(result.accumulation, `${path}.accumulation`);
+	exactFields$2(accumulation, ["modelCounts", "rowCounts"], `${path}.accumulation`);
 	for (const tableName of ["modelCounts", "rowCounts"]) {
-		const table = objectAt(accumulation[tableName], `${path}.accumulation.${tableName}`);
-		exactFields$1(table, [
+		const table = objectAt$1(accumulation[tableName], `${path}.accumulation.${tableName}`);
+		exactFields$2(table, [
 			"rowKeys",
 			"columns",
 			"values"
 		], `${path}.accumulation.${tableName}`);
-		const columns = stringList(table.columns, `${path}.accumulation.${tableName}.columns`);
+		const columns = stringList$1(table.columns, `${path}.accumulation.${tableName}.columns`);
 		if (tableName === "modelCounts") sameOrderedStrings(columns, edgeColumns, `${path}.accumulation.${tableName}.columns`);
 		else sameOrderedStrings(columns.slice(columns.length - edgeColumns.length), edgeColumns, `${path}.accumulation.${tableName}.columns`);
-		if (!Array.isArray(table.rowKeys) || !Array.isArray(table.values) || table.rowKeys.length !== table.values.length) contractError(`${path}.accumulation.${tableName}`, "rowKeys and values must align");
+		if (!Array.isArray(table.rowKeys) || !Array.isArray(table.values) || table.rowKeys.length !== table.values.length) contractError$1(`${path}.accumulation.${tableName}`, "rowKeys and values must align");
 		table.rowKeys.forEach((entry, index) => {
 			assertRawEntityKey(entry, `${path}.accumulation.${tableName}.rowKeys[${index}]`);
 			finiteVector(table.values[index], `${path}.accumulation.${tableName}.values[${index}]`, columns.length);
 		});
 	}
-	if (!Array.isArray(result.variance) || result.variance.length !== dimensions.length) contractError(`${path}.variance`, "must align one-to-one with dimensions");
+	if (!Array.isArray(result.variance) || result.variance.length !== dimensions.length) contractError$1(`${path}.variance`, "must align one-to-one with dimensions");
 	result.variance.forEach((candidate, index) => {
-		const variance = objectAt(candidate, `${path}.variance[${index}]`);
-		exactFields$1(variance, [
+		const variance = objectAt$1(candidate, `${path}.variance[${index}]`);
+		exactFields$2(variance, [
 			"axis",
 			"proportion",
 			"eigenvalue",
 			"displayed"
 		], `${path}.variance[${index}]`);
-		if (variance.axis !== dimensions[index]) contractError(`${path}.variance[${index}].axis`, "must match the dimension at this index");
+		if (variance.axis !== dimensions[index]) contractError$1(`${path}.variance[${index}].axis`, "must match the dimension at this index");
 		finiteNumber$1(variance.proportion, `${path}.variance[${index}].proportion`);
 		finiteNumber$1(variance.eigenvalue, `${path}.variance[${index}].eigenvalue`);
-		if (typeof variance.displayed !== "boolean") contractError(`${path}.variance[${index}].displayed`, "must be boolean");
+		if (typeof variance.displayed !== "boolean") contractError$1(`${path}.variance[${index}].displayed`, "must be boolean");
 	});
-	const rotation = objectAt(result.rotation, `${path}.rotation`);
-	exactFields$1(rotation, [
+	const rotation = objectAt$1(result.rotation, `${path}.rotation`);
+	exactFields$2(rotation, [
 		"method",
 		"columns",
 		"matrix",
 		"eigenvalues",
 		"centerVector"
 	], `${path}.rotation`);
-	if (rotation.method !== "svd") contractError(`${path}.rotation.method`, "must be svd");
-	sameOrderedStrings(stringList(rotation.columns, `${path}.rotation.columns`), dimensions, `${path}.rotation.columns`);
-	if (!Array.isArray(rotation.matrix) || rotation.matrix.length !== edgeColumns.length) contractError(`${path}.rotation.matrix`, "must contain one row per edge column");
+	if (rotation.method !== "svd" && rotation.method !== "mean" && rotation.method !== "reference") contractError$1(`${path}.rotation.method`, "must be svd, mean, or reference");
+	sameOrderedStrings(stringList$1(rotation.columns, `${path}.rotation.columns`), dimensions, `${path}.rotation.columns`);
+	if (!Array.isArray(rotation.matrix) || rotation.matrix.length !== edgeColumns.length) contractError$1(`${path}.rotation.matrix`, "must contain one row per edge column");
 	rotation.matrix.forEach((row, index) => finiteVector(row, `${path}.rotation.matrix[${index}]`, dimensions.length));
 	finiteVector(rotation.eigenvalues, `${path}.rotation.eigenvalues`, dimensions.length);
 	finiteVector(rotation.centerVector, `${path}.rotation.centerVector`, edgeColumns.length);
 	if (result.trajectory !== void 0) assertSharedTrajectory(result.trajectory, dimensions, result.points, `${path}.trajectory`);
-	const summary = objectAt(result.summary, `${path}.summary`);
-	exactFields$1(summary, [
+	const summary = objectAt$1(result.summary, `${path}.summary`);
+	exactFields$2(summary, [
 		"inputRows",
 		"inputColumns",
 		"units",
@@ -2809,16 +2809,16 @@ function assertAnalysisResult(value, path) {
 		"dimensions"
 	], `${path}.summary`);
 	for (const field of Object.keys(summary)) nonNegativeInteger(summary[field], `${path}.summary.${field}`);
-	if (summary.points !== result.points.length || summary.nodes !== result.nodes.length || summary.edges !== result.edges.length || summary.dimensions !== dimensions.length) contractError(`${path}.summary`, "point, node, edge, and dimension counts must match the public tables");
+	if (summary.points !== result.points.length || summary.nodes !== result.nodes.length || summary.edges !== result.edges.length || summary.dimensions !== dimensions.length) contractError$1(`${path}.summary`, "point, node, edge, and dimension counts must match the public tables");
 	const modelCounts = accumulation.modelCounts;
 	const rowCounts = accumulation.rowCounts;
-	if (summary.modelCountRows !== modelCounts.rowKeys.length || summary.rowCountRows !== rowCounts.rowKeys.length) contractError(`${path}.summary`, "accumulation row counts must match the public tables");
+	if (summary.modelCountRows !== modelCounts.rowKeys.length || summary.rowCountRows !== rowCounts.rowKeys.length) contractError$1(`${path}.summary`, "accumulation row counts must match the public tables");
 	assertDiagnostics(result.diagnostics, `${path}.diagnostics`);
 	assertAnalysisProvenance(result.provenance, `${path}.provenance`);
 }
 function assertSharedTrajectory(value, dimensions, points, path) {
-	const trajectory = objectAt(value, path);
-	exactFields$1(trajectory, [
+	const trajectory = objectAt$1(value, path);
+	exactFields$2(trajectory, [
 		"space",
 		"dimensions",
 		"cohortPolicy",
@@ -2828,17 +2828,17 @@ function assertSharedTrajectory(value, dimensions, points, path) {
 		"centroids",
 		"paths"
 	], path);
-	if (trajectory.space !== "analysis-result-rotation") contractError(`${path}.space`, "must be analysis-result-rotation");
-	sameOrderedStrings(stringList(trajectory.dimensions, `${path}.dimensions`), dimensions, `${path}.dimensions`);
-	if (trajectory.cohortPolicy !== "available" && trajectory.cohortPolicy !== "complete") contractError(`${path}.cohortPolicy`, "must be available or complete");
-	if (!Array.isArray(trajectory.groupOrder) || !Array.isArray(trajectory.timeOrder)) contractError(path, "groupOrder and timeOrder must be arrays");
+	if (trajectory.space !== "analysis-result-rotation") contractError$1(`${path}.space`, "must be analysis-result-rotation");
+	sameOrderedStrings(stringList$1(trajectory.dimensions, `${path}.dimensions`), dimensions, `${path}.dimensions`);
+	if (trajectory.cohortPolicy !== "available" && trajectory.cohortPolicy !== "complete") contractError$1(`${path}.cohortPolicy`, "must be available or complete");
+	if (!Array.isArray(trajectory.groupOrder) || !Array.isArray(trajectory.timeOrder)) contractError$1(path, "groupOrder and timeOrder must be arrays");
 	const groups = trajectory.groupOrder.map((entry, index) => assertRawTypedValue(entry, `${path}.groupOrder[${index}]`).canonical);
 	const times = trajectory.timeOrder.map((entry, index) => assertRawTypedValue(entry, `${path}.timeOrder[${index}]`).canonical);
-	if (new Set(groups).size !== groups.length || new Set(times).size !== times.length) contractError(path, "group and time inventories must not contain duplicates");
-	if (!Array.isArray(trajectory.participantPeriods) || !Array.isArray(trajectory.centroids) || !Array.isArray(trajectory.paths)) contractError(path, "trajectory tables must be arrays");
+	if (new Set(groups).size !== groups.length || new Set(times).size !== times.length) contractError$1(path, "group and time inventories must not contain duplicates");
+	if (!Array.isArray(trajectory.participantPeriods) || !Array.isArray(trajectory.centroids) || !Array.isArray(trajectory.paths)) contractError$1(path, "trajectory tables must be arrays");
 	trajectory.participantPeriods.forEach((candidate, index) => {
-		const row = objectAt(candidate, `${path}.participantPeriods[${index}]`);
-		exactFields$1(row, [
+		const row = objectAt$1(candidate, `${path}.participantPeriods[${index}]`);
+		exactFields$2(row, [
 			"index",
 			"participant",
 			"participantLabel",
@@ -2849,22 +2849,22 @@ function assertSharedTrajectory(value, dimensions, points, path) {
 			"sourcePointIndexes",
 			"includedInCohort"
 		], `${path}.participantPeriods[${index}]`);
-		if (nonNegativeInteger(row.index, `${path}.participantPeriods[${index}].index`) !== index) contractError(`${path}.participantPeriods[${index}].index`, "must equal its array position");
+		if (nonNegativeInteger(row.index, `${path}.participantPeriods[${index}].index`) !== index) contractError$1(`${path}.participantPeriods[${index}].index`, "must equal its array position");
 		assertRawEntityKey(row.participant, `${path}.participantPeriods[${index}].participant`);
 		assertRawEntityKey(row.participantLabel, `${path}.participantPeriods[${index}].participantLabel`);
-		if (!groups.includes(assertRawTypedValue(row.group, `${path}.participantPeriods[${index}].group`).canonical)) contractError(`${path}.participantPeriods[${index}].group`, "must occur in groupOrder");
-		if (!times.includes(assertRawTypedValue(row.time, `${path}.participantPeriods[${index}].time`).canonical)) contractError(`${path}.participantPeriods[${index}].time`, "must occur in timeOrder");
+		if (!groups.includes(assertRawTypedValue(row.group, `${path}.participantPeriods[${index}].group`).canonical)) contractError$1(`${path}.participantPeriods[${index}].group`, "must occur in groupOrder");
+		if (!times.includes(assertRawTypedValue(row.time, `${path}.participantPeriods[${index}].time`).canonical)) contractError$1(`${path}.participantPeriods[${index}].time`, "must occur in timeOrder");
 		finiteVector(row.coordinates, `${path}.participantPeriods[${index}].coordinates`, 3);
 		finiteVector(row.fullCoordinates, `${path}.participantPeriods[${index}].fullCoordinates`, dimensions.length);
-		if (!Array.isArray(row.sourcePointIndexes) || row.sourcePointIndexes.length === 0) contractError(`${path}.participantPeriods[${index}].sourcePointIndexes`, "must be non-empty");
+		if (!Array.isArray(row.sourcePointIndexes) || row.sourcePointIndexes.length === 0) contractError$1(`${path}.participantPeriods[${index}].sourcePointIndexes`, "must be non-empty");
 		row.sourcePointIndexes.forEach((entry, itemIndex) => {
-			if (nonNegativeInteger(entry, `${path}.participantPeriods[${index}].sourcePointIndexes[${itemIndex}]`) >= points.length) contractError(`${path}.participantPeriods[${index}].sourcePointIndexes[${itemIndex}]`, "is outside the point table");
+			if (nonNegativeInteger(entry, `${path}.participantPeriods[${index}].sourcePointIndexes[${itemIndex}]`) >= points.length) contractError$1(`${path}.participantPeriods[${index}].sourcePointIndexes[${itemIndex}]`, "is outside the point table");
 		});
-		if (typeof row.includedInCohort !== "boolean") contractError(`${path}.participantPeriods[${index}].includedInCohort`, "must be boolean");
+		if (typeof row.includedInCohort !== "boolean") contractError$1(`${path}.participantPeriods[${index}].includedInCohort`, "must be boolean");
 	});
 	trajectory.centroids.forEach((candidate, index) => {
-		const row = objectAt(candidate, `${path}.centroids[${index}]`);
-		exactFields$1(row, [
+		const row = objectAt$1(candidate, `${path}.centroids[${index}]`);
+		exactFields$2(row, [
 			"index",
 			"group",
 			"time",
@@ -2873,35 +2873,35 @@ function assertSharedTrajectory(value, dimensions, points, path) {
 			"participantCount",
 			"participantPeriodIndexes"
 		], `${path}.centroids[${index}]`);
-		if (nonNegativeInteger(row.index, `${path}.centroids[${index}].index`) !== index) contractError(`${path}.centroids[${index}].index`, "must equal its array position");
-		if (!groups.includes(assertRawTypedValue(row.group, `${path}.centroids[${index}].group`).canonical)) contractError(`${path}.centroids[${index}].group`, "must occur in groupOrder");
-		if (!times.includes(assertRawTypedValue(row.time, `${path}.centroids[${index}].time`).canonical)) contractError(`${path}.centroids[${index}].time`, "must occur in timeOrder");
+		if (nonNegativeInteger(row.index, `${path}.centroids[${index}].index`) !== index) contractError$1(`${path}.centroids[${index}].index`, "must equal its array position");
+		if (!groups.includes(assertRawTypedValue(row.group, `${path}.centroids[${index}].group`).canonical)) contractError$1(`${path}.centroids[${index}].group`, "must occur in groupOrder");
+		if (!times.includes(assertRawTypedValue(row.time, `${path}.centroids[${index}].time`).canonical)) contractError$1(`${path}.centroids[${index}].time`, "must occur in timeOrder");
 		finiteVector(row.coordinates, `${path}.centroids[${index}].coordinates`, 3);
 		finiteVector(row.fullCoordinates, `${path}.centroids[${index}].fullCoordinates`, dimensions.length);
 		positiveInteger(row.participantCount, `${path}.centroids[${index}].participantCount`);
-		if (!Array.isArray(row.participantPeriodIndexes) || row.participantPeriodIndexes.length !== row.participantCount) contractError(`${path}.centroids[${index}].participantPeriodIndexes`, "must align with participantCount");
+		if (!Array.isArray(row.participantPeriodIndexes) || row.participantPeriodIndexes.length !== row.participantCount) contractError$1(`${path}.centroids[${index}].participantPeriodIndexes`, "must align with participantCount");
 		row.participantPeriodIndexes.forEach((entry, itemIndex) => {
-			if (nonNegativeInteger(entry, `${path}.centroids[${index}].participantPeriodIndexes[${itemIndex}]`) >= trajectory.participantPeriods.length) contractError(`${path}.centroids[${index}].participantPeriodIndexes[${itemIndex}]`, "is outside the participant-period table");
+			if (nonNegativeInteger(entry, `${path}.centroids[${index}].participantPeriodIndexes[${itemIndex}]`) >= trajectory.participantPeriods.length) contractError$1(`${path}.centroids[${index}].participantPeriodIndexes[${itemIndex}]`, "is outside the participant-period table");
 		});
 	});
 	trajectory.paths.forEach((candidate, index) => {
-		const row = objectAt(candidate, `${path}.paths[${index}]`);
-		exactFields$1(row, ["group", "steps"], `${path}.paths[${index}]`);
-		if (assertRawTypedValue(row.group, `${path}.paths[${index}].group`).canonical !== groups[index]) contractError(`${path}.paths[${index}].group`, "must preserve groupOrder");
-		if (!Array.isArray(row.steps) || row.steps.length !== times.length) contractError(`${path}.paths[${index}].steps`, "must contain every expected time in order");
+		const row = objectAt$1(candidate, `${path}.paths[${index}]`);
+		exactFields$2(row, ["group", "steps"], `${path}.paths[${index}]`);
+		if (assertRawTypedValue(row.group, `${path}.paths[${index}].group`).canonical !== groups[index]) contractError$1(`${path}.paths[${index}].group`, "must preserve groupOrder");
+		if (!Array.isArray(row.steps) || row.steps.length !== times.length) contractError$1(`${path}.paths[${index}].steps`, "must contain every expected time in order");
 		row.steps.forEach((candidateStep, stepIndex) => {
-			const step = objectAt(candidateStep, `${path}.paths[${index}].steps[${stepIndex}]`);
-			exactFields$1(step, ["time", "centroidIndex"], `${path}.paths[${index}].steps[${stepIndex}]`);
-			if (assertRawTypedValue(step.time, `${path}.paths[${index}].steps[${stepIndex}].time`).canonical !== times[stepIndex]) contractError(`${path}.paths[${index}].steps[${stepIndex}].time`, "must preserve timeOrder");
+			const step = objectAt$1(candidateStep, `${path}.paths[${index}].steps[${stepIndex}]`);
+			exactFields$2(step, ["time", "centroidIndex"], `${path}.paths[${index}].steps[${stepIndex}]`);
+			if (assertRawTypedValue(step.time, `${path}.paths[${index}].steps[${stepIndex}].time`).canonical !== times[stepIndex]) contractError$1(`${path}.paths[${index}].steps[${stepIndex}].time`, "must preserve timeOrder");
 			if (step.centroidIndex !== null) {
-				if (nonNegativeInteger(step.centroidIndex, `${path}.paths[${index}].steps[${stepIndex}].centroidIndex`) >= trajectory.centroids.length) contractError(`${path}.paths[${index}].steps[${stepIndex}].centroidIndex`, "is outside the centroid table");
+				if (nonNegativeInteger(step.centroidIndex, `${path}.paths[${index}].steps[${stepIndex}].centroidIndex`) >= trajectory.centroids.length) contractError$1(`${path}.paths[${index}].steps[${stepIndex}].centroidIndex`, "is outside the centroid table");
 			}
 		});
 	});
 }
 function assertAnalysisProvenance(value, path) {
-	const provenance = objectAt(value, path);
-	exactFields$1(provenance, [
+	const provenance = objectAt$1(value, path);
+	exactFields$2(provenance, [
 		"adapter",
 		"adapterVersion",
 		"jenaPackage",
@@ -2915,7 +2915,8 @@ function assertAnalysisProvenance(value, path) {
 		"resolvedConfig",
 		"resolvedLimits"
 	], path);
-	if (provenance.adapter !== "@3dena/analysis" || provenance.adapterVersion !== "0.1.0" || provenance.jenaPackage !== "jena-js") contractError(path, "contains an unsupported analysis adapter identity");
+	if (provenance.adapter !== "@3dena/analysis" || provenance.jenaPackage !== "jena-js") contractError$1(path, "contains an unsupported analysis adapter identity");
+	nonEmptyString$1(provenance.adapterVersion, `${path}.adapterVersion`);
 	for (const field of [
 		"jenaVersion",
 		"jenaCommit",
@@ -2923,10 +2924,10 @@ function assertAnalysisProvenance(value, path) {
 		"legacyGoldenContract",
 		"parityContract",
 		"resultSemantics"
-	]) nonEmptyString(provenance[field], `${path}.${field}`);
-	if (provenance.legacyGoldenStatus !== "not-assessed") contractError(`${path}.legacyGoldenStatus`, "must remain not-assessed in the scientific DTO");
-	const config = objectAt(provenance.resolvedConfig, `${path}.resolvedConfig`);
-	exactFields$1(config, [
+	]) nonEmptyString$1(provenance[field], `${path}.${field}`);
+	if (provenance.legacyGoldenStatus !== "not-assessed") contractError$1(`${path}.legacyGoldenStatus`, "must remain not-assessed in the scientific DTO");
+	const config = objectAt$1(provenance.resolvedConfig, `${path}.resolvedConfig`);
+	exactFields$2(config, [
 		"model",
 		"window",
 		"weightBy",
@@ -2934,14 +2935,16 @@ function assertAnalysisProvenance(value, path) {
 		"windowSizeForward",
 		"centerAlignToOrigin"
 	], `${path}.resolvedConfig`);
-	if (!(config.model === "EndPoint" || config.model === "AccumulatedTrajectory" || config.model === "SeparateTrajectory")) contractError(`${path}.resolvedConfig.model`, "is unsupported");
-	if (!(config.window === "MovingStanzaWindow" || config.window === "Conversation")) contractError(`${path}.resolvedConfig.window`, "is unsupported");
-	if (config.weightBy !== "binary" && config.weightBy !== "sum") contractError(`${path}.resolvedConfig.weightBy`, "is unsupported");
-	nonNegativeInteger(config.windowSizeBack, `${path}.resolvedConfig.windowSizeBack`);
+	if (!(config.model === "EndPoint" || config.model === "AccumulatedTrajectory" || config.model === "SeparateTrajectory")) contractError$1(`${path}.resolvedConfig.model`, "is unsupported");
+	if (!(config.window === "MovingStanzaWindow" || config.window === "Conversation")) contractError$1(`${path}.resolvedConfig.window`, "is unsupported");
+	if (config.weightBy !== "binary" && config.weightBy !== "sum") contractError$1(`${path}.resolvedConfig.weightBy`, "is unsupported");
+	if (config.windowSizeBack === "Infinity") {
+		if (config.window !== "Conversation") contractError$1(`${path}.resolvedConfig.windowSizeBack`, "may be Infinity only for Conversation windows");
+	} else nonNegativeInteger(config.windowSizeBack, `${path}.resolvedConfig.windowSizeBack`);
 	nonNegativeInteger(config.windowSizeForward, `${path}.resolvedConfig.windowSizeForward`);
-	if (typeof config.centerAlignToOrigin !== "boolean") contractError(`${path}.resolvedConfig.centerAlignToOrigin`, "must be boolean");
-	const limits = objectAt(provenance.resolvedLimits, `${path}.resolvedLimits`);
-	exactFields$1(limits, [
+	if (typeof config.centerAlignToOrigin !== "boolean") contractError$1(`${path}.resolvedConfig.centerAlignToOrigin`, "must be boolean");
+	const limits = objectAt$1(provenance.resolvedLimits, `${path}.resolvedLimits`);
+	exactFields$2(limits, [
 		"maxRows",
 		"maxColumns",
 		"maxCells",
@@ -2959,22 +2962,22 @@ function assertAnalysisProvenance(value, path) {
 	for (const field of Object.keys(limits)) positiveInteger(limits[field], `${path}.resolvedLimits.${field}`);
 }
 function assertNetworkMean(value, dimensions, path) {
-	const mean = objectAt(value, path);
-	exactFields$1(mean, [
+	const mean = objectAt$1(value, path);
+	exactFields$2(mean, [
 		"pointCount",
 		"pointIndexes",
 		"meanCoordinates",
 		"edges"
 	], path);
 	const pointCount = positiveInteger(mean.pointCount, `${path}.pointCount`);
-	if (!Array.isArray(mean.pointIndexes) || mean.pointIndexes.length !== pointCount) contractError(`${path}.pointIndexes`, "must align with pointCount");
+	if (!Array.isArray(mean.pointIndexes) || mean.pointIndexes.length !== pointCount) contractError$1(`${path}.pointIndexes`, "must align with pointCount");
 	mean.pointIndexes.forEach((entry, index) => nonNegativeInteger(entry, `${path}.pointIndexes[${index}]`));
 	finiteVector(mean.meanCoordinates, `${path}.meanCoordinates`, dimensions);
-	if (!Array.isArray(mean.edges) || mean.edges.length === 0) contractError(`${path}.edges`, "must be a non-empty array");
+	if (!Array.isArray(mean.edges) || mean.edges.length === 0) contractError$1(`${path}.edges`, "must be a non-empty array");
 	const edgeColumns = [];
 	mean.edges.forEach((candidate, index) => {
-		const edge = objectAt(candidate, `${path}.edges[${index}]`);
-		exactFields$1(edge, [
+		const edge = objectAt$1(candidate, `${path}.edges[${index}]`);
+		exactFields$2(edge, [
 			"index",
 			"id",
 			"column",
@@ -2982,18 +2985,18 @@ function assertNetworkMean(value, dimensions, path) {
 			"target",
 			"meanWeight"
 		], `${path}.edges[${index}]`);
-		if (nonNegativeInteger(edge.index, `${path}.edges[${index}].index`) !== index) contractError(`${path}.edges[${index}].index`, "must equal its array position");
-		nonEmptyString(edge.id, `${path}.edges[${index}].id`);
-		edgeColumns.push(nonEmptyString(edge.column, `${path}.edges[${index}].column`));
-		nonEmptyString(edge.source, `${path}.edges[${index}].source`);
-		nonEmptyString(edge.target, `${path}.edges[${index}].target`);
+		if (nonNegativeInteger(edge.index, `${path}.edges[${index}].index`) !== index) contractError$1(`${path}.edges[${index}].index`, "must equal its array position");
+		nonEmptyString$1(edge.id, `${path}.edges[${index}].id`);
+		edgeColumns.push(nonEmptyString$1(edge.column, `${path}.edges[${index}].column`));
+		nonEmptyString$1(edge.source, `${path}.edges[${index}].source`);
+		nonEmptyString$1(edge.target, `${path}.edges[${index}].target`);
 		finiteNumber$1(edge.meanWeight, `${path}.edges[${index}].meanWeight`);
 	});
 	return { edgeColumns };
 }
 function assertNetworkComparison(value, path) {
-	const result = objectAt(value, path);
-	exactFields$1(result, [
+	const result = objectAt$1(value, path);
+	exactFields$2(result, [
 		"schemaVersion",
 		"direction",
 		"groupA",
@@ -3003,18 +3006,18 @@ function assertNetworkComparison(value, path) {
 		"differenceEdges",
 		"diagnostics"
 	], path);
-	if (result.schemaVersion !== "3dena.network-comparison.v1" || result.direction !== "group-a-minus-group-b") contractError(path, "contains an unsupported network-comparison contract");
-	if (assertRawTypedValue(result.groupA, `${path}.groupA`).canonical === assertRawTypedValue(result.groupB, `${path}.groupB`).canonical) contractError(path, "groupA and groupB must differ");
-	const meanA = objectAt(result.meanA, `${path}.meanA`);
-	if (!Array.isArray(meanA.meanCoordinates)) contractError(`${path}.meanA.meanCoordinates`, "must be an array");
+	if (result.schemaVersion !== "3dena.network-comparison.v1" || result.direction !== "group-a-minus-group-b") contractError$1(path, "contains an unsupported network-comparison contract");
+	if (assertRawTypedValue(result.groupA, `${path}.groupA`).canonical === assertRawTypedValue(result.groupB, `${path}.groupB`).canonical) contractError$1(path, "groupA and groupB must differ");
+	const meanA = objectAt$1(result.meanA, `${path}.meanA`);
+	if (!Array.isArray(meanA.meanCoordinates)) contractError$1(`${path}.meanA.meanCoordinates`, "must be an array");
 	const dimensions = meanA.meanCoordinates.length;
-	if (dimensions < 1) contractError(`${path}.meanA.meanCoordinates`, "must not be empty");
+	if (dimensions < 1) contractError$1(`${path}.meanA.meanCoordinates`, "must not be empty");
 	const a = assertNetworkMean(result.meanA, dimensions, `${path}.meanA`);
 	sameOrderedStrings(assertNetworkMean(result.meanB, dimensions, `${path}.meanB`).edgeColumns, a.edgeColumns, `${path}.meanB.edges`);
-	if (!Array.isArray(result.differenceEdges) || result.differenceEdges.length !== a.edgeColumns.length) contractError(`${path}.differenceEdges`, "must align with the group mean edges");
+	if (!Array.isArray(result.differenceEdges) || result.differenceEdges.length !== a.edgeColumns.length) contractError$1(`${path}.differenceEdges`, "must align with the group mean edges");
 	result.differenceEdges.forEach((candidate, index) => {
-		const edge = objectAt(candidate, `${path}.differenceEdges[${index}]`);
-		exactFields$1(edge, [
+		const edge = objectAt$1(candidate, `${path}.differenceEdges[${index}]`);
+		exactFields$2(edge, [
 			"index",
 			"id",
 			"column",
@@ -3025,44 +3028,44 @@ function assertNetworkComparison(value, path) {
 			"groupBMeanWeight",
 			"semanticOwner"
 		], `${path}.differenceEdges[${index}]`);
-		if (nonNegativeInteger(edge.index, `${path}.differenceEdges[${index}].index`) !== index || edge.column !== a.edgeColumns[index]) contractError(`${path}.differenceEdges[${index}]`, "must preserve edge order");
+		if (nonNegativeInteger(edge.index, `${path}.differenceEdges[${index}].index`) !== index || edge.column !== a.edgeColumns[index]) contractError$1(`${path}.differenceEdges[${index}]`, "must preserve edge order");
 		for (const field of [
 			"id",
 			"column",
 			"source",
 			"target"
-		]) nonEmptyString(edge[field], `${path}.differenceEdges[${index}].${field}`);
+		]) nonEmptyString$1(edge[field], `${path}.differenceEdges[${index}].${field}`);
 		const difference = finiteNumber$1(edge.meanWeight, `${path}.differenceEdges[${index}].meanWeight`);
 		const groupAMean = finiteNumber$1(edge.groupAMeanWeight, `${path}.differenceEdges[${index}].groupAMeanWeight`);
 		const groupBMean = finiteNumber$1(edge.groupBMeanWeight, `${path}.differenceEdges[${index}].groupBMeanWeight`);
-		if (Math.abs(difference - (groupAMean - groupBMean)) > Number.EPSILON * Math.max(1, Math.abs(difference), Math.abs(groupAMean), Math.abs(groupBMean)) * 8) contractError(`${path}.differenceEdges[${index}].meanWeight`, "must equal group A mean minus group B mean");
+		if (Math.abs(difference - (groupAMean - groupBMean)) > Number.EPSILON * Math.max(1, Math.abs(difference), Math.abs(groupAMean), Math.abs(groupBMean)) * 8) contractError$1(`${path}.differenceEdges[${index}].meanWeight`, "must equal group A mean minus group B mean");
 		const owner = difference > 0 ? "group-a" : difference < 0 ? "group-b" : "equal";
-		if (edge.semanticOwner !== owner) contractError(`${path}.differenceEdges[${index}].semanticOwner`, "does not match the signed difference");
+		if (edge.semanticOwner !== owner) contractError$1(`${path}.differenceEdges[${index}].semanticOwner`, "does not match the signed difference");
 	});
 	assertDiagnostics(result.diagnostics, `${path}.diagnostics`);
 }
 function assertChangeNetwork(value, path) {
-	const result = objectAt(value, path);
-	exactFields$1(result, [
+	const result = objectAt$1(value, path);
+	exactFields$2(result, [
 		"schemaVersion",
 		"selector",
 		"levelCanonical",
 		"mean",
 		"diagnostics"
 	], path);
-	if (result.schemaVersion !== "3dena.change-network.v1") contractError(`${path}.schemaVersion`, "must be 3dena.change-network.v1");
-	const selector = objectAt(result.selector, `${path}.selector`);
-	exactFields$1(selector, ["field", "level"], `${path}.selector`);
-	nonEmptyString(selector.field, `${path}.selector.field`);
-	rawScalar(selector.level, `${path}.selector.level`);
-	nonEmptyString(result.levelCanonical, `${path}.levelCanonical`);
-	const mean = objectAt(result.mean, `${path}.mean`);
-	if (!Array.isArray(mean.meanCoordinates) || mean.meanCoordinates.length < 1) contractError(`${path}.mean.meanCoordinates`, "must be a non-empty array");
+	if (result.schemaVersion !== "3dena.change-network.v1") contractError$1(`${path}.schemaVersion`, "must be 3dena.change-network.v1");
+	const selector = objectAt$1(result.selector, `${path}.selector`);
+	exactFields$2(selector, ["field", "level"], `${path}.selector`);
+	nonEmptyString$1(selector.field, `${path}.selector.field`);
+	rawScalar$1(selector.level, `${path}.selector.level`);
+	nonEmptyString$1(result.levelCanonical, `${path}.levelCanonical`);
+	const mean = objectAt$1(result.mean, `${path}.mean`);
+	if (!Array.isArray(mean.meanCoordinates) || mean.meanCoordinates.length < 1) contractError$1(`${path}.mean.meanCoordinates`, "must be a non-empty array");
 	assertNetworkMean(result.mean, mean.meanCoordinates.length, `${path}.mean`);
 	assertDiagnostics(result.diagnostics, `${path}.diagnostics`);
 }
 function assertStatsContract(value, path) {
-	const contract = objectAt(value, path);
+	const contract = objectAt$1(value, path);
 	const expected = {
 		schemaVersion: "3dena.stats.contract.v1",
 		direction: "A-minus-B",
@@ -3076,50 +3079,50 @@ function assertStatsContract(value, path) {
 		meanDifferenceConfidenceInterval: "alternative-aligned-t-interval-95-percent",
 		pValueAdjustmentFamily: "caller-supplied-complete-family"
 	};
-	exactFields$1(contract, Object.keys(expected), path);
-	for (const [field, expectedValue] of Object.entries(expected)) if (contract[field] !== expectedValue) contractError(`${path}.${field}`, `must be ${JSON.stringify(expectedValue)}`);
+	exactFields$2(contract, Object.keys(expected), path);
+	for (const [field, expectedValue] of Object.entries(expected)) if (contract[field] !== expectedValue) contractError$1(`${path}.${field}`, `must be ${JSON.stringify(expectedValue)}`);
 }
 function probability(value, path) {
 	const number = finiteNumber$1(value, path);
-	if (number < 0 || number > 1) contractError(path, "must be in [0, 1]");
+	if (number < 0 || number > 1) contractError$1(path, "must be in [0, 1]");
 	return number;
 }
 function assertConfidenceBound(value, path) {
-	const bound = objectAt(value, path);
-	const kind = nonEmptyString(bound.kind, `${path}.kind`);
+	const bound = objectAt$1(value, path);
+	const kind = nonEmptyString$1(bound.kind, `${path}.kind`);
 	if (kind === "finite") {
-		exactFields$1(bound, ["kind", "value"], path);
+		exactFields$2(bound, ["kind", "value"], path);
 		finiteNumber$1(bound.value, `${path}.value`);
 	} else if ([
 		"negative-infinity",
 		"positive-infinity",
 		"undefined",
 		"unrepresentable"
-	].includes(kind)) exactFields$1(bound, ["kind"], path);
-	else contractError(`${path}.kind`, "is unsupported");
+	].includes(kind)) exactFields$2(bound, ["kind"], path);
+	else contractError$1(`${path}.kind`, "is unsupported");
 }
 function assertConfidenceInterval(value, path) {
-	const interval = objectAt(value, path);
-	exactFields$1(interval, [
+	const interval = objectAt$1(value, path);
+	exactFields$2(interval, [
 		"method",
 		"confidenceLevel",
 		"alternative",
 		"lower",
 		"upper"
 	], path);
-	if (interval.method !== "welch-t-mean-difference-v1" && interval.method !== "paired-t-mean-difference-v1") contractError(`${path}.method`, "is unsupported");
-	if (interval.confidenceLevel !== .95) contractError(`${path}.confidenceLevel`, "must be 0.95");
+	if (interval.method !== "welch-t-mean-difference-v1" && interval.method !== "paired-t-mean-difference-v1") contractError$1(`${path}.method`, "is unsupported");
+	if (interval.confidenceLevel !== .95) contractError$1(`${path}.confidenceLevel`, "must be 0.95");
 	if (![
 		"two-sided",
 		"greater",
 		"less"
-	].includes(interval.alternative)) contractError(`${path}.alternative`, "is unsupported");
+	].includes(interval.alternative)) contractError$1(`${path}.alternative`, "is unsupported");
 	assertConfidenceBound(interval.lower, `${path}.lower`);
 	assertConfidenceBound(interval.upper, `${path}.upper`);
 }
 function assertAdjustment(value, path) {
-	const adjustment = objectAt(value, path);
-	exactFields$1(adjustment, [
+	const adjustment = objectAt$1(value, path);
+	exactFields$2(adjustment, [
 		"method",
 		"raw",
 		"adjusted"
@@ -3129,15 +3132,15 @@ function assertAdjustment(value, path) {
 		"holm",
 		"bh",
 		"bonferroni"
-	].includes(adjustment.method)) contractError(`${path}.method`, "is unsupported");
-	if (!Array.isArray(adjustment.raw) || !Array.isArray(adjustment.adjusted) || adjustment.raw.length !== adjustment.adjusted.length || adjustment.raw.length === 0) contractError(path, "raw and adjusted p-value families must be non-empty and aligned");
+	].includes(adjustment.method)) contractError$1(`${path}.method`, "is unsupported");
+	if (!Array.isArray(adjustment.raw) || !Array.isArray(adjustment.adjusted) || adjustment.raw.length !== adjustment.adjusted.length || adjustment.raw.length === 0) contractError$1(path, "raw and adjusted p-value families must be non-empty and aligned");
 	adjustment.raw.forEach((entry, index) => probability(entry, `${path}.raw[${index}]`));
 	adjustment.adjusted.forEach((entry, index) => probability(entry, `${path}.adjusted[${index}]`));
 }
 function assertStatsResult(value, expectedDesign, path) {
-	const result = objectAt(value, path);
+	const result = objectAt$1(value, path);
 	if (expectedDesign === "independent") {
-		exactFields$1(result, [
+		exactFields$2(result, [
 			"schemaVersion",
 			"design",
 			"direction",
@@ -3151,23 +3154,23 @@ function assertStatsResult(value, expectedDesign, path) {
 			"adjustment",
 			"diagnostics"
 		], path);
-		if (result.schemaVersion !== "3dena.stats.independent-result.v1" || result.design !== "independent") contractError(path, "must be an independent statistics result");
-		const samples = objectAt(result.samples, `${path}.samples`);
-		exactFields$1(samples, ["sideA", "sideB"], `${path}.samples`);
+		if (result.schemaVersion !== "3dena.stats.independent-result.v1" || result.design !== "independent") contractError$1(path, "must be an independent statistics result");
+		const samples = objectAt$1(result.samples, `${path}.samples`);
+		exactFields$2(samples, ["sideA", "sideB"], `${path}.samples`);
 		for (const side of ["sideA", "sideB"]) {
-			const sample = objectAt(samples[side], `${path}.samples.${side}`);
-			exactFields$1(sample, [
+			const sample = objectAt$1(samples[side], `${path}.samples.${side}`);
+			exactFields$2(sample, [
 				"label",
 				"input",
 				"valid",
 				"droppedMissing"
 			], `${path}.samples.${side}`);
-			nonEmptyString(sample.label, `${path}.samples.${side}.label`);
+			nonEmptyString$1(sample.label, `${path}.samples.${side}.label`);
 			const input = positiveInteger(sample.input, `${path}.samples.${side}.input`);
-			if (positiveInteger(sample.valid, `${path}.samples.${side}.valid`) + nonNegativeInteger(sample.droppedMissing, `${path}.samples.${side}.droppedMissing`) !== input) contractError(`${path}.samples.${side}`, "valid plus droppedMissing must equal input");
+			if (positiveInteger(sample.valid, `${path}.samples.${side}.valid`) + nonNegativeInteger(sample.droppedMissing, `${path}.samples.${side}.droppedMissing`) !== input) contractError$1(`${path}.samples.${side}`, "valid plus droppedMissing must equal input");
 		}
-		const estimates = objectAt(result.estimates, `${path}.estimates`);
-		exactFields$1(estimates, [
+		const estimates = objectAt$1(result.estimates, `${path}.estimates`);
+		exactFields$2(estimates, [
 			"meanA",
 			"meanB",
 			"meanDifference",
@@ -3177,20 +3180,20 @@ function assertStatsResult(value, expectedDesign, path) {
 		finiteNumber$1(estimates.meanB, `${path}.estimates.meanB`);
 		finiteOrNull(estimates.meanDifference, `${path}.estimates.meanDifference`);
 		assertConfidenceInterval(estimates.confidenceInterval, `${path}.estimates.confidenceInterval`);
-		const welch = objectAt(result.welch, `${path}.welch`);
-		exactFields$1(welch, [
+		const welch = objectAt$1(result.welch, `${path}.welch`);
+		exactFields$2(welch, [
 			"method",
 			"alternative",
 			"statistic",
 			"degreesOfFreedom",
 			"pValue"
 		], `${path}.welch`);
-		if (welch.method !== "welch-t-v1") contractError(`${path}.welch.method`, "must be welch-t-v1");
+		if (welch.method !== "welch-t-v1") contractError$1(`${path}.welch.method`, "must be welch-t-v1");
 		finiteOrNull(welch.statistic, `${path}.welch.statistic`);
 		finiteOrNull(welch.degreesOfFreedom, `${path}.welch.degreesOfFreedom`);
 		probability(welch.pValue, `${path}.welch.pValue`);
-		const mann = objectAt(result.mannWhitney, `${path}.mannWhitney`);
-		exactFields$1(mann, [
+		const mann = objectAt$1(result.mannWhitney, `${path}.mannWhitney`);
+		exactFields$2(mann, [
 			"method",
 			"alternative",
 			"tiePolicy",
@@ -3202,7 +3205,7 @@ function assertStatsResult(value, expectedDesign, path) {
 			"tieGroups",
 			"tiedObservations"
 		], `${path}.mannWhitney`);
-		if (mann.method !== "mann-whitney-asymptotic-v1" || mann.tiePolicy !== "exact-value-midrank" || mann.continuityCorrection !== true) contractError(`${path}.mannWhitney`, "contains unsupported rank-test semantics");
+		if (mann.method !== "mann-whitney-asymptotic-v1" || mann.tiePolicy !== "exact-value-midrank" || mann.continuityCorrection !== true) contractError$1(`${path}.mannWhitney`, "contains unsupported rank-test semantics");
 		for (const field of [
 			"uA",
 			"uB",
@@ -3212,7 +3215,7 @@ function assertStatsResult(value, expectedDesign, path) {
 		nonNegativeInteger(mann.tieGroups, `${path}.mannWhitney.tieGroups`);
 		nonNegativeInteger(mann.tiedObservations, `${path}.mannWhitney.tiedObservations`);
 	} else {
-		exactFields$1(result, [
+		exactFields$2(result, [
 			"schemaVersion",
 			"design",
 			"direction",
@@ -3225,9 +3228,9 @@ function assertStatsResult(value, expectedDesign, path) {
 			"adjustment",
 			"diagnostics"
 		], path);
-		if (result.schemaVersion !== "3dena.stats.paired-result.v1" || result.design !== "paired") contractError(path, "must be a paired statistics result");
-		const matching = objectAt(result.matching, `${path}.matching`);
-		exactFields$1(matching, [
+		if (result.schemaVersion !== "3dena.stats.paired-result.v1" || result.design !== "paired") contractError$1(path, "must be a paired statistics result");
+		const matching = objectAt$1(result.matching, `${path}.matching`);
+		exactFields$2(matching, [
 			"sideAInput",
 			"sideBInput",
 			"matched",
@@ -3239,13 +3242,13 @@ function assertStatsResult(value, expectedDesign, path) {
 			"rankedPairs"
 		], `${path}.matching`);
 		for (const field of Object.keys(matching)) nonNegativeInteger(matching[field], `${path}.matching.${field}`);
-		if (matching.matched !== matching.validPairs + matching.droppedMissingPairs || matching.rankedPairs !== matching.validPairs - matching.zeroDifferences) contractError(`${path}.matching`, "pair counts are inconsistent");
-		const estimates = objectAt(result.estimates, `${path}.estimates`);
-		exactFields$1(estimates, ["meanDifference", "confidenceInterval"], `${path}.estimates`);
+		if (matching.matched !== matching.validPairs + matching.droppedMissingPairs || matching.rankedPairs !== matching.validPairs - matching.zeroDifferences) contractError$1(`${path}.matching`, "pair counts are inconsistent");
+		const estimates = objectAt$1(result.estimates, `${path}.estimates`);
+		exactFields$2(estimates, ["meanDifference", "confidenceInterval"], `${path}.estimates`);
 		finiteOrNull(estimates.meanDifference, `${path}.estimates.meanDifference`);
 		assertConfidenceInterval(estimates.confidenceInterval, `${path}.estimates.confidenceInterval`);
-		const signed = objectAt(result.wilcoxonSignedRank, `${path}.wilcoxonSignedRank`);
-		exactFields$1(signed, [
+		const signed = objectAt$1(result.wilcoxonSignedRank, `${path}.wilcoxonSignedRank`);
+		exactFields$2(signed, [
 			"method",
 			"alternative",
 			"tiePolicy",
@@ -3259,7 +3262,7 @@ function assertStatsResult(value, expectedDesign, path) {
 			"tieGroups",
 			"tiedObservations"
 		], `${path}.wilcoxonSignedRank`);
-		if (signed.method !== "wilcoxon-signed-rank-asymptotic-v1" || signed.tiePolicy !== "exact-absolute-difference-midrank" || signed.zeroPolicy !== "drop-exact-zero" || signed.continuityCorrection !== true) contractError(`${path}.wilcoxonSignedRank`, "contains unsupported signed-rank semantics");
+		if (signed.method !== "wilcoxon-signed-rank-asymptotic-v1" || signed.tiePolicy !== "exact-absolute-difference-midrank" || signed.zeroPolicy !== "drop-exact-zero" || signed.continuityCorrection !== true) contractError$1(`${path}.wilcoxonSignedRank`, "contains unsupported signed-rank semantics");
 		for (const field of [
 			"statistic",
 			"wPositive",
@@ -3270,46 +3273,46 @@ function assertStatsResult(value, expectedDesign, path) {
 		nonNegativeInteger(signed.tieGroups, `${path}.wilcoxonSignedRank.tieGroups`);
 		nonNegativeInteger(signed.tiedObservations, `${path}.wilcoxonSignedRank.tiedObservations`);
 	}
-	if (result.direction !== "A-minus-B") contractError(`${path}.direction`, "must be A-minus-B");
+	if (result.direction !== "A-minus-B") contractError$1(`${path}.direction`, "must be A-minus-B");
 	if (![
 		"two-sided",
 		"greater",
 		"less"
-	].includes(result.alternative)) contractError(`${path}.alternative`, "is unsupported");
+	].includes(result.alternative)) contractError$1(`${path}.alternative`, "is unsupported");
 	assertStatsContract(result.contract, `${path}.contract`);
-	const effects = objectAt(result.effects, `${path}.effects`);
-	exactFields$1(effects, ["cohensD", "rankBiserial"], `${path}.effects`);
+	const effects = objectAt$1(result.effects, `${path}.effects`);
+	exactFields$2(effects, ["cohensD", "rankBiserial"], `${path}.effects`);
 	finiteOrNull(effects.cohensD, `${path}.effects.cohensD`);
 	finiteNumber$1(effects.rankBiserial, `${path}.effects.rankBiserial`);
 	assertAdjustment(result.adjustment, `${path}.adjustment`);
 	assertDiagnostics(result.diagnostics, `${path}.diagnostics`);
 }
 function assertStatisticsTaskResult(value, path) {
-	const result = objectAt(value, path);
-	exactFields$1(result, [
+	const result = objectAt$1(value, path);
+	exactFields$2(result, [
 		"schemaVersion",
 		"design",
 		"direction",
 		"groups",
 		"dimensions"
 	], path);
-	if (result.schemaVersion !== "3dena.statistics-task-result.v1") contractError(`${path}.schemaVersion`, "must be 3dena.statistics-task-result.v1");
-	if (result.design !== "independent" && result.design !== "paired") contractError(`${path}.design`, "must be independent or paired");
-	if (result.direction !== "group-a-minus-group-b") contractError(`${path}.direction`, "must be group-a-minus-group-b");
+	if (result.schemaVersion !== "3dena.statistics-task-result.v1") contractError$1(`${path}.schemaVersion`, "must be 3dena.statistics-task-result.v1");
+	if (result.design !== "independent" && result.design !== "paired") contractError$1(`${path}.design`, "must be independent or paired");
+	if (result.direction !== "group-a-minus-group-b") contractError$1(`${path}.direction`, "must be group-a-minus-group-b");
 	stringPair(result.groups, `${path}.groups`);
-	if (!Array.isArray(result.dimensions) || result.dimensions.length === 0) contractError(`${path}.dimensions`, "must be non-empty");
+	if (!Array.isArray(result.dimensions) || result.dimensions.length === 0) contractError$1(`${path}.dimensions`, "must be non-empty");
 	const seen = /* @__PURE__ */ new Set();
 	result.dimensions.forEach((candidate, index) => {
-		const dimension = objectAt(candidate, `${path}.dimensions[${index}]`);
-		exactFields$1(dimension, ["dimension", "result"], `${path}.dimensions[${index}]`);
-		const name = nonEmptyString(dimension.dimension, `${path}.dimensions[${index}].dimension`);
-		if (seen.has(name)) contractError(`${path}.dimensions[${index}].dimension`, "duplicates an earlier dimension");
+		const dimension = objectAt$1(candidate, `${path}.dimensions[${index}]`);
+		exactFields$2(dimension, ["dimension", "result"], `${path}.dimensions[${index}]`);
+		const name = nonEmptyString$1(dimension.dimension, `${path}.dimensions[${index}].dimension`);
+		if (seen.has(name)) contractError$1(`${path}.dimensions[${index}].dimension`, "duplicates an earlier dimension");
 		seen.add(name);
 		assertStatsResult(dimension.result, result.design, `${path}.dimensions[${index}].result`);
 	});
 }
 function assertTrajectoryIdentity(value, path, key) {
-	const identity = objectAt(value, path);
+	const identity = objectAt$1(value, path);
 	allowedFields(identity, key ? [
 		"components",
 		"canonical",
@@ -3319,10 +3322,10 @@ function assertTrajectoryIdentity(value, path, key) {
 		"canonical",
 		"display"
 	] : ["components"], path);
-	if (!Array.isArray(identity.components) || identity.components.length === 0) contractError(`${path}.components`, "must be non-empty");
+	if (!Array.isArray(identity.components) || identity.components.length === 0) contractError$1(`${path}.components`, "must be non-empty");
 	const names = /* @__PURE__ */ new Set();
 	identity.components.forEach((candidate, index) => {
-		const component = objectAt(candidate, `${path}.components[${index}]`);
+		const component = objectAt$1(candidate, `${path}.components[${index}]`);
 		allowedFields(component, [
 			"name",
 			"type",
@@ -3333,26 +3336,26 @@ function assertTrajectoryIdentity(value, path, key) {
 			"type",
 			"value"
 		], `${path}.components[${index}]`);
-		const name = nonEmptyString(component.name, `${path}.components[${index}].name`);
-		if (names.has(name)) contractError(`${path}.components[${index}].name`, "duplicates an earlier component");
+		const name = nonEmptyString$1(component.name, `${path}.components[${index}].name`);
+		if (names.has(name)) contractError$1(`${path}.components[${index}].name`, "duplicates an earlier component");
 		names.add(name);
 		if (![
 			"string",
 			"number",
 			"boolean"
-		].includes(component.type)) contractError(`${path}.components[${index}].type`, "is unsupported");
-		if (component.type === "string" && (typeof component.value !== "string" || component.value.length === 0)) contractError(`${path}.components[${index}].value`, "must be a non-empty string");
-		if (component.type === "boolean" && typeof component.value !== "boolean") contractError(`${path}.components[${index}].value`, "must be boolean");
-		if (component.type === "number") rawScalar(component.value, `${path}.components[${index}].value`);
-		if (component.declaredType !== void 0) nonEmptyString(component.declaredType, `${path}.components[${index}].declaredType`);
+		].includes(component.type)) contractError$1(`${path}.components[${index}].type`, "is unsupported");
+		if (component.type === "string" && (typeof component.value !== "string" || component.value.length === 0)) contractError$1(`${path}.components[${index}].value`, "must be a non-empty string");
+		if (component.type === "boolean" && typeof component.value !== "boolean") contractError$1(`${path}.components[${index}].value`, "must be boolean");
+		if (component.type === "number") rawScalar$1(component.value, `${path}.components[${index}].value`);
+		if (component.declaredType !== void 0) nonEmptyString$1(component.declaredType, `${path}.components[${index}].declaredType`);
 	});
 	if (!key) return null;
-	nonEmptyString(identity.display, `${path}.display`);
-	return nonEmptyString(identity.canonical, `${path}.canonical`);
+	nonEmptyString$1(identity.display, `${path}.display`);
+	return nonEmptyString$1(identity.canonical, `${path}.canonical`);
 }
 function assertDistanceMetrics(value, dimensions, path, includeSpeed) {
-	const metrics = objectAt(value, path);
-	exactFields$1(metrics, includeSpeed ? [
+	const metrics = objectAt$1(value, path);
+	exactFields$2(metrics, includeSpeed ? [
 		"dimensions",
 		"delta",
 		"stepDistance",
@@ -3364,18 +3367,19 @@ function assertDistanceMetrics(value, dimensions, path, includeSpeed) {
 		"stepDistance",
 		"cumulativeDistance"
 	], path);
-	sameOrderedStrings(stringList(metrics.dimensions, `${path}.dimensions`), dimensions, `${path}.dimensions`);
+	sameOrderedStrings(stringList$1(metrics.dimensions, `${path}.dimensions`), dimensions, `${path}.dimensions`);
 	if (metrics.delta !== null) finiteVector(metrics.delta, `${path}.delta`, dimensions.length);
 	finiteOrNull(metrics.stepDistance, `${path}.stepDistance`);
 	finiteOrNull(metrics.cumulativeDistance, `${path}.cumulativeDistance`);
 	if (includeSpeed) finiteOrNull(metrics.speed, `${path}.speed`);
 }
 function assertTrajectoryPathStatistics(value, path) {
-	const result = objectAt(value, path);
-	exactFields$1(result, [
+	const result = objectAt$1(value, path);
+	exactFields$2(result, [
 		"schemaVersion",
 		"namespace",
 		"cohortPolicy",
+		"estimand",
 		"dimensions",
 		"selectedDimensions",
 		"distanceSemantics",
@@ -3385,20 +3389,21 @@ function assertTrajectoryPathStatistics(value, path) {
 		"summary",
 		"resolvedLimits"
 	], path);
-	if (result.schemaVersion !== "3dena.trajectory-path-statistics.v1") contractError(`${path}.schemaVersion`, "must be 3dena.trajectory-path-statistics.v1");
-	nonEmptyString(result.namespace, `${path}.namespace`);
-	if (result.cohortPolicy !== "available" && result.cohortPolicy !== "complete") contractError(`${path}.cohortPolicy`, "is unsupported");
-	const dimensions = stringList(result.dimensions, `${path}.dimensions`);
-	const selected = stringList(result.selectedDimensions, `${path}.selectedDimensions`, 3);
-	if (selected.length !== 3 || selected.some((entry) => !dimensions.includes(entry))) contractError(`${path}.selectedDimensions`, "must contain three declared dimensions");
-	const semantics = objectAt(result.distanceSemantics, `${path}.distanceSemantics`);
-	exactFields$1(semantics, ["selected3d", "fullSpace"], `${path}.distanceSemantics`);
-	if (semantics.selected3d !== "euclidean-selected-three-dimensions" || semantics.fullSpace !== "euclidean-all-declared-dimensions") contractError(`${path}.distanceSemantics`, "is unsupported");
-	assertTrajectoryParticipantPeriods(result.participantPeriods, dimensions, `${path}.participantPeriods`, false);
-	if (!Array.isArray(result.periods)) contractError(`${path}.periods`, "must be an array");
+	if (result.schemaVersion !== "3dena.trajectory-path-statistics.v1") contractError$1(`${path}.schemaVersion`, "must be 3dena.trajectory-path-statistics.v1");
+	nonEmptyString$1(result.namespace, `${path}.namespace`);
+	if (result.cohortPolicy !== "available" && result.cohortPolicy !== "complete") contractError$1(`${path}.cohortPolicy`, "is unsupported");
+	if (result.estimand !== "equal-participant" && result.estimand !== "weighted-participant") contractError$1(`${path}.estimand`, "is unsupported");
+	const dimensions = stringList$1(result.dimensions, `${path}.dimensions`);
+	const selected = stringList$1(result.selectedDimensions, `${path}.selectedDimensions`, 3);
+	if (selected.length !== 3 || selected.some((entry) => !dimensions.includes(entry))) contractError$1(`${path}.selectedDimensions`, "must contain three declared dimensions");
+	const semantics = objectAt$1(result.distanceSemantics, `${path}.distanceSemantics`);
+	exactFields$2(semantics, ["selected3d", "fullSpace"], `${path}.distanceSemantics`);
+	if (semantics.selected3d !== "euclidean-selected-three-dimensions" || semantics.fullSpace !== "euclidean-all-declared-dimensions") contractError$1(`${path}.distanceSemantics`, "is unsupported");
+	assertTrajectoryParticipantPeriods(result.participantPeriods, dimensions, `${path}.participantPeriods`, true);
+	if (!Array.isArray(result.periods)) contractError$1(`${path}.periods`, "must be an array");
 	result.periods.forEach((candidate, index) => {
-		const period = objectAt(candidate, `${path}.periods[${index}]`);
-		exactFields$1(period, [
+		const period = objectAt$1(candidate, `${path}.periods[${index}]`);
+		exactFields$2(period, [
 			"index",
 			"time",
 			"selectedCentroid",
@@ -3411,7 +3416,7 @@ function assertTrajectoryPathStatistics(value, path) {
 			"nDuplicateRows",
 			"nCohortExcluded"
 		], `${path}.periods[${index}]`);
-		if (nonNegativeInteger(period.index, `${path}.periods[${index}].index`) !== index) contractError(`${path}.periods[${index}].index`, "must equal its array position");
+		if (nonNegativeInteger(period.index, `${path}.periods[${index}].index`) !== index) contractError$1(`${path}.periods[${index}].index`, "must equal its array position");
 		assertTrajectoryIdentity(period.time, `${path}.periods[${index}].time`, true);
 		optionalFiniteVector(period.selectedCentroid, `${path}.periods[${index}].selectedCentroid`, 3);
 		optionalFiniteVector(period.fullCentroid, `${path}.periods[${index}].fullCentroid`, dimensions.length);
@@ -3438,10 +3443,10 @@ function assertTrajectoryPathStatistics(value, path) {
 	], `${path}.resolvedLimits`);
 }
 function assertTrajectoryParticipantPeriods(value, dimensions, path, weighted) {
-	if (!Array.isArray(value)) contractError(path, "must be an array");
+	if (!Array.isArray(value)) contractError$1(path, "must be an array");
 	value.forEach((candidate, index) => {
-		const row = objectAt(candidate, `${path}[${index}]`);
-		exactFields$1(row, weighted ? [
+		const row = objectAt$1(candidate, `${path}[${index}]`);
+		exactFields$2(row, weighted ? [
 			"index",
 			"participant",
 			"time",
@@ -3459,19 +3464,19 @@ function assertTrajectoryParticipantPeriods(value, dimensions, path, weighted) {
 			"sourceRowIndexes",
 			"includedInCohort"
 		], `${path}[${index}]`);
-		if (nonNegativeInteger(row.index, `${path}[${index}].index`) !== index) contractError(`${path}[${index}].index`, "must equal its array position");
+		if (nonNegativeInteger(row.index, `${path}[${index}].index`) !== index) contractError$1(`${path}[${index}].index`, "must equal its array position");
 		assertTrajectoryIdentity(row.participant, `${path}[${index}].participant`, true);
 		assertTrajectoryIdentity(row.time, `${path}[${index}].time`, true);
 		finiteVector(row.selectedCoordinates, `${path}[${index}].selectedCoordinates`, 3);
 		finiteVector(row.fullCoordinates, `${path}[${index}].fullCoordinates`, dimensions.length);
-		if (!Array.isArray(row.sourceRowIndexes) || row.sourceRowIndexes.length === 0) contractError(`${path}[${index}].sourceRowIndexes`, "must be non-empty");
+		if (!Array.isArray(row.sourceRowIndexes) || row.sourceRowIndexes.length === 0) contractError$1(`${path}[${index}].sourceRowIndexes`, "must be non-empty");
 		row.sourceRowIndexes.forEach((entry, itemIndex) => nonNegativeInteger(entry, `${path}[${index}].sourceRowIndexes[${itemIndex}]`));
-		if (weighted && finiteNumber$1(row.participantWeight, `${path}[${index}].participantWeight`) <= 0) contractError(`${path}[${index}].participantWeight`, "must be positive");
-		if (typeof row.includedInCohort !== "boolean") contractError(`${path}[${index}].includedInCohort`, "must be boolean");
+		if (weighted && finiteNumber$1(row.participantWeight, `${path}[${index}].participantWeight`) <= 0) contractError$1(`${path}[${index}].participantWeight`, "must be positive");
+		if (typeof row.includedInCohort !== "boolean") contractError$1(`${path}[${index}].includedInCohort`, "must be boolean");
 	});
 }
 function assertTrajectorySummary(value, path, dynamics) {
-	const summary = objectAt(value, path);
+	const summary = objectAt$1(value, path);
 	const fields = dynamics ? [
 		"inputRows",
 		"participants",
@@ -3488,18 +3493,18 @@ function assertTrajectorySummary(value, path, dynamics) {
 		"periods",
 		"duplicateRows"
 	];
-	exactFields$1(summary, fields, path);
+	exactFields$2(summary, fields, path);
 	for (const field of fields) nonNegativeInteger(summary[field], `${path}.${field}`);
-	if (dynamics && summary.periods !== summary.observedPeriods + summary.missingPeriods) contractError(path, "observed and missing period counts must sum to periods");
+	if (dynamics && summary.periods !== summary.observedPeriods + summary.missingPeriods) contractError$1(path, "observed and missing period counts must sum to periods");
 }
 function assertLimits(value, fields, path) {
-	const limits = objectAt(value, path);
-	exactFields$1(limits, fields, path);
+	const limits = objectAt$1(value, path);
+	exactFields$2(limits, fields, path);
 	for (const field of fields) positiveInteger(limits[field], `${path}.${field}`);
 }
 function assertTrajectoryDynamics(value, path) {
-	const result = objectAt(value, path);
-	exactFields$1(result, [
+	const result = objectAt$1(value, path);
+	exactFields$2(result, [
 		"schemaVersion",
 		"namespace",
 		"cohortPolicy",
@@ -3516,17 +3521,17 @@ function assertTrajectoryDynamics(value, path) {
 		"evidence",
 		"resolvedLimits"
 	], path);
-	if (result.schemaVersion !== "3dena.trajectory-dynamics.v1") contractError(`${path}.schemaVersion`, "must be 3dena.trajectory-dynamics.v1");
-	nonEmptyString(result.namespace, `${path}.namespace`);
-	if (result.cohortPolicy !== "available" && result.cohortPolicy !== "complete") contractError(`${path}.cohortPolicy`, "is unsupported");
-	const estimand = objectAt(result.estimand, `${path}.estimand`);
-	exactFields$1(estimand, ["kind"], `${path}.estimand`);
-	if (estimand.kind !== "equal-participant-v1" && estimand.kind !== "weighted-participant-v1") contractError(`${path}.estimand.kind`, "is unsupported");
-	const dimensions = stringList(result.dimensions, `${path}.dimensions`);
-	const selected = stringList(result.selectedDimensions, `${path}.selectedDimensions`, 3);
-	if (selected.length !== 3 || selected.some((entry) => !dimensions.includes(entry))) contractError(`${path}.selectedDimensions`, "must contain three declared dimensions");
+	if (result.schemaVersion !== "3dena.trajectory-dynamics.v1") contractError$1(`${path}.schemaVersion`, "must be 3dena.trajectory-dynamics.v1");
+	nonEmptyString$1(result.namespace, `${path}.namespace`);
+	if (result.cohortPolicy !== "available" && result.cohortPolicy !== "complete") contractError$1(`${path}.cohortPolicy`, "is unsupported");
+	const estimand = objectAt$1(result.estimand, `${path}.estimand`);
+	exactFields$2(estimand, ["kind"], `${path}.estimand`);
+	if (estimand.kind !== "equal-participant-v1" && estimand.kind !== "weighted-participant-v1") contractError$1(`${path}.estimand.kind`, "is unsupported");
+	const dimensions = stringList$1(result.dimensions, `${path}.dimensions`);
+	const selected = stringList$1(result.selectedDimensions, `${path}.selectedDimensions`, 3);
+	if (selected.length !== 3 || selected.some((entry) => !dimensions.includes(entry))) contractError$1(`${path}.selectedDimensions`, "must contain three declared dimensions");
 	assertTimeContract(result.timeContract, `${path}.timeContract`);
-	const contracts = objectAt(result.contracts, `${path}.contracts`);
+	const contracts = objectAt$1(result.contracts, `${path}.contracts`);
 	const expectedContracts = {
 		duplicateReduction: "equal-row-coordinate-mean-before-centroid-v1",
 		weightResolution: "constant-within-participant-period-v1",
@@ -3535,13 +3540,13 @@ function assertTrajectoryDynamics(value, path) {
 		gap: "expected-period-no-bridge-v1",
 		speed: "step-distance-divided-by-positive-adjacent-elapsed-v1"
 	};
-	exactFields$1(contracts, Object.keys(expectedContracts), `${path}.contracts`);
-	for (const [field, expected] of Object.entries(expectedContracts)) if (contracts[field] !== expected) contractError(`${path}.contracts.${field}`, `must be ${expected}`);
+	exactFields$2(contracts, Object.keys(expectedContracts), `${path}.contracts`);
+	for (const [field, expected] of Object.entries(expectedContracts)) if (contracts[field] !== expected) contractError$1(`${path}.contracts.${field}`, `must be ${expected}`);
 	assertTrajectoryParticipantPeriods(result.participantPeriods, dimensions, `${path}.participantPeriods`, true);
-	if (!Array.isArray(result.periods)) contractError(`${path}.periods`, "must be an array");
+	if (!Array.isArray(result.periods)) contractError$1(`${path}.periods`, "must be an array");
 	result.periods.forEach((candidate, index) => {
-		const period = objectAt(candidate, `${path}.periods[${index}]`);
-		exactFields$1(period, [
+		const period = objectAt$1(candidate, `${path}.periods[${index}]`);
+		exactFields$2(period, [
 			"index",
 			"time",
 			"timeValue",
@@ -3559,7 +3564,7 @@ function assertTrajectoryDynamics(value, path) {
 			"weightSum",
 			"effectiveParticipantN"
 		], `${path}.periods[${index}]`);
-		if (nonNegativeInteger(period.index, `${path}.periods[${index}].index`) !== index) contractError(`${path}.periods[${index}].index`, "must equal its array position");
+		if (nonNegativeInteger(period.index, `${path}.periods[${index}].index`) !== index) contractError$1(`${path}.periods[${index}].index`, "must equal its array position");
 		assertTrajectoryIdentity(period.time, `${path}.periods[${index}].time`, true);
 		assertTrajectoryTimeValue(period.timeValue, `${path}.periods[${index}].timeValue`);
 		finiteOrNull(period.elapsedFromPrevious, `${path}.periods[${index}].elapsedFromPrevious`);
@@ -3579,23 +3584,23 @@ function assertTrajectoryDynamics(value, path) {
 		finiteOrNull(period.effectiveParticipantN, `${path}.periods[${index}].effectiveParticipantN`);
 	});
 	assertDiagnostics(result.diagnostics, `${path}.diagnostics`);
-	const diagnosticSummary = objectAt(result.diagnosticSummary, `${path}.diagnosticSummary`);
-	exactFields$1(diagnosticSummary, [
+	const diagnosticSummary = objectAt$1(result.diagnosticSummary, `${path}.diagnosticSummary`);
+	exactFields$2(diagnosticSummary, [
 		"info",
 		"warning",
 		"codes"
 	], `${path}.diagnosticSummary`);
 	nonNegativeInteger(diagnosticSummary.info, `${path}.diagnosticSummary.info`);
 	nonNegativeInteger(diagnosticSummary.warning, `${path}.diagnosticSummary.warning`);
-	stringList(diagnosticSummary.codes, `${path}.diagnosticSummary.codes`, 0);
+	stringList$1(diagnosticSummary.codes, `${path}.diagnosticSummary.codes`, 0);
 	assertTrajectorySummary(result.summary, `${path}.summary`, true);
-	const evidence = objectAt(result.evidence, `${path}.evidence`);
-	exactFields$1(evidence, [
+	const evidence = objectAt$1(result.evidence, `${path}.evidence`);
+	exactFields$2(evidence, [
 		"status",
 		"oracleParityClaim",
 		"scientificAuthority"
 	], `${path}.evidence`);
-	if (evidence.status !== "IMPLEMENTED_UNVERIFIED" || evidence.oracleParityClaim !== false || evidence.scientificAuthority !== "successor-definition-pending-review") contractError(`${path}.evidence`, "must not claim unapproved scientific authority");
+	if (evidence.status !== "IMPLEMENTED_UNVERIFIED" || evidence.oracleParityClaim !== false || evidence.scientificAuthority !== "successor-definition-pending-review") contractError$1(`${path}.evidence`, "must not claim unapproved scientific authority");
 	assertLimits(result.resolvedLimits, [
 		"maxPoints",
 		"maxDimensions",
@@ -3605,26 +3610,26 @@ function assertTrajectoryDynamics(value, path) {
 	], `${path}.resolvedLimits`);
 }
 function assertTimeContract(value, path) {
-	const contract = objectAt(value, path);
-	const kind = nonEmptyString(contract.kind, `${path}.kind`);
+	const contract = objectAt$1(value, path);
+	const kind = nonEmptyString$1(contract.kind, `${path}.kind`);
 	if (kind === "numeric-v1") {
-		exactFields$1(contract, [
+		exactFields$2(contract, [
 			"kind",
 			"elapsedUnit",
 			"chronology"
 		], path);
-		nonEmptyString(contract.elapsedUnit, `${path}.elapsedUnit`);
-		if (contract.chronology !== "strictly-increasing-finite-number-v1") contractError(`${path}.chronology`, "is unsupported");
+		nonEmptyString$1(contract.elapsedUnit, `${path}.elapsedUnit`);
+		if (contract.chronology !== "strictly-increasing-finite-number-v1") contractError$1(`${path}.chronology`, "is unsupported");
 	} else if (kind === "date-v1") {
-		exactFields$1(contract, [
+		exactFields$2(contract, [
 			"kind",
 			"elapsedUnit",
 			"calendar",
 			"chronology"
 		], path);
-		if (contract.elapsedUnit !== "days" || contract.calendar !== "proleptic-gregorian-v1" || contract.chronology !== "strictly-increasing-civil-day-v1") contractError(path, "contains unsupported civil-date semantics");
+		if (contract.elapsedUnit !== "days" || contract.calendar !== "proleptic-gregorian-v1" || contract.chronology !== "strictly-increasing-civil-day-v1") contractError$1(path, "contains unsupported civil-date semantics");
 	} else if (kind === "instant-v1") {
-		exactFields$1(contract, [
+		exactFields$2(contract, [
 			"kind",
 			"elapsedUnit",
 			"epoch",
@@ -3632,21 +3637,21 @@ function assertTimeContract(value, path) {
 			"zoneRole"
 		], path);
 		trajectoryDurationUnit(contract.elapsedUnit, `${path}.elapsedUnit`);
-		if (contract.epoch !== "unix-epoch-milliseconds-int64-v1" || contract.chronology !== "strictly-increasing-exact-epoch-v1" || contract.zoneRole !== "presentation-provenance-only") contractError(path, "contains unsupported instant semantics");
+		if (contract.epoch !== "unix-epoch-milliseconds-int64-v1" || contract.chronology !== "strictly-increasing-exact-epoch-v1" || contract.zoneRole !== "presentation-provenance-only") contractError$1(path, "contains unsupported instant semantics");
 	} else if (kind === "difftime-v1") {
-		exactFields$1(contract, [
+		exactFields$2(contract, [
 			"kind",
 			"elapsedUnit",
 			"conversion",
 			"chronology"
 		], path);
 		trajectoryDurationUnit(contract.elapsedUnit, `${path}.elapsedUnit`);
-		if (contract.conversion !== "fixed-duration-unit-ratios-v1" || contract.chronology !== "strictly-increasing-normalized-duration-v1") contractError(path, "contains unsupported duration semantics");
-	} else contractError(`${path}.kind`, "is unsupported");
+		if (contract.conversion !== "fixed-duration-unit-ratios-v1" || contract.chronology !== "strictly-increasing-normalized-duration-v1") contractError$1(path, "contains unsupported duration semantics");
+	} else contractError$1(`${path}.kind`, "is unsupported");
 }
 function assertTrajectoryComparison(value, path) {
-	const result = objectAt(value, path);
-	exactFields$1(result, [
+	const result = objectAt$1(value, path);
+	exactFields$2(result, [
 		"schemaVersion",
 		"design",
 		"direction",
@@ -3658,22 +3663,22 @@ function assertTrajectoryComparison(value, path) {
 		"permutation",
 		"diagnostics"
 	], path);
-	if (result.schemaVersion !== "3dena.trajectory-comparison.v1" || result.design !== "paired" && result.design !== "independent" || result.direction !== "B-minus-A") contractError(path, "contains an unsupported trajectory-comparison contract");
+	if (result.schemaVersion !== "3dena.trajectory-comparison.v1" || result.design !== "paired" && result.design !== "independent" || result.direction !== "B-minus-A") contractError$1(path, "contains an unsupported trajectory-comparison contract");
 	if (result.design === "paired") {
-		if (typeof result.pairedId !== "string" && (!Array.isArray(result.pairedId) || result.pairedId.length === 0)) contractError(`${path}.pairedId`, "must declare the exact paired identity");
-	} else if (result.pairedId !== null) contractError(`${path}.pairedId`, "must be null for independent comparison");
+		if (typeof result.pairedId !== "string" && (!Array.isArray(result.pairedId) || result.pairedId.length === 0)) contractError$1(`${path}.pairedId`, "must declare the exact paired identity");
+	} else if (result.pairedId !== null) contractError$1(`${path}.pairedId`, "must be null for independent comparison");
 	assertTrajectoryPathStatistics(result.sideA, `${path}.sideA`);
 	assertTrajectoryPathStatistics(result.sideB, `${path}.sideB`);
 	const sideA = result.sideA;
 	const sideB = result.sideB;
 	sameOrderedStrings(sideB.dimensions, sideA.dimensions, `${path}.sideB.dimensions`);
-	if (!Array.isArray(result.periods) || result.periods.length !== sideA.periods.length || result.periods.length !== sideB.periods.length) contractError(`${path}.periods`, "must align one-to-one with both paths");
+	if (!Array.isArray(result.periods) || result.periods.length !== sideA.periods.length || result.periods.length !== sideB.periods.length) contractError$1(`${path}.periods`, "must align one-to-one with both paths");
 	const periods = result.periods;
 	periods.forEach((candidate, index) => assertTrajectoryComparisonPeriod(candidate, sideA.dimensions.length, index, `${path}.periods[${index}]`));
-	if (!Array.isArray(result.tests)) contractError(`${path}.tests`, "must be an array");
+	if (!Array.isArray(result.tests)) contractError$1(`${path}.tests`, "must be an array");
 	result.tests.forEach((candidate, index) => {
-		const test = objectAt(candidate, `${path}.tests[${index}]`);
-		exactFields$1(test, [
+		const test = objectAt$1(candidate, `${path}.tests[${index}]`);
+		exactFields$2(test, [
 			"id",
 			"timeIndex",
 			"metric",
@@ -3684,34 +3689,34 @@ function assertTrajectoryComparison(value, path) {
 			"holmAdjustedPValue",
 			"permutationCount"
 		], `${path}.tests[${index}]`);
-		nonEmptyString(test.id, `${path}.tests[${index}].id`);
-		if (nonNegativeInteger(test.timeIndex, `${path}.tests[${index}].timeIndex`) >= periods.length) contractError(`${path}.tests[${index}].timeIndex`, "is outside the period table");
-		nonEmptyString(test.metric, `${path}.tests[${index}].metric`);
-		if (test.distanceSpace !== null && test.distanceSpace !== "selected-3d" && test.distanceSpace !== "full-space") contractError(`${path}.tests[${index}].distanceSpace`, "is unsupported");
-		if (test.tail !== "two-sided" && test.tail !== "upper") contractError(`${path}.tests[${index}].tail`, "is unsupported");
+		nonEmptyString$1(test.id, `${path}.tests[${index}].id`);
+		if (nonNegativeInteger(test.timeIndex, `${path}.tests[${index}].timeIndex`) >= periods.length) contractError$1(`${path}.tests[${index}].timeIndex`, "is outside the period table");
+		nonEmptyString$1(test.metric, `${path}.tests[${index}].metric`);
+		if (test.distanceSpace !== null && test.distanceSpace !== "selected-3d" && test.distanceSpace !== "full-space") contractError$1(`${path}.tests[${index}].distanceSpace`, "is unsupported");
+		if (test.tail !== "two-sided" && test.tail !== "upper") contractError$1(`${path}.tests[${index}].tail`, "is unsupported");
 		finiteNumber$1(test.observed, `${path}.tests[${index}].observed`);
 		probability(test.pValue, `${path}.tests[${index}].pValue`);
 		probability(test.holmAdjustedPValue, `${path}.tests[${index}].holmAdjustedPValue`);
 		positiveInteger(test.permutationCount, `${path}.tests[${index}].permutationCount`);
 	});
-	const permutation = objectAt(result.permutation, `${path}.permutation`);
-	exactFields$1(permutation, [
+	const permutation = objectAt$1(result.permutation, `${path}.permutation`);
+	exactFields$2(permutation, [
 		"status",
 		"planKind",
 		"unitOrder",
 		"replicateCount",
 		"rngParityClaim"
 	], `${path}.permutation`);
-	if (permutation.status !== "not-requested" && permutation.status !== "complete") contractError(`${path}.permutation.status`, "is unsupported");
-	if (permutation.planKind !== null && permutation.planKind !== "paired-swap-indices-v1" && permutation.planKind !== "independent-pool-indices-v1") contractError(`${path}.permutation.planKind`, "is unsupported");
-	stringList(permutation.unitOrder, `${path}.permutation.unitOrder`, 0);
+	if (permutation.status !== "not-requested" && permutation.status !== "complete") contractError$1(`${path}.permutation.status`, "is unsupported");
+	if (permutation.planKind !== null && permutation.planKind !== "paired-swap-indices-v1" && permutation.planKind !== "independent-pool-indices-v1") contractError$1(`${path}.permutation.planKind`, "is unsupported");
+	stringList$1(permutation.unitOrder, `${path}.permutation.unitOrder`, 0);
 	nonNegativeInteger(permutation.replicateCount, `${path}.permutation.replicateCount`);
-	if (permutation.rngParityClaim !== false) contractError(`${path}.permutation.rngParityClaim`, "must remain false until independently approved");
+	if (permutation.rngParityClaim !== false) contractError$1(`${path}.permutation.rngParityClaim`, "must remain false until independently approved");
 	assertDiagnostics(result.diagnostics, `${path}.diagnostics`);
 }
 function assertTrajectoryComparisonPeriod(value, dimensions, index, path) {
-	const period = objectAt(value, path);
-	exactFields$1(period, [
+	const period = objectAt$1(value, path);
+	exactFields$2(period, [
 		"index",
 		"time",
 		"selectedCentroidA",
@@ -3738,7 +3743,7 @@ function assertTrajectoryComparisonPeriod(value, dimensions, index, path) {
 		"nBUsed",
 		"nMatched"
 	], path);
-	if (nonNegativeInteger(period.index, `${path}.index`) !== index) contractError(`${path}.index`, "must equal its array position");
+	if (nonNegativeInteger(period.index, `${path}.index`) !== index) contractError$1(`${path}.index`, "must equal its array position");
 	assertTrajectoryIdentity(period.time, `${path}.time`, true);
 	for (const field of [
 		"selectedCentroidA",
@@ -3771,8 +3776,8 @@ function assertTrajectoryComparisonPeriod(value, dimensions, index, path) {
 	if (period.nMatched !== null) nonNegativeInteger(period.nMatched, `${path}.nMatched`);
 }
 function assertBootstrapInterval(value, path) {
-	const interval = objectAt(value, path);
-	exactFields$1(interval, [
+	const interval = objectAt$1(value, path);
+	exactFields$2(interval, [
 		"estimate",
 		"lower",
 		"upper",
@@ -3783,15 +3788,15 @@ function assertBootstrapInterval(value, path) {
 	finiteNumber$1(interval.estimate, `${path}.estimate`);
 	finiteNumber$1(interval.lower, `${path}.lower`);
 	finiteNumber$1(interval.upper, `${path}.upper`);
-	if (interval.lower > interval.upper) contractError(path, "lower must not exceed upper");
+	if (interval.lower > interval.upper) contractError$1(path, "lower must not exceed upper");
 	const finite = nonNegativeInteger(interval.finiteReplicates, `${path}.finiteReplicates`);
 	const required = positiveInteger(interval.requiredFiniteReplicates, `${path}.requiredFiniteReplicates`);
 	const total = positiveInteger(interval.totalReplicates, `${path}.totalReplicates`);
-	if (finite > total || required > total) contractError(path, "replicate counts are inconsistent");
+	if (finite > total || required > total) contractError$1(path, "replicate counts are inconsistent");
 }
 function assertBootstrap(value, path) {
-	const result = objectAt(value, path);
-	exactFields$1(result, [
+	const result = objectAt$1(value, path);
+	exactFields$2(result, [
 		"schemaVersion",
 		"base",
 		"confidenceLevel",
@@ -3800,14 +3805,14 @@ function assertBootstrap(value, path) {
 		"resampling",
 		"diagnostics"
 	], path);
-	if (result.schemaVersion !== "3dena.trajectory-bootstrap.v1") contractError(`${path}.schemaVersion`, "must be 3dena.trajectory-bootstrap.v1");
+	if (result.schemaVersion !== "3dena.trajectory-bootstrap.v1") contractError$1(`${path}.schemaVersion`, "must be 3dena.trajectory-bootstrap.v1");
 	assertTrajectoryPathStatistics(result.base, `${path}.base`);
 	probability(result.confidenceLevel, `${path}.confidenceLevel`);
 	const base = result.base;
-	if (!Array.isArray(result.periods) || result.periods.length !== base.periods.length) contractError(`${path}.periods`, "must align one-to-one with the base path");
+	if (!Array.isArray(result.periods) || result.periods.length !== base.periods.length) contractError$1(`${path}.periods`, "must align one-to-one with the base path");
 	result.periods.forEach((candidate, index) => {
-		const period = objectAt(candidate, `${path}.periods[${index}]`);
-		exactFields$1(period, [
+		const period = objectAt$1(candidate, `${path}.periods[${index}]`);
+		exactFields$2(period, [
 			"index",
 			"time",
 			"selectedCentroid",
@@ -3817,10 +3822,10 @@ function assertBootstrap(value, path) {
 			"selectedCumulativeDistance",
 			"fullCumulativeDistance"
 		], `${path}.periods[${index}]`);
-		if (nonNegativeInteger(period.index, `${path}.periods[${index}].index`) !== index) contractError(`${path}.periods[${index}].index`, "must equal its array position");
+		if (nonNegativeInteger(period.index, `${path}.periods[${index}].index`) !== index) contractError$1(`${path}.periods[${index}].index`, "must equal its array position");
 		assertTrajectoryIdentity(period.time, `${path}.periods[${index}].time`, true);
 		for (const [field, length] of [["selectedCentroid", 3], ["fullCentroid", base.dimensions.length]]) {
-			if (!Array.isArray(period[field]) || period[field].length !== length) contractError(`${path}.periods[${index}].${field}`, `must contain ${length} interval slots`);
+			if (!Array.isArray(period[field]) || period[field].length !== length) contractError$1(`${path}.periods[${index}].${field}`, `must contain ${length} interval slots`);
 			period[field].forEach((entry, itemIndex) => {
 				if (entry !== null) assertBootstrapInterval(entry, `${path}.periods[${index}].${field}[${itemIndex}]`);
 			});
@@ -3832,7 +3837,7 @@ function assertBootstrap(value, path) {
 			"fullCumulativeDistance"
 		]) if (period[field] !== null) assertBootstrapInterval(period[field], `${path}.periods[${index}].${field}`);
 	});
-	const quantile = objectAt(result.quantileRule, `${path}.quantileRule`);
+	const quantile = objectAt$1(result.quantileRule, `${path}.quantileRule`);
 	const expectedQuantile = {
 		id: "linear-type7-v1",
 		sort: "ascending-numeric",
@@ -3840,10 +3845,10 @@ function assertBootstrap(value, path) {
 		interpolation: "linear-between-floor-and-ceiling",
 		endpoints: "p=0-min-p=1-max"
 	};
-	exactFields$1(quantile, Object.keys(expectedQuantile), `${path}.quantileRule`);
-	for (const [field, expected] of Object.entries(expectedQuantile)) if (quantile[field] !== expected) contractError(`${path}.quantileRule.${field}`, `must be ${expected}`);
-	const resampling = objectAt(result.resampling, `${path}.resampling`);
-	exactFields$1(resampling, [
+	exactFields$2(quantile, Object.keys(expectedQuantile), `${path}.quantileRule`);
+	for (const [field, expected] of Object.entries(expectedQuantile)) if (quantile[field] !== expected) contractError$1(`${path}.quantileRule.${field}`, `must be ${expected}`);
+	const resampling = objectAt$1(result.resampling, `${path}.resampling`);
+	exactFields$2(resampling, [
 		"unit",
 		"stratified",
 		"strata",
@@ -3852,28 +3857,28 @@ function assertBootstrap(value, path) {
 		"generation",
 		"rngParityClaim"
 	], `${path}.resampling`);
-	if (resampling.unit !== "participant-complete-history" || resampling.planKind !== "participant-history-resample-indices-v1" || resampling.rngParityClaim !== false) contractError(`${path}.resampling`, "contains unsupported or unapproved resampling semantics");
-	if (typeof resampling.stratified !== "boolean") contractError(`${path}.resampling.stratified`, "must be boolean");
+	if (resampling.unit !== "participant-complete-history" || !["participant-history-resample-indices-v1", "global-participant-history-resample-indices-v2"].includes(String(resampling.planKind)) || resampling.rngParityClaim !== false) contractError$1(`${path}.resampling`, "contains unsupported or unapproved resampling semantics");
+	if (typeof resampling.stratified !== "boolean") contractError$1(`${path}.resampling.stratified`, "must be boolean");
 	const replicateCount = positiveInteger(resampling.replicateCount, `${path}.resampling.replicateCount`);
-	if (!Array.isArray(resampling.strata) || resampling.strata.length === 0) contractError(`${path}.resampling.strata`, "must be non-empty");
+	if (!Array.isArray(resampling.strata) || resampling.strata.length === 0) contractError$1(`${path}.resampling.strata`, "must be non-empty");
 	resampling.strata.forEach((candidate, index) => {
-		const stratum = objectAt(candidate, `${path}.resampling.strata[${index}]`);
-		exactFields$1(stratum, ["key", "unitCount"], `${path}.resampling.strata[${index}]`);
+		const stratum = objectAt$1(candidate, `${path}.resampling.strata[${index}]`);
+		exactFields$2(stratum, ["key", "unitCount"], `${path}.resampling.strata[${index}]`);
 		assertTrajectoryIdentity(stratum.key, `${path}.resampling.strata[${index}].key`, true);
 		positiveInteger(stratum.unitCount, `${path}.resampling.strata[${index}].unitCount`);
 	});
-	const generation = objectAt(resampling.generation, `${path}.resampling.generation`);
-	if (generation.kind === "caller-provided") exactFields$1(generation, ["kind"], `${path}.resampling.generation`);
+	const generation = objectAt$1(resampling.generation, `${path}.resampling.generation`);
+	if (generation.kind === "caller-provided") exactFields$2(generation, ["kind"], `${path}.resampling.generation`);
 	else {
-		exactFields$1(generation, [
+		exactFields$2(generation, [
 			"kind",
 			"algorithm",
 			"seed",
 			"unitSort",
 			"randomEndpoint"
 		], `${path}.resampling.generation`);
-		if (generation.kind !== "seeded" || generation.algorithm !== "mulberry32-uint32-v1" || generation.unitSort !== "utf16-code-unit-ascending" || generation.randomEndpoint !== "zero-inclusive-one-exclusive") contractError(`${path}.resampling.generation`, "contains unsupported seeded-generation semantics");
-		if (nonNegativeInteger(generation.seed, `${path}.resampling.generation.seed`) > 4294967295) contractError(`${path}.resampling.generation.seed`, "must fit uint32");
+		if (generation.kind !== "seeded" || generation.algorithm !== "mulberry32-uint32-v1" || generation.unitSort !== "utf16-code-unit-ascending" || generation.randomEndpoint !== "zero-inclusive-one-exclusive") contractError$1(`${path}.resampling.generation`, "contains unsupported seeded-generation semantics");
+		if (nonNegativeInteger(generation.seed, `${path}.resampling.generation.seed`) > 4294967295) contractError$1(`${path}.resampling.generation.seed`, "must fit uint32");
 	}
 	result.periods.forEach((period) => {
 		const candidate = period;
@@ -3884,7 +3889,7 @@ function assertBootstrap(value, path) {
 			"fullCumulativeDistance"
 		]) {
 			const interval = candidate[field];
-			if (interval && interval.totalReplicates !== replicateCount) contractError(`${path}.periods.${field}`, "must bind the declared replicate count");
+			if (interval && interval.totalReplicates !== replicateCount) contractError$1(`${path}.periods.${field}`, "must bind the declared replicate count");
 		}
 	});
 	assertDiagnostics(result.diagnostics, `${path}.diagnostics`);
@@ -3916,12 +3921,12 @@ function assertAnalysisTaskResultV1(value, taskKind, path = "result") {
 		case "bootstrap":
 			assertBootstrap(value, path);
 			return;
-		default: contractError("taskKind", "is unsupported");
+		default: contractError$1("taskKind", "is unsupported");
 	}
 }
 function assertProvenanceManifestV1(value, path = "provenance") {
-	const manifest = objectAt(value, path);
-	exactFields$1(manifest, [
+	const manifest = objectAt$1(value, path);
+	exactFields$2(manifest, [
 		"schemaVersion",
 		"datasetHash",
 		"specHash",
@@ -3942,7 +3947,7 @@ function assertProvenanceManifestV1(value, path = "provenance") {
 		"schemaVersions",
 		"generatedAt"
 	], path);
-	if (manifest.schemaVersion !== "3dena.provenance-manifest.v1") contractError(`${path}.schemaVersion`, `must be ${PROVENANCE_MANIFEST_VERSION_V1}`);
+	if (manifest.schemaVersion !== "3dena.provenance-manifest.v1") contractError$1(`${path}.schemaVersion`, `must be ${PROVENANCE_MANIFEST_VERSION_V1}`);
 	lowercaseSha256(manifest.datasetHash, `${path}.datasetHash`);
 	lowercaseSha256(manifest.specHash, `${path}.specHash`);
 	lowercaseSha256(manifest.resultHash, `${path}.resultHash`);
@@ -3953,19 +3958,19 @@ function assertProvenanceManifestV1(value, path = "provenance") {
 		"sdkVersion",
 		"appVersion",
 		"buildId"
-	]) nonEmptyString(manifest[field], `${path}.${field}`);
-	if (manifest.jenaPackage !== "jena-js") contractError(`${path}.jenaPackage`, "must be jena-js");
-	if (manifest.sourceKind !== "raw-jena" && manifest.sourceKind !== "prepared-exchange") contractError(`${path}.sourceKind`, "must be raw-jena or prepared-exchange");
-	if (typeof manifest.jenaExecuted !== "boolean") contractError(`${path}.jenaExecuted`, "must be boolean");
-	if (manifest.sourceKind === "raw-jena" && manifest.jenaExecuted !== true) contractError(`${path}.jenaExecuted`, "must be true for raw-jena");
-	if (manifest.sourceKind === "prepared-exchange" && manifest.jenaExecuted !== false) contractError(`${path}.jenaExecuted`, "must be false for prepared-exchange");
-	if (manifest.sdkPackage !== "@3dena/analysis") contractError(`${path}.sdkPackage`, "must be @3dena/analysis");
-	if (manifest.contractVersion !== "3dena.contract.v1") contractError(`${path}.contractVersion`, `must be ${ANALYSIS_CONTRACT_VERSION_V1}`);
-	if (manifest.seed !== null && (!Number.isSafeInteger(manifest.seed) || manifest.seed < 0 || manifest.seed > 4294967295)) contractError(`${path}.seed`, "must be null or an unsigned 32-bit integer");
-	if (manifest.toleranceContract !== null && (typeof manifest.toleranceContract !== "string" || manifest.toleranceContract.trim() === "")) contractError(`${path}.toleranceContract`, "must be null or non-empty");
-	stringList(manifest.schemaVersions, `${path}.schemaVersions`);
-	const generatedAt = nonEmptyString(manifest.generatedAt, `${path}.generatedAt`);
-	if (Number.isNaN(Date.parse(generatedAt))) contractError(`${path}.generatedAt`, "must be an ISO timestamp");
+	]) nonEmptyString$1(manifest[field], `${path}.${field}`);
+	if (manifest.jenaPackage !== "jena-js") contractError$1(`${path}.jenaPackage`, "must be jena-js");
+	if (manifest.sourceKind !== "raw-jena" && manifest.sourceKind !== "prepared-exchange") contractError$1(`${path}.sourceKind`, "must be raw-jena or prepared-exchange");
+	if (typeof manifest.jenaExecuted !== "boolean") contractError$1(`${path}.jenaExecuted`, "must be boolean");
+	if (manifest.sourceKind === "raw-jena" && manifest.jenaExecuted !== true) contractError$1(`${path}.jenaExecuted`, "must be true for raw-jena");
+	if (manifest.sourceKind === "prepared-exchange" && manifest.jenaExecuted !== false) contractError$1(`${path}.jenaExecuted`, "must be false for prepared-exchange");
+	if (manifest.sdkPackage !== "@3dena/analysis") contractError$1(`${path}.sdkPackage`, "must be @3dena/analysis");
+	if (manifest.contractVersion !== "3dena.contract.v1") contractError$1(`${path}.contractVersion`, `must be ${ANALYSIS_CONTRACT_VERSION_V1}`);
+	if (manifest.seed !== null && (!Number.isSafeInteger(manifest.seed) || manifest.seed < 0 || manifest.seed > 4294967295)) contractError$1(`${path}.seed`, "must be null or an unsigned 32-bit integer");
+	if (manifest.toleranceContract !== null && (typeof manifest.toleranceContract !== "string" || manifest.toleranceContract.trim() === "")) contractError$1(`${path}.toleranceContract`, "must be null or non-empty");
+	stringList$1(manifest.schemaVersions, `${path}.schemaVersions`);
+	const generatedAt = nonEmptyString$1(manifest.generatedAt, `${path}.generatedAt`);
+	if (Number.isNaN(Date.parse(generatedAt))) contractError$1(`${path}.generatedAt`, "must be an ISO timestamp");
 }
 var HASH_SCHEMA = {
 	type: "string",
@@ -3992,6 +3997,222 @@ var SAFE_POSITIVE_INTEGER_SCHEMA = {
 	maximum: Number.MAX_SAFE_INTEGER
 };
 var TASK_OWNER_SCHEMA_REF = { $ref: "https://3dena.com/schemas/task-owner.v1.json" };
+var TRAJECTORY_V2_IDENTITY_SCHEMA = {
+	type: "object",
+	additionalProperties: false,
+	required: ["components"],
+	properties: { components: {
+		type: "array",
+		minItems: 1,
+		items: { oneOf: [
+			{
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"name",
+					"type",
+					"value"
+				],
+				properties: {
+					name: NON_EMPTY_STRING_SCHEMA,
+					type: { const: "string" },
+					value: { type: "string" },
+					declaredType: NON_EMPTY_STRING_SCHEMA
+				}
+			},
+			{
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"name",
+					"type",
+					"value"
+				],
+				properties: {
+					name: NON_EMPTY_STRING_SCHEMA,
+					type: { const: "number" },
+					value: { type: "number" },
+					declaredType: NON_EMPTY_STRING_SCHEMA
+				}
+			},
+			{
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"name",
+					"type",
+					"value"
+				],
+				properties: {
+					name: NON_EMPTY_STRING_SCHEMA,
+					type: { const: "boolean" },
+					value: { type: "boolean" },
+					declaredType: NON_EMPTY_STRING_SCHEMA
+				}
+			}
+		] }
+	} }
+};
+var TRAJECTORY_V2_TIME_VALUE_SCHEMA = { oneOf: [
+	{
+		type: "object",
+		additionalProperties: false,
+		required: ["type", "index"],
+		properties: {
+			type: { const: "ordered-index-v2" },
+			index: SAFE_NON_NEGATIVE_INTEGER_SCHEMA
+		}
+	},
+	{
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"type",
+			"value",
+			"unit"
+		],
+		properties: {
+			type: { const: "numeric-v1" },
+			value: { type: "number" },
+			unit: NON_EMPTY_STRING_SCHEMA
+		}
+	},
+	{
+		type: "object",
+		additionalProperties: false,
+		required: ["type", "value"],
+		properties: {
+			type: { const: "date-v1" },
+			value: {
+				type: "string",
+				pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+			}
+		}
+	},
+	{
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"type",
+			"epochMilliseconds",
+			"timeZone",
+			"offsetMinutes",
+			"fold",
+			"elapsedUnit"
+		],
+		properties: {
+			type: { const: "instant-v1" },
+			epochMilliseconds: {
+				type: "string",
+				pattern: "^-?(?:0|[1-9][0-9]*)$"
+			},
+			timeZone: NON_EMPTY_STRING_SCHEMA,
+			offsetMinutes: {
+				type: "integer",
+				minimum: -1440,
+				maximum: 1440
+			},
+			fold: { enum: [0, 1] },
+			elapsedUnit: { enum: [...TRAJECTORY_DURATION_UNITS] }
+		}
+	},
+	{
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"type",
+			"value",
+			"unit",
+			"elapsedUnit"
+		],
+		properties: {
+			type: { const: "difftime-v1" },
+			value: { type: "number" },
+			unit: { enum: [...TRAJECTORY_DURATION_UNITS] },
+			elapsedUnit: { enum: [...TRAJECTORY_DURATION_UNITS] }
+		}
+	}
+] };
+var TRAJECTORY_RUN_SPEC_V2_SCHEMA = {
+	$id: "https://3dena.com/schemas/trajectory-run-spec.v2.json",
+	type: "object",
+	additionalProperties: false,
+	required: [
+		"schemaVersion",
+		"sourceResultHash",
+		"participantColumns",
+		"timeColumn",
+		"groupColumn",
+		"orderedPeriods",
+		"selectedDimensions",
+		"cohortPolicy",
+		"missingValuePolicy",
+		"estimand"
+	],
+	properties: {
+		schemaVersion: { const: "3dena.trajectory-run-spec.v2" },
+		sourceResultHash: HASH_SCHEMA,
+		participantColumns: {
+			type: "array",
+			minItems: 1,
+			uniqueItems: true,
+			items: NON_EMPTY_STRING_SCHEMA
+		},
+		timeColumn: NON_EMPTY_STRING_SCHEMA,
+		groupColumn: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+		orderedPeriods: {
+			type: "array",
+			minItems: 1,
+			items: {
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"identity",
+					"sourceTimeCanonical",
+					"displayLabel",
+					"expected",
+					"value"
+				],
+				properties: {
+					identity: TRAJECTORY_V2_IDENTITY_SCHEMA,
+					sourceTimeCanonical: NON_EMPTY_STRING_SCHEMA,
+					displayLabel: NON_EMPTY_STRING_SCHEMA,
+					expected: { type: "boolean" },
+					value: TRAJECTORY_V2_TIME_VALUE_SCHEMA
+				}
+			}
+		},
+		selectedDimensions: {
+			type: "array",
+			minItems: 3,
+			maxItems: 3,
+			uniqueItems: true,
+			items: NON_EMPTY_STRING_SCHEMA
+		},
+		cohortPolicy: { enum: ["available", "complete"] },
+		missingValuePolicy: { const: "complete-analytical-rows" },
+		estimand: { oneOf: [{
+			type: "object",
+			additionalProperties: false,
+			required: ["kind"],
+			properties: { kind: { const: "equal-participant" } }
+		}, {
+			type: "object",
+			additionalProperties: false,
+			required: ["kind", "metadataField"],
+			properties: {
+				kind: { const: "weighted-participant" },
+				metadataField: NON_EMPTY_STRING_SCHEMA
+			}
+		}] }
+	}
+};
+var TRAJECTORY_V2_TASK_BINDING_PROPERTIES = {
+	datasetHash: HASH_SCHEMA,
+	specHash: HASH_SCHEMA,
+	sourceResultHash: HASH_SCHEMA,
+	runId: NON_EMPTY_STRING_SCHEMA
+};
 var PREPARED_MAPPING_TASK_SCHEMA = {
 	type: "object",
 	additionalProperties: false,
@@ -4348,6 +4569,756 @@ Object.freeze({
 		}
 	}),
 	analysisExecutionDatasetV2: Object.freeze(ANALYSIS_EXECUTION_DATASET_V2_SCHEMA),
+	trajectoryRunSpecV2: Object.freeze(TRAJECTORY_RUN_SPEC_V2_SCHEMA),
+	trajectoryPathTaskV2: Object.freeze({
+		$id: "https://3dena.com/schemas/trajectory-path-task.v2.json",
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"schemaVersion",
+			"kind",
+			"datasetHash",
+			"specHash",
+			"runId",
+			"runSpec"
+		],
+		properties: {
+			schemaVersion: { const: "3dena.trajectory-path-task.v2" },
+			kind: { const: "trajectory-path-v2" },
+			datasetHash: HASH_SCHEMA,
+			specHash: HASH_SCHEMA,
+			runId: NON_EMPTY_STRING_SCHEMA,
+			runSpec: { $ref: "https://3dena.com/schemas/trajectory-run-spec.v2.json" }
+		}
+	}),
+	trajectoryInferenceTaskV2: Object.freeze({
+		$id: "https://3dena.com/schemas/trajectory-inference-task.v2.json",
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"schemaVersion",
+			"kind",
+			"datasetHash",
+			"specHash",
+			"sourceResultHash",
+			"runId",
+			"requests",
+			"adjustment"
+		],
+		properties: {
+			schemaVersion: { const: "3dena.trajectory-inference-task.v2" },
+			kind: { const: "trajectory-inference-v2" },
+			...TRAJECTORY_V2_TASK_BINDING_PROPERTIES,
+			adjustment: { const: "holm" },
+			requests: {
+				type: "array",
+				minItems: 1,
+				items: { oneOf: [
+					{
+						type: "object",
+						additionalProperties: false,
+						required: [
+							"kind",
+							"groups",
+							"periodCanonical"
+						],
+						properties: {
+							kind: { const: "independent-period" },
+							groups: {
+								type: "array",
+								minItems: 2,
+								maxItems: 2,
+								uniqueItems: true,
+								items: NON_EMPTY_STRING_SCHEMA
+							},
+							periodCanonical: NON_EMPTY_STRING_SCHEMA
+						}
+					},
+					{
+						type: "object",
+						additionalProperties: false,
+						required: [
+							"kind",
+							"group",
+							"earlierPeriodCanonical",
+							"laterPeriodCanonical",
+							"samePhysicalEntityConfirmed"
+						],
+						properties: {
+							kind: { const: "paired-periods" },
+							group: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+							earlierPeriodCanonical: NON_EMPTY_STRING_SCHEMA,
+							laterPeriodCanonical: NON_EMPTY_STRING_SCHEMA,
+							samePhysicalEntityConfirmed: { type: "boolean" }
+						}
+					},
+					{
+						type: "object",
+						additionalProperties: false,
+						required: [
+							"kind",
+							"group",
+							"periodCanonicals",
+							"samePhysicalEntityConfirmed"
+						],
+						properties: {
+							kind: { const: "repeated-periods" },
+							group: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+							periodCanonicals: {
+								type: "array",
+								minItems: 3,
+								uniqueItems: true,
+								items: NON_EMPTY_STRING_SCHEMA
+							},
+							samePhysicalEntityConfirmed: { type: "boolean" }
+						}
+					},
+					{
+						type: "object",
+						additionalProperties: false,
+						required: [
+							"kind",
+							"design",
+							"groups",
+							"repetitions",
+							"seed",
+							"samePhysicalEntityConfirmed"
+						],
+						properties: {
+							kind: { const: "path-comparison" },
+							design: { enum: ["independent", "paired"] },
+							groups: {
+								type: "array",
+								minItems: 2,
+								maxItems: 2,
+								uniqueItems: true,
+								items: NON_EMPTY_STRING_SCHEMA
+							},
+							repetitions: {
+								type: "integer",
+								minimum: 1,
+								maximum: 1e4
+							},
+							seed: {
+								type: "integer",
+								minimum: 0,
+								maximum: 4294967295
+							},
+							samePhysicalEntityConfirmed: { type: "boolean" }
+						}
+					}
+				] }
+			}
+		}
+	}),
+	trajectoryBootstrapTaskV2: Object.freeze({
+		$id: "https://3dena.com/schemas/trajectory-bootstrap-task.v2.json",
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"schemaVersion",
+			"kind",
+			"datasetHash",
+			"specHash",
+			"sourceResultHash",
+			"runId",
+			"repetitions",
+			"confidenceLevel",
+			"seed",
+			"resamplingDesign",
+			"explicitStrataField",
+			"interval",
+			"rotationPolicy"
+		],
+		properties: {
+			schemaVersion: { const: "3dena.trajectory-bootstrap-task.v2" },
+			kind: { const: "trajectory-bootstrap-v2" },
+			...TRAJECTORY_V2_TASK_BINDING_PROPERTIES,
+			repetitions: {
+				type: "integer",
+				minimum: 1,
+				maximum: 1e4
+			},
+			confidenceLevel: {
+				type: "number",
+				exclusiveMinimum: 0,
+				exclusiveMaximum: 1
+			},
+			seed: {
+				type: "integer",
+				minimum: 0,
+				maximum: 4294967295
+			},
+			resamplingDesign: { enum: [
+				"auto",
+				"global-participant",
+				"within-group",
+				"explicit-strata"
+			] },
+			explicitStrataField: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+			interval: { const: "pointwise-percentile-linear-type7" },
+			rotationPolicy: { const: "fixed-same-fit-projection" }
+		},
+		allOf: [{
+			if: { properties: { resamplingDesign: { const: "explicit-strata" } } },
+			then: { properties: { explicitStrataField: NON_EMPTY_STRING_SCHEMA } },
+			else: { properties: { explicitStrataField: { type: "null" } } }
+		}]
+	}),
+	trajectoryNetworkOverlayTaskV2: Object.freeze({
+		$id: "https://3dena.com/schemas/trajectory-network-overlay-task.v2.json",
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"schemaVersion",
+			"kind",
+			"datasetHash",
+			"specHash",
+			"sourceResultHash",
+			"runId",
+			"requests"
+		],
+		properties: {
+			schemaVersion: { const: "3dena.trajectory-network-overlay-task.v2" },
+			kind: { const: "trajectory-network-overlay-v2" },
+			...TRAJECTORY_V2_TASK_BINDING_PROPERTIES,
+			requests: {
+				type: "array",
+				minItems: 1,
+				items: {
+					type: "object",
+					additionalProperties: false,
+					required: ["periodCanonical", "groupCanonical"],
+					properties: {
+						periodCanonical: NON_EMPTY_STRING_SCHEMA,
+						groupCanonical: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] }
+					}
+				}
+			}
+		}
+	}),
+	trajectoryDisplaySpecV2: Object.freeze({
+		$id: "https://3dena.com/schemas/trajectory-display-spec.v2.json",
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"schemaVersion",
+			"projection",
+			"displayedGroups",
+			"traces",
+			"axisFlips",
+			"camera",
+			"style"
+		],
+		properties: {
+			schemaVersion: { const: "3dena.trajectory-display-spec.v2" },
+			projection: { enum: [
+				"3d",
+				"xy",
+				"xz",
+				"yz",
+				"yx",
+				"zx",
+				"zy"
+			] },
+			displayedGroups: {
+				type: "array",
+				uniqueItems: true,
+				items: NON_EMPTY_STRING_SCHEMA
+			},
+			traces: {
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"participants",
+					"individualPaths",
+					"centroids",
+					"paths",
+					"directionArrows",
+					"uncertainty",
+					"networkOverlay",
+					"labels"
+				],
+				properties: Object.fromEntries([
+					"participants",
+					"individualPaths",
+					"centroids",
+					"paths",
+					"directionArrows",
+					"uncertainty",
+					"networkOverlay",
+					"labels"
+				].map((field) => [field, { type: "boolean" }]))
+			},
+			axisFlips: {
+				type: "array",
+				minItems: 3,
+				maxItems: 3,
+				items: { type: "boolean" }
+			},
+			camera: { oneOf: [{ type: "null" }, {
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"eye",
+					"center",
+					"up"
+				],
+				properties: Object.fromEntries([
+					"eye",
+					"center",
+					"up"
+				].map((field) => [field, {
+					type: "object",
+					additionalProperties: false,
+					required: [
+						"x",
+						"y",
+						"z"
+					],
+					properties: {
+						x: { type: "number" },
+						y: { type: "number" },
+						z: { type: "number" }
+					}
+				}]))
+			}] },
+			style: {
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"participantSize",
+					"participantOpacity",
+					"centroidSize",
+					"pathWidth"
+				],
+				properties: {
+					participantSize: {
+						type: "number",
+						exclusiveMinimum: 0
+					},
+					participantOpacity: {
+						type: "number",
+						minimum: 0,
+						maximum: 1
+					},
+					centroidSize: {
+						type: "number",
+						exclusiveMinimum: 0
+					},
+					pathWidth: {
+						type: "number",
+						exclusiveMinimum: 0
+					}
+				}
+			}
+		}
+	}),
+	longitudinalAnalysisBundleV2: Object.freeze({
+		$id: "https://3dena.com/schemas/longitudinal-analysis-bundle.v2.json",
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"schemaVersion",
+			"identity",
+			"runSpec",
+			"model",
+			"paths",
+			"inference",
+			"pathComparisons",
+			"bootstrap",
+			"networkOverlays",
+			"diagnostics",
+			"execution"
+		],
+		properties: {
+			schemaVersion: { const: "3dena.longitudinal-analysis-bundle.v2" },
+			identity: {
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"datasetHash",
+					"specHash",
+					"sourceResultHash",
+					"resultHash",
+					"runId",
+					"jenaBuildId"
+				],
+				properties: {
+					datasetHash: HASH_SCHEMA,
+					specHash: HASH_SCHEMA,
+					sourceResultHash: HASH_SCHEMA,
+					resultHash: HASH_SCHEMA,
+					runId: NON_EMPTY_STRING_SCHEMA,
+					jenaBuildId: NON_EMPTY_STRING_SCHEMA
+				}
+			},
+			runSpec: { $ref: "https://3dena.com/schemas/trajectory-run-spec.v2.json" },
+			model: {
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"type",
+					"fullRotationDimensions",
+					"selectedDimensions"
+				],
+				properties: {
+					type: { enum: ["SeparateTrajectory", "AccumulatedTrajectory"] },
+					fullRotationDimensions: {
+						type: "array",
+						minItems: 3,
+						uniqueItems: true,
+						items: NON_EMPTY_STRING_SCHEMA
+					},
+					selectedDimensions: {
+						type: "array",
+						minItems: 3,
+						maxItems: 3,
+						uniqueItems: true,
+						items: NON_EMPTY_STRING_SCHEMA
+					}
+				}
+			},
+			paths: {
+				type: "array",
+				minItems: 1,
+				items: {
+					type: "object",
+					additionalProperties: false,
+					required: ["group", "dynamics"],
+					properties: {
+						group: {
+							type: "object",
+							additionalProperties: false,
+							required: ["canonical", "display"],
+							properties: {
+								canonical: NON_EMPTY_STRING_SCHEMA,
+								display: NON_EMPTY_STRING_SCHEMA
+							}
+						},
+						dynamics: RESULT_VARIANT_SCHEMAS_V1.trajectory
+					}
+				}
+			},
+			inference: {
+				type: "array",
+				items: {
+					type: "object",
+					additionalProperties: false,
+					required: [
+						"request",
+						"status",
+						"familyId",
+						"familySize",
+						"rows",
+						"reason"
+					],
+					properties: {
+						request: { $ref: "https://3dena.com/schemas/trajectory-inference-task.v2.json#/properties/requests/items" },
+						status: { enum: [
+							"available",
+							"not-estimable",
+							"disabled"
+						] },
+						familyId: NON_EMPTY_STRING_SCHEMA,
+						familySize: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+						rows: {
+							type: "array",
+							items: { type: "object" }
+						},
+						reason: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] }
+					}
+				}
+			},
+			pathComparisons: {
+				type: "array",
+				items: {
+					type: "object",
+					additionalProperties: false,
+					required: [
+						"groups",
+						"design",
+						"seed",
+						"planHash",
+						"identityOverlapAudit",
+						"result"
+					],
+					properties: {
+						groups: {
+							type: "array",
+							minItems: 2,
+							maxItems: 2,
+							uniqueItems: true,
+							items: NON_EMPTY_STRING_SCHEMA
+						},
+						design: { enum: ["independent", "paired"] },
+						seed: {
+							type: "integer",
+							minimum: 0,
+							maximum: 4294967295
+						},
+						planHash: HASH_SCHEMA,
+						identityOverlapAudit: { oneOf: [{ type: "null" }, {
+							type: "object",
+							additionalProperties: false,
+							required: [
+								"sideAEntities",
+								"sideBEntities",
+								"overlappingEntities",
+								"pairedCompleteEntities",
+								"sideAOnly",
+								"sideBOnly",
+								"excludedIncompleteOverlap",
+								"samePhysicalEntityConfirmed"
+							],
+							properties: {
+								sideAEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+								sideBEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+								overlappingEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+								pairedCompleteEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+								sideAOnly: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+								sideBOnly: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+								excludedIncompleteOverlap: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+								samePhysicalEntityConfirmed: { const: true }
+							}
+						}] },
+						result: RESULT_VARIANT_SCHEMAS_V1["trajectory-comparison"]
+					}
+				}
+			},
+			bootstrap: {
+				type: "array",
+				items: {
+					type: "object",
+					additionalProperties: false,
+					required: [
+						"groupCanonical",
+						"status",
+						"notEstimableReason",
+						"seed",
+						"planHash",
+						"finiteReplicates",
+						"requiredFiniteReplicates",
+						"totalReplicates",
+						"confidenceLevel",
+						"requestedResamplingDesign",
+						"resolvedResamplingDesign",
+						"resamplingAlgorithm",
+						"intervalContract",
+						"rotationPolicy",
+						"speedIntervals",
+						"result"
+					],
+					properties: {
+						groupCanonical: NON_EMPTY_STRING_SCHEMA,
+						status: { enum: ["available", "not-estimable"] },
+						notEstimableReason: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+						seed: {
+							type: "integer",
+							minimum: 0,
+							maximum: 4294967295
+						},
+						planHash: HASH_SCHEMA,
+						finiteReplicates: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+						requiredFiniteReplicates: SAFE_POSITIVE_INTEGER_SCHEMA,
+						totalReplicates: SAFE_POSITIVE_INTEGER_SCHEMA,
+						confidenceLevel: {
+							type: "number",
+							exclusiveMinimum: 0,
+							exclusiveMaximum: 1
+						},
+						requestedResamplingDesign: { enum: [
+							"auto",
+							"global-participant",
+							"within-group",
+							"explicit-strata"
+						] },
+						resolvedResamplingDesign: { enum: [
+							"global-participant",
+							"within-group",
+							"explicit-strata"
+						] },
+						resamplingAlgorithm: { enum: ["participant-complete-history-mulberry32-uint32-v1", "global-participant-complete-history-mulberry32-uint32-v2"] },
+						intervalContract: { const: "pointwise-percentile-linear-type7" },
+						rotationPolicy: { const: "fixed-same-fit-projection" },
+						speedIntervals: {
+							type: "array",
+							items: {
+								type: "object",
+								additionalProperties: false,
+								required: [
+									"periodCanonical",
+									"selected",
+									"full"
+								],
+								properties: {
+									periodCanonical: NON_EMPTY_STRING_SCHEMA,
+									selected: { oneOf: [{ type: "null" }, { type: "object" }] },
+									full: { oneOf: [{ type: "null" }, { type: "object" }] }
+								}
+							}
+						},
+						result: RESULT_VARIANT_SCHEMAS_V1.bootstrap
+					}
+				}
+			},
+			networkOverlays: {
+				type: "array",
+				items: {
+					type: "object",
+					additionalProperties: false,
+					required: [
+						"status",
+						"reason",
+						"groupCanonical",
+						"periodCanonical",
+						"dimensions",
+						"estimand",
+						"sourceRows",
+						"participantPeriods",
+						"effectiveParticipantN",
+						"nodes",
+						"edges"
+					],
+					properties: {
+						status: { enum: ["available", "not-estimable"] },
+						reason: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+						groupCanonical: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+						periodCanonical: NON_EMPTY_STRING_SCHEMA,
+						dimensions: {
+							type: "array",
+							minItems: 3,
+							maxItems: 3,
+							uniqueItems: true,
+							items: NON_EMPTY_STRING_SCHEMA
+						},
+						estimand: { enum: ["equal-participant", "weighted-participant"] },
+						sourceRows: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+						participantPeriods: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+						effectiveParticipantN: { oneOf: [{ type: "null" }, {
+							type: "number",
+							exclusiveMinimum: 0
+						}] },
+						nodes: {
+							type: "array",
+							items: {
+								type: "object",
+								additionalProperties: false,
+								required: [
+									"code",
+									"coordinates",
+									"weight"
+								],
+								properties: {
+									code: NON_EMPTY_STRING_SCHEMA,
+									coordinates: {
+										type: "array",
+										minItems: 3,
+										maxItems: 3,
+										items: { type: "number" }
+									},
+									weight: {
+										type: "number",
+										minimum: 0
+									}
+								}
+							}
+						},
+						edges: {
+							type: "array",
+							items: {
+								type: "object",
+								additionalProperties: false,
+								required: [
+									"id",
+									"sourceIndex",
+									"targetIndex",
+									"weight"
+								],
+								properties: {
+									id: NON_EMPTY_STRING_SCHEMA,
+									sourceIndex: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+									targetIndex: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+									weight: { type: "number" }
+								}
+							}
+						}
+					}
+				}
+			},
+			diagnostics: {
+				type: "array",
+				items: {
+					type: "object",
+					additionalProperties: false,
+					required: [
+						"code",
+						"severity",
+						"message"
+					],
+					properties: {
+						code: NON_EMPTY_STRING_SCHEMA,
+						severity: { enum: [
+							"error",
+							"warning",
+							"info"
+						] },
+						message: NON_EMPTY_STRING_SCHEMA,
+						path: NON_EMPTY_STRING_SCHEMA
+					}
+				}
+			},
+			execution: {
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"target",
+					"jenaVersion",
+					"jenaCommit",
+					"jenaTarballIntegrity",
+					"sdkVersion",
+					"buildId",
+					"seed",
+					"permutationPlanHashes",
+					"resamplingPlanHashes",
+					"evidenceStatus"
+				],
+				properties: {
+					target: { enum: [
+						"browser-worker",
+						"persistent-compute-service",
+						"node-service"
+					] },
+					jenaVersion: NON_EMPTY_STRING_SCHEMA,
+					jenaCommit: NON_EMPTY_STRING_SCHEMA,
+					jenaTarballIntegrity: NON_EMPTY_STRING_SCHEMA,
+					sdkVersion: NON_EMPTY_STRING_SCHEMA,
+					buildId: NON_EMPTY_STRING_SCHEMA,
+					seed: {
+						type: "integer",
+						minimum: 0,
+						maximum: 4294967295
+					},
+					permutationPlanHashes: {
+						type: "array",
+						uniqueItems: true,
+						items: HASH_SCHEMA
+					},
+					resamplingPlanHashes: {
+						type: "array",
+						uniqueItems: true,
+						items: HASH_SCHEMA
+					},
+					evidenceStatus: { enum: [
+						"IMPLEMENTED_UNVERIFIED",
+						"PARITY_CANDIDATE",
+						"PRODUCTION_CANDIDATE",
+						"PRODUCTION_READY"
+					] }
+				}
+			}
+		}
+	}),
 	analysisSpec: Object.freeze({
 		$id: "https://3dena.com/schemas/analysis-spec.v1.json",
 		type: "object",
@@ -4917,7 +5888,7 @@ var AnalysisClientError = class extends Error {
 		this.requestId = requestId;
 	}
 };
-var SHA256$1 = /^[a-f0-9]{64}$/u;
+var SHA256$2 = /^[a-f0-9]{64}$/u;
 var GIT_COMMIT = /^[a-f0-9]{40}$/u;
 var IMAGE_DIGEST = /^sha256:[a-f0-9]{64}$/u;
 var OPAQUE_ID = /^[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$/u;
@@ -4994,7 +5965,7 @@ function validateCreateRequest(request) {
 		"byteLength",
 		"format"
 	], "request.dataset");
-	if (!SHA256$1.test(request.dataset.sha256)) clientError("INVALID_REQUEST", "Dataset SHA-256 must be lowercase hexadecimal.");
+	if (!SHA256$2.test(request.dataset.sha256)) clientError("INVALID_REQUEST", "Dataset SHA-256 must be lowercase hexadecimal.");
 	if (!Number.isSafeInteger(request.dataset.byteLength) || request.dataset.byteLength < 1) clientError("INVALID_REQUEST", "Dataset byteLength must be a positive safe integer.");
 	if (![
 		"csv",
@@ -5033,7 +6004,7 @@ function owner(value, path) {
 		"taskId"
 	], path);
 	if (item.contractVersion !== "3dena.contract.v1") clientError("INVALID_RESPONSE", `${path}.contractVersion is unsupported.`);
-	if (typeof item.datasetHash !== "string" || typeof item.specHash !== "string" || !SHA256$1.test(item.datasetHash) || !SHA256$1.test(item.specHash)) clientError("INVALID_RESPONSE", `${path} hashes are invalid.`);
+	if (typeof item.datasetHash !== "string" || typeof item.specHash !== "string" || !SHA256$2.test(item.datasetHash) || !SHA256$2.test(item.specHash)) clientError("INVALID_RESPONSE", `${path} hashes are invalid.`);
 	return {
 		contractVersion: ANALYSIS_CONTRACT_VERSION_V1,
 		datasetHash: item.datasetHash,
@@ -5123,7 +6094,7 @@ function resultReference(value) {
 		"exportUrl",
 		"expiresAt"
 	], "response");
-	if (item.schemaVersion !== "3dena.job-result-reference.v1" || typeof item.sha256 !== "string" || !SHA256$1.test(item.sha256)) clientError("INVALID_RESPONSE", "Invalid result-reference schema or checksum.");
+	if (item.schemaVersion !== "3dena.job-result-reference.v1" || typeof item.sha256 !== "string" || !SHA256$2.test(item.sha256)) clientError("INVALID_RESPONSE", "Invalid result-reference schema or checksum.");
 	return {
 		schemaVersion: "3dena.job-result-reference.v1",
 		jobId: stringValue(item.jobId, "response.jobId"),
@@ -5173,7 +6144,7 @@ function buildInfo(value) {
 	], "response");
 	if (item.schemaVersion !== "3dena.compute-build-info.v1" || item.role !== "api") clientError("INVALID_RESPONSE", "Unsupported compute build-info response.");
 	const contractVersions = item.contractVersions;
-	if (typeof item.approvalManifestSha256 !== "string" || !SHA256$1.test(item.approvalManifestSha256)) clientError("INVALID_RESPONSE", "response.approvalManifestSha256 must be a lowercase SHA-256 digest.");
+	if (typeof item.approvalManifestSha256 !== "string" || !SHA256$2.test(item.approvalManifestSha256)) clientError("INVALID_RESPONSE", "response.approvalManifestSha256 must be a lowercase SHA-256 digest.");
 	if (typeof item.releaseId !== "string" || !OPAQUE_ID.test(item.releaseId)) clientError("INVALID_RESPONSE", "response.releaseId must be an opaque identifier.");
 	if (typeof item.gitCommit !== "string" || !GIT_COMMIT.test(item.gitCommit)) clientError("INVALID_RESPONSE", "response.gitCommit must be an exact lowercase Git commit.");
 	if (typeof item.flyImageDigest !== "string" || !IMAGE_DIGEST.test(item.flyImageDigest)) clientError("INVALID_RESPONSE", "response.flyImageDigest must be a sha256:<digest> OCI image identity.");
@@ -5694,7 +6665,7 @@ function decodeSnapshot(bytes, limits) {
 		configurable: false,
 		writable: false
 	});
-	return deepFreeze$4(validated);
+	return deepFreeze$6(validated);
 }
 function validateExchange(value, limits) {
 	const root = requireObject(value, "$", TOP_LEVEL_FIELDS);
@@ -5978,9 +6949,9 @@ function isWellFormedUnicode$1(value) {
 	}
 	return true;
 }
-function deepFreeze$4(value) {
+function deepFreeze$6(value) {
 	if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
-		for (const nested of Object.values(value)) deepFreeze$4(nested);
+		for (const nested of Object.values(value)) deepFreeze$6(nested);
 		Object.freeze(value);
 	}
 	return value;
@@ -33694,12 +34665,12 @@ var StatsInputError = class extends Error {
 		this.path = path;
 	}
 };
-function reject$8(code, path, message) {
+function reject$9(code, path, message) {
 	throw new StatsInputError(code, path, message);
 }
-function deepFreeze$3(value) {
+function deepFreeze$5(value) {
 	if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
-		for (const nested of Object.values(value)) deepFreeze$3(nested);
+		for (const nested of Object.values(value)) deepFreeze$5(nested);
 		Object.freeze(value);
 	}
 	return value;
@@ -33708,7 +34679,7 @@ function deepFreeze$3(value) {
 //#region ../stats/src/adjust.ts
 function validate(pValues) {
 	pValues.forEach((value, index) => {
-		if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) reject$8("INVALID_P_VALUE", `pValues[${index}]`, "must be finite and in [0, 1]");
+		if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) reject$9("INVALID_P_VALUE", `pValues[${index}]`, "must be finite and in [0, 1]");
 	});
 }
 function adjustPValues(pValues, method) {
@@ -33718,10 +34689,10 @@ function adjustPValues(pValues, method) {
 		"holm",
 		"bh",
 		"bonferroni"
-	].includes(method)) reject$8("INVALID_ADJUSTMENT", "method", "must be none, holm, bh, or bonferroni");
+	].includes(method)) reject$9("INVALID_ADJUSTMENT", "method", "must be none, holm, bh, or bonferroni");
 	const count = pValues.length;
-	if (method === "none") return deepFreeze$3([...pValues]);
-	if (method === "bonferroni") return deepFreeze$3(pValues.map((value) => Math.min(1, value * count)));
+	if (method === "none") return deepFreeze$5([...pValues]);
+	if (method === "bonferroni") return deepFreeze$5(pValues.map((value) => Math.min(1, value * count)));
 	const ordered = pValues.map((value, index) => ({
 		value,
 		index
@@ -33733,7 +34704,7 @@ function adjustPValues(pValues, method) {
 			running = Math.max(running, Math.min(1, entry.value * (count - rank)));
 			adjusted[entry.index] = running;
 		});
-		return deepFreeze$3(adjusted);
+		return deepFreeze$5(adjusted);
 	}
 	let running = 1;
 	for (let rank = count - 1; rank >= 0; rank -= 1) {
@@ -33741,7 +34712,7 @@ function adjustPValues(pValues, method) {
 		running = Math.min(running, entry.value * count / (rank + 1));
 		adjusted[entry.index] = Math.min(1, running);
 	}
-	return deepFreeze$3(adjusted);
+	return deepFreeze$5(adjusted);
 }
 //#endregion
 //#region ../stats/src/numerics.ts
@@ -33762,7 +34733,7 @@ function commonScale(...groups) {
 	return scale === 0 ? 1 : scale;
 }
 function describe(values, scale = commonScale(values)) {
-	if (values.length === 0) reject$8("EMPTY_SAMPLE", "values", "must contain at least one value");
+	if (values.length === 0) reject$9("EMPTY_SAMPLE", "values", "must contain at least one value");
 	const normalized = values.map((value) => value / scale);
 	const meanUnit = compensatedSum(normalized) / normalized.length;
 	const centeredSquares = normalized.map((value) => {
@@ -33772,7 +34743,7 @@ function describe(values, scale = commonScale(values)) {
 	const varianceUnit = normalized.length > 1 ? Math.max(0, compensatedSum(centeredSquares) / (normalized.length - 1)) : 0;
 	const standardDeviationUnit = Math.sqrt(varianceUnit);
 	const mean = meanUnit * scale;
-	if (!Number.isFinite(mean)) reject$8("NUMERIC_OVERFLOW", "values", "the sample mean is not representable as a finite number");
+	if (!Number.isFinite(mean)) reject$9("NUMERIC_OVERFLOW", "values", "the sample mean is not representable as a finite number");
 	return {
 		n: values.length,
 		scale,
@@ -33786,7 +34757,7 @@ function representableScaled(valueUnit, scale) {
 	const value = valueUnit * scale;
 	return Number.isFinite(value) ? value : null;
 }
-var LANCZOS_COEFFICIENTS = [
+var LANCZOS_COEFFICIENTS$1 = [
 	.9999999999998099,
 	676.5203681218851,
 	-1259.1392167224028,
@@ -33797,11 +34768,11 @@ var LANCZOS_COEFFICIENTS = [
 	9984369578019572e-21,
 	1.5056327351493116e-7
 ];
-function logGamma(value) {
-	if (value < .5) return Math.log(Math.PI) - Math.log(Math.sin(Math.PI * value)) - logGamma(1 - value);
+function logGamma$1(value) {
+	if (value < .5) return Math.log(Math.PI) - Math.log(Math.sin(Math.PI * value)) - logGamma$1(1 - value);
 	const shifted = value - 1;
-	let series = LANCZOS_COEFFICIENTS[0];
-	for (let index = 1; index < LANCZOS_COEFFICIENTS.length; index += 1) series += LANCZOS_COEFFICIENTS[index] / (shifted + index);
+	let series = LANCZOS_COEFFICIENTS$1[0];
+	for (let index = 1; index < LANCZOS_COEFFICIENTS$1.length; index += 1) series += LANCZOS_COEFFICIENTS$1[index] / (shifted + index);
 	const base = shifted + 7.5;
 	return .5 * Math.log(2 * Math.PI) + (shifted + .5) * Math.log(base) - base + Math.log(series);
 }
@@ -33836,32 +34807,32 @@ function betaContinuedFraction(a, b, x) {
 		result *= delta;
 		if (Math.abs(delta - 1) <= epsilon) return result;
 	}
-	reject$8("NUMERIC_CONVERGENCE", "studentT", "incomplete beta evaluation did not converge");
+	reject$9("NUMERIC_CONVERGENCE", "studentT", "incomplete beta evaluation did not converge");
 }
 function regularizedBeta(x, a, b) {
 	if (x <= 0) return 0;
 	if (x >= 1) return 1;
-	const front = Math.exp(logGamma(a + b) - logGamma(a) - logGamma(b) + a * Math.log(x) + b * Math.log1p(-x));
+	const front = Math.exp(logGamma$1(a + b) - logGamma$1(a) - logGamma$1(b) + a * Math.log(x) + b * Math.log1p(-x));
 	if (x < (a + 1) / (a + b + 2)) return front * betaContinuedFraction(a, b, x) / a;
 	return 1 - front * betaContinuedFraction(b, a, 1 - x) / b;
 }
 function studentTCdf(statistic, degreesOfFreedom) {
 	if (statistic === 0) return .5;
-	if (!(degreesOfFreedom > 0) || !Number.isFinite(degreesOfFreedom)) reject$8("INVALID_DEGREES_OF_FREEDOM", "degreesOfFreedom", "must be finite and positive");
+	if (!(degreesOfFreedom > 0) || !Number.isFinite(degreesOfFreedom)) reject$9("INVALID_DEGREES_OF_FREEDOM", "degreesOfFreedom", "must be finite and positive");
 	const tail = .5 * regularizedBeta(degreesOfFreedom / (degreesOfFreedom + statistic * statistic), degreesOfFreedom / 2, .5);
 	return statistic > 0 ? 1 - tail : tail;
 }
 /** Deterministic inverse of `studentTCdf` for versioned confidence intervals. */
 function studentTQuantile(probability, degreesOfFreedom) {
-	if (!(probability > 0 && probability < 1) || !Number.isFinite(probability)) reject$8("INVALID_PROBABILITY", "probability", "must be finite and strictly between zero and one");
-	if (!(degreesOfFreedom > 0) || !Number.isFinite(degreesOfFreedom)) reject$8("INVALID_DEGREES_OF_FREEDOM", "degreesOfFreedom", "must be finite and positive");
+	if (!(probability > 0 && probability < 1) || !Number.isFinite(probability)) reject$9("INVALID_PROBABILITY", "probability", "must be finite and strictly between zero and one");
+	if (!(degreesOfFreedom > 0) || !Number.isFinite(degreesOfFreedom)) reject$9("INVALID_DEGREES_OF_FREEDOM", "degreesOfFreedom", "must be finite and positive");
 	if (probability === .5) return 0;
 	if (probability < .5) return -studentTQuantile(1 - probability, degreesOfFreedom);
 	let lower = 0;
 	let upper = 1;
 	while (studentTCdf(upper, degreesOfFreedom) < probability) {
 		upper *= 2;
-		if (!Number.isFinite(upper) || upper > Number.MAX_VALUE / 2) reject$8("NUMERIC_CONVERGENCE", "studentTQuantile", "failed to bracket the requested quantile");
+		if (!Number.isFinite(upper) || upper > Number.MAX_VALUE / 2) reject$9("NUMERIC_CONVERGENCE", "studentTQuantile", "failed to bracket the requested quantile");
 	}
 	for (let iteration = 0; iteration < 100; iteration += 1) {
 		const midpoint = lower + (upper - lower) / 2;
@@ -33916,12 +34887,12 @@ function rankValues(values) {
 var MAX_OBSERVATIONS_PER_SIDE$1 = 1e6;
 var CONFIDENCE_LEVEL$1 = .95;
 function validateAlternative$1(value) {
-	if (value !== "two-sided" && value !== "greater" && value !== "less") reject$8("INVALID_ALTERNATIVE", "input.alternative", "must be two-sided, greater, or less");
+	if (value !== "two-sided" && value !== "greater" && value !== "less") reject$9("INVALID_ALTERNATIVE", "input.alternative", "must be two-sided, greater, or less");
 }
 function validateSample$1(sample, path) {
-	if (!sample || typeof sample.label !== "string" || sample.label.trim() === "") reject$8("INVALID_SAMPLE_LABEL", `${path}.label`, "must be a non-blank string");
-	if (!Array.isArray(sample.values)) reject$8("INVALID_SAMPLE", `${path}.values`, "must be an array");
-	if (sample.values.length > MAX_OBSERVATIONS_PER_SIDE$1) reject$8("SAMPLE_LIMIT", `${path}.values`, `must not exceed ${MAX_OBSERVATIONS_PER_SIDE$1} observations`);
+	if (!sample || typeof sample.label !== "string" || sample.label.trim() === "") reject$9("INVALID_SAMPLE_LABEL", `${path}.label`, "must be a non-blank string");
+	if (!Array.isArray(sample.values)) reject$9("INVALID_SAMPLE", `${path}.values`, "must be an array");
+	if (sample.values.length > MAX_OBSERVATIONS_PER_SIDE$1) reject$9("SAMPLE_LIMIT", `${path}.values`, `must not exceed ${MAX_OBSERVATIONS_PER_SIDE$1} observations`);
 	const values = [];
 	let droppedMissing = 0;
 	Array.from(sample.values).forEach((value, index) => {
@@ -33929,10 +34900,10 @@ function validateSample$1(sample, path) {
 			droppedMissing += 1;
 			return;
 		}
-		if (typeof value !== "number" || !Number.isFinite(value)) reject$8("NON_FINITE_VALUE", `${path}.values[${index}]`, "must be a finite number or explicit null");
+		if (typeof value !== "number" || !Number.isFinite(value)) reject$9("NON_FINITE_VALUE", `${path}.values[${index}]`, "must be a finite number or explicit null");
 		values.push(value);
 	});
-	if (values.length < 2) reject$8("INSUFFICIENT_SAMPLE", `${path}.values`, "requires at least two valid observations for Welch and Cohen's d");
+	if (values.length < 2) reject$9("INSUFFICIENT_SAMPLE", `${path}.values`, "requires at least two valid observations for Welch and Cohen's d");
 	return {
 		label: sample.label,
 		input: sample.values.length,
@@ -34099,7 +35070,7 @@ function mannWhitney(left, right, alternative, diagnostics) {
 	};
 }
 function analyzeIndependentSamples(input) {
-	if (!input || input.schemaVersion !== "3dena.stats.independent-input.v1") reject$8("INVALID_SCHEMA_VERSION", "input.schemaVersion", "must be 3dena.stats.independent-input.v1");
+	if (!input || input.schemaVersion !== "3dena.stats.independent-input.v1") reject$9("INVALID_SCHEMA_VERSION", "input.schemaVersion", "must be 3dena.stats.independent-input.v1");
 	validateAlternative$1(input.alternative);
 	const left = validateSample$1(input.sideA, "input.sideA");
 	const right = validateSample$1(input.sideB, "input.sideB");
@@ -34113,7 +35084,7 @@ function analyzeIndependentSamples(input) {
 	const rank = mannWhitney(left.values, right.values, input.alternative, diagnostics);
 	const raw = [welch.result.pValue, rank.result.pValue];
 	const adjusted = adjustPValues(raw, input.adjustment);
-	return deepFreeze$3({
+	return deepFreeze$5({
 		schemaVersion: "3dena.stats.independent-result.v1",
 		design: "independent",
 		direction: "A-minus-B",
@@ -34158,15 +35129,15 @@ function analyzeIndependentSamples(input) {
 var MAX_OBSERVATIONS_PER_SIDE = 1e6;
 var CONFIDENCE_LEVEL = .95;
 function validateAlternative(value) {
-	if (value !== "two-sided" && value !== "greater" && value !== "less") reject$8("INVALID_ALTERNATIVE", "input.alternative", "must be two-sided, greater, or less");
+	if (value !== "two-sided" && value !== "greater" && value !== "less") reject$9("INVALID_ALTERNATIVE", "input.alternative", "must be two-sided, greater, or less");
 }
 function identityKey(identity, path) {
-	if (!identity || !Array.isArray(identity.components) || identity.components.length === 0) reject$8("INVALID_IDENTITY", path, "must contain at least one typed component");
+	if (!identity || !Array.isArray(identity.components) || identity.components.length === 0) reject$9("INVALID_IDENTITY", path, "must contain at least one typed component");
 	const names = /* @__PURE__ */ new Set();
 	const normalized = identity.components.map((component, index) => {
 		const componentPath = `${path}.components[${index}]`;
-		if (!component || typeof component.name !== "string" || component.name.trim() === "") reject$8("INVALID_IDENTITY_COMPONENT", `${componentPath}.name`, "must be a non-blank string");
-		if (names.has(component.name)) reject$8("DUPLICATE_IDENTITY_COMPONENT", componentPath, "component names must be unique within an identity");
+		if (!component || typeof component.name !== "string" || component.name.trim() === "") reject$9("INVALID_IDENTITY_COMPONENT", `${componentPath}.name`, "must be a non-blank string");
+		if (names.has(component.name)) reject$9("DUPLICATE_IDENTITY_COMPONENT", componentPath, "component names must be unique within an identity");
 		names.add(component.name);
 		if (component.type === "string" && typeof component.value === "string") return [
 			component.name,
@@ -34179,15 +35150,15 @@ function identityKey(identity, path) {
 			component.value
 		];
 		if (component.type === "number" && typeof component.value === "number") {
-			if (!Number.isFinite(component.value)) reject$8("NON_FINITE_IDENTITY_NUMBER", `${componentPath}.value`, "must be finite");
-			if (Number.isInteger(component.value) && !Number.isSafeInteger(component.value)) reject$8("UNSAFE_IDENTITY_NUMBER", `${componentPath}.value`, "unsafe integer IDs must be supplied as strings");
+			if (!Number.isFinite(component.value)) reject$9("NON_FINITE_IDENTITY_NUMBER", `${componentPath}.value`, "must be finite");
+			if (Number.isInteger(component.value) && !Number.isSafeInteger(component.value)) reject$9("UNSAFE_IDENTITY_NUMBER", `${componentPath}.value`, "unsafe integer IDs must be supplied as strings");
 			return [
 				component.name,
 				"number",
 				Object.is(component.value, -0) ? 0 : component.value
 			];
 		}
-		reject$8("IDENTITY_TYPE_MISMATCH", componentPath, "declared identity type must match its value");
+		reject$9("IDENTITY_TYPE_MISMATCH", componentPath, "declared identity type must match its value");
 	});
 	return {
 		components: identity.components.map((component) => ({ ...component })),
@@ -34196,16 +35167,16 @@ function identityKey(identity, path) {
 	};
 }
 function validateSample(sample, path) {
-	if (!sample || typeof sample.label !== "string" || sample.label.trim() === "") reject$8("INVALID_SAMPLE_LABEL", `${path}.label`, "must be a non-blank string");
-	if (!Array.isArray(sample.observations)) reject$8("INVALID_SAMPLE", `${path}.observations`, "must be an array");
-	if (sample.observations.length > MAX_OBSERVATIONS_PER_SIDE) reject$8("SAMPLE_LIMIT", `${path}.observations`, `must not exceed ${MAX_OBSERVATIONS_PER_SIDE} observations`);
+	if (!sample || typeof sample.label !== "string" || sample.label.trim() === "") reject$9("INVALID_SAMPLE_LABEL", `${path}.label`, "must be a non-blank string");
+	if (!Array.isArray(sample.observations)) reject$9("INVALID_SAMPLE", `${path}.observations`, "must be an array");
+	if (sample.observations.length > MAX_OBSERVATIONS_PER_SIDE) reject$9("SAMPLE_LIMIT", `${path}.observations`, `must not exceed ${MAX_OBSERVATIONS_PER_SIDE} observations`);
 	const output = /* @__PURE__ */ new Map();
 	Array.from(sample.observations).forEach((observation, index) => {
 		const observationPath = `${path}.observations[${index}]`;
-		if (!observation || typeof observation !== "object") reject$8("INVALID_OBSERVATION", observationPath, "must be an observation object");
+		if (!observation || typeof observation !== "object") reject$9("INVALID_OBSERVATION", observationPath, "must be an observation object");
 		const key = identityKey(observation.id, `${observationPath}.id`);
-		if (output.has(key.canonical)) reject$8("DUPLICATE_PAIRED_ID", `${observationPath}.id`, "each typed identity may occur only once per side");
-		if (observation.value !== null && (typeof observation.value !== "number" || !Number.isFinite(observation.value))) reject$8("NON_FINITE_VALUE", `${observationPath}.value`, "must be a finite number or explicit null");
+		if (output.has(key.canonical)) reject$9("DUPLICATE_PAIRED_ID", `${observationPath}.id`, "each typed identity may occur only once per side");
+		if (observation.value !== null && (typeof observation.value !== "number" || !Number.isFinite(observation.value))) reject$9("NON_FINITE_VALUE", `${observationPath}.value`, "must be a finite number or explicit null");
 		output.set(key.canonical, {
 			key,
 			value: observation.value
@@ -34288,7 +35259,7 @@ function signedRank(differences, alternative, diagnostics) {
 	};
 }
 function analyzePairedSamples(input) {
-	if (!input || input.schemaVersion !== "3dena.stats.paired-input.v1") reject$8("INVALID_SCHEMA_VERSION", "input.schemaVersion", "must be 3dena.stats.paired-input.v1");
+	if (!input || input.schemaVersion !== "3dena.stats.paired-input.v1") reject$9("INVALID_SCHEMA_VERSION", "input.schemaVersion", "must be 3dena.stats.paired-input.v1");
 	validateAlternative(input.alternative);
 	const sideA = validateSample(input.sideA, "input.sideA");
 	const sideB = validateSample(input.sideB, "input.sideB");
@@ -34297,7 +35268,7 @@ function analyzePairedSamples(input) {
 	const unmatchedB = sideB.size - matched.length;
 	const validPairs = matched.map((key) => [sideA.get(key), sideB.get(key)]).filter(([left, right]) => left.value !== null && right.value !== null);
 	const droppedMissingPairs = matched.length - validPairs.length;
-	if (validPairs.length < 2) reject$8("INSUFFICIENT_PAIRS", "input", "requires at least two exact matched pairs with finite values");
+	if (validPairs.length < 2) reject$9("INSUFFICIENT_PAIRS", "input", "requires at least two exact matched pairs with finite values");
 	const diagnostics = [];
 	if (unmatchedA + unmatchedB > 0) diagnostics.push({
 		code: "UNMATCHED_OBSERVATIONS_DROPPED",
@@ -34356,7 +35327,7 @@ function analyzePairedSamples(input) {
 	const signed = signedRank(differences, input.alternative, diagnostics);
 	const raw = [signed.result.pValue];
 	const adjusted = adjustPValues(raw, input.adjustment);
-	return deepFreeze$3({
+	return deepFreeze$5({
 		schemaVersion: "3dena.stats.paired-result.v1",
 		design: "paired",
 		direction: "A-minus-B",
@@ -34389,6 +35360,615 @@ function analyzePairedSamples(input) {
 		},
 		diagnostics
 	});
+}
+//#endregion
+//#region ../stats/src/rank-v2.ts
+var RANK_INFERENCE_CONTRACT_V2 = Object.freeze({
+	schemaVersion: "3dena.stats.rank-contract.v2",
+	alternative: "two-sided",
+	pValueMethod: "auto-exact-first",
+	zeroMethod: "wilcox-drop-exact-zero",
+	adjustment: "holm-complete-planned-family-v2",
+	rankPrecisionSignificantDigits: 12,
+	exactMaxRankedN: 50,
+	friedmanExactAssignmentLimit: 1e6,
+	continuityCorrection: .5,
+	exactTail: "inclusive-non-mid-p"
+});
+function normalizeRankValue(value, path) {
+	if (!Number.isFinite(value)) reject$9("NON_FINITE_RANK_VALUE", path, "must be finite");
+	const rounded = Number(value.toPrecision(RANK_INFERENCE_CONTRACT_V2.rankPrecisionSignificantDigits));
+	return Object.is(rounded, -0) ? 0 : rounded;
+}
+function summarizeType7(values, path) {
+	const sorted = values.map((value, index) => normalizeRankValue(value, `${path}[${index}]`)).sort((left, right) => left - right);
+	const quantile = (probability) => {
+		if (sorted.length === 0) return null;
+		const position = (sorted.length - 1) * probability;
+		const lowerIndex = Math.floor(position);
+		const upperIndex = Math.ceil(position);
+		const lower = sorted[lowerIndex];
+		const upper = sorted[upperIndex];
+		return lower + (position - lowerIndex) * (upper - lower);
+	};
+	const q1 = quantile(.25);
+	const q3 = quantile(.75);
+	return {
+		median: quantile(.5),
+		q1,
+		q3,
+		iqr: q1 === null || q3 === null ? null : q3 - q1
+	};
+}
+function averageRanks(values, path) {
+	const ordered = values.map((value, index) => ({
+		value: normalizeRankValue(value, `${path}[${index}]`),
+		index
+	})).sort((left, right) => left.value - right.value || left.index - right.index);
+	const ranks = Array(ordered.length);
+	let tieGroupCount = 0;
+	let tiedObservationCount = 0;
+	let tieCorrectionSum = 0;
+	for (let start = 0; start < ordered.length;) {
+		let end = start + 1;
+		while (end < ordered.length && ordered[end].value === ordered[start].value) end += 1;
+		const averageRank = (start + 1 + end) / 2;
+		for (let index = start; index < end; index += 1) ranks[ordered[index].index] = averageRank;
+		const tieSize = end - start;
+		if (tieSize > 1) {
+			tieGroupCount += 1;
+			tiedObservationCount += tieSize;
+			tieCorrectionSum += tieSize ** 3 - tieSize;
+		}
+		start = end;
+	}
+	return {
+		ranks,
+		doubledRanks: ranks.map((rank) => Math.round(rank * 2)),
+		tieGroupCount,
+		tiedObservationCount,
+		tieCorrectionSum
+	};
+}
+var LANCZOS_COEFFICIENTS = [
+	676.5203681218851,
+	-1259.1392167224028,
+	771.3234287776531,
+	-176.6150291621406,
+	12.507343278686905,
+	-.13857109526572012,
+	9984369578019572e-21,
+	1.5056327351493116e-7
+];
+function logGamma(value) {
+	if (value < .5) return Math.log(Math.PI) - Math.log(Math.sin(Math.PI * value)) - logGamma(1 - value);
+	const shifted = value - 1;
+	let sum = .9999999999998099;
+	for (const [index, coefficient] of LANCZOS_COEFFICIENTS.entries()) sum += coefficient / (shifted + index + 1);
+	const t = shifted + LANCZOS_COEFFICIENTS.length - .5;
+	return .5 * Math.log(2 * Math.PI) + (shifted + .5) * Math.log(t) - t + Math.log(sum);
+}
+function regularizedGammaQ(shape, x) {
+	if (!Number.isFinite(shape) || shape <= 0 || Number.isNaN(x) || x < 0) reject$9("INVALID_GAMMA_INPUT", "rank", "requires shape > 0 and x >= 0");
+	if (x === 0) return 1;
+	if (x === Number.POSITIVE_INFINITY) return 0;
+	const epsilon = 1e-15;
+	const minimum = 1e-300;
+	const logScale = -x + shape * Math.log(x) - logGamma(shape);
+	if (x < shape + 1) {
+		let term = 1 / shape;
+		let sum = term;
+		let denominator = shape;
+		for (let iteration = 1; iteration <= 1e4; iteration += 1) {
+			denominator += 1;
+			term *= x / denominator;
+			sum += term;
+			if (Math.abs(term) <= Math.abs(sum) * epsilon) break;
+		}
+		return Math.max(0, Math.min(1, 1 - sum * Math.exp(logScale)));
+	}
+	let b = x + 1 - shape;
+	let c = 1 / minimum;
+	let d = 1 / Math.max(Math.abs(b), minimum);
+	if (b < 0) d = -d;
+	let fraction = d;
+	for (let iteration = 1; iteration <= 1e4; iteration += 1) {
+		const coefficient = -iteration * (iteration - shape);
+		b += 2;
+		d = coefficient * d + b;
+		if (Math.abs(d) < minimum) d = minimum;
+		c = b + coefficient / c;
+		if (Math.abs(c) < minimum) c = minimum;
+		d = 1 / d;
+		const delta = d * c;
+		fraction *= delta;
+		if (Math.abs(delta - 1) <= epsilon) break;
+	}
+	return Math.max(0, Math.min(1, Math.exp(logScale) * fraction));
+}
+function probabilityFromCounts(extreme, total) {
+	if (total <= 0n || total > BigInt(Number.MAX_SAFE_INTEGER) || extreme < 0n || extreme > total) reject$9("EXACT_COUNT_LIMIT", "rank.exactTail", "assignment counts exceed the supported safe ratio range");
+	return Number(extreme) / Number(total);
+}
+function exactFixedSizeRankTail(doubledRanks, selectedSize, observedDoubledRankSum) {
+	const distributions = Array.from({ length: selectedSize + 1 }, () => /* @__PURE__ */ new Map());
+	distributions[0].set(0, 1n);
+	let processed = 0;
+	for (const rank of doubledRanks) {
+		processed += 1;
+		for (let picked = Math.min(selectedSize, processed); picked >= 1; picked -= 1) for (const [score, count] of distributions[picked - 1]) {
+			const nextScore = score + rank;
+			distributions[picked].set(nextScore, (distributions[picked].get(nextScore) ?? 0n) + count);
+		}
+	}
+	const nullCenter = selectedSize * (doubledRanks.length + 1);
+	const observedDistance = Math.abs(observedDoubledRankSum - nullCenter);
+	let total = 0n;
+	let extreme = 0n;
+	for (const [score, count] of distributions[selectedSize]) {
+		total += count;
+		if (Math.abs(score - nullCenter) >= observedDistance) extreme += count;
+	}
+	return {
+		extremeAssignmentCount: extreme.toString(),
+		totalAssignmentCount: total.toString(),
+		inclusive: true,
+		midP: false,
+		pValue: probabilityFromCounts(extreme, total)
+	};
+}
+function mannWhitneyWarnings(nA, nB, exact, ties) {
+	const warnings = [];
+	if (nA < 10 || nB < 10) warnings.push("small-sample");
+	if (exact) warnings.push("discrete-attainable-p");
+	if (ties) warnings.push("ties-present");
+	return warnings;
+}
+function mannWhitneyRankTestV2(primaryValues, secondaryValues) {
+	const primary = primaryValues.map((value, index) => normalizeRankValue(value, `primary[${index}]`));
+	const secondary = secondaryValues.map((value, index) => normalizeRankValue(value, `secondary[${index}]`));
+	const nPrimary = primary.length;
+	const nSecondary = secondary.length;
+	const medianPrimary = summarizeType7(primary, "primary").median;
+	const medianSecondary = summarizeType7(secondary, "secondary").median;
+	if (nPrimary === 0 || nSecondary === 0) return deepFreeze$5({
+		schemaVersion: "3dena.stats.mann-whitney.v2",
+		status: "not-estimable",
+		reason: "empty-group",
+		nPrimary,
+		nSecondary,
+		medianPrimary,
+		medianSecondary,
+		uPrimary: null,
+		uSecondary: null,
+		z: null,
+		pValueTwoSided: null,
+		rankBiserialPrimaryVsSecondary: null,
+		resolvedPMethod: null,
+		continuityCorrectionApplied: false,
+		tieGroupCount: 0,
+		tiedObservationCount: 0,
+		tieCorrectionSum: 0,
+		exactTail: null,
+		warnings: mannWhitneyWarnings(nPrimary, nSecondary, false, false)
+	});
+	const ranked = averageRanks([...primary, ...secondary], "pooled");
+	const uPrimary = ranked.ranks.slice(0, nPrimary).reduce((sum, rank) => sum + rank, 0) - nPrimary * (nPrimary + 1) / 2;
+	const uSecondary = nPrimary * nSecondary - uPrimary;
+	const rankBiserialPrimaryVsSecondary = 2 * uPrimary / (nPrimary * nSecondary) - 1;
+	const total = nPrimary + nSecondary;
+	const variance = nPrimary * nSecondary / 12 * (total + 1 - ranked.tieCorrectionSum / (total * (total - 1)));
+	if (!(variance > 0) || !Number.isFinite(variance)) return deepFreeze$5({
+		schemaVersion: "3dena.stats.mann-whitney.v2",
+		status: "not-estimable",
+		reason: "all-values-tied",
+		nPrimary,
+		nSecondary,
+		medianPrimary,
+		medianSecondary,
+		uPrimary,
+		uSecondary,
+		z: null,
+		pValueTwoSided: null,
+		rankBiserialPrimaryVsSecondary,
+		resolvedPMethod: null,
+		continuityCorrectionApplied: false,
+		tieGroupCount: ranked.tieGroupCount,
+		tiedObservationCount: ranked.tiedObservationCount,
+		tieCorrectionSum: ranked.tieCorrectionSum,
+		exactTail: null,
+		warnings: mannWhitneyWarnings(nPrimary, nSecondary, false, ranked.tieGroupCount > 0)
+	});
+	const expectedU = nPrimary * nSecondary / 2;
+	const correction = Math.sign(uPrimary - expectedU) * RANK_INFERENCE_CONTRACT_V2.continuityCorrection;
+	const z = (uPrimary - expectedU - correction) / Math.sqrt(variance);
+	const useExact = total <= RANK_INFERENCE_CONTRACT_V2.exactMaxRankedN;
+	let pValueTwoSided;
+	let resolvedPMethod;
+	let exactTail = null;
+	if (useExact) {
+		const observedRankSum = nPrimary <= nSecondary ? ranked.doubledRanks.slice(0, nPrimary).reduce((sum, rank) => sum + rank, 0) : ranked.doubledRanks.slice(nPrimary).reduce((sum, rank) => sum + rank, 0);
+		const exact = exactFixedSizeRankTail(ranked.doubledRanks, Math.min(nPrimary, nSecondary), observedRankSum);
+		pValueTwoSided = exact.pValue;
+		exactTail = {
+			extremeAssignmentCount: exact.extremeAssignmentCount,
+			totalAssignmentCount: exact.totalAssignmentCount,
+			inclusive: true,
+			midP: false
+		};
+		resolvedPMethod = ranked.tieGroupCount === 0 ? "exact-classic" : "exact-conditional-rank-permutation";
+	} else {
+		pValueTwoSided = regularizedGammaQ(.5, z * z / 2);
+		resolvedPMethod = "normal-approximation-tie-corrected";
+	}
+	return deepFreeze$5({
+		schemaVersion: "3dena.stats.mann-whitney.v2",
+		status: "available",
+		reason: null,
+		nPrimary,
+		nSecondary,
+		medianPrimary,
+		medianSecondary,
+		uPrimary,
+		uSecondary,
+		z,
+		pValueTwoSided,
+		rankBiserialPrimaryVsSecondary,
+		resolvedPMethod,
+		continuityCorrectionApplied: !useExact,
+		tieGroupCount: ranked.tieGroupCount,
+		tiedObservationCount: ranked.tiedObservationCount,
+		tieCorrectionSum: ranked.tieCorrectionSum,
+		exactTail,
+		warnings: mannWhitneyWarnings(nPrimary, nSecondary, useExact, ranked.tieGroupCount > 0)
+	});
+}
+function exactSignFlipTail(doubledRanks, observedPositiveDoubledRankSum) {
+	const distribution = /* @__PURE__ */ new Map([[0, 1n]]);
+	for (const rank of doubledRanks) for (const [score, count] of [...distribution.entries()]) {
+		const next = score + rank;
+		distribution.set(next, (distribution.get(next) ?? 0n) + count);
+	}
+	const totalRank = doubledRanks.reduce((sum, rank) => sum + rank, 0);
+	const observedDistance = Math.abs(2 * observedPositiveDoubledRankSum - totalRank);
+	let total = 0n;
+	let extreme = 0n;
+	for (const [score, count] of distribution) {
+		total += count;
+		if (Math.abs(2 * score - totalRank) >= observedDistance) extreme += count;
+	}
+	return {
+		extremeAssignmentCount: extreme.toString(),
+		totalAssignmentCount: total.toString(),
+		inclusive: true,
+		midP: false,
+		pValue: probabilityFromCounts(extreme, total)
+	};
+}
+function minimumAttainableTwoSidedP(nNonzero) {
+	if (nNonzero === 0) return null;
+	return {
+		formula: "2^(1-nNonzero)",
+		log2: 1 - nNonzero,
+		numeric: nNonzero <= 1075 ? 2 ** (1 - nNonzero) : null
+	};
+}
+function wilcoxonWarnings(nNonzero, exact, ties, zeros, missing, available) {
+	const warnings = [];
+	if (nNonzero < 10) warnings.push("small-sample");
+	if (available && exact) warnings.push("discrete-attainable-p");
+	if (ties) warnings.push("ties-present");
+	if (zeros) warnings.push("zero-differences-present");
+	if (missing) warnings.push("missing-pairs");
+	if (available) warnings.push("signed-rank-symmetry-assumption");
+	return warnings;
+}
+function wilcoxonSignedRankTestV2(rawDifferencesLaterMinusEarlier, options = {}) {
+	const nMissing = options.missingPairs ?? 0;
+	if (!Number.isSafeInteger(nMissing) || nMissing < 0) reject$9("INVALID_MISSING_PAIR_COUNT", "options.missingPairs", "must be a non-negative safe integer");
+	const differences = rawDifferencesLaterMinusEarlier.map((value, index) => normalizeRankValue(value, `differences[${index}]`));
+	const nMatched = differences.length;
+	const nPositive = differences.filter((difference) => difference > 0).length;
+	const nNegative = differences.filter((difference) => difference < 0).length;
+	const nZero = nMatched - nPositive - nNegative;
+	const nonzero = differences.filter((difference) => difference !== 0);
+	const nNonzero = nonzero.length;
+	const summary = summarizeType7(differences, "differences");
+	if (nNonzero === 0) return deepFreeze$5({
+		schemaVersion: "3dena.stats.wilcoxon-signed-rank.v2",
+		status: "not-estimable",
+		reason: nMatched === 0 ? "insufficient-ranked-observations" : "all-zero-differences",
+		nMatched,
+		nMissing,
+		nPositive,
+		nNegative,
+		nZero,
+		nNonzero,
+		nRanked: 0,
+		medianDifference: summary.median,
+		q1Difference: summary.q1,
+		q3Difference: summary.q3,
+		iqrDifference: summary.iqr,
+		wPositive: null,
+		wNegative: null,
+		t: null,
+		z: null,
+		pValueTwoSided: null,
+		rankBiserialLaterVsEarlier: null,
+		resolvedPMethod: null,
+		continuityCorrectionApplied: false,
+		tieGroupCount: 0,
+		tiedObservationCount: 0,
+		tieCorrectionSum: 0,
+		exactTail: null,
+		minimumAttainableTwoSidedP: null,
+		warnings: wilcoxonWarnings(0, false, false, nZero > 0, nMissing > 0, false)
+	});
+	const ranked = averageRanks(nonzero.map(Math.abs), "absoluteDifferences");
+	let wPositive = 0;
+	let wNegative = 0;
+	for (let index = 0; index < nonzero.length; index += 1) if (nonzero[index] > 0) wPositive += ranked.ranks[index];
+	else wNegative += ranked.ranks[index];
+	const totalRank = wPositive + wNegative;
+	const expected = totalRank / 2;
+	const variance = ranked.ranks.reduce((sum, rank) => sum + rank * rank, 0) / 4;
+	const correction = Math.sign(wPositive - expected) * RANK_INFERENCE_CONTRACT_V2.continuityCorrection;
+	const z = (wPositive - expected - correction) / Math.sqrt(variance);
+	const useExact = nNonzero <= RANK_INFERENCE_CONTRACT_V2.exactMaxRankedN;
+	let pValueTwoSided;
+	let resolvedPMethod;
+	let exactTail = null;
+	if (useExact) {
+		const exact = exactSignFlipTail(ranked.doubledRanks, Math.round(wPositive * 2));
+		pValueTwoSided = exact.pValue;
+		exactTail = {
+			extremeAssignmentCount: exact.extremeAssignmentCount,
+			totalAssignmentCount: exact.totalAssignmentCount,
+			inclusive: true,
+			midP: false
+		};
+		resolvedPMethod = ranked.tieGroupCount === 0 && nZero === 0 ? "exact-classic" : "exact-conditional-sign-flip";
+	} else {
+		pValueTwoSided = regularizedGammaQ(.5, z * z / 2);
+		resolvedPMethod = "normal-approximation-actual-ranks";
+	}
+	return deepFreeze$5({
+		schemaVersion: "3dena.stats.wilcoxon-signed-rank.v2",
+		status: "available",
+		reason: null,
+		nMatched,
+		nMissing,
+		nPositive,
+		nNegative,
+		nZero,
+		nNonzero,
+		nRanked: nNonzero,
+		medianDifference: summary.median,
+		q1Difference: summary.q1,
+		q3Difference: summary.q3,
+		iqrDifference: summary.iqr,
+		wPositive,
+		wNegative,
+		t: Math.min(wPositive, wNegative),
+		z,
+		pValueTwoSided,
+		rankBiserialLaterVsEarlier: (wPositive - wNegative) / totalRank,
+		resolvedPMethod,
+		continuityCorrectionApplied: !useExact,
+		tieGroupCount: ranked.tieGroupCount,
+		tiedObservationCount: ranked.tiedObservationCount,
+		tieCorrectionSum: ranked.tieCorrectionSum,
+		exactTail,
+		minimumAttainableTwoSidedP: minimumAttainableTwoSidedP(nNonzero),
+		warnings: wilcoxonWarnings(nNonzero, useExact, ranked.tieGroupCount > 0, nZero > 0, nMissing > 0, true)
+	});
+}
+function factorial(value) {
+	let output = 1n;
+	for (let factor = 2; factor <= value; factor += 1) output *= BigInt(factor);
+	return output;
+}
+function cappedAssignmentCount(base, exponent, limit) {
+	let output = 1n;
+	for (let index = 0; index < exponent; index += 1) {
+		output *= base;
+		if (output > limit) return limit + 1n;
+	}
+	return output;
+}
+function weightedRankPermutations(doubledRanks) {
+	const counts = /* @__PURE__ */ new Map();
+	for (const rank of doubledRanks) counts.set(rank, (counts.get(rank) ?? 0) + 1);
+	const distinct = [...counts.keys()].sort((left, right) => left - right);
+	const multiplicity = [...counts.values()].reduce((product, count) => product * factorial(count), 1n);
+	const output = [];
+	const current = Array(doubledRanks.length);
+	const visit = (position) => {
+		if (position === current.length) {
+			output.push({
+				scores: [...current],
+				multiplicity
+			});
+			return;
+		}
+		for (const rank of distinct) {
+			const remaining = counts.get(rank) ?? 0;
+			if (remaining === 0) continue;
+			counts.set(rank, remaining - 1);
+			current[position] = rank;
+			visit(position + 1);
+			counts.set(rank, remaining);
+		}
+	};
+	visit(0);
+	return output;
+}
+function friedmanScore(rankSums, nComplete, nPeriods) {
+	const center = nComplete * (nPeriods + 1);
+	return rankSums.reduce((sum, rankSum) => sum + (rankSum - center) ** 2, 0);
+}
+function exactFriedmanTail(ranksByBlock, observedRankSums) {
+	const nPeriods = observedRankSums.length;
+	let states = /* @__PURE__ */ new Map([[Array(nPeriods).fill(0).join(","), {
+		sums: Array(nPeriods).fill(0),
+		count: 1n
+	}]]);
+	for (const blockRanks of ranksByBlock) {
+		const permutations = weightedRankPermutations(blockRanks);
+		const next = /* @__PURE__ */ new Map();
+		for (const state of states.values()) for (const permutation of permutations) {
+			const sums = state.sums.map((sum, index) => sum + permutation.scores[index]);
+			const key = sums.join(",");
+			const count = state.count * permutation.multiplicity;
+			const existing = next.get(key);
+			if (existing) existing.count += count;
+			else next.set(key, {
+				sums,
+				count
+			});
+		}
+		states = next;
+	}
+	const observedScore = friedmanScore(observedRankSums, ranksByBlock.length, nPeriods);
+	let total = 0n;
+	let extreme = 0n;
+	for (const state of states.values()) {
+		total += state.count;
+		if (friedmanScore(state.sums, ranksByBlock.length, nPeriods) >= observedScore) extreme += state.count;
+	}
+	return {
+		extremeAssignmentCount: extreme.toString(),
+		totalAssignmentCount: total.toString(),
+		inclusive: true,
+		midP: false,
+		pValue: probabilityFromCounts(extreme, total)
+	};
+}
+function friedmanWarnings(nComplete, exact, ties, missing, available) {
+	const warnings = [];
+	if (nComplete < 10) warnings.push("small-sample");
+	if (available && exact) warnings.push("discrete-attainable-p");
+	if (ties) warnings.push("ties-present");
+	if (missing) warnings.push("missing-complete-blocks");
+	return warnings;
+}
+function friedmanRankTestV2(completeBlocksByPeriod, options = {}) {
+	const nComplete = completeBlocksByPeriod.length;
+	const nMissingCompleteBlocks = options.missingCompleteBlocks ?? 0;
+	if (!Number.isSafeInteger(nMissingCompleteBlocks) || nMissingCompleteBlocks < 0) reject$9("INVALID_MISSING_BLOCK_COUNT", "options.missingCompleteBlocks", "must be a non-negative safe integer");
+	const periodCountWhenEmpty = options.periodCountWhenEmpty ?? 0;
+	if (!Number.isSafeInteger(periodCountWhenEmpty) || periodCountWhenEmpty < 0) reject$9("INVALID_PERIOD_COUNT", "options.periodCountWhenEmpty", "must be a non-negative safe integer");
+	const nPeriods = nComplete > 0 ? completeBlocksByPeriod[0].length : periodCountWhenEmpty;
+	const unavailable = (reason, degreesFreedom, tieAudit = {
+		tieGroupCount: 0,
+		tiedObservationCount: 0,
+		tieCorrectionSum: 0
+	}) => deepFreeze$5({
+		schemaVersion: "3dena.stats.friedman.v2",
+		status: "not-estimable",
+		reason,
+		nComplete,
+		nMissingCompleteBlocks,
+		nPeriods,
+		q: null,
+		degreesFreedom,
+		kendallsW: null,
+		pValueUpperTail: null,
+		resolvedPMethod: null,
+		...tieAudit,
+		exactTail: null,
+		warnings: friedmanWarnings(nComplete, false, tieAudit.tieGroupCount > 0, nMissingCompleteBlocks > 0, false)
+	});
+	if (nComplete === 0) return unavailable("no-complete-blocks", nPeriods >= 1 ? nPeriods - 1 : null);
+	if (nPeriods < 3) return unavailable("insufficient-ranked-observations", nPeriods >= 1 ? nPeriods - 1 : null);
+	if (completeBlocksByPeriod.some((block) => block.length !== nPeriods)) reject$9("ENTITY_PERIOD_INSTABILITY", "completeBlocksByPeriod", "every complete block must have the same period count");
+	const ranksByBlock = [];
+	const observedRankSums = Array(nPeriods).fill(0);
+	let tieGroupCount = 0;
+	let tiedObservationCount = 0;
+	let tieCorrectionSum = 0;
+	for (const [blockIndex, block] of completeBlocksByPeriod.entries()) {
+		const ranked = averageRanks(block, `completeBlocksByPeriod[${blockIndex}]`);
+		ranksByBlock.push(ranked.doubledRanks);
+		for (let period = 0; period < nPeriods; period += 1) observedRankSums[period] = observedRankSums[period] + ranked.doubledRanks[period];
+		tieGroupCount += ranked.tieGroupCount;
+		tiedObservationCount += ranked.tiedObservationCount;
+		tieCorrectionSum += ranked.tieCorrectionSum;
+	}
+	const tieAudit = {
+		tieGroupCount,
+		tiedObservationCount,
+		tieCorrectionSum
+	};
+	const denominator = nComplete * nPeriods * (nPeriods + 1) - tieCorrectionSum / (nPeriods - 1);
+	if (!(denominator > 0) || !Number.isFinite(denominator)) return unavailable("all-values-tied", nPeriods - 1, tieAudit);
+	const q = 3 * friedmanScore(observedRankSums, nComplete, nPeriods) / denominator;
+	const degreesFreedom = nPeriods - 1;
+	const kendallsW = Math.max(0, Math.min(1, q / (nComplete * degreesFreedom)));
+	const limit = BigInt(RANK_INFERENCE_CONTRACT_V2.friedmanExactAssignmentLimit);
+	const useExact = cappedAssignmentCount(factorial(nPeriods), nComplete, limit) <= limit;
+	let pValueUpperTail;
+	let resolvedPMethod;
+	let exactTail = null;
+	if (useExact) {
+		const exact = exactFriedmanTail(ranksByBlock, observedRankSums);
+		pValueUpperTail = exact.pValue;
+		exactTail = {
+			extremeAssignmentCount: exact.extremeAssignmentCount,
+			totalAssignmentCount: exact.totalAssignmentCount,
+			inclusive: true,
+			midP: false
+		};
+		resolvedPMethod = "exact-conditional-period-permutation";
+	} else {
+		pValueUpperTail = regularizedGammaQ(degreesFreedom / 2, q / 2);
+		resolvedPMethod = "chi-square-approximation-tie-corrected";
+	}
+	return deepFreeze$5({
+		schemaVersion: "3dena.stats.friedman.v2",
+		status: "available",
+		reason: null,
+		nComplete,
+		nMissingCompleteBlocks,
+		nPeriods,
+		q,
+		degreesFreedom,
+		kendallsW,
+		pValueUpperTail,
+		resolvedPMethod,
+		...tieAudit,
+		exactTail,
+		warnings: friedmanWarnings(nComplete, useExact, tieGroupCount > 0, nMissingCompleteBlocks > 0, true)
+	});
+}
+function holmAdjustFamilyV2(members) {
+	const identifiers = /* @__PURE__ */ new Set();
+	for (const [index, member] of members.entries()) {
+		if (!member.memberId || identifiers.has(member.memberId)) reject$9("INVALID_HOLM_MEMBER_ID", `members[${index}].memberId`, "must be non-empty and unique");
+		identifiers.add(member.memberId);
+		if (member.pRaw !== null && (!Number.isFinite(member.pRaw) || member.pRaw < 0 || member.pRaw > 1)) reject$9("INVALID_HOLM_P_VALUE", `members[${index}].pRaw`, "must be null or finite in [0, 1]");
+	}
+	const familySizePlanned = members.length;
+	const ordered = members.map((member, originalIndex) => ({
+		...member,
+		originalIndex,
+		effectiveP: member.pRaw ?? 1
+	})).sort((left, right) => left.effectiveP - right.effectiveP || left.memberId.localeCompare(right.memberId));
+	const byOriginal = Array(familySizePlanned);
+	let runningMaximum = 0;
+	for (const [index, member] of ordered.entries()) {
+		const multiplier = familySizePlanned - index;
+		runningMaximum = Math.min(1, Math.max(runningMaximum, multiplier * member.effectiveP));
+		byOriginal[member.originalIndex] = {
+			memberId: member.memberId,
+			pRaw: member.pRaw,
+			pHolm: member.pRaw === null ? null : runningMaximum,
+			familySizePlanned,
+			holmRank: member.pRaw === null ? null : index + 1,
+			holmMultiplier: member.pRaw === null ? null : multiplier
+		};
+	}
+	return deepFreeze$5(byOriginal);
 }
 //#endregion
 //#region ../trajectory/src/errors.ts
@@ -34441,12 +36021,12 @@ function resolveLimits$2(input) {
 	}
 	return output;
 }
-function finiteDoubleBits(value) {
+function finiteDoubleBits$1(value) {
 	const view = /* @__PURE__ */ new DataView(/* @__PURE__ */ new ArrayBuffer(8));
 	view.setFloat64(0, value, false);
 	return view.getBigUint64(0, false).toString(16).padStart(16, "0");
 }
-function identityToken(component, path) {
+function identityToken$1(component, path) {
 	if (!component || typeof component !== "object") rejectTrajectoryDynamics("INVALID_IDENTITY_COMPONENT", path, "must be an object");
 	if (typeof component.name !== "string" || component.name.trim() === "" || component.name.length > 256) rejectTrajectoryDynamics("INVALID_IDENTITY_COMPONENT", `${path}.name`, "must be a non-empty string of at most 256 UTF-16 code units");
 	if (component.declaredType !== void 0 && (typeof component.declaredType !== "string" || component.declaredType.trim() === "" || component.declaredType.length > 256)) rejectTrajectoryDynamics("INVALID_IDENTITY_COMPONENT", `${path}.declaredType`, "must be a non-empty string of at most 256 UTF-16 code units when present");
@@ -34474,14 +36054,14 @@ function identityToken(component, path) {
 		component.name,
 		"number",
 		component.declaredType ?? "double",
-		finiteDoubleBits(component.value)
+		finiteDoubleBits$1(component.value)
 	];
 }
-function normalizeIdentity$1(identity, path) {
+function normalizeIdentity$2(identity, path) {
 	if (!identity || !Array.isArray(identity.components) || identity.components.length === 0) rejectTrajectoryDynamics("INVALID_TRAJECTORY_IDENTITY", path, "must contain at least one typed component");
 	const names = /* @__PURE__ */ new Set();
 	const entries = identity.components.map((component, index) => {
-		const token = identityToken(component, `${path}.components[${index}]`);
+		const token = identityToken$1(component, `${path}.components[${index}]`);
 		if (names.has(component.name)) rejectTrajectoryDynamics("DUPLICATE_IDENTITY_COMPONENT", `${path}.components[${index}].name`, "duplicates an earlier component name");
 		names.add(component.name);
 		return {
@@ -34565,7 +36145,7 @@ function normalizeTimeValues(definitions, limits) {
 	const seen = /* @__PURE__ */ new Set();
 	const periods = definitions.map((definition, index) => {
 		if (!definition || typeof definition !== "object") rejectTrajectoryDynamics("INVALID_TRAJECTORY_PERIOD", `input.periods[${index}]`, "must be an object");
-		const key = normalizeIdentity$1(definition.time, `input.periods[${index}].time`);
+		const key = normalizeIdentity$2(definition.time, `input.periods[${index}].time`);
 		if (seen.has(key.canonical)) rejectTrajectoryDynamics("DUPLICATE_TRAJECTORY_TIME", `input.periods[${index}].time`, "duplicates an earlier typed period identity");
 		seen.add(key.canonical);
 		const value = definition.value;
@@ -34647,8 +36227,8 @@ function normalizeInput(input) {
 	const expectedTimes = new Set(normalizedTime.periods.map(({ key }) => key.canonical));
 	const points = input.points.map((point, rowIndex) => {
 		if (!point || typeof point !== "object") rejectTrajectoryDynamics("INVALID_TRAJECTORY_POINT", `input.points[${rowIndex}]`, "must be an object");
-		const participant = normalizeIdentity$1(point.participant, `input.points[${rowIndex}].participant`);
-		const time = normalizeIdentity$1(point.time, `input.points[${rowIndex}].time`);
+		const participant = normalizeIdentity$2(point.participant, `input.points[${rowIndex}].participant`);
+		const time = normalizeIdentity$2(point.time, `input.points[${rowIndex}].time`);
 		if (!expectedTimes.has(time.canonical)) rejectTrajectoryDynamics("TRAJECTORY_TIME_ORDER_INCOMPLETE", `input.points[${rowIndex}].time`, "observed typed period is absent from input.periods");
 		if (!Array.isArray(point.coordinates) || point.coordinates.length !== input.dimensions.length) rejectTrajectoryDynamics("TRAJECTORY_COORDINATE_SHAPE", `input.points[${rowIndex}].coordinates`, "must align exactly with dimensions");
 		const coordinates = point.coordinates.map((value, dimensionIndex) => {
@@ -35005,7 +36585,7 @@ function analyzeTrajectoryDynamicsV1(input) {
 		effectiveParticipantN: centroid.effectiveParticipantN
 	}));
 	const diagnostics = buildDiagnostics(series, reduction.participantPeriods, periods, reduction.duplicateRows, reduction.cohortExcludedParticipants, reduction.timeVaryingWeights);
-	return deepFreeze$2({
+	return deepFreeze$4({
 		schemaVersion: "3dena.trajectory-dynamics.v1",
 		namespace: series.namespace,
 		cohortPolicy: series.input.cohortPolicy,
@@ -35043,15 +36623,143 @@ function analyzeTrajectoryDynamicsV1(input) {
 		resolvedLimits: { ...series.limits }
 	});
 }
-function deepFreeze$2(value) {
+function deepFreeze$4(value) {
 	if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
-		for (const nested of Object.values(value)) deepFreeze$2(nested);
+		for (const nested of Object.values(value)) deepFreeze$4(nested);
 		Object.freeze(value);
 	}
 	return value;
 }
 //#endregion
+//#region ../trajectory/src/analyze-v2.ts
+function finiteDoubleBits(value) {
+	const view = /* @__PURE__ */ new DataView(/* @__PURE__ */ new ArrayBuffer(8));
+	view.setFloat64(0, value, false);
+	return view.getBigUint64(0, false).toString(16).padStart(16, "0");
+}
+function identityToken(component, path) {
+	if (!component || typeof component !== "object" || typeof component.name !== "string" || component.name.trim() === "") rejectTrajectoryDynamics("INVALID_IDENTITY_COMPONENT", path, "must have a non-empty component name");
+	if (component.type === "string" && typeof component.value === "string" && component.value !== "") return [
+		component.name,
+		"string",
+		component.declaredType ?? "string",
+		component.value
+	];
+	if (component.type === "boolean" && typeof component.value === "boolean") return [
+		component.name,
+		"boolean",
+		component.declaredType ?? "boolean",
+		component.value ? "true" : "false"
+	];
+	if (component.type === "number" && typeof component.value === "number" && Number.isFinite(component.value)) {
+		if (Number.isInteger(component.value) && !Number.isSafeInteger(component.value)) rejectTrajectoryDynamics("UNSAFE_INTEGER_IDENTITY", `${path}.value`, "unsafe integer identities must be lossless strings");
+		return [
+			component.name,
+			"number",
+			component.declaredType ?? "double",
+			finiteDoubleBits(component.value)
+		];
+	}
+	rejectTrajectoryDynamics("INVALID_IDENTITY_VALUE", `${path}.value`, "declared identity type must match its finite value");
+}
+function normalizeIdentity$1(identity, path) {
+	if (!identity || !Array.isArray(identity.components) || identity.components.length === 0) rejectTrajectoryDynamics("INVALID_TRAJECTORY_IDENTITY", path, "must contain at least one typed component");
+	const names = /* @__PURE__ */ new Set();
+	const entries = identity.components.map((component, index) => {
+		const token = identityToken(component, `${path}.components[${index}]`);
+		if (names.has(component.name)) rejectTrajectoryDynamics("DUPLICATE_IDENTITY_COMPONENT", `${path}.components[${index}].name`, "duplicates an earlier component name");
+		names.add(component.name);
+		return {
+			component: { ...component },
+			token
+		};
+	});
+	return {
+		components: entries.map(({ component }) => component),
+		canonical: JSON.stringify(entries.map(({ token }) => token)),
+		display: entries.map(({ component }) => String(component.value)).join(" · ")
+	};
+}
+function deepFreeze$3(value) {
+	if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+		for (const child of Object.values(value)) deepFreeze$3(child);
+		Object.freeze(value);
+	}
+	return value;
+}
+/** Executes every valid group against one shared dimension, period and cohort contract. */
+function analyzeTrajectoryPathSetV2(input) {
+	if (!input || typeof input !== "object" || input.schemaVersion !== "3dena.trajectory-path-set-input.v2") rejectTrajectoryDynamics("UNKNOWN_TRAJECTORY_PATH_SET_VERSION", "input.schemaVersion", "must be 3dena.trajectory-path-set-input.v2");
+	if (!Array.isArray(input.groups) || input.groups.length === 0) rejectTrajectoryDynamics("EMPTY_TRAJECTORY_GROUPS", "input.groups", "must contain at least one group");
+	const seen = /* @__PURE__ */ new Set();
+	const groups = input.groups.map((group, index) => {
+		if (!group || typeof group !== "object") rejectTrajectoryDynamics("INVALID_TRAJECTORY_GROUP", `input.groups[${index}]`, "must be an object");
+		const key = normalizeIdentity$1(group.group, `input.groups[${index}].group`);
+		if (seen.has(key.canonical)) rejectTrajectoryDynamics("DUPLICATE_TRAJECTORY_GROUP", `input.groups[${index}].group`, "duplicates an earlier typed group identity");
+		seen.add(key.canonical);
+		return {
+			group: key,
+			dynamics: analyzeTrajectoryDynamicsV1({
+				schemaVersion: "3dena.trajectory-dynamics-input.v1",
+				namespace: group.namespace,
+				dimensions: [...input.dimensions],
+				selectedDimensions: [...input.selectedDimensions],
+				periods: input.periods.map((period) => ({
+					time: { components: period.time.components.map((component) => ({ ...component })) },
+					value: { ...period.value }
+				})),
+				cohortPolicy: input.cohortPolicy,
+				estimand: { ...input.estimand },
+				points: group.points.map((point) => ({
+					participant: { components: point.participant.components.map((component) => ({ ...component })) },
+					time: { components: point.time.components.map((component) => ({ ...component })) },
+					coordinates: [...point.coordinates],
+					...point.weight === void 0 ? {} : { weight: point.weight }
+				})),
+				...input.limits ? { limits: { ...input.limits } } : {}
+			})
+		};
+	});
+	return deepFreeze$3({
+		schemaVersion: "3dena.trajectory-path-set.v2",
+		dimensions: [...input.dimensions],
+		selectedDimensions: [...input.selectedDimensions],
+		cohortPolicy: input.cohortPolicy,
+		estimand: { ...input.estimand },
+		groups,
+		summary: {
+			groups: groups.length,
+			participants: groups.reduce((sum, group) => sum + group.dynamics.summary.participants, 0),
+			participantPeriods: groups.reduce((sum, group) => sum + group.dynamics.summary.participantPeriods, 0),
+			duplicateRows: groups.reduce((sum, group) => sum + group.dynamics.summary.duplicateRows, 0),
+			missingGroupPeriods: groups.reduce((sum, group) => sum + group.dynamics.summary.missingPeriods, 0)
+		},
+		evidence: {
+			status: "IMPLEMENTED_UNVERIFIED",
+			scientificAuthority: "jena-js-and-versioned-3dena-contract",
+			rEnaOracle: false
+		}
+	});
+}
+//#endregion
+//#region src/build-identity.ts
+function injected(value, fallback) {
+	return typeof value === "string" && value.trim() !== "" ? value : fallback;
+}
+var ANALYSIS_BUILD_IDENTITY;
+var init_build_identity = __esmMin((() => {
+	ANALYSIS_BUILD_IDENTITY = Object.freeze({
+		jenaVersion: injected("0.7.0-ona.0", "development-unbound"),
+		jenaCommit: injected("90790856f00bdef63dbd27fc3a5b502e8cffe65f", "development-unbound"),
+		jenaTarballIntegrity: injected("sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==", "development-unbound"),
+		sdkVersion: injected("0.2.0", "development-unbound"),
+		buildId: injected("47e05006ff5308b6cb857111c2114e47e7bdfc6d-dirty", "development-unbound"),
+		bound: true
+	});
+}));
+//#endregion
 //#region src/network-analysis.ts
+init_build_identity();
 var NetworkAnalysisError = class extends Error {
 	code;
 	path;
@@ -35062,34 +36770,34 @@ var NetworkAnalysisError = class extends Error {
 		this.path = path;
 	}
 };
-function reject$7(code, path, message) {
+function reject$8(code, path, message) {
 	throw new NetworkAnalysisError(code, path, message);
 }
 function rawScalarCanonical(value) {
 	if (value === null) return JSON.stringify(["null"]);
 	if (typeof value === "number") {
-		if (!Number.isFinite(value)) reject$7("NON_FINITE_LEVEL", "selector.level", "must be finite");
-		if (Number.isInteger(value) && !Number.isSafeInteger(value)) reject$7("UNSAFE_INTEGER_LEVEL", "selector.level", "unsafe integer identities must be supplied as source strings");
+		if (!Number.isFinite(value)) reject$8("NON_FINITE_LEVEL", "selector.level", "must be finite");
+		if (Number.isInteger(value) && !Number.isSafeInteger(value)) reject$8("UNSAFE_INTEGER_LEVEL", "selector.level", "unsafe integer identities must be supplied as source strings");
 		if (Object.is(value, -0)) return JSON.stringify(["number", "-0"]);
 	}
 	return JSON.stringify([typeof value, value]);
 }
 function validateSource(result) {
-	if (!result || result.schemaVersion !== "3dena.analysis-result.v1") reject$7("INVALID_SOURCE_RESULT", "result", "must be a validated raw analysis result");
-	if (result.edges.length === 0) reject$7("EMPTY_EDGE_SET", "result.edges", "must contain at least one edge");
-	if (result.points.length === 0) reject$7("EMPTY_POINT_SET", "result.points", "must contain at least one point");
-	if (result.dimensions.length === 0) reject$7("EMPTY_DIMENSION_SET", "result.dimensions", "must contain at least one dimension");
+	if (!result || result.schemaVersion !== "3dena.analysis-result.v1") reject$8("INVALID_SOURCE_RESULT", "result", "must be a validated raw analysis result");
+	if (result.edges.length === 0) reject$8("EMPTY_EDGE_SET", "result.edges", "must contain at least one edge");
+	if (result.points.length === 0) reject$8("EMPTY_POINT_SET", "result.points", "must contain at least one point");
+	if (result.dimensions.length === 0) reject$8("EMPTY_DIMENSION_SET", "result.dimensions", "must contain at least one dimension");
 	for (const point of result.points) {
-		if (point.lineWeights.length !== result.edges.length) reject$7("MISALIGNED_LINE_WEIGHTS", `result.points[${point.index}].lineWeights`, "must align one-to-one with result.edges");
-		if (point.fullCoordinates.length !== result.dimensions.length) reject$7("MISALIGNED_COORDINATES", `result.points[${point.index}].fullCoordinates`, "must align one-to-one with result.dimensions");
+		if (point.lineWeights.length !== result.edges.length) reject$8("MISALIGNED_LINE_WEIGHTS", `result.points[${point.index}].lineWeights`, "must align one-to-one with result.edges");
+		if (point.fullCoordinates.length !== result.dimensions.length) reject$8("MISALIGNED_COORDINATES", `result.points[${point.index}].fullCoordinates`, "must align one-to-one with result.dimensions");
 	}
 }
 function mean$1(values, path) {
-	if (values.length === 0) reject$7("EMPTY_NETWORK_SELECTION", path, "contains no analysis points");
+	if (values.length === 0) reject$8("EMPTY_NETWORK_SELECTION", path, "contains no analysis points");
 	let sum = 0;
 	let correction = 0;
 	for (const value of values) {
-		if (!Number.isFinite(value)) reject$7("NON_FINITE_SOURCE_VALUE", path, "contains a non-finite model value");
+		if (!Number.isFinite(value)) reject$8("NON_FINITE_SOURCE_VALUE", path, "contains a non-finite model value");
 		const adjusted = value - correction;
 		const next = sum + adjusted;
 		correction = next - sum - adjusted;
@@ -35108,7 +36816,7 @@ function edgeMean(edge, points) {
 	};
 }
 function networkMean(result, points) {
-	if (points.length === 0) reject$7("EMPTY_NETWORK_SELECTION", "selection", "contains no analysis points");
+	if (points.length === 0) reject$8("EMPTY_NETWORK_SELECTION", "selection", "contains no analysis points");
 	return {
 		pointCount: points.length,
 		pointIndexes: points.map((point) => point.index),
@@ -35117,9 +36825,9 @@ function networkMean(result, points) {
 	};
 }
 function groupValue(result, canonical, path) {
-	if (typeof canonical !== "string" || canonical.length === 0) reject$7("INVALID_GROUP", path, "must be a non-empty canonical group key");
+	if (typeof canonical !== "string" || canonical.length === 0) reject$8("INVALID_GROUP", path, "must be a non-empty canonical group key");
 	const group = result.trajectory?.groupOrder.find((candidate) => candidate.canonical === canonical) ?? result.points.find((point) => point.group?.canonical === canonical)?.group;
-	if (!group) reject$7("UNKNOWN_GROUP", path, "is not present in the source result");
+	if (!group) reject$8("UNKNOWN_GROUP", path, "is not present in the source result");
 	return group;
 }
 /**
@@ -35128,8 +36836,8 @@ function groupValue(result, canonical, path) {
 */
 function compareGroupNetworks(result, groups) {
 	validateSource(result);
-	if (!Array.isArray(groups) || groups.length !== 2) reject$7("INVALID_GROUP_PAIR", "groups", "must contain exactly two canonical group keys");
-	if (groups[0] === groups[1]) reject$7("IDENTICAL_GROUPS", "groups", "must select two different groups");
+	if (!Array.isArray(groups) || groups.length !== 2) reject$8("INVALID_GROUP_PAIR", "groups", "must contain exactly two canonical group keys");
+	if (groups[0] === groups[1]) reject$8("IDENTICAL_GROUPS", "groups", "must select two different groups");
 	const groupA = groupValue(result, groups[0], "groups[0]");
 	const groupB = groupValue(result, groups[1], "groups[1]");
 	const meanA = networkMean(result, result.points.filter((point) => point.group?.canonical === groupA.canonical));
@@ -35164,13 +36872,13 @@ function compareGroupNetworks(result, groups) {
 /** Selects one exact metadata/group level and computes its mean network. */
 function analyzeChangeNetwork(result, selector) {
 	validateSource(result);
-	if (!selector || typeof selector.field !== "string" || selector.field.trim() === "") reject$7("INVALID_CHANGE_FIELD", "selector.field", "must be a non-empty metadata column name or @group");
+	if (!selector || typeof selector.field !== "string" || selector.field.trim() === "") reject$8("INVALID_CHANGE_FIELD", "selector.field", "must be a non-empty metadata column name or @group");
 	const levelCanonical = rawScalarCanonical(selector.level);
 	const selected = result.points.filter((point) => {
 		const value = selector.field === "@group" ? point.group?.value : point.metadata[selector.field];
 		return value !== void 0 && rawScalarCanonical(value) === levelCanonical;
 	});
-	if (selected.length === 0) reject$7("UNKNOWN_CHANGE_LEVEL", "selector.level", "does not select any analysis points");
+	if (selected.length === 0) reject$8("UNKNOWN_CHANGE_LEVEL", "selector.level", "does not select any analysis points");
 	return {
 		schemaVersion: "3dena.change-network.v1",
 		selector: {
@@ -35218,7 +36926,7 @@ function issue$1(code, path, message) {
 		message
 	};
 }
-function reject$6(code, path, message) {
+function reject$7(code, path, message) {
 	throw new AnalysisValidationError([issue$1(code, path, message)]);
 }
 function columnMap(table) {
@@ -35226,22 +36934,22 @@ function columnMap(table) {
 }
 function requiredColumn(columns, name, path) {
 	const column = columns.get(name);
-	if (!column) reject$6("MISSING_PREPARED_COLUMN", path, `column ${JSON.stringify(name)} is required`);
+	if (!column) reject$7("MISSING_PREPARED_COLUMN", path, `column ${JSON.stringify(name)} is required`);
 	return column;
 }
 function rawValue(column, rowIndex, path) {
 	const value = column.values[rowIndex];
-	if (value !== null && typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") reject$6("INVALID_PREPARED_SCALAR", path, "must be a scalar exchange value");
-	if (typeof value === "number" && !Number.isFinite(value)) reject$6("NON_FINITE_PREPARED_VALUE", path, "must be finite");
+	if (value !== null && typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") reject$7("INVALID_PREPARED_SCALAR", path, "must be a scalar exchange value");
+	if (typeof value === "number" && !Number.isFinite(value)) reject$7("NON_FINITE_PREPARED_VALUE", path, "must be finite");
 	return value ?? null;
 }
 function validateIdentityScalar(value, path) {
-	if (value !== null && typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") reject$6("INVALID_PREPARED_IDENTITY", path, "must be a scalar value");
-	if (value === null) reject$6("MISSING_PREPARED_IDENTITY", path, "identity values must not be null");
-	if (typeof value === "string" && value.trim().length === 0) reject$6("BLANK_PREPARED_IDENTITY", path, "identity strings must not be blank");
-	if (typeof value === "string" && UTF8_ENCODER.encode(value).byteLength > IDENTITY_STRING_MAX_UTF8_BYTES) reject$6("PREPARED_IDENTITY_TOO_LONG", path, `must not exceed ${IDENTITY_STRING_MAX_UTF8_BYTES} UTF-8 bytes`);
-	if (typeof value === "number" && !Number.isFinite(value)) reject$6("NON_FINITE_PREPARED_IDENTITY", path, "numeric identities must be finite");
-	if (typeof value === "number" && Number.isInteger(value) && !Number.isSafeInteger(value)) reject$6("UNSAFE_PREPARED_INTEGER_IDENTITY", path, "integer identities outside the JavaScript safe range must be encoded as strings");
+	if (value !== null && typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") reject$7("INVALID_PREPARED_IDENTITY", path, "must be a scalar value");
+	if (value === null) reject$7("MISSING_PREPARED_IDENTITY", path, "identity values must not be null");
+	if (typeof value === "string" && value.trim().length === 0) reject$7("BLANK_PREPARED_IDENTITY", path, "identity strings must not be blank");
+	if (typeof value === "string" && UTF8_ENCODER.encode(value).byteLength > IDENTITY_STRING_MAX_UTF8_BYTES) reject$7("PREPARED_IDENTITY_TOO_LONG", path, `must not exceed ${IDENTITY_STRING_MAX_UTF8_BYTES} UTF-8 bytes`);
+	if (typeof value === "number" && !Number.isFinite(value)) reject$7("NON_FINITE_PREPARED_IDENTITY", path, "numeric identities must be finite");
+	if (typeof value === "number" && Number.isInteger(value) && !Number.isSafeInteger(value)) reject$7("UNSAFE_PREPARED_INTEGER_IDENTITY", path, "integer identities outside the JavaScript safe range must be encoded as strings");
 }
 function scalarToken$2(value) {
 	if (value === null) return ["null", ""];
@@ -35308,44 +37016,44 @@ function sameTypedValue(left, right) {
 }
 function numericColumnValue(column, rowIndex, path) {
 	const value = rawValue(column, rowIndex, path);
-	if (typeof value !== "number" || !Number.isFinite(value)) reject$6("INVALID_PREPARED_COORDINATE", path, "prepared coordinates and weights must be present finite numbers");
+	if (typeof value !== "number" || !Number.isFinite(value)) reject$7("INVALID_PREPARED_COORDINATE", path, "prepared coordinates and weights must be present finite numbers");
 	return value;
 }
 function validateSourceName(name) {
-	if (typeof name !== "string" || name.trim().length === 0) reject$6("INVALID_PREPARED_SOURCE_NAME", "source.name", "must be a non-blank string");
-	if (/[\u0000-\u001f\u007f-\u009f]/u.test(name)) reject$6("INVALID_PREPARED_SOURCE_NAME", "source.name", "must not contain control characters");
-	if (/[\\/]/u.test(name)) reject$6("INVALID_PREPARED_SOURCE_NAME", "source.name", "must be a file name, not a path");
-	if (UTF8_ENCODER.encode(name).byteLength > SOURCE_NAME_MAX_UTF8_BYTES) reject$6("PREPARED_SOURCE_NAME_TOO_LONG", "source.name", `must not exceed ${SOURCE_NAME_MAX_UTF8_BYTES} UTF-8 bytes`);
+	if (typeof name !== "string" || name.trim().length === 0) reject$7("INVALID_PREPARED_SOURCE_NAME", "source.name", "must be a non-blank string");
+	if (/[\u0000-\u001f\u007f-\u009f]/u.test(name)) reject$7("INVALID_PREPARED_SOURCE_NAME", "source.name", "must not contain control characters");
+	if (/[\\/]/u.test(name)) reject$7("INVALID_PREPARED_SOURCE_NAME", "source.name", "must be a file name, not a path");
+	if (UTF8_ENCODER.encode(name).byteLength > SOURCE_NAME_MAX_UTF8_BYTES) reject$7("PREPARED_SOURCE_NAME_TOO_LONG", "source.name", `must not exceed ${SOURCE_NAME_MAX_UTF8_BYTES} UTF-8 bytes`);
 }
 function validateMapping$1(exchange, mapping) {
-	if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) reject$6("INVALID_PREPARED_MAPPING", "mapping", "must be an object");
-	if (!Array.isArray(mapping.participant) || mapping.participant.length === 0) reject$6("INVALID_PREPARED_MAPPING", "mapping.participant", "must name at least one column");
-	if (mapping.participant.length > PREPARED_PARTICIPANT_COLUMN_LIMIT) reject$6("PREPARED_MAPPING_LIMIT_EXCEEDED", "mapping.participant", `must not exceed ${PREPARED_PARTICIPANT_COLUMN_LIMIT} columns`);
-	if (mapping.participant.some((name) => typeof name !== "string" || name.trim().length === 0)) reject$6("INVALID_PREPARED_MAPPING", "mapping.participant", "must contain non-blank column names");
-	if (new Set(mapping.participant).size !== mapping.participant.length) reject$6("DUPLICATE_PREPARED_MAPPING", "mapping.participant", "must not contain duplicate columns");
-	if (!mapping.participant.includes(mapping.group)) reject$6("GROUP_OUTSIDE_PREPARED_PARTICIPANT", "mapping.group", "the trajectory group must be part of the complete participant identity");
-	if (!Array.isArray(mapping.displayDimensions) || mapping.displayDimensions.length !== 3) reject$6("INVALID_PREPARED_MAPPING", "mapping.displayDimensions", "must select exactly three dimensions");
-	if (mapping.displayDimensions.some((name) => typeof name !== "string" || name.trim().length === 0)) reject$6("INVALID_PREPARED_MAPPING", "mapping.displayDimensions", "must contain dimension names");
+	if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) reject$7("INVALID_PREPARED_MAPPING", "mapping", "must be an object");
+	if (!Array.isArray(mapping.participant) || mapping.participant.length === 0) reject$7("INVALID_PREPARED_MAPPING", "mapping.participant", "must name at least one column");
+	if (mapping.participant.length > PREPARED_PARTICIPANT_COLUMN_LIMIT) reject$7("PREPARED_MAPPING_LIMIT_EXCEEDED", "mapping.participant", `must not exceed ${PREPARED_PARTICIPANT_COLUMN_LIMIT} columns`);
+	if (mapping.participant.some((name) => typeof name !== "string" || name.trim().length === 0)) reject$7("INVALID_PREPARED_MAPPING", "mapping.participant", "must contain non-blank column names");
+	if (new Set(mapping.participant).size !== mapping.participant.length) reject$7("DUPLICATE_PREPARED_MAPPING", "mapping.participant", "must not contain duplicate columns");
+	if (!mapping.participant.includes(mapping.group)) reject$7("GROUP_OUTSIDE_PREPARED_PARTICIPANT", "mapping.group", "the trajectory group must be part of the complete participant identity");
+	if (!Array.isArray(mapping.displayDimensions) || mapping.displayDimensions.length !== 3) reject$7("INVALID_PREPARED_MAPPING", "mapping.displayDimensions", "must select exactly three dimensions");
+	if (mapping.displayDimensions.some((name) => typeof name !== "string" || name.trim().length === 0)) reject$7("INVALID_PREPARED_MAPPING", "mapping.displayDimensions", "must contain dimension names");
 	for (const [path, value] of [
 		["mapping.participantLabel", mapping.participantLabel],
 		["mapping.group", mapping.group],
 		["mapping.time", mapping.time]
-	]) if (typeof value !== "string" || value.trim().length === 0) reject$6("INVALID_PREPARED_MAPPING", path, "must name a non-blank metadata column");
-	if (new Set(mapping.displayDimensions).size !== 3) reject$6("DUPLICATE_PREPARED_MAPPING", "mapping.displayDimensions", "must contain three distinct dimensions");
-	if (mapping.missingDisplayCoordinates !== void 0 && mapping.missingDisplayCoordinates !== "reject") reject$6("INVALID_PREPARED_MAPPING", "mapping.missingDisplayCoordinates", "only the reject policy is supported");
-	if (mapping.cohortPolicy !== "available" && mapping.cohortPolicy !== "complete") reject$6("INVALID_PREPARED_MAPPING", "mapping.cohortPolicy", "must be available or complete");
+	]) if (typeof value !== "string" || value.trim().length === 0) reject$7("INVALID_PREPARED_MAPPING", path, "must name a non-blank metadata column");
+	if (new Set(mapping.displayDimensions).size !== 3) reject$7("DUPLICATE_PREPARED_MAPPING", "mapping.displayDimensions", "must contain three distinct dimensions");
+	if (mapping.missingDisplayCoordinates !== void 0 && mapping.missingDisplayCoordinates !== "reject") reject$7("INVALID_PREPARED_MAPPING", "mapping.missingDisplayCoordinates", "only the reject policy is supported");
+	if (mapping.cohortPolicy !== "available" && mapping.cohortPolicy !== "complete") reject$7("INVALID_PREPARED_MAPPING", "mapping.cohortPolicy", "must be available or complete");
 	const metadataColumns = columnMap(exchange.tables.meta_data);
 	const participantColumns = mapping.participant.map((name, index) => requiredColumn(metadataColumns, name, `mapping.participant[${index}]`));
 	const participantLabelColumn = requiredColumn(metadataColumns, mapping.participantLabel, "mapping.participantLabel");
 	const groupColumn = requiredColumn(metadataColumns, mapping.group, "mapping.group");
 	const timeColumn = requiredColumn(metadataColumns, mapping.time, "mapping.time");
-	if (!Array.isArray(mapping.timeOrder) || mapping.timeOrder.length === 0) reject$6("INVALID_PREPARED_TIME_ORDER", "mapping.timeOrder", "must contain at least one expected period");
-	if (mapping.timeOrder.length > PREPARED_TIME_ORDER_LIMIT) reject$6("PREPARED_TIME_ORDER_LIMIT_EXCEEDED", "mapping.timeOrder", `must not exceed ${PREPARED_TIME_ORDER_LIMIT} expected periods`);
+	if (!Array.isArray(mapping.timeOrder) || mapping.timeOrder.length === 0) reject$7("INVALID_PREPARED_TIME_ORDER", "mapping.timeOrder", "must contain at least one expected period");
+	if (mapping.timeOrder.length > PREPARED_TIME_ORDER_LIMIT) reject$7("PREPARED_TIME_ORDER_LIMIT_EXCEEDED", "mapping.timeOrder", `must not exceed ${PREPARED_TIME_ORDER_LIMIT} expected periods`);
 	const timeOrder = mapping.timeOrder.map((value, index) => {
 		validateIdentityScalar(value, `mapping.timeOrder[${index}]`);
 		return typedValue$1(timeColumn.name, timeColumn.type, value);
 	});
-	if (new Set(timeOrder.map((time) => time.canonical)).size !== timeOrder.length) reject$6("DUPLICATE_PREPARED_TIME", "mapping.timeOrder", "must not contain duplicate typed periods");
+	if (new Set(timeOrder.map((time) => time.canonical)).size !== timeOrder.length) reject$7("DUPLICATE_PREPARED_TIME", "mapping.timeOrder", "must not contain duplicate typed periods");
 	return {
 		metadataColumns,
 		participantColumns,
@@ -35355,7 +37063,7 @@ function validateMapping$1(exchange, mapping) {
 		timeOrder,
 		displayDimensionIndexes: mapping.displayDimensions.map((dimension, index) => {
 			const dimensionIndex = exchange.dimensions.indexOf(dimension);
-			if (dimensionIndex < 0) reject$6("MISSING_PREPARED_DIMENSION", `mapping.displayDimensions[${index}]`, `dimension ${JSON.stringify(dimension)} is not present`);
+			if (dimensionIndex < 0) reject$7("MISSING_PREPARED_DIMENSION", `mapping.displayDimensions[${index}]`, `dimension ${JSON.stringify(dimension)} is not present`);
 			return dimensionIndex;
 		})
 	};
@@ -35376,12 +37084,12 @@ function buildRowKeys(sourceIdColumn, rowCount) {
 	});
 }
 function stableMean(values, path) {
-	if (values.length === 0) reject$6("EMPTY_PREPARED_REDUCTION", path, "cannot reduce an empty numeric set");
+	if (values.length === 0) reject$7("EMPTY_PREPARED_REDUCTION", path, "cannot reduce an empty numeric set");
 	let result = 0;
 	for (let index = 0; index < values.length; index += 1) {
 		const count = index + 1;
 		result += values[index] / count - result / count;
-		if (!Number.isFinite(result)) reject$6("NON_FINITE_PREPARED_REDUCTION", path, "finite inputs produced a non-finite reduction");
+		if (!Number.isFinite(result)) reject$7("NON_FINITE_PREPARED_REDUCTION", path, "finite inputs produced a non-finite reduction");
 	}
 	return result;
 }
@@ -35390,15 +37098,15 @@ function buildParticipantPeriods(points, timeOrder, cohortPolicy) {
 	const byParticipantPeriod = /* @__PURE__ */ new Map();
 	const participantAttributes = /* @__PURE__ */ new Map();
 	for (const point of points) {
-		if (!expectedTimes.has(point.time.canonical)) reject$6("UNDECLARED_PREPARED_TIME", `tables.meta_data.${point.time.column}[${point.index}]`, `observed period ${JSON.stringify(point.time.display)} is absent from mapping.timeOrder`);
+		if (!expectedTimes.has(point.time.canonical)) reject$7("UNDECLARED_PREPARED_TIME", `tables.meta_data.${point.time.column}[${point.index}]`, `observed period ${JSON.stringify(point.time.display)} is absent from mapping.timeOrder`);
 		const knownAttributes = participantAttributes.get(point.participant.canonical);
 		if (!knownAttributes) participantAttributes.set(point.participant.canonical, {
 			group: point.group,
 			participantLabel: point.participantLabel
 		});
 		else {
-			if (!sameTypedValue(knownAttributes.group, point.group)) reject$6("UNSTABLE_PREPARED_GROUP", `tables.meta_data.${point.group.column}[${point.index}]`, "one participant cannot change groups across periods");
-			if (!sameTypedValue(knownAttributes.participantLabel, point.participantLabel)) reject$6("UNSTABLE_PREPARED_PARTICIPANT_LABEL", `tables.meta_data.${point.participantLabel.column}[${point.index}]`, "one participant cannot change display labels across periods");
+			if (!sameTypedValue(knownAttributes.group, point.group)) reject$7("UNSTABLE_PREPARED_GROUP", `tables.meta_data.${point.group.column}[${point.index}]`, "one participant cannot change groups across periods");
+			if (!sameTypedValue(knownAttributes.participantLabel, point.participantLabel)) reject$7("UNSTABLE_PREPARED_PARTICIPANT_LABEL", `tables.meta_data.${point.participantLabel.column}[${point.index}]`, "one participant cannot change display labels across periods");
 		}
 		const key = JSON.stringify([point.participant.canonical, point.time.canonical]);
 		const existing = byParticipantPeriod.get(key);
@@ -35415,11 +37123,11 @@ function buildParticipantPeriods(points, timeOrder, cohortPolicy) {
 			});
 			continue;
 		}
-		if (!sameTypedValue(existing.group, point.group)) reject$6("UNSTABLE_PREPARED_GROUP", `tables.meta_data.${point.group.column}[${point.index}]`, "one participant-period cannot belong to multiple groups");
-		if (!sameTypedValue(existing.participantLabel, point.participantLabel)) reject$6("UNSTABLE_PREPARED_PARTICIPANT_LABEL", `tables.meta_data.${point.participantLabel.column}[${point.index}]`, "one participant cannot have conflicting labels within a period");
+		if (!sameTypedValue(existing.group, point.group)) reject$7("UNSTABLE_PREPARED_GROUP", `tables.meta_data.${point.group.column}[${point.index}]`, "one participant-period cannot belong to multiple groups");
+		if (!sameTypedValue(existing.participantLabel, point.participantLabel)) reject$7("UNSTABLE_PREPARED_PARTICIPANT_LABEL", `tables.meta_data.${point.participantLabel.column}[${point.index}]`, "one participant cannot have conflicting labels within a period");
 		const count = existing.count + 1;
 		existing.coordinateMeans = existing.coordinateMeans.map((current, axis) => current + (displayCoordinates[axis] / count - current / count));
-		if (existing.coordinateMeans.some((coordinate) => !Number.isFinite(coordinate))) reject$6("NON_FINITE_PREPARED_REDUCTION", `tables.points[${point.index}]`, "finite participant-period coordinates produced a non-finite mean");
+		if (existing.coordinateMeans.some((coordinate) => !Number.isFinite(coordinate))) reject$7("NON_FINITE_PREPARED_REDUCTION", `tables.points[${point.index}]`, "finite participant-period coordinates produced a non-finite mean");
 		existing.count = count;
 		existing.sourcePointIndexes.push(point.index);
 	}
@@ -35496,15 +37204,15 @@ function buildTrajectories(participantPeriods, timeOrder) {
 * preserved; only participant-period and group-time summaries are computed.
 */
 function analyzePreparedSpace(input) {
-	if (!input || typeof input !== "object" || Array.isArray(input)) reject$6("INVALID_PREPARED_INPUT", "input", "must be an object");
-	if (!input.source || typeof input.source !== "object") reject$6("INVALID_PREPARED_SOURCE", "source", "must contain a validated hashed artifact");
+	if (!input || typeof input !== "object" || Array.isArray(input)) reject$7("INVALID_PREPARED_INPUT", "input", "must be an object");
+	if (!input.source || typeof input.source !== "object") reject$7("INVALID_PREPARED_SOURCE", "source", "must contain a validated hashed artifact");
 	validateSourceName(input.source.name);
 	const artifact = input.source.artifact;
-	if (!isHashedEna3dExchangeV1(artifact) || !/^[a-f0-9]{64}$/u.test(artifact.sha256) || !Number.isSafeInteger(artifact.byteLength) || artifact.byteLength < 1 || !artifact.exchange || typeof artifact.exchange !== "object") reject$6("INVALID_PREPARED_RECEIPT", "source.artifact", "must be a validated exchange with lowercase SHA-256 and positive byte length");
+	if (!isHashedEna3dExchangeV1(artifact) || !/^[a-f0-9]{64}$/u.test(artifact.sha256) || !Number.isSafeInteger(artifact.byteLength) || artifact.byteLength < 1 || !artifact.exchange || typeof artifact.exchange !== "object") reject$7("INVALID_PREPARED_RECEIPT", "source.artifact", "must be a validated exchange with lowercase SHA-256 and positive byte length");
 	const exchange = artifact.exchange;
 	const resolved = validateMapping$1(exchange, input.mapping);
 	const metadataRows = exchange.tables.meta_data.columns[0]?.values.length ?? 0;
-	if (metadataRows < 1) reject$6("EMPTY_PREPARED_SPACE", "tables.meta_data", "must contain at least one point row");
+	if (metadataRows < 1) reject$7("EMPTY_PREPARED_SPACE", "tables.meta_data", "must contain at least one point row");
 	const metadataSourceId = requiredColumn(resolved.metadataColumns, "ENA_UNIT", "tables.meta_data.ENA_UNIT");
 	const pointColumns = columnMap(exchange.tables.points);
 	const lineWeightColumns = columnMap(exchange.tables.line_weights);
@@ -35527,7 +37235,7 @@ function analyzePreparedSpace(input) {
 	const nodes = Array.from({ length: nodeCount }, (_, rowIndex) => {
 		const code = rawValue(codeColumn, rowIndex, `tables.nodes.code[${rowIndex}]`);
 		validateIdentityScalar(code, `tables.nodes.code[${rowIndex}]`);
-		if (typeof code !== "string") reject$6("INVALID_PREPARED_NODE_CODE", `tables.nodes.code[${rowIndex}]`, "must be a string");
+		if (typeof code !== "string") reject$7("INVALID_PREPARED_NODE_CODE", `tables.nodes.code[${rowIndex}]`, "must be a string");
 		return {
 			index: rowIndex,
 			code,
@@ -35543,10 +37251,10 @@ function analyzePreparedSpace(input) {
 	const edges = edgeColumns.map((edgeColumn, index) => {
 		const sourceValue = rawValue(edgeColumn, 0, `tables.adjacency_key.${edgeColumn.name}[0]`);
 		const targetValue = rawValue(edgeColumn, 1, `tables.adjacency_key.${edgeColumn.name}[1]`);
-		if (typeof sourceValue !== "string" || typeof targetValue !== "string") reject$6("INVALID_PREPARED_EDGE", `tables.adjacency_key.${edgeColumn.name}`, "edge endpoints must be string node codes");
+		if (typeof sourceValue !== "string" || typeof targetValue !== "string") reject$7("INVALID_PREPARED_EDGE", `tables.adjacency_key.${edgeColumn.name}`, "edge endpoints must be string node codes");
 		const sourceIndex = nodeIndexByCode.get(sourceValue);
 		const targetIndex = nodeIndexByCode.get(targetValue);
-		if (sourceIndex === void 0 || targetIndex === void 0) reject$6("INVALID_PREPARED_EDGE", `tables.adjacency_key.${edgeColumn.name}`, "edge endpoints must reference existing nodes");
+		if (sourceIndex === void 0 || targetIndex === void 0) reject$7("INVALID_PREPARED_EDGE", `tables.adjacency_key.${edgeColumn.name}`, "edge endpoints must reference existing nodes");
 		return {
 			index,
 			id: canonicalTuple(["source", "target"], ["character", "character"], [sourceValue, targetValue]),
@@ -35575,8 +37283,8 @@ function analyzePreparedSpace(input) {
 		coordinates: displayPoints[index].coordinates
 	})), resolved.timeOrder, input.mapping.cohortPolicy);
 	const observedGroupCount = new Set(participantPeriods.map((point) => point.group.canonical)).size;
-	if (observedGroupCount > PREPARED_GROUP_LIMIT) reject$6("PREPARED_GROUP_LIMIT_EXCEEDED", "mapping.group", `mapped groups must not exceed ${PREPARED_GROUP_LIMIT}`);
-	if (observedGroupCount * resolved.timeOrder.length > PREPARED_TRAJECTORY_CELL_LIMIT) reject$6("PREPARED_TRAJECTORY_LIMIT_EXCEEDED", "mapping.timeOrder", `group-by-time path cells must not exceed ${PREPARED_TRAJECTORY_CELL_LIMIT}`);
+	if (observedGroupCount > PREPARED_GROUP_LIMIT) reject$7("PREPARED_GROUP_LIMIT_EXCEEDED", "mapping.group", `mapped groups must not exceed ${PREPARED_GROUP_LIMIT}`);
+	if (observedGroupCount * resolved.timeOrder.length > PREPARED_TRAJECTORY_CELL_LIMIT) reject$7("PREPARED_TRAJECTORY_LIMIT_EXCEEDED", "mapping.timeOrder", `group-by-time path cells must not exceed ${PREPARED_TRAJECTORY_CELL_LIMIT}`);
 	const trajectory = buildTrajectories(participantPeriods, resolved.timeOrder);
 	const diagnostics = [{
 		code: "PRECOMPUTED_SPACE_IMPORT",
@@ -35668,19 +37376,19 @@ function selectedDisplayDimensions(result, filter) {
 		};
 	}
 	const candidate = filter.dimensions;
-	if (!Array.isArray(candidate) || candidate.length !== 3) reject$6("INVALID_PREPARED_DISPLAY_DIMENSIONS", "filter.dimensions", "must select exactly three dimensions");
-	if (candidate.some((dimension) => typeof dimension !== "string" || dimension.trim() === "")) reject$6("INVALID_PREPARED_DISPLAY_DIMENSIONS", "filter.dimensions", "must contain three non-blank dimension names");
+	if (!Array.isArray(candidate) || candidate.length !== 3) reject$7("INVALID_PREPARED_DISPLAY_DIMENSIONS", "filter.dimensions", "must select exactly three dimensions");
+	if (candidate.some((dimension) => typeof dimension !== "string" || dimension.trim() === "")) reject$7("INVALID_PREPARED_DISPLAY_DIMENSIONS", "filter.dimensions", "must contain three non-blank dimension names");
 	const names = [
 		candidate[0],
 		candidate[1],
 		candidate[2]
 	];
-	if (new Set(names).size !== 3) reject$6("DUPLICATE_PREPARED_DISPLAY_DIMENSION", "filter.dimensions", "must contain three distinct dimensions");
+	if (new Set(names).size !== 3) reject$7("DUPLICATE_PREPARED_DISPLAY_DIMENSION", "filter.dimensions", "must contain three distinct dimensions");
 	return {
 		names,
 		indexes: names.map((dimension, index) => {
 			const dimensionIndex = result.fullSpace.dimensions.indexOf(dimension);
-			if (dimensionIndex < 0) reject$6("UNKNOWN_PREPARED_DISPLAY_DIMENSION", `filter.dimensions[${index}]`, `dimension ${JSON.stringify(dimension)} is not present in fullSpace.dimensions`);
+			if (dimensionIndex < 0) reject$7("UNKNOWN_PREPARED_DISPLAY_DIMENSION", `filter.dimensions[${index}]`, `dimension ${JSON.stringify(dimension)} is not present in fullSpace.dimensions`);
 			return dimensionIndex;
 		}),
 		reselect: true
@@ -35688,7 +37396,7 @@ function selectedDisplayDimensions(result, filter) {
 }
 function projectPreparedCoordinates(coordinates, indexes, path) {
 	const selected = indexes.map((index) => coordinates[index]);
-	if (selected.some((coordinate) => typeof coordinate !== "number" || !Number.isFinite(coordinate))) reject$6("INVALID_PREPARED_DISPLAY_COORDINATE", path, "selected full-space coordinates must be present finite numbers");
+	if (selected.some((coordinate) => typeof coordinate !== "number" || !Number.isFinite(coordinate))) reject$7("INVALID_PREPARED_DISPLAY_COORDINATE", path, "selected full-space coordinates must be present finite numbers");
 	return selected;
 }
 function deepFreezePreparedSelection(value) {
@@ -35703,15 +37411,15 @@ function deepFreezePreparedSelection(value) {
 * space. Dimension reselection redoes reductions but never fits or rotates.
 */
 function selectPreparedSpaceDisplay(result, filter = {}) {
-	if (!filter || typeof filter !== "object" || Array.isArray(filter)) reject$6("INVALID_PREPARED_DISPLAY_FILTER", "filter", "must be an object");
+	if (!filter || typeof filter !== "object" || Array.isArray(filter)) reject$7("INVALID_PREPARED_DISPLAY_FILTER", "filter", "must be an object");
 	const groupCandidate = filter.groups;
-	if (groupCandidate !== void 0 && (!Array.isArray(groupCandidate) || groupCandidate.some((group) => typeof group !== "string" || group.trim() === ""))) reject$6("INVALID_PREPARED_DISPLAY_GROUP", "filter.groups", "must contain non-blank canonical group keys");
+	if (groupCandidate !== void 0 && (!Array.isArray(groupCandidate) || groupCandidate.some((group) => typeof group !== "string" || group.trim() === ""))) reject$7("INVALID_PREPARED_DISPLAY_GROUP", "filter.groups", "must contain non-blank canonical group keys");
 	const allowed = filter.groups ? new Set(filter.groups) : null;
-	if (filter.groups && allowed.size !== filter.groups.length) reject$6("DUPLICATE_PREPARED_DISPLAY_GROUP", "filter.groups", "contains duplicate group keys");
+	if (filter.groups && allowed.size !== filter.groups.length) reject$7("DUPLICATE_PREPARED_DISPLAY_GROUP", "filter.groups", "contains duplicate group keys");
 	if (allowed) {
 		const known = new Set(result.displaySpace.trajectory.groupOrder.map((group) => group.canonical));
 		const unknown = [...allowed].filter((group) => !known.has(group));
-		if (unknown.length > 0) reject$6("UNKNOWN_PREPARED_DISPLAY_GROUP", "filter.groups", `contains unknown group keys: ${unknown.join(", ")}`);
+		if (unknown.length > 0) reject$7("UNKNOWN_PREPARED_DISPLAY_GROUP", "filter.groups", `contains unknown group keys: ${unknown.join(", ")}`);
 	}
 	const dimensions = selectedDisplayDimensions(result, filter);
 	const displayPoints = dimensions.reselect ? result.fullSpace.points.map((point) => ({
@@ -35789,24 +37497,24 @@ var TrajectoryStatisticsError = class extends Error {
 		this.path = path;
 	}
 };
-function reject$5(code, path, message) {
+function reject$6(code, path, message) {
 	throw new TrajectoryStatisticsError(code, path, message);
 }
 function resolveLimits$1(input) {
 	const result = {};
 	for (const key of Object.keys(DEFAULT_LIMITS)) {
 		const value = input?.[key];
-		if (value !== void 0 && (!Number.isSafeInteger(value) || value < 1)) reject$5("INVALID_TRAJECTORY_LIMIT", `limits.${key}`, "must be a positive safe integer");
-		if (value !== void 0 && value > HARD_LIMITS[key]) reject$5("TRAJECTORY_LIMIT_ABOVE_CEILING", `limits.${key}`, `must not exceed ${HARD_LIMITS[key]}`);
+		if (value !== void 0 && (!Number.isSafeInteger(value) || value < 1)) reject$6("INVALID_TRAJECTORY_LIMIT", `limits.${key}`, "must be a positive safe integer");
+		if (value !== void 0 && value > HARD_LIMITS[key]) reject$6("TRAJECTORY_LIMIT_ABOVE_CEILING", `limits.${key}`, `must not exceed ${HARD_LIMITS[key]}`);
 		result[key] = value ?? DEFAULT_LIMITS[key];
 	}
 	return result;
 }
 function scalarToken$1(component, path) {
-	if (typeof component.name !== "string" || component.name.trim() === "") reject$5("INVALID_IDENTITY_COMPONENT", `${path}.name`, "must be a non-empty string");
-	if (component.declaredType !== void 0 && (typeof component.declaredType !== "string" || component.declaredType.trim() === "" || component.declaredType.length > 256)) reject$5("INVALID_IDENTITY_COMPONENT", `${path}.declaredType`, "must be a non-empty string of at most 256 UTF-16 code units when present");
+	if (typeof component.name !== "string" || component.name.trim() === "") reject$6("INVALID_IDENTITY_COMPONENT", `${path}.name`, "must be a non-empty string");
+	if (component.declaredType !== void 0 && (typeof component.declaredType !== "string" || component.declaredType.trim() === "" || component.declaredType.length > 256)) reject$6("INVALID_IDENTITY_COMPONENT", `${path}.declaredType`, "must be a non-empty string of at most 256 UTF-16 code units when present");
 	if (component.type === "string") {
-		if (typeof component.value !== "string" || component.value.length === 0) reject$5("INVALID_IDENTITY_VALUE", `${path}.value`, "must be a non-empty string for a string component");
+		if (typeof component.value !== "string" || component.value.length === 0) reject$6("INVALID_IDENTITY_VALUE", `${path}.value`, "must be a non-empty string for a string component");
 		return [
 			component.name,
 			"string",
@@ -35815,7 +37523,7 @@ function scalarToken$1(component, path) {
 		];
 	}
 	if (component.type === "boolean") {
-		if (typeof component.value !== "boolean") reject$5("INVALID_IDENTITY_VALUE", `${path}.value`, "must be boolean");
+		if (typeof component.value !== "boolean") reject$6("INVALID_IDENTITY_VALUE", `${path}.value`, "must be boolean");
 		return [
 			component.name,
 			"boolean",
@@ -35823,8 +37531,8 @@ function scalarToken$1(component, path) {
 			component.value ? "true" : "false"
 		];
 	}
-	if (component.type !== "number" || typeof component.value !== "number" || !Number.isFinite(component.value)) reject$5("INVALID_IDENTITY_VALUE", `${path}.value`, "must be a finite number with type number");
-	if (Number.isInteger(component.value) && !Number.isSafeInteger(component.value)) reject$5("UNSAFE_INTEGER_IDENTITY", `${path}.value`, "integer identities above Number.MAX_SAFE_INTEGER must be strings");
+	if (component.type !== "number" || typeof component.value !== "number" || !Number.isFinite(component.value)) reject$6("INVALID_IDENTITY_VALUE", `${path}.value`, "must be a finite number with type number");
+	if (Number.isInteger(component.value) && !Number.isSafeInteger(component.value)) reject$6("UNSAFE_INTEGER_IDENTITY", `${path}.value`, "integer identities above Number.MAX_SAFE_INTEGER must be strings");
 	return [
 		component.name,
 		"number",
@@ -35833,12 +37541,12 @@ function scalarToken$1(component, path) {
 	];
 }
 function normalizeIdentity(identity, path) {
-	if (!identity || !Array.isArray(identity.components) || identity.components.length === 0) reject$5("INVALID_TRAJECTORY_IDENTITY", path, "must contain at least one typed component");
+	if (!identity || !Array.isArray(identity.components) || identity.components.length === 0) reject$6("INVALID_TRAJECTORY_IDENTITY", path, "must contain at least one typed component");
 	const seen = /* @__PURE__ */ new Set();
 	const components = identity.components.map((component, index) => {
-		if (!component || typeof component !== "object") reject$5("INVALID_IDENTITY_COMPONENT", `${path}.components[${index}]`, "must be an object");
+		if (!component || typeof component !== "object") reject$6("INVALID_IDENTITY_COMPONENT", `${path}.components[${index}]`, "must be an object");
 		const token = scalarToken$1(component, `${path}.components[${index}]`);
-		if (seen.has(component.name)) reject$5("DUPLICATE_IDENTITY_COMPONENT", `${path}.components[${index}].name`, "duplicates an earlier component name");
+		if (seen.has(component.name)) reject$6("DUPLICATE_IDENTITY_COMPONENT", `${path}.components[${index}].name`, "duplicates an earlier component name");
 		seen.add(component.name);
 		return {
 			component: { ...component },
@@ -35852,58 +37560,64 @@ function normalizeIdentity(identity, path) {
 	};
 }
 function normalizeNamespace(value, path) {
-	if (typeof value !== "string" || value.trim() === "" || value.length > 256) reject$5("INVALID_TRAJECTORY_NAMESPACE", path, "must be a non-empty string of at most 256 UTF-16 code units");
+	if (typeof value !== "string" || value.trim() === "" || value.length > 256) reject$6("INVALID_TRAJECTORY_NAMESPACE", path, "must be a non-empty string of at most 256 UTF-16 code units");
 	return value;
 }
 function normalizeSeries(input) {
-	if (!input || typeof input !== "object") reject$5("INVALID_TRAJECTORY_INPUT", "input", "must be an object");
+	if (!input || typeof input !== "object") reject$6("INVALID_TRAJECTORY_INPUT", "input", "must be an object");
 	const limits = resolveLimits$1(input.limits);
 	const namespace = normalizeNamespace(input.namespace, "input.namespace");
-	if (!Array.isArray(input.points) || input.points.length === 0) reject$5("EMPTY_TRAJECTORY_POINTS", "input.points", "must contain at least one point");
-	if (input.points.length > limits.maxPoints) reject$5("TRAJECTORY_POINT_LIMIT", "input.points", `exceeds maxPoints=${limits.maxPoints}`);
-	if (!Array.isArray(input.dimensions) || input.dimensions.length === 0) reject$5("INVALID_TRAJECTORY_DIMENSIONS", "input.dimensions", "must be non-empty");
-	if (input.dimensions.length > limits.maxDimensions) reject$5("TRAJECTORY_DIMENSION_LIMIT", "input.dimensions", `exceeds maxDimensions=${limits.maxDimensions}`);
-	if (input.dimensions.some((dimension) => typeof dimension !== "string" || dimension.trim() === "")) reject$5("INVALID_TRAJECTORY_DIMENSIONS", "input.dimensions", "must contain non-empty strings");
-	if (new Set(input.dimensions).size !== input.dimensions.length) reject$5("DUPLICATE_TRAJECTORY_DIMENSION", "input.dimensions", "must be unique");
-	if (!Array.isArray(input.selectedDimensions) || input.selectedDimensions.length !== 3 || new Set(input.selectedDimensions).size !== 3) reject$5("INVALID_SELECTED_DIMENSIONS", "input.selectedDimensions", "must contain exactly three distinct dimensions");
+	if (!Array.isArray(input.points) || input.points.length === 0) reject$6("EMPTY_TRAJECTORY_POINTS", "input.points", "must contain at least one point");
+	if (input.points.length > limits.maxPoints) reject$6("TRAJECTORY_POINT_LIMIT", "input.points", `exceeds maxPoints=${limits.maxPoints}`);
+	if (!Array.isArray(input.dimensions) || input.dimensions.length === 0) reject$6("INVALID_TRAJECTORY_DIMENSIONS", "input.dimensions", "must be non-empty");
+	if (input.dimensions.length > limits.maxDimensions) reject$6("TRAJECTORY_DIMENSION_LIMIT", "input.dimensions", `exceeds maxDimensions=${limits.maxDimensions}`);
+	if (input.dimensions.some((dimension) => typeof dimension !== "string" || dimension.trim() === "")) reject$6("INVALID_TRAJECTORY_DIMENSIONS", "input.dimensions", "must contain non-empty strings");
+	if (new Set(input.dimensions).size !== input.dimensions.length) reject$6("DUPLICATE_TRAJECTORY_DIMENSION", "input.dimensions", "must be unique");
+	if (!Array.isArray(input.selectedDimensions) || input.selectedDimensions.length !== 3 || new Set(input.selectedDimensions).size !== 3) reject$6("INVALID_SELECTED_DIMENSIONS", "input.selectedDimensions", "must contain exactly three distinct dimensions");
 	const selectedIndexes = input.selectedDimensions.map((dimension, index) => {
 		const found = input.dimensions.indexOf(dimension);
-		if (found < 0) reject$5("UNKNOWN_SELECTED_DIMENSION", `input.selectedDimensions[${index}]`, `${JSON.stringify(dimension)} is not declared`);
+		if (found < 0) reject$6("UNKNOWN_SELECTED_DIMENSION", `input.selectedDimensions[${index}]`, `${JSON.stringify(dimension)} is not declared`);
 		return found;
 	});
-	if (!Array.isArray(input.timeOrder) || input.timeOrder.length === 0) reject$5("INVALID_TRAJECTORY_TIME_ORDER", "input.timeOrder", "must be non-empty");
-	if (input.timeOrder.length > limits.maxPeriods) reject$5("TRAJECTORY_PERIOD_LIMIT", "input.timeOrder", `exceeds maxPeriods=${limits.maxPeriods}`);
+	if (!Array.isArray(input.timeOrder) || input.timeOrder.length === 0) reject$6("INVALID_TRAJECTORY_TIME_ORDER", "input.timeOrder", "must be non-empty");
+	if (input.timeOrder.length > limits.maxPeriods) reject$6("TRAJECTORY_PERIOD_LIMIT", "input.timeOrder", `exceeds maxPeriods=${limits.maxPeriods}`);
 	const timeOrder = input.timeOrder.map((time, index) => normalizeIdentity(time, `input.timeOrder[${index}]`));
-	if (new Set(timeOrder.map((time) => time.canonical)).size !== timeOrder.length) reject$5("DUPLICATE_TRAJECTORY_TIME", "input.timeOrder", "contains duplicate typed periods");
-	if (input.cohortPolicy !== "available" && input.cohortPolicy !== "complete") reject$5("INVALID_TRAJECTORY_COHORT", "input.cohortPolicy", "must be available or complete");
+	if (new Set(timeOrder.map((time) => time.canonical)).size !== timeOrder.length) reject$6("DUPLICATE_TRAJECTORY_TIME", "input.timeOrder", "contains duplicate typed periods");
+	if (input.cohortPolicy !== "available" && input.cohortPolicy !== "complete") reject$6("INVALID_TRAJECTORY_COHORT", "input.cohortPolicy", "must be available or complete");
+	const estimand = input.estimand ?? "equal-participant";
+	if (estimand !== "equal-participant" && estimand !== "weighted-participant") reject$6("INVALID_TRAJECTORY_ESTIMAND", "input.estimand", "must be equal-participant or weighted-participant");
 	const timeKeys = new Set(timeOrder.map((time) => time.canonical));
 	const cells = input.points.length * input.dimensions.length;
-	if (!Number.isSafeInteger(cells) || cells > limits.maxCells) reject$5("TRAJECTORY_CELL_LIMIT", "input.points", `exceeds maxCells=${limits.maxCells}`);
+	if (!Number.isSafeInteger(cells) || cells > limits.maxCells) reject$6("TRAJECTORY_CELL_LIMIT", "input.points", `exceeds maxCells=${limits.maxCells}`);
 	const points = input.points.map((point, rowIndex) => {
 		const participant = normalizeIdentity(point.participant, `input.points[${rowIndex}].participant`);
 		const time = normalizeIdentity(point.time, `input.points[${rowIndex}].time`);
 		const stratum = point.stratum === void 0 ? void 0 : normalizeIdentity(point.stratum, `input.points[${rowIndex}].stratum`);
-		if (!timeKeys.has(time.canonical)) reject$5("TRAJECTORY_TIME_ORDER_INCOMPLETE", `input.points[${rowIndex}].time`, "observed period is absent from timeOrder");
-		if (!Array.isArray(point.coordinates) || point.coordinates.length !== input.dimensions.length) reject$5("TRAJECTORY_COORDINATE_SHAPE", `input.points[${rowIndex}].coordinates`, "must align with dimensions");
+		if (!timeKeys.has(time.canonical)) reject$6("TRAJECTORY_TIME_ORDER_INCOMPLETE", `input.points[${rowIndex}].time`, "observed period is absent from timeOrder");
+		if (!Array.isArray(point.coordinates) || point.coordinates.length !== input.dimensions.length) reject$6("TRAJECTORY_COORDINATE_SHAPE", `input.points[${rowIndex}].coordinates`, "must align with dimensions");
 		const coordinates = point.coordinates.map((value, dimensionIndex) => {
-			if (typeof value !== "number" || !Number.isFinite(value)) reject$5("NON_FINITE_TRAJECTORY_COORDINATE", `input.points[${rowIndex}].coordinates[${dimensionIndex}]`, "must be finite");
+			if (typeof value !== "number" || !Number.isFinite(value)) reject$6("NON_FINITE_TRAJECTORY_COORDINATE", `input.points[${rowIndex}].coordinates[${dimensionIndex}]`, "must be finite");
 			return value;
 		});
+		if (estimand === "weighted-participant" && (typeof point.weight !== "number" || !Number.isFinite(point.weight) || point.weight <= 0)) reject$6("INVALID_PARTICIPANT_WEIGHT", `input.points[${rowIndex}].weight`, "must be finite and strictly positive for weighted-participant");
+		if (estimand === "equal-participant" && point.weight !== void 0) reject$6("UNEXPECTED_PARTICIPANT_WEIGHT", `input.points[${rowIndex}].weight`, "must be omitted for equal-participant");
 		return {
 			participant,
 			time,
 			...stratum ? { stratum } : {},
 			coordinates,
+			weight: point.weight ?? 1,
 			rowIndex
 		};
 	});
-	if (new Set(points.map((point) => point.participant.canonical)).size > limits.maxParticipants) reject$5("TRAJECTORY_PARTICIPANT_LIMIT", "input.points", `exceeds maxParticipants=${limits.maxParticipants}`);
+	if (new Set(points.map((point) => point.participant.canonical)).size > limits.maxParticipants) reject$6("TRAJECTORY_PARTICIPANT_LIMIT", "input.points", `exceeds maxParticipants=${limits.maxParticipants}`);
 	return {
 		input,
 		namespace,
 		dimensions: [...input.dimensions],
 		selectedDimensions: [...input.selectedDimensions],
 		selectedIndexes,
+		estimand,
 		timeOrder,
 		points,
 		limits
@@ -35911,19 +37625,19 @@ function normalizeSeries(input) {
 }
 function euclidean(delta) {
 	const result = Math.hypot(...delta);
-	if (!Number.isFinite(result)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", "trajectory.computation.distance", "Euclidean distance is outside the finite numeric range");
+	if (!Number.isFinite(result)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", "trajectory.computation.distance", "Euclidean distance is outside the finite numeric range");
 	return result;
 }
 function subtract(right, left) {
 	return right.map((value, index) => {
 		const difference = value - left[index];
-		if (!Number.isFinite(difference)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.delta[${index}]`, "coordinate difference is outside the finite numeric range");
+		if (!Number.isFinite(difference)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.delta[${index}]`, "coordinate difference is outside the finite numeric range");
 		return difference;
 	});
 }
 function scalarDifference(right, left, path) {
 	const difference = right - left;
-	if (!Number.isFinite(difference)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", path, "difference is outside the finite numeric range");
+	if (!Number.isFinite(difference)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", path, "difference is outside the finite numeric range");
 	return difference;
 }
 function compareCanonical(left, right) {
@@ -35937,15 +37651,44 @@ function mean(rows, dimensions) {
 		for (const row of rows) {
 			const scaled = row[index] / rows.length;
 			const next = sum + scaled;
-			if (!Number.isFinite(next)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.mean[${index}]`, "centroid accumulation is outside the finite numeric range");
+			if (!Number.isFinite(next)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.mean[${index}]`, "centroid accumulation is outside the finite numeric range");
 			correction += Math.abs(sum) >= Math.abs(scaled) ? sum - next + scaled : scaled - next + sum;
-			if (!Number.isFinite(correction)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.mean[${index}]`, "centroid correction is outside the finite numeric range");
+			if (!Number.isFinite(correction)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.mean[${index}]`, "centroid correction is outside the finite numeric range");
 			sum = next;
 		}
 		const result = sum + correction;
-		if (!Number.isFinite(result)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.mean[${index}]`, "centroid is outside the finite numeric range");
+		if (!Number.isFinite(result)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.mean[${index}]`, "centroid is outside the finite numeric range");
 		return result;
 	});
+}
+function weightedMean(rows, weights, dimensions) {
+	if (rows.length === 0) return null;
+	if (rows.length !== weights.length) reject$6("TRAJECTORY_WEIGHT_SHAPE", "trajectory.computation.weightedMean", "rows and weights must align");
+	const weightSum = weights.reduce((sum, weight, index) => {
+		if (!Number.isFinite(weight) || weight <= 0) reject$6("INVALID_PARTICIPANT_WEIGHT", `trajectory.computation.weights[${index}]`, "must be finite and strictly positive");
+		const next = sum + weight;
+		if (!Number.isFinite(next)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", "trajectory.computation.weightSum", "is outside the finite numeric range");
+		return next;
+	}, 0);
+	return Array.from({ length: dimensions }, (_, index) => {
+		let sum = 0;
+		let correction = 0;
+		for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+			const scaled = rows[rowIndex][index] * (weights[rowIndex] / weightSum);
+			const next = sum + scaled;
+			if (!Number.isFinite(next)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.weightedMean[${index}]`, "centroid accumulation is outside the finite numeric range");
+			correction += Math.abs(sum) >= Math.abs(scaled) ? sum - next + scaled : scaled - next + sum;
+			if (!Number.isFinite(correction)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.weightedMean[${index}]`, "centroid correction is outside the finite numeric range");
+			sum = next;
+		}
+		const result = sum + correction;
+		if (!Number.isFinite(result)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.weightedMean[${index}]`, "centroid is outside the finite numeric range");
+		return result;
+	});
+}
+function participantCentroid(rows, coordinates, dimensions, estimand) {
+	const values = rows.map(coordinates);
+	return estimand === "weighted-participant" ? weightedMean(values, rows.map((row) => row.participantWeight), dimensions) : mean(values, dimensions);
 }
 function reduceParticipantPeriods(series) {
 	const grouped = /* @__PURE__ */ new Map();
@@ -35973,6 +37716,7 @@ function reduceParticipantPeriods(series) {
 	const complete = new Set([...observedByParticipant.entries()].filter(([, observed]) => [...expected].every((time) => observed.has(time))).map(([participant]) => participant));
 	const timeIndex = new Map(series.timeOrder.map((time, index) => [time.canonical, index]));
 	return [...grouped.values()].sort((left, right) => compareCanonical(left.participant.canonical, right.participant.canonical) || timeIndex.get(left.time.canonical) - timeIndex.get(right.time.canonical)).map((group, index) => {
+		if (new Set(group.rows.map((row) => row.weight)).size !== 1) reject$6("UNSTABLE_PARTICIPANT_PERIOD_WEIGHT", `input.participantPeriods[${index}].weight`, "must remain constant within a participant-period");
 		const fullCoordinates = mean(group.rows.map((row) => row.coordinates), series.dimensions.length);
 		return {
 			index,
@@ -35981,6 +37725,7 @@ function reduceParticipantPeriods(series) {
 			selectedCoordinates: series.selectedIndexes.map((selected) => fullCoordinates[selected]),
 			fullCoordinates,
 			sourceRowIndexes: group.rows.map((row) => row.rowIndex).sort((a, b) => a - b),
+			participantWeight: group.rows[0].weight,
 			includedInCohort: series.input.cohortPolicy === "available" || complete.has(group.participant.canonical)
 		};
 	});
@@ -36018,7 +37763,7 @@ function distanceMetrics(centroids, dimensions) {
 		const stepDistance = euclidean(delta);
 		if (continuous) {
 			const nextCumulative = cumulative + stepDistance;
-			if (!Number.isFinite(nextCumulative)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", "trajectory.computation.cumulativeDistance", "cumulative path distance is outside the finite numeric range");
+			if (!Number.isFinite(nextCumulative)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", "trajectory.computation.cumulativeDistance", "cumulative path distance is outside the finite numeric range");
 			cumulative = nextCumulative;
 		}
 		return {
@@ -36035,7 +37780,7 @@ function analyzeNormalizedSeries(series) {
 		const rawRows = series.points.filter((point) => point.time.canonical === time.canonical);
 		const allParticipantPeriods = participantPeriods.filter((point) => point.time.canonical === time.canonical);
 		const used = allParticipantPeriods.filter((point) => point.includedInCohort);
-		const fullCentroid = mean(used.map((point) => point.fullCoordinates), series.dimensions.length);
+		const fullCentroid = participantCentroid(used, (point) => point.fullCoordinates, series.dimensions.length, series.estimand);
 		return {
 			index,
 			time,
@@ -36076,10 +37821,11 @@ function analyzeNormalizedSeries(series) {
 			message: "Participant composition changes across requested periods."
 		});
 	}
-	return deepFreeze$1({
+	return deepFreeze$2({
 		schemaVersion: "3dena.trajectory-path-statistics.v1",
 		namespace: series.namespace,
 		cohortPolicy: series.input.cohortPolicy,
+		estimand: series.estimand,
 		dimensions: [...series.dimensions],
 		selectedDimensions: [...series.selectedDimensions],
 		distanceSemantics: {
@@ -36103,28 +37849,29 @@ function analyzeTrajectoryPath(input) {
 	return analyzeNormalizedSeries(normalizeSeries(input));
 }
 function assertComparable(left, right) {
-	if (JSON.stringify(left.dimensions) !== JSON.stringify(right.dimensions)) reject$5("INCOMPATIBLE_TRAJECTORY_DIMENSIONS", "input.sideB.series.dimensions", "must exactly match side A order");
-	if (JSON.stringify(left.selectedDimensions) !== JSON.stringify(right.selectedDimensions)) reject$5("INCOMPATIBLE_SELECTED_DIMENSIONS", "input.sideB.series.selectedDimensions", "must exactly match side A");
-	if (JSON.stringify(left.timeOrder.map((time) => time.canonical)) !== JSON.stringify(right.timeOrder.map((time) => time.canonical))) reject$5("INCOMPATIBLE_TRAJECTORY_TIME", "input.sideB.series.timeOrder", "must exactly match side A typed order");
-	if (left.input.cohortPolicy !== right.input.cohortPolicy) reject$5("INCOMPATIBLE_COHORT_POLICY", "input.sideB.series.cohortPolicy", "must match side A");
+	if (JSON.stringify(left.dimensions) !== JSON.stringify(right.dimensions)) reject$6("INCOMPATIBLE_TRAJECTORY_DIMENSIONS", "input.sideB.series.dimensions", "must exactly match side A order");
+	if (JSON.stringify(left.selectedDimensions) !== JSON.stringify(right.selectedDimensions)) reject$6("INCOMPATIBLE_SELECTED_DIMENSIONS", "input.sideB.series.selectedDimensions", "must exactly match side A");
+	if (JSON.stringify(left.timeOrder.map((time) => time.canonical)) !== JSON.stringify(right.timeOrder.map((time) => time.canonical))) reject$6("INCOMPATIBLE_TRAJECTORY_TIME", "input.sideB.series.timeOrder", "must exactly match side A typed order");
+	if (left.input.cohortPolicy !== right.input.cohortPolicy) reject$6("INCOMPATIBLE_COHORT_POLICY", "input.sideB.series.cohortPolicy", "must match side A");
+	if (left.estimand !== right.estimand) reject$6("INCOMPATIBLE_TRAJECTORY_ESTIMAND", "input.sideB.series.estimand", "must match side A");
 }
 function pairedIdNames(pairedId, path) {
 	const names = typeof pairedId === "string" ? [pairedId] : pairedId;
-	if (!Array.isArray(names) || names.length === 0 || names.some((name) => typeof name !== "string" || name.trim() === "")) reject$5("INVALID_PAIRED_ID", path, "must be a non-empty component name or non-empty component-name tuple");
-	if (new Set(names).size !== names.length) reject$5("INVALID_PAIRED_ID", path, "component-name tuple must not contain duplicates");
+	if (!Array.isArray(names) || names.length === 0 || names.some((name) => typeof name !== "string" || name.trim() === "")) reject$6("INVALID_PAIRED_ID", path, "must be a non-empty component name or non-empty component-name tuple");
+	if (new Set(names).size !== names.length) reject$6("INVALID_PAIRED_ID", path, "component-name tuple must not contain duplicates");
 	return [...names];
 }
 function pairingToken(participant, pairedId, path) {
 	const names = pairedIdNames(pairedId, "input.pairedId");
 	return JSON.stringify(names.map((name) => {
 		const matches = participant.components.filter((component) => component.name === name);
-		if (matches.length !== 1) reject$5("MISSING_PAIRED_ID", path, `participant identity must contain exactly one ${JSON.stringify(name)} component`);
+		if (matches.length !== 1) reject$6("MISSING_PAIRED_ID", path, `participant identity must contain exactly one ${JSON.stringify(name)} component`);
 		return [name, scalarToken$1(matches[0], `${path}.${name}`)];
 	}));
 }
 function buildComparisonData(input) {
-	if (!input || input.design !== "paired" && input.design !== "independent") reject$5("INVALID_COMPARISON_DESIGN", "input.design", "must be paired or independent");
-	if (typeof input.sideA?.label !== "string" || input.sideA.label.trim() === "" || typeof input.sideB?.label !== "string" || input.sideB.label.trim() === "") reject$5("INVALID_COMPARISON_LABEL", "input.sideA.label", "both sides require non-empty labels");
+	if (!input || input.design !== "paired" && input.design !== "independent") reject$6("INVALID_COMPARISON_DESIGN", "input.design", "must be paired or independent");
+	if (typeof input.sideA?.label !== "string" || input.sideA.label.trim() === "" || typeof input.sideB?.label !== "string" || input.sideB.label.trim() === "") reject$6("INVALID_COMPARISON_LABEL", "input.sideA.label", "both sides require non-empty labels");
 	const left = normalizeSeries(input.sideA.series);
 	const right = normalizeSeries(input.sideB.series);
 	assertComparable(left, right);
@@ -36142,17 +37889,17 @@ function buildComparisonData(input) {
 			const b = /* @__PURE__ */ new Map();
 			for (const row of aRows) {
 				const pair = pairingToken(row.participant, input.pairedId, `input.sideA.series.participantPeriods[${row.index}]`);
-				if (a.has(pair)) reject$5("DUPLICATE_PAIRED_ID_TIME", `input.sideA.series`, "more than one participant has the paired ID at one time");
+				if (a.has(pair)) reject$6("DUPLICATE_PAIRED_ID_TIME", `input.sideA.series`, "more than one participant has the paired ID at one time");
 				a.set(pair, row);
 			}
 			for (const row of bRows) {
 				const pair = pairingToken(row.participant, input.pairedId, `input.sideB.series.participantPeriods[${row.index}]`);
-				if (b.has(pair)) reject$5("DUPLICATE_PAIRED_ID_TIME", `input.sideB.series`, "more than one participant has the paired ID at one time");
+				if (b.has(pair)) reject$6("DUPLICATE_PAIRED_ID_TIME", `input.sideB.series`, "more than one participant has the paired ID at one time");
 				b.set(pair, row);
 			}
 			const aKeys = [...a.keys()].sort();
 			const bKeys = [...b.keys()].sort();
-			if (JSON.stringify(aKeys) !== JSON.stringify(bKeys)) reject$5("UNMATCHED_PAIRED_ID_TIME", `input.timeOrder[${timeIndex}]`, "paired sides must contain exactly the same paired IDs at every observed slice");
+			if (JSON.stringify(aKeys) !== JSON.stringify(bKeys)) reject$6("UNMATCHED_PAIRED_ID_TIME", `input.timeOrder[${timeIndex}]`, "paired sides must contain exactly the same paired IDs at every observed slice");
 			const matched = /* @__PURE__ */ new Map();
 			for (const key of aKeys) {
 				matched.set(key, [a.get(key), b.get(key)]);
@@ -36173,7 +37920,7 @@ function buildComparisonData(input) {
 			pairedMaps: maps
 		};
 	}
-	if (left.namespace === right.namespace) reject$5("INDEPENDENT_NAMESPACE_COLLISION", "input.sideB.series.namespace", "independent sides must use distinct namespaces");
+	if (left.namespace === right.namespace) reject$6("INDEPENDENT_NAMESPACE_COLLISION", "input.sideB.series.namespace", "independent sides must use distinct namespaces");
 	const sideAUnits = groupParticipantPeriods(pathA.participantPeriods, left.namespace);
 	const sideBUnits = groupParticipantPeriods(pathB.participantPeriods, right.namespace);
 	const units = [...sideAUnits, ...sideBUnits].sort((a, b) => compareCanonical(a.key, b.key));
@@ -36200,15 +37947,23 @@ function groupParticipantPeriods(rows, namespace) {
 		periods
 	}));
 }
+function getTrajectoryPermutationUnits(input) {
+	const data = buildComparisonData(input);
+	return {
+		design: input.design,
+		unitOrder: [...data.unitOrder],
+		sideACount: data.sideACount
+	};
+}
 function baseCentroidRows(data, design) {
 	if (design === "paired") return data.left.timeOrder.map((time, timeIndex) => {
 		const accepted = [...data.pairedMaps[timeIndex].values()].filter(([a, b]) => a.includedInCohort && b.includedInCohort);
 		return {
 			time,
-			selectedA: mean(accepted.map(([a]) => a.selectedCoordinates), 3),
-			selectedB: mean(accepted.map(([, b]) => b.selectedCoordinates), 3),
-			fullA: mean(accepted.map(([a]) => a.fullCoordinates), data.left.dimensions.length),
-			fullB: mean(accepted.map(([, b]) => b.fullCoordinates), data.left.dimensions.length),
+			selectedA: participantCentroid(accepted.map(([a]) => a), (row) => row.selectedCoordinates, 3, data.left.estimand),
+			selectedB: participantCentroid(accepted.map(([, b]) => b), (row) => row.selectedCoordinates, 3, data.right.estimand),
+			fullA: participantCentroid(accepted.map(([a]) => a), (row) => row.fullCoordinates, data.left.dimensions.length, data.left.estimand),
+			fullB: participantCentroid(accepted.map(([, b]) => b), (row) => row.fullCoordinates, data.left.dimensions.length, data.right.estimand),
 			nA: accepted.length,
 			nB: accepted.length,
 			nMatched: accepted.length
@@ -36219,10 +37974,10 @@ function baseCentroidRows(data, design) {
 		const b = data.pathB.participantPeriods.filter((row) => row.includedInCohort && row.time.canonical === time.canonical);
 		return {
 			time,
-			selectedA: mean(a.map((row) => row.selectedCoordinates), 3),
-			selectedB: mean(b.map((row) => row.selectedCoordinates), 3),
-			fullA: mean(a.map((row) => row.fullCoordinates), data.left.dimensions.length),
-			fullB: mean(b.map((row) => row.fullCoordinates), data.left.dimensions.length),
+			selectedA: participantCentroid(a, (row) => row.selectedCoordinates, 3, data.left.estimand),
+			selectedB: participantCentroid(b, (row) => row.selectedCoordinates, 3, data.right.estimand),
+			fullA: participantCentroid(a, (row) => row.fullCoordinates, data.left.dimensions.length, data.left.estimand),
+			fullB: participantCentroid(b, (row) => row.fullCoordinates, data.left.dimensions.length, data.right.estimand),
 			nA: a.length,
 			nB: b.length,
 			nMatched: null
@@ -36348,35 +38103,31 @@ function metricMap(periods, selectedDimensions) {
 	return new Map(metricDescriptors(periods, selectedDimensions).map((metric) => [metric.id, metric.observed]));
 }
 function validateUnitOrder(actual, expected, path) {
-	if (JSON.stringify(actual) !== JSON.stringify(expected)) reject$5("PERMUTATION_UNIT_ORDER_MISMATCH", path, "must exactly match getTrajectoryPermutationUnits()");
+	if (JSON.stringify(actual) !== JSON.stringify(expected)) reject$6("PERMUTATION_UNIT_ORDER_MISMATCH", path, "must exactly match getTrajectoryPermutationUnits()");
 }
 function validateIndexList(indexes, size, path, requirePermutation) {
-	if (!Array.isArray(indexes) || indexes.some((index) => !Number.isSafeInteger(index) || index < 0 || index >= size)) reject$5("INVALID_PERMUTATION_INDEX", path, `indexes must be safe integers in [0, ${size})`);
-	if (new Set(indexes).size !== indexes.length) reject$5("DUPLICATE_PERMUTATION_INDEX", path, "must not repeat indexes");
-	if (requirePermutation && indexes.length !== size) reject$5("INCOMPLETE_PERMUTATION", path, "must contain every unit index exactly once");
+	if (!Array.isArray(indexes) || indexes.some((index) => !Number.isSafeInteger(index) || index < 0 || index >= size)) reject$6("INVALID_PERMUTATION_INDEX", path, `indexes must be safe integers in [0, ${size})`);
+	if (new Set(indexes).size !== indexes.length) reject$6("DUPLICATE_PERMUTATION_INDEX", path, "must not repeat indexes");
+	if (requirePermutation && indexes.length !== size) reject$6("INCOMPLETE_PERMUTATION", path, "must contain every unit index exactly once");
 }
 function permutedCentroidRows(data, input, replicate) {
 	if (input.design === "paired") {
 		const swaps = new Set(replicate);
 		return data.left.timeOrder.map((time, timeIndex) => {
 			const entries = [...data.pairedMaps[timeIndex].entries()].filter(([, [a, b]]) => a.includedInCohort && b.includedInCohort);
-			const aSelected = [];
-			const bSelected = [];
-			const aFull = [];
-			const bFull = [];
+			const aRows = [];
+			const bRows = [];
 			for (const [pair, [a, b]] of entries) {
 				const swap = swaps.has(data.unitOrder.indexOf(pair));
-				aSelected.push(swap ? b.selectedCoordinates : a.selectedCoordinates);
-				bSelected.push(swap ? a.selectedCoordinates : b.selectedCoordinates);
-				aFull.push(swap ? b.fullCoordinates : a.fullCoordinates);
-				bFull.push(swap ? a.fullCoordinates : b.fullCoordinates);
+				aRows.push(swap ? b : a);
+				bRows.push(swap ? a : b);
 			}
 			return {
 				time,
-				selectedA: mean(aSelected, 3),
-				selectedB: mean(bSelected, 3),
-				fullA: mean(aFull, data.left.dimensions.length),
-				fullB: mean(bFull, data.left.dimensions.length),
+				selectedA: participantCentroid(aRows, (row) => row.selectedCoordinates, 3, data.left.estimand),
+				selectedB: participantCentroid(bRows, (row) => row.selectedCoordinates, 3, data.right.estimand),
+				fullA: participantCentroid(aRows, (row) => row.fullCoordinates, data.left.dimensions.length, data.left.estimand),
+				fullB: participantCentroid(bRows, (row) => row.fullCoordinates, data.left.dimensions.length, data.right.estimand),
 				nA: entries.length,
 				nB: entries.length,
 				nMatched: entries.length
@@ -36391,10 +38142,10 @@ function permutedCentroidRows(data, input, replicate) {
 		const b = sideB.filter((row) => row.time.canonical === time.canonical);
 		return {
 			time,
-			selectedA: mean(a.map((row) => row.selectedCoordinates), 3),
-			selectedB: mean(b.map((row) => row.selectedCoordinates), 3),
-			fullA: mean(a.map((row) => row.fullCoordinates), data.left.dimensions.length),
-			fullB: mean(b.map((row) => row.fullCoordinates), data.left.dimensions.length),
+			selectedA: participantCentroid(a, (row) => row.selectedCoordinates, 3, data.left.estimand),
+			selectedB: participantCentroid(b, (row) => row.selectedCoordinates, 3, data.right.estimand),
+			fullA: participantCentroid(a, (row) => row.fullCoordinates, data.left.dimensions.length, data.left.estimand),
+			fullB: participantCentroid(b, (row) => row.fullCoordinates, data.left.dimensions.length, data.right.estimand),
 			nA: a.length,
 			nB: b.length,
 			nMatched: null
@@ -36403,7 +38154,7 @@ function permutedCentroidRows(data, input, replicate) {
 }
 function holmAdjust(pValues) {
 	pValues.forEach((value, index) => {
-		if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) reject$5("INVALID_P_VALUE", `pValues[${index}]`, "must be finite in [0, 1]");
+		if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) reject$6("INVALID_P_VALUE", `pValues[${index}]`, "must be finite in [0, 1]");
 	});
 	const ordered = pValues.map((value, index) => ({
 		value,
@@ -36422,12 +38173,12 @@ function permutationTests(data, input, observedPeriods) {
 	if (!plan) return [];
 	validateUnitOrder(plan.unitOrder, data.unitOrder, "input.permutationPlan.unitOrder");
 	const limit = Math.min(data.left.limits.maxResamples, data.right.limits.maxResamples);
-	if (!Array.isArray(plan.replicates) || plan.replicates.length === 0 || plan.replicates.length > limit) reject$5("INVALID_PERMUTATION_PLAN", "input.permutationPlan.replicates", `must contain 1..${limit} replicates`);
-	if (input.design === "paired" && plan.kind !== "paired-swap-indices-v1") reject$5("PERMUTATION_DESIGN_MISMATCH", "input.permutationPlan.kind", "paired comparison requires paired-swap-indices-v1");
-	if (input.design === "independent" && plan.kind !== "independent-pool-indices-v1") reject$5("PERMUTATION_DESIGN_MISMATCH", "input.permutationPlan.kind", "independent comparison requires independent-pool-indices-v1");
+	if (!Array.isArray(plan.replicates) || plan.replicates.length === 0 || plan.replicates.length > limit) reject$6("INVALID_PERMUTATION_PLAN", "input.permutationPlan.replicates", `must contain 1..${limit} replicates`);
+	if (input.design === "paired" && plan.kind !== "paired-swap-indices-v1") reject$6("PERMUTATION_DESIGN_MISMATCH", "input.permutationPlan.kind", "paired comparison requires paired-swap-indices-v1");
+	if (input.design === "independent" && plan.kind !== "independent-pool-indices-v1") reject$6("PERMUTATION_DESIGN_MISMATCH", "input.permutationPlan.kind", "independent comparison requires independent-pool-indices-v1");
 	plan.replicates.forEach((replicate, index) => validateIndexList(replicate, data.unitOrder.length, `input.permutationPlan.replicates[${index}]`, input.design === "independent"));
 	const observed = metricDescriptors(observedPeriods, data.left.selectedDimensions);
-	if (observed.length > Math.min(data.left.limits.maxTests, data.right.limits.maxTests)) reject$5("TRAJECTORY_TEST_LIMIT", "comparison.tests", "exceeds configured maxTests");
+	if (observed.length > Math.min(data.left.limits.maxTests, data.right.limits.maxTests)) reject$6("TRAJECTORY_TEST_LIMIT", "comparison.tests", "exceeds configured maxTests");
 	const values = observed.map(() => []);
 	for (const replicate of plan.replicates) {
 		const map = metricMap(comparisonPeriods(permutedCentroidRows(data, input, replicate)), data.left.selectedDimensions);
@@ -36463,7 +38214,7 @@ function compareTrajectoryPaths(input) {
 		severity: "info",
 		message: "No p-values were computed because no caller-bound permutation plan was supplied."
 	});
-	return deepFreeze$1({
+	return deepFreeze$2({
 		schemaVersion: "3dena.trajectory-comparison.v1",
 		design: input.design,
 		direction: "B-minus-A",
@@ -36491,14 +38242,14 @@ function allStratum() {
 	}] }, "bootstrap.stratum");
 }
 function buildBootstrapContext(input) {
-	if (input.stratifyBy !== "none" && input.stratifyBy !== "explicit") reject$5("INVALID_BOOTSTRAP_STRATIFICATION", "input.stratifyBy", "must be none or explicit");
+	if (input.stratifyBy !== "none" && input.stratifyBy !== "explicit") reject$6("INVALID_BOOTSTRAP_STRATIFICATION", "input.stratifyBy", "must be none or explicit");
 	const series = normalizeSeries(input.series);
 	const base = analyzeNormalizedSeries(series);
 	const eligible = new Set(base.participantPeriods.filter((row) => row.includedInCohort).map((row) => row.participant.canonical));
 	const grouped = /* @__PURE__ */ new Map();
 	for (const point of series.points) {
 		if (!eligible.has(point.participant.canonical)) continue;
-		if (point.participant.components.some((component) => component.name === BOOTSTRAP_DRAW_COMPONENT)) reject$5("RESERVED_BOOTSTRAP_IDENTITY", `input.series.points[${point.rowIndex}].participant`, `must not contain ${BOOTSTRAP_DRAW_COMPONENT}`);
+		if (point.participant.components.some((component) => component.name === BOOTSTRAP_DRAW_COMPONENT)) reject$6("RESERVED_BOOTSTRAP_IDENTITY", `input.series.points[${point.rowIndex}].participant`, `must not contain ${BOOTSTRAP_DRAW_COMPONENT}`);
 		const current = grouped.get(point.participant.canonical) ?? [];
 		current.push(point);
 		grouped.set(point.participant.canonical, current);
@@ -36507,9 +38258,9 @@ function buildBootstrapContext(input) {
 		const participant = points[0].participant;
 		let stratum = allStratum();
 		if (input.stratifyBy === "explicit") {
-			if (points.some((point) => point.stratum === void 0)) reject$5("MISSING_BOOTSTRAP_STRATUM", `input.series.participant.${participant.display}`, "every eligible participant row requires an explicit stratum");
+			if (points.some((point) => point.stratum === void 0)) reject$6("MISSING_BOOTSTRAP_STRATUM", `input.series.participant.${participant.display}`, "every eligible participant row requires an explicit stratum");
 			const strata = new Map(points.map((point) => [point.stratum.canonical, point.stratum]));
-			if (strata.size !== 1) reject$5("UNSTABLE_BOOTSTRAP_STRATUM", `input.series.participant.${participant.display}`, "stratum must remain constant across the complete participant history");
+			if (strata.size !== 1) reject$6("UNSTABLE_BOOTSTRAP_STRATUM", `input.series.participant.${participant.display}`, "stratum must remain constant across the complete participant history");
 			stratum = [...strata.values()][0];
 		}
 		return {
@@ -36519,7 +38270,7 @@ function buildBootstrapContext(input) {
 			points: [...points].sort((left, right) => left.rowIndex - right.rowIndex)
 		};
 	}).sort((left, right) => compareCanonical(left.key, right.key));
-	if (histories.length === 0) reject$5("EMPTY_BOOTSTRAP_POOL", "input.series", "cohort policy leaves no eligible participant histories");
+	if (histories.length === 0) reject$6("EMPTY_BOOTSTRAP_POOL", "input.series", "cohort policy leaves no eligible participant histories");
 	const stratumMap = /* @__PURE__ */ new Map();
 	histories.forEach((history, index) => {
 		const current = stratumMap.get(history.stratum.canonical) ?? {
@@ -36534,7 +38285,7 @@ function buildBootstrapContext(input) {
 		series,
 		base,
 		histories,
-		units: deepFreeze$1({
+		units: deepFreeze$2({
 			schemaVersion: "3dena.trajectory-bootstrap-units.v1",
 			unitOrder: histories.map((history) => history.key),
 			strata: strata.map((stratum) => ({
@@ -36550,23 +38301,23 @@ function getTrajectoryBootstrapUnits(input) {
 	return buildBootstrapContext(input).units;
 }
 function validateBootstrapUnits(units) {
-	if (!units || units.schemaVersion !== "3dena.trajectory-bootstrap-units.v1" || !Array.isArray(units.unitOrder) || units.unitOrder.length === 0) reject$5("INVALID_BOOTSTRAP_UNITS", "input.units", "must come from getTrajectoryBootstrapUnits()");
-	if (new Set(units.unitOrder).size !== units.unitOrder.length) reject$5("DUPLICATE_BOOTSTRAP_UNIT", "input.units.unitOrder", "must contain unique units");
+	if (!units || units.schemaVersion !== "3dena.trajectory-bootstrap-units.v1" || !Array.isArray(units.unitOrder) || units.unitOrder.length === 0) reject$6("INVALID_BOOTSTRAP_UNITS", "input.units", "must come from getTrajectoryBootstrapUnits()");
+	if (new Set(units.unitOrder).size !== units.unitOrder.length) reject$6("DUPLICATE_BOOTSTRAP_UNIT", "input.units.unitOrder", "must contain unique units");
 	const strata = /* @__PURE__ */ new Set();
 	const indexes = /* @__PURE__ */ new Set();
 	for (const [stratumIndex, stratum] of units.strata.entries()) {
-		if (strata.has(stratum.key.canonical)) reject$5("DUPLICATE_BOOTSTRAP_STRATUM", `input.units.strata[${stratumIndex}]`, "duplicates a stratum key");
+		if (strata.has(stratum.key.canonical)) reject$6("DUPLICATE_BOOTSTRAP_STRATUM", `input.units.strata[${stratumIndex}]`, "duplicates a stratum key");
 		strata.add(stratum.key.canonical);
-		if (stratum.unitIndexes.length === 0) reject$5("EMPTY_BOOTSTRAP_STRATUM", `input.units.strata[${stratumIndex}]`, "must contain at least one unit");
+		if (stratum.unitIndexes.length === 0) reject$6("EMPTY_BOOTSTRAP_STRATUM", `input.units.strata[${stratumIndex}]`, "must contain at least one unit");
 		for (const index of stratum.unitIndexes) {
-			if (!Number.isSafeInteger(index) || index < 0 || index >= units.unitOrder.length) reject$5("INVALID_BOOTSTRAP_INDEX", `input.units.strata[${stratumIndex}].unitIndexes`, "contains an out-of-range index");
-			if (indexes.has(index)) reject$5("DUPLICATE_BOOTSTRAP_UNIT", `input.units.strata[${stratumIndex}].unitIndexes`, "a unit may belong to only one stratum");
+			if (!Number.isSafeInteger(index) || index < 0 || index >= units.unitOrder.length) reject$6("INVALID_BOOTSTRAP_INDEX", `input.units.strata[${stratumIndex}].unitIndexes`, "contains an out-of-range index");
+			if (indexes.has(index)) reject$6("DUPLICATE_BOOTSTRAP_UNIT", `input.units.strata[${stratumIndex}].unitIndexes`, "a unit may belong to only one stratum");
 			indexes.add(index);
 		}
 	}
-	if (indexes.size !== units.unitOrder.length) reject$5("MISSING_BOOTSTRAP_UNIT", "input.units.strata", "strata must partition every unit exactly once");
+	if (indexes.size !== units.unitOrder.length) reject$6("MISSING_BOOTSTRAP_UNIT", "input.units.strata", "strata must partition every unit exactly once");
 }
-function mulberry32(seed) {
+function mulberry32$1(seed) {
 	let state = seed >>> 0;
 	return () => {
 		state = state + 1831565813 >>> 0;
@@ -36579,12 +38330,12 @@ function mulberry32(seed) {
 function createSeededTrajectoryBootstrapPlan(input) {
 	validateBootstrapUnits(input.units);
 	const limits = resolveLimits$1(input.limits);
-	if (!Number.isSafeInteger(input.repetitions) || input.repetitions < 1 || input.repetitions > limits.maxResamples) reject$5("BOOTSTRAP_RESAMPLE_LIMIT", "input.repetitions", `must be a safe integer in [1, ${limits.maxResamples}]`);
-	if (!Number.isSafeInteger(input.seed) || input.seed < 0 || input.seed > 4294967295) reject$5("INVALID_BOOTSTRAP_SEED", "input.seed", "must be an unsigned 32-bit integer");
+	if (!Number.isSafeInteger(input.repetitions) || input.repetitions < 1 || input.repetitions > limits.maxResamples) reject$6("BOOTSTRAP_RESAMPLE_LIMIT", "input.repetitions", `must be a safe integer in [1, ${limits.maxResamples}]`);
+	if (!Number.isSafeInteger(input.seed) || input.seed < 0 || input.seed > 4294967295) reject$6("INVALID_BOOTSTRAP_SEED", "input.seed", "must be an unsigned 32-bit integer");
 	const planCells = input.repetitions * input.units.unitOrder.length;
-	if (!Number.isSafeInteger(planCells) || planCells > limits.maxCells) reject$5("BOOTSTRAP_CELL_LIMIT", "input.repetitions", `plan indexes exceed maxCells=${limits.maxCells}`);
-	const random = mulberry32(input.seed);
-	return deepFreeze$1({
+	if (!Number.isSafeInteger(planCells) || planCells > limits.maxCells) reject$6("BOOTSTRAP_CELL_LIMIT", "input.repetitions", `plan indexes exceed maxCells=${limits.maxCells}`);
+	const random = mulberry32$1(input.seed);
+	return deepFreeze$2({
 		kind: "participant-history-resample-indices-v1",
 		unitOrder: [...input.units.unitOrder],
 		strata: input.units.strata.map((stratum) => ({
@@ -36602,39 +38353,39 @@ function createSeededTrajectoryBootstrapPlan(input) {
 	});
 }
 function validateBootstrapPlan(plan, context) {
-	if (!plan || plan.kind !== "participant-history-resample-indices-v1") reject$5("INVALID_BOOTSTRAP_PLAN", "input.plan.kind", "must be participant-history-resample-indices-v1");
-	if (JSON.stringify(plan.unitOrder) !== JSON.stringify(context.units.unitOrder)) reject$5("BOOTSTRAP_UNIT_ORDER_MISMATCH", "input.plan.unitOrder", "must exactly match getTrajectoryBootstrapUnits()");
+	if (!plan || plan.kind !== "participant-history-resample-indices-v1") reject$6("INVALID_BOOTSTRAP_PLAN", "input.plan.kind", "must be participant-history-resample-indices-v1");
+	if (JSON.stringify(plan.unitOrder) !== JSON.stringify(context.units.unitOrder)) reject$6("BOOTSTRAP_UNIT_ORDER_MISMATCH", "input.plan.unitOrder", "must exactly match getTrajectoryBootstrapUnits()");
 	const seenStrata = /* @__PURE__ */ new Set();
-	if (!Array.isArray(plan.strata) || plan.strata.length !== context.units.strata.length) reject$5("BOOTSTRAP_STRATA_MISMATCH", "input.plan.strata", "must exactly match the resolved strata");
+	if (!Array.isArray(plan.strata) || plan.strata.length !== context.units.strata.length) reject$6("BOOTSTRAP_STRATA_MISMATCH", "input.plan.strata", "must exactly match the resolved strata");
 	let repetitions;
 	let planIndexCells = 0;
 	plan.strata.forEach((stratum, stratumIndex) => {
-		if (seenStrata.has(stratum.key.canonical)) reject$5("DUPLICATE_BOOTSTRAP_STRATUM", `input.plan.strata[${stratumIndex}]`, "duplicates a stratum key");
+		if (seenStrata.has(stratum.key.canonical)) reject$6("DUPLICATE_BOOTSTRAP_STRATUM", `input.plan.strata[${stratumIndex}]`, "duplicates a stratum key");
 		seenStrata.add(stratum.key.canonical);
 		const expected = context.units.strata[stratumIndex];
-		if (stratum.key.canonical !== expected.key.canonical || JSON.stringify(stratum.unitIndexes) !== JSON.stringify(expected.unitIndexes)) reject$5("BOOTSTRAP_STRATA_MISMATCH", `input.plan.strata[${stratumIndex}]`, "key and unitIndexes must exactly match getTrajectoryBootstrapUnits()");
-		if (!Array.isArray(stratum.replicates) || stratum.replicates.length === 0) reject$5("INVALID_BOOTSTRAP_PLAN", `input.plan.strata[${stratumIndex}].replicates`, "must be non-empty");
+		if (stratum.key.canonical !== expected.key.canonical || JSON.stringify(stratum.unitIndexes) !== JSON.stringify(expected.unitIndexes)) reject$6("BOOTSTRAP_STRATA_MISMATCH", `input.plan.strata[${stratumIndex}]`, "key and unitIndexes must exactly match getTrajectoryBootstrapUnits()");
+		if (!Array.isArray(stratum.replicates) || stratum.replicates.length === 0) reject$6("INVALID_BOOTSTRAP_PLAN", `input.plan.strata[${stratumIndex}].replicates`, "must be non-empty");
 		if (repetitions === void 0) repetitions = stratum.replicates.length;
-		if (stratum.replicates.length !== repetitions) reject$5("BOOTSTRAP_REPLICATE_MISMATCH", `input.plan.strata[${stratumIndex}].replicates`, "every stratum must have the same replicate count");
+		if (stratum.replicates.length !== repetitions) reject$6("BOOTSTRAP_REPLICATE_MISMATCH", `input.plan.strata[${stratumIndex}].replicates`, "every stratum must have the same replicate count");
 		const allowed = new Set(expected.unitIndexes);
 		stratum.replicates.forEach((draw, replicateIndex) => {
-			if (!Array.isArray(draw) || draw.length !== expected.unitIndexes.length) reject$5("BOOTSTRAP_SAMPLE_SIZE_MISMATCH", `input.plan.strata[${stratumIndex}].replicates[${replicateIndex}]`, "must preserve the original stratum sample size");
+			if (!Array.isArray(draw) || draw.length !== expected.unitIndexes.length) reject$6("BOOTSTRAP_SAMPLE_SIZE_MISMATCH", `input.plan.strata[${stratumIndex}].replicates[${replicateIndex}]`, "must preserve the original stratum sample size");
 			draw.forEach((index, drawIndex) => {
-				if (!Number.isSafeInteger(index) || !allowed.has(index)) reject$5("INVALID_BOOTSTRAP_INDEX", `input.plan.strata[${stratumIndex}].replicates[${replicateIndex}][${drawIndex}]`, "must reference a unit inside the same stratum");
+				if (!Number.isSafeInteger(index) || !allowed.has(index)) reject$6("INVALID_BOOTSTRAP_INDEX", `input.plan.strata[${stratumIndex}].replicates[${replicateIndex}][${drawIndex}]`, "must reference a unit inside the same stratum");
 			});
 			planIndexCells += draw.length;
-			if (!Number.isSafeInteger(planIndexCells)) reject$5("BOOTSTRAP_OVERFLOW", "input.plan", "index cell count overflowed safe integer arithmetic");
+			if (!Number.isSafeInteger(planIndexCells)) reject$6("BOOTSTRAP_OVERFLOW", "input.plan", "index cell count overflowed safe integer arithmetic");
 		});
 	});
 	const count = repetitions ?? 0;
-	if (count > context.series.limits.maxResamples) reject$5("BOOTSTRAP_RESAMPLE_LIMIT", "input.plan", `exceeds maxResamples=${context.series.limits.maxResamples}`);
-	if (planIndexCells > context.series.limits.maxCells) reject$5("BOOTSTRAP_CELL_LIMIT", "input.plan", `plan indexes exceed maxCells=${context.series.limits.maxCells}`);
-	if (!plan.generation || typeof plan.generation !== "object") reject$5("INVALID_BOOTSTRAP_GENERATION", "input.plan.generation", "must identify caller-provided or seeded plan custody");
+	if (count > context.series.limits.maxResamples) reject$6("BOOTSTRAP_RESAMPLE_LIMIT", "input.plan", `exceeds maxResamples=${context.series.limits.maxResamples}`);
+	if (planIndexCells > context.series.limits.maxCells) reject$6("BOOTSTRAP_CELL_LIMIT", "input.plan", `plan indexes exceed maxCells=${context.series.limits.maxCells}`);
+	if (!plan.generation || typeof plan.generation !== "object") reject$6("INVALID_BOOTSTRAP_GENERATION", "input.plan.generation", "must identify caller-provided or seeded plan custody");
 	if (plan.generation.kind === "caller-provided") return {
 		repetitions: count,
 		generation: { kind: "caller-provided" }
 	};
-	if (plan.generation.kind !== "seeded" || plan.generation.algorithm !== "mulberry32-uint32-v1" || plan.generation.unitSort !== "utf16-code-unit-ascending" || plan.generation.randomEndpoint !== "zero-inclusive-one-exclusive" || !Number.isSafeInteger(plan.generation.seed) || plan.generation.seed < 0 || plan.generation.seed > 4294967295) reject$5("INVALID_BOOTSTRAP_GENERATION", "input.plan.generation", "seeded custody must use the frozen v1 algorithm, sort, endpoint, and uint32 seed");
+	if (plan.generation.kind !== "seeded" || plan.generation.algorithm !== "mulberry32-uint32-v1" || plan.generation.unitSort !== "utf16-code-unit-ascending" || plan.generation.randomEndpoint !== "zero-inclusive-one-exclusive" || !Number.isSafeInteger(plan.generation.seed) || plan.generation.seed < 0 || plan.generation.seed > 4294967295) reject$6("INVALID_BOOTSTRAP_GENERATION", "input.plan.generation", "seeded custody must use the frozen v1 algorithm, sort, endpoint, and uint32 seed");
 	const expected = createSeededTrajectoryBootstrapPlan({
 		units: context.units,
 		repetitions: count,
@@ -36643,17 +38394,17 @@ function validateBootstrapPlan(plan, context) {
 	});
 	const suppliedDraws = plan.strata.map((stratum) => stratum.replicates);
 	const expectedDraws = expected.strata.map((stratum) => stratum.replicates);
-	if (JSON.stringify(suppliedDraws) !== JSON.stringify(expectedDraws)) reject$5("SEEDED_BOOTSTRAP_PLAN_MISMATCH", "input.plan.strata", "draws do not match the declared frozen algorithm and seed; mark an exact custom plan caller-provided instead");
+	if (JSON.stringify(suppliedDraws) !== JSON.stringify(expectedDraws)) reject$6("SEEDED_BOOTSTRAP_PLAN_MISMATCH", "input.plan.strata", "draws do not match the declared frozen algorithm and seed; mark an exact custom plan caller-provided instead");
 	return {
 		repetitions: count,
 		generation: { ...expected.generation }
 	};
 }
 function trajectoryPercentile(values, probability) {
-	if (!Array.isArray(values) || values.length === 0) reject$5("EMPTY_BOOTSTRAP_VALUES", "values", "must contain at least one finite number");
-	if (typeof probability !== "number" || !Number.isFinite(probability) || probability < 0 || probability > 1) reject$5("INVALID_BOOTSTRAP_PROBABILITY", "probability", "must be finite in [0, 1]");
+	if (!Array.isArray(values) || values.length === 0) reject$6("EMPTY_BOOTSTRAP_VALUES", "values", "must contain at least one finite number");
+	if (typeof probability !== "number" || !Number.isFinite(probability) || probability < 0 || probability > 1) reject$6("INVALID_BOOTSTRAP_PROBABILITY", "probability", "must be finite in [0, 1]");
 	const ordered = values.map((value, index) => {
-		if (typeof value !== "number" || !Number.isFinite(value)) reject$5("NON_FINITE_BOOTSTRAP_VALUE", `values[${index}]`, "must be finite");
+		if (typeof value !== "number" || !Number.isFinite(value)) reject$6("NON_FINITE_BOOTSTRAP_VALUE", `values[${index}]`, "must be finite");
 		return value;
 	}).sort((left, right) => left - right);
 	if (probability === 0) return ordered[0];
@@ -36664,7 +38415,7 @@ function trajectoryPercentile(values, probability) {
 	if (lower === upper) return ordered[lower];
 	const fraction = position - lower;
 	const result = ordered[lower] * (1 - fraction) + ordered[upper] * fraction;
-	if (!Number.isFinite(result)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", "values", "interpolated percentile is outside the finite numeric range");
+	if (!Number.isFinite(result)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", "values", "interpolated percentile is outside the finite numeric range");
 	return result;
 }
 function cloneBootstrapSeries(context, plan, replicateIndex) {
@@ -36681,10 +38432,11 @@ function cloneBootstrapSeries(context, plan, replicateIndex) {
 		for (const point of history.points) points.push({
 			participant: clonedParticipant,
 			time: { components: point.time.components.map((component) => ({ ...component })) },
-			coordinates: [...point.coordinates]
+			coordinates: [...point.coordinates],
+			...context.series.estimand === "weighted-participant" ? { weight: point.weight } : {}
 		});
 	}
-	if (points.length > context.series.limits.maxPoints) reject$5("BOOTSTRAP_POINT_LIMIT", `replicates[${replicateIndex}]`, `exceeds maxPoints=${context.series.limits.maxPoints}`);
+	if (points.length > context.series.limits.maxPoints) reject$6("BOOTSTRAP_POINT_LIMIT", `replicates[${replicateIndex}]`, `exceeds maxPoints=${context.series.limits.maxPoints}`);
 	return {
 		namespace: context.series.namespace,
 		points,
@@ -36692,6 +38444,7 @@ function cloneBootstrapSeries(context, plan, replicateIndex) {
 		selectedDimensions: [...context.series.selectedDimensions],
 		timeOrder: context.series.timeOrder.map((time) => ({ components: time.components.map((component) => ({ ...component })) })),
 		cohortPolicy: context.series.input.cohortPolicy,
+		estimand: context.series.estimand,
 		limits: { ...context.series.input.limits }
 	};
 }
@@ -36710,7 +38463,7 @@ function bootstrapInterval(estimate, values, clusterEligible, confidenceLevel, r
 	};
 }
 function bootstrapTrajectoryPath(input) {
-	if (typeof input.confidenceLevel !== "number" || !Number.isFinite(input.confidenceLevel) || input.confidenceLevel <= 0 || input.confidenceLevel >= 1) reject$5("INVALID_BOOTSTRAP_CONFIDENCE", "input.confidenceLevel", "must be finite and strictly between 0 and 1");
+	if (typeof input.confidenceLevel !== "number" || !Number.isFinite(input.confidenceLevel) || input.confidenceLevel <= 0 || input.confidenceLevel >= 1) reject$6("INVALID_BOOTSTRAP_CONFIDENCE", "input.confidenceLevel", "must be finite and strictly between 0 and 1");
 	const context = buildBootstrapContext({
 		series: input.series,
 		stratifyBy: input.stratifyBy
@@ -36720,12 +38473,12 @@ function bootstrapTrajectoryPath(input) {
 	let computationalCells = 0;
 	for (let replicate = 0; replicate < repetitions; replicate += 1) for (const stratum of input.plan.strata) for (const unitIndex of stratum.replicates[replicate]) {
 		const cells = context.histories[unitIndex].points.length * context.series.dimensions.length;
-		if (!Number.isSafeInteger(cells) || computationalCells > Number.MAX_SAFE_INTEGER - cells) reject$5("BOOTSTRAP_OVERFLOW", "input.plan", "resampled coordinate cell count overflowed safe integer arithmetic");
+		if (!Number.isSafeInteger(cells) || computationalCells > Number.MAX_SAFE_INTEGER - cells) reject$6("BOOTSTRAP_OVERFLOW", "input.plan", "resampled coordinate cell count overflowed safe integer arithmetic");
 		computationalCells += cells;
 	}
-	if (computationalCells > context.series.limits.maxCells) reject$5("BOOTSTRAP_CELL_LIMIT", "input.plan", `resampled coordinates exceed maxCells=${context.series.limits.maxCells}`);
+	if (computationalCells > context.series.limits.maxCells) reject$6("BOOTSTRAP_CELL_LIMIT", "input.plan", `resampled coordinates exceed maxCells=${context.series.limits.maxCells}`);
 	const replicatePaths = Array.from({ length: repetitions }, (_, replicate) => analyzeTrajectoryPath(cloneBootstrapSeries(context, input.plan, replicate)));
-	const requiredFinite = Math.max(Math.ceil(.8 * repetitions), Math.ceil(10 / (1 - input.confidenceLevel)));
+	const requiredFinite = Math.max(Math.ceil(.8 * repetitions), Math.ceil(10 / (1 - input.confidenceLevel) - 1e-12));
 	let insufficientClusters = false;
 	let insufficientReplicates = false;
 	let anyCentroidVariation = false;
@@ -36785,7 +38538,7 @@ function bootstrapTrajectoryPath(input) {
 		severity: "warning",
 		message: `Intervals with fewer than ${requiredFinite} finite replicates were withheld.`
 	});
-	return deepFreeze$1({
+	return deepFreeze$2({
 		schemaVersion: "3dena.trajectory-bootstrap.v1",
 		base: context.base,
 		confidenceLevel: input.confidenceLevel,
@@ -36812,44 +38565,44 @@ function bootstrapTrajectoryPath(input) {
 		diagnostics
 	});
 }
-function deepFreeze$1(value) {
+function deepFreeze$2(value) {
 	if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
-		for (const nested of Object.values(value)) deepFreeze$1(nested);
+		for (const nested of Object.values(value)) deepFreeze$2(nested);
 		Object.freeze(value);
 	}
 	return value;
 }
 //#endregion
 //#region src/trajectory-series-adapters.ts
-function reject$4(code, path, message) {
+function reject$5(code, path, message) {
 	throw new TrajectoryStatisticsError(code, path, message);
 }
-function scalarType(value, path) {
-	if (value === null) reject$4("MISSING_ADAPTER_IDENTITY", path, "trajectory identities must not be null");
+function scalarType$1(value, path) {
+	if (value === null) reject$5("MISSING_ADAPTER_IDENTITY", path, "trajectory identities must not be null");
 	if (typeof value === "string") return "string";
 	if (typeof value === "boolean") return "boolean";
-	if (!Number.isFinite(value)) reject$4("NON_FINITE_ADAPTER_IDENTITY", path, "numeric trajectory identities must be finite");
-	if (Number.isInteger(value) && !Number.isSafeInteger(value)) reject$4("UNSAFE_ADAPTER_IDENTITY", path, "unsafe integer identities must be source strings");
+	if (!Number.isFinite(value)) reject$5("NON_FINITE_ADAPTER_IDENTITY", path, "numeric trajectory identities must be finite");
+	if (Number.isInteger(value) && !Number.isSafeInteger(value)) reject$5("UNSAFE_ADAPTER_IDENTITY", path, "unsafe integer identities must be source strings");
 	return "number";
 }
 function rawEntityIdentity(key, path) {
-	if (key.columns.length !== key.values.length) reject$4("ADAPTER_IDENTITY_SHAPE", path, "columns and values must align");
+	if (key.columns.length !== key.values.length) reject$5("ADAPTER_IDENTITY_SHAPE", path, "columns and values must align");
 	return { components: key.columns.map((name, index) => {
 		const value = key.values[index] ?? null;
 		return {
 			name,
-			type: scalarType(value, `${path}.${name}`),
+			type: scalarType$1(value, `${path}.${name}`),
 			value
 		};
 	}) };
 }
 function preparedEntityIdentity(key, path) {
-	if (key.columns.length !== key.values.length || key.columnTypes.length !== key.values.length) reject$4("ADAPTER_IDENTITY_SHAPE", path, "columns, declared types, and values must align");
+	if (key.columns.length !== key.values.length || key.columnTypes.length !== key.values.length) reject$5("ADAPTER_IDENTITY_SHAPE", path, "columns, declared types, and values must align");
 	return { components: key.columns.map((name, index) => {
 		const value = key.values[index] ?? null;
 		return {
 			name,
-			type: scalarType(value, `${path}.${name}`),
+			type: scalarType$1(value, `${path}.${name}`),
 			value,
 			declaredType: key.columnTypes[index]
 		};
@@ -36858,22 +38611,22 @@ function preparedEntityIdentity(key, path) {
 function rawTimeIdentity(value) {
 	return { components: [{
 		name: "time",
-		type: scalarType(value.value, "time"),
+		type: scalarType$1(value.value, "time"),
 		value: value.value
 	}] };
 }
 function preparedTimeIdentity(value) {
 	return { components: [{
 		name: value.column,
-		type: scalarType(value.value, `time.${value.column}`),
+		type: scalarType$1(value.value, `time.${value.column}`),
 		value: value.value,
 		declaredType: value.columnType
 	}] };
 }
 function validateOptions(options) {
-	if (!options || typeof options.group !== "string" || options.group.length === 0) reject$4("INVALID_ADAPTER_GROUP", "options.group", "must be a canonical group key");
-	if (typeof options.namespace !== "string" || options.namespace.trim() === "") reject$4("INVALID_TRAJECTORY_NAMESPACE", "options.namespace", "must be non-empty");
-	if (options.participantIdentity !== void 0 && options.participantIdentity !== "unit" && options.participantIdentity !== "participant-label") reject$4("INVALID_PARTICIPANT_IDENTITY", "options.participantIdentity", "must be unit or participant-label");
+	if (!options || typeof options.group !== "string" || options.group.length === 0) reject$5("INVALID_ADAPTER_GROUP", "options.group", "must be a canonical group key");
+	if (typeof options.namespace !== "string" || options.namespace.trim() === "") reject$5("INVALID_TRAJECTORY_NAMESPACE", "options.namespace", "must be non-empty");
+	if (options.participantIdentity !== void 0 && options.participantIdentity !== "unit" && options.participantIdentity !== "participant-label") reject$5("INVALID_PARTICIPANT_IDENTITY", "options.participantIdentity", "must be unit or participant-label");
 }
 /**
 * Copies one already-computed raw-analysis group into the statistics contract.
@@ -36883,10 +38636,10 @@ function validateOptions(options) {
 function adaptAnalysisResultTrajectorySeries(result, options) {
 	validateOptions(options);
 	const trajectory = result.trajectory;
-	if (!trajectory) reject$4("MISSING_SOURCE_TRAJECTORY", "result.trajectory", "must be present before adapting a group path");
-	if (!trajectory.groupOrder.some((group) => group.canonical === options.group)) reject$4("UNKNOWN_ADAPTER_GROUP", "options.group", "is not present in the source result");
+	if (!trajectory) reject$5("MISSING_SOURCE_TRAJECTORY", "result.trajectory", "must be present before adapting a group path");
+	if (!trajectory.groupOrder.some((group) => group.canonical === options.group)) reject$5("UNKNOWN_ADAPTER_GROUP", "options.group", "is not present in the source result");
 	const points = result.points.filter((point) => point.group?.canonical === options.group);
-	if (points.length === 0) reject$4("EMPTY_ADAPTER_GROUP", "options.group", "contains no source points");
+	if (points.length === 0) reject$5("EMPTY_ADAPTER_GROUP", "options.group", "contains no source points");
 	return {
 		namespace: options.namespace,
 		dimensions: [...result.dimensions],
@@ -36894,7 +38647,7 @@ function adaptAnalysisResultTrajectorySeries(result, options) {
 		timeOrder: trajectory.timeOrder.map(rawTimeIdentity),
 		cohortPolicy: trajectory.cohortPolicy,
 		points: points.map((point) => {
-			if (!point.time) reject$4("MISSING_ADAPTER_TIME", `result.points[${point.index}].time`, "must be present for trajectory statistics");
+			if (!point.time) reject$5("MISSING_ADAPTER_TIME", `result.points[${point.index}].time`, "must be present for trajectory statistics");
 			return {
 				participant: rawEntityIdentity(options.participantIdentity === "participant-label" ? point.participantLabel : point.unit, `result.points[${point.index}].${options.participantIdentity === "participant-label" ? "participantLabel" : "unit"}`),
 				time: rawTimeIdentity(point.time),
@@ -36907,9 +38660,9 @@ function adaptAnalysisResultTrajectorySeries(result, options) {
 function adaptPreparedSpaceTrajectorySeries(result, options) {
 	validateOptions(options);
 	const trajectory = result.displaySpace.trajectory;
-	if (!trajectory.groupOrder.some((group) => group.canonical === options.group)) reject$4("UNKNOWN_ADAPTER_GROUP", "options.group", "is not present in the prepared result");
+	if (!trajectory.groupOrder.some((group) => group.canonical === options.group)) reject$5("UNKNOWN_ADAPTER_GROUP", "options.group", "is not present in the prepared result");
 	const points = result.fullSpace.points.filter((point) => point.group.canonical === options.group);
-	if (points.length === 0) reject$4("EMPTY_ADAPTER_GROUP", "options.group", "contains no prepared points");
+	if (points.length === 0) reject$5("EMPTY_ADAPTER_GROUP", "options.group", "contains no prepared points");
 	return {
 		namespace: options.namespace,
 		dimensions: [...result.fullSpace.dimensions],
@@ -36923,1738 +38676,6 @@ function adaptPreparedSpaceTrajectorySeries(result, options) {
 		}))
 	};
 }
-//#endregion
-//#region ../../node_modules/jena-js/dist/chunk-HJSM5RET.js
-function assertNonEmptyColumns(columns, label) {
-	if (columns.length === 0) throw new Error(`${label} must contain at least one column name.`);
-}
-function assertRowsHaveColumns(rows, columns, label = "rows") {
-	const missing = /* @__PURE__ */ new Set();
-	for (const row of rows) for (const column of columns) if (!(column in row)) missing.add(column);
-	if (missing.size > 0) throw new Error(`${label} are missing required columns: ${[...missing].join(", ")}`);
-}
-function assertRectangularMatrix(matrix, label = "matrix") {
-	if (matrix.length === 0) return;
-	const width = matrix[0]?.length ?? 0;
-	for (let i = 0; i < matrix.length; i += 1) if ((matrix[i]?.length ?? 0) !== width) throw new Error(`${label} must be rectangular; row ${i} has a different width.`);
-}
-function assertFiniteNumbers(matrix, label = "matrix") {
-	for (let row = 0; row < matrix.length; row += 1) for (let col = 0; col < (matrix[row]?.length ?? 0); col += 1) {
-		const value = matrix[row]?.[col];
-		if (typeof value !== "number" || Number.isNaN(value)) throw new Error(`${label}[${row}][${col}] must be a number, got ${String(value)}.`);
-	}
-}
-function cloneMatrix(matrix) {
-	return matrix.map((row) => [...row]);
-}
-function zeros$1(rows, cols) {
-	return Array.from({ length: rows }, () => Array.from({ length: cols }, () => 0));
-}
-function triIndices(length, row = -1) {
-	if (!Number.isInteger(length) || length < 0) throw new Error("length must be a non-negative integer.");
-	const first = [];
-	const second = [];
-	for (let i = 1; i < length; i += 1) for (let j = 0; j < i; j += 1) {
-		first.push(j);
-		second.push(i);
-	}
-	if (row === 0) return [first];
-	if (row === 1) return [second];
-	return [first, second];
-}
-function adjacencyKey(codes) {
-	const indices = triIndices(codes.length);
-	const sources = indices[0] ?? [];
-	const targets = indices[1] ?? [];
-	return sources.map((sourceIndex, i) => {
-		const targetIndex = targets[i] ?? 0;
-		const source = codes[sourceIndex] ?? String(sourceIndex);
-		const target = codes[targetIndex] ?? String(targetIndex);
-		return {
-			source,
-			target,
-			name: `${source} & ${target}`,
-			sourceIndex,
-			targetIndex
-		};
-	});
-}
-function vectorToUpperTriangle(vector) {
-	const out = [];
-	for (let i = 1; i < vector.length; i += 1) for (let j = 0; j < i; j += 1) out.push((vector[j] ?? 0) * (vector[i] ?? 0));
-	return out;
-}
-function stringVectorToUpperTriangle(values) {
-	const out = [];
-	for (let i = 1; i < values.length; i += 1) for (let j = 0; j < i; j += 1) out.push(`${values[j] ?? ""} & ${values[i] ?? ""}`);
-	return out;
-}
-function sumColumns(matrix) {
-	if (matrix.length === 0) return [];
-	const width = matrix[0]?.length ?? 0;
-	const sums = Array.from({ length: width }, () => 0);
-	for (const row of matrix) for (let col = 0; col < width; col += 1) sums[col] = (sums[col] ?? 0) + (row[col] ?? 0);
-	return sums;
-}
-function meanColumns(matrix) {
-	if (matrix.length === 0) return [];
-	return sumColumns(matrix).map((sum) => sum / matrix.length);
-}
-function subtractVectors$1(a, b) {
-	const length = Math.max(a.length, b.length);
-	return Array.from({ length }, (_, i) => (a[i] ?? 0) - (b[i] ?? 0));
-}
-function scaleVector(vector, scalar) {
-	return vector.map((value) => value * scalar);
-}
-function dot(a, b) {
-	const length = Math.max(a.length, b.length);
-	let total = 0;
-	for (let i = 0; i < length; i += 1) total += (a[i] ?? 0) * (b[i] ?? 0);
-	return total;
-}
-function l2Norm(vector) {
-	return Math.sqrt(dot(vector, vector));
-}
-function sphereNorm(matrix) {
-	assertRectangularMatrix(matrix);
-	assertFiniteNumbers(matrix);
-	return matrix.map((row) => {
-		const norm = l2Norm(row);
-		return norm > 0 ? row.map((value) => value / norm) : row.map(() => 0);
-	});
-}
-function centerData(matrix, centerVector = meanColumns(matrix)) {
-	assertRectangularMatrix(matrix);
-	assertFiniteNumbers(matrix);
-	return matrix.map((row) => row.map((value, columnIndex) => value - (centerVector[columnIndex] ?? 0)));
-}
-function transpose(matrix) {
-	if (matrix.length === 0) return [];
-	const rows = matrix.length;
-	const cols = matrix[0]?.length ?? 0;
-	const out = zeros$1(cols, rows);
-	for (let row = 0; row < rows; row += 1) for (let col = 0; col < cols; col += 1) {
-		const outRow = out[col];
-		if (outRow) outRow[row] = matrix[row]?.[col] ?? 0;
-	}
-	return out;
-}
-function multiplyMatrices(a, b) {
-	assertRectangularMatrix(a, "a");
-	assertRectangularMatrix(b, "b");
-	const aRows = a.length;
-	const aCols = a[0]?.length ?? 0;
-	const bRows = b.length;
-	const bCols = b[0]?.length ?? 0;
-	if (aCols !== bRows) throw new Error(`Matrix dimensions do not align: ${aRows}x${aCols} times ${bRows}x${bCols}.`);
-	const out = zeros$1(aRows, bCols);
-	for (let i = 0; i < aRows; i += 1) for (let j = 0; j < bCols; j += 1) {
-		let total = 0;
-		for (let k = 0; k < aCols; k += 1) total += (a[i]?.[k] ?? 0) * (b[k]?.[j] ?? 0);
-		const outRow = out[i];
-		if (outRow) outRow[j] = total;
-	}
-	return out;
-}
-function varianceColumns(matrix) {
-	if (matrix.length < 2) return (matrix[0] ?? []).map(() => 0);
-	const means = meanColumns(matrix);
-	const sums = Array.from({ length: means.length }, () => 0);
-	for (const row of matrix) for (let col = 0; col < means.length; col += 1) sums[col] = (sums[col] ?? 0) + Math.pow((row[col] ?? 0) - (means[col] ?? 0), 2);
-	return sums.map((sum) => sum / (matrix.length - 1));
-}
-function identity(n) {
-	return Array.from({ length: n }, (_, row) => Array.from({ length: n }, (_unused, col) => row === col ? 1 : 0));
-}
-function solveLinearSystem(a, b, ridge = 1e-10) {
-	const n = a.length;
-	const aug = a.map((row, i) => row.map((value, j) => value + (i === j ? ridge : 0)).concat(b[i] ?? 0));
-	for (let col = 0; col < n; col += 1) {
-		let pivot = col;
-		for (let row = col + 1; row < n; row += 1) if (Math.abs(aug[row]?.[col] ?? 0) > Math.abs(aug[pivot]?.[col] ?? 0)) pivot = row;
-		const pivotRow = aug[pivot];
-		const currentRow = aug[col];
-		if (!pivotRow || !currentRow) throw new Error("Invalid augmented matrix.");
-		if (Math.abs(pivotRow[col] ?? 0) < 1e-14) continue;
-		aug[pivot] = currentRow;
-		aug[col] = pivotRow;
-		const divisor = aug[col]?.[col] ?? 1;
-		for (let j = col; j <= n; j += 1) {
-			const row = aug[col];
-			if (row) row[j] = (row[j] ?? 0) / divisor;
-		}
-		for (let rowIndex = 0; rowIndex < n; rowIndex += 1) {
-			if (rowIndex === col) continue;
-			const factor = aug[rowIndex]?.[col] ?? 0;
-			for (let j = col; j <= n; j += 1) {
-				const row = aug[rowIndex];
-				if (row) row[j] = (row[j] ?? 0) - factor * (aug[col]?.[j] ?? 0);
-			}
-		}
-	}
-	return aug.map((row) => row[n] ?? 0);
-}
-function normalizeVector(vector) {
-	const norm = l2Norm(vector);
-	return norm > 0 ? vector.map((value) => value / norm) : vector.map(() => 0);
-}
-function subtractOuterProjection(matrix, vector) {
-	const unit = normalizeVector(vector);
-	return matrix.map((row) => {
-		const projection = dot(row, unit);
-		return subtractVectors$1(row, scaleVector(unit, projection));
-	});
-}
-function gramSchmidtComplete(columns, dimension, tolerance = 1e-10) {
-	const basisColumns = [];
-	const candidateColumns = [...columns, ...Array.from({ length: dimension }, (_unused, index) => Array.from({ length: dimension }, (_u, row) => row === index ? 1 : 0))];
-	for (const candidate of candidateColumns) {
-		let vector = Array.from({ length: dimension }, (_unused, index) => candidate[index] ?? 0);
-		for (const basis of basisColumns) vector = subtractVectors$1(vector, scaleVector(basis, dot(vector, basis)));
-		const norm = l2Norm(vector);
-		if (norm > tolerance) basisColumns.push(vector.map((value) => value / norm));
-		if (basisColumns.length === dimension) break;
-	}
-	return Array.from({ length: dimension }, (_unused, row) => basisColumns.map((column) => column[row] ?? 0));
-}
-function designSolve(design, response, ridge = 0) {
-	const xt = transpose(design);
-	const xtx = multiplyMatrices(xt, design);
-	const xty = multiplyMatrices(xt, response);
-	const cols = response[0]?.length ?? 0;
-	const coefficientsByColumn = [];
-	for (let col = 0; col < cols; col += 1) coefficientsByColumn.push(solveLinearSystem(xtx, xty.map((row) => row[col] ?? 0), ridge));
-	return transpose(coefficientsByColumn);
-}
-function symmetricJacobiEigen(input, maxSweeps = 100, tolerance) {
-	const n = input.length;
-	const a = cloneMatrix(input);
-	const v = identity(n);
-	let scale = 0;
-	for (let i = 0; i < n; i += 1) for (let j = 0; j < n; j += 1) scale = Math.max(scale, Math.abs(a[i]?.[j] ?? 0));
-	const stopThreshold = tolerance ?? Math.max(Number.MIN_VALUE, scale * 1e-15);
-	for (let sweep = 0; sweep < maxSweeps && n >= 2; sweep += 1) {
-		let rotatedAny = false;
-		for (let p = 0; p < n - 1; p += 1) for (let q = p + 1; q < n; q += 1) {
-			const apq = a[p]?.[q] ?? 0;
-			if (Math.abs(apq) <= stopThreshold) continue;
-			rotatedAny = true;
-			const app = a[p]?.[p] ?? 0;
-			const aqq = a[q]?.[q] ?? 0;
-			const theta = .5 * Math.atan2(2 * apq, aqq - app);
-			const c = Math.cos(theta);
-			const s = Math.sin(theta);
-			for (let i = 0; i < n; i += 1) {
-				const matrixRow = a[i];
-				const aip = matrixRow?.[p] ?? 0;
-				const aiq = matrixRow?.[q] ?? 0;
-				if (matrixRow) {
-					matrixRow[p] = c * aip - s * aiq;
-					matrixRow[q] = s * aip + c * aiq;
-				}
-			}
-			const rowP = a[p];
-			const rowQ = a[q];
-			for (let j = 0; j < n; j += 1) {
-				const apj = rowP?.[j] ?? 0;
-				const aqj = rowQ?.[j] ?? 0;
-				if (rowP) rowP[j] = c * apj - s * aqj;
-				if (rowQ) rowQ[j] = s * apj + c * aqj;
-			}
-			if (rowP) rowP[q] = 0;
-			if (rowQ) rowQ[p] = 0;
-			for (let i = 0; i < n; i += 1) {
-				const vectorRow = v[i];
-				const vip = vectorRow?.[p] ?? 0;
-				const viq = vectorRow?.[q] ?? 0;
-				if (vectorRow) {
-					vectorRow[p] = c * vip - s * viq;
-					vectorRow[q] = s * vip + c * viq;
-				}
-			}
-		}
-		if (!rotatedAny) break;
-	}
-	const pairs = Array.from({ length: n }, (_, i) => ({
-		value: a[i]?.[i] ?? 0,
-		index: i
-	})).sort((left, right) => right.value - left.value);
-	return {
-		eigenvalues: pairs.map((pair) => Math.max(0, pair.value)),
-		eigenvectors: Array.from({ length: n }, (_, row) => pairs.map((pair) => v[row]?.[pair.index] ?? 0))
-	};
-}
-function covarianceLike(matrix) {
-	if (matrix.length === 0) return [];
-	return multiplyMatrices(transpose(matrix), matrix);
-}
-var init_chunk_HJSM5RET = __esmMin((() => {}));
-//#endregion
-//#region ../../node_modules/jena-js/dist/chunk-6BOINFRO.js
-function scalarToString(value) {
-	return value === null ? "" : String(value);
-}
-function mergeColumns(row, columns, separator = "::") {
-	return columns.map((column) => scalarToString(row[column] ?? null)).join(separator);
-}
-var init_chunk_6BOINFRO = __esmMin((() => {}));
-//#endregion
-//#region ../../node_modules/jena-js/dist/chunk-FJ7A67ES.js
-function isWindowSize(value) {
-	return value === Number.POSITIVE_INFINITY || Number.isInteger(value) && value >= 0;
-}
-function validateMask(mask, codeCount) {
-	if (!Array.isArray(mask) || mask.length !== codeCount) throw new Error(`mask must be a ${codeCount}x${codeCount} matrix matching codes.length; got ${Array.isArray(mask) ? mask.length : typeof mask} rows.`);
-	for (let row = 0; row < mask.length; row += 1) {
-		const maskRow = mask[row];
-		if (!Array.isArray(maskRow) || maskRow.length !== codeCount) throw new Error(`mask row ${row} must have ${codeCount} columns matching codes.length; got ${Array.isArray(maskRow) ? maskRow.length : typeof maskRow}.`);
-		for (let col = 0; col < maskRow.length; col += 1) {
-			const value = maskRow[col];
-			if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`mask[${row}][${col}] must be a finite number; got ${String(value)}.`);
-		}
-	}
-}
-function validateAccumulateOptions(options, { requireRows = true } = {}) {
-	if (requireRows && (!Array.isArray(options.rows) || options.rows.length === 0)) throw new Error("rows is empty; provide at least one coded data row.");
-	if (!Array.isArray(options.codes) || options.codes.length < 2) throw new Error(`codes must list at least 2 code columns to model co-occurrences; got ${Array.isArray(options.codes) ? options.codes.length : typeof options.codes}.`);
-	if (options.model !== void 0 && !MODELS.has(options.model)) throw new Error(`model must be one of ${[...MODELS].join(", ")}; got "${String(options.model)}".`);
-	if (options.window !== void 0 && !WINDOWS.has(options.window)) throw new Error(`window must be one of ${[...WINDOWS].join(", ")}; got "${String(options.window)}".`);
-	if (options.weightBy !== void 0 && typeof options.weightBy !== "function" && options.weightBy !== "binary" && options.weightBy !== "sum") throw new Error(`weightBy must be "binary", "sum", or a function; got "${String(options.weightBy)}".`);
-	if (options.windowSizeBack !== void 0 && (typeof options.windowSizeBack !== "number" || !isWindowSize(options.windowSizeBack))) throw new Error(`windowSizeBack must be a non-negative integer or Infinity; got ${String(options.windowSizeBack)}.`);
-	if (options.windowSizeForward !== void 0 && (typeof options.windowSizeForward !== "number" || !isWindowSize(options.windowSizeForward))) throw new Error(`windowSizeForward must be a non-negative integer or Infinity; got ${String(options.windowSizeForward)}.`);
-	if (options.mask !== void 0) validateMask(options.mask, options.codes.length);
-	if (options.unitsUsed !== void 0 && (!Array.isArray(options.unitsUsed) || options.unitsUsed.length === 0)) throw new Error("unitsUsed must be a non-empty array of unit labels when provided; omit it to keep every unit.");
-}
-function validateMakeSetOptions(options) {
-	if (options.dimensions !== void 0 && (!Number.isInteger(options.dimensions) || options.dimensions < 1)) throw new Error(`dimensions must be an integer >= 1; got ${String(options.dimensions)}. (Values above the available rotated dimensions are clamped.)`);
-	if (options.rotation !== void 0 && !ROTATION_METHODS.has(options.rotation.method)) throw new Error(`rotation.method must be one of ${[...ROTATION_METHODS].join(", ")}; got "${String(options.rotation.method)}".`);
-	if (options.nodePositionMethod !== void 0 && !NODE_POSITION_METHODS.has(options.nodePositionMethod)) throw new Error(`nodePositionMethod must be one of ${[...NODE_POSITION_METHODS].join(", ")}; got "${String(options.nodePositionMethod)}".`);
-}
-function normalizeModel(model) {
-	return model ?? "EndPoint";
-}
-function normalizeWindow(window) {
-	return window ?? "MovingStanzaWindow";
-}
-function normalizeWeightBy(weightBy) {
-	return weightBy ?? "binary";
-}
-function numeric(row, column) {
-	const raw = row[column];
-	const value = typeof raw === "number" ? raw : Number(raw);
-	return Number.isFinite(value) ? value : 0;
-}
-function zeros(length) {
-	return Array.from({ length }, () => 0);
-}
-function addVectors(left, right) {
-	const width = Math.max(left.length, right.length);
-	return Array.from({ length: width }, (_unused, index) => (left[index] ?? 0) + (right[index] ?? 0));
-}
-function subtractVectors(left, right) {
-	const width = Math.max(left.length, right.length);
-	return Array.from({ length: width }, (_unused, index) => (left[index] ?? 0) - (right[index] ?? 0));
-}
-function sumCodeVectors(vectors, width) {
-	if (vectors.length === 0) return zeros(width);
-	return sumColumns(vectors);
-}
-function codeValues(row, codes) {
-	return codes.map((code) => numeric(row, code));
-}
-function makeUnitRow(row, units) {
-	return {
-		...row,
-		ENA_UNIT: mergeColumns(row, units)
-	};
-}
-function flattenMask(mask) {
-	const flat = [];
-	for (let target = 1; target < mask.length; target += 1) for (let source = 0; source < target; source += 1) flat.push(mask[source]?.[target] ?? 1);
-	return flat;
-}
-function applyMaskToCoOccurrence(values, flatMask) {
-	if (!flatMask) return values;
-	return values.map((value, index) => value * (flatMask[index] ?? 1));
-}
-function applyWeight(values, weightBy) {
-	if (weightBy === "binary" || weightBy === "sum") return values;
-	return values.map((value) => weightBy([value]));
-}
-function coOccurrenceFromSums(total, subtract, binary) {
-	const co = subtract ? subtractVectors(vectorToUpperTriangle(total), vectorToUpperTriangle(subtract)) : vectorToUpperTriangle(total);
-	return binary ? co.map((value) => value > 0 ? 1 : 0) : co;
-}
-function finalizeCoOccurrence(values, internals) {
-	return applyWeight(applyMaskToCoOccurrence(values, internals.mask), internals.weightBy);
-}
-function rowWithCoOccurrences(base, co, codeColumns) {
-	return {
-		...base,
-		...Object.fromEntries(codeColumns.map((column, index) => [column, co[index] ?? 0]))
-	};
-}
-function ensureMetadata(internals, row, sequence) {
-	if (!internals.includeMeta) return;
-	const unit = String(row.ENA_UNIT ?? "");
-	let state = internals.metadataStates.get(unit);
-	if (!state) {
-		state = {
-			row: Object.fromEntries(["ENA_UNIT", ...internals.units].map((column) => [column, row[column] ?? null])),
-			values: /* @__PURE__ */ new Map(),
-			unstable: /* @__PURE__ */ new Set(),
-			sequence
-		};
-		for (const column of internals.metadata) state.values.set(column, row[column] ?? null);
-		internals.metadataStates.set(unit, state);
-		internals.metadataOrder.push(unit);
-		return;
-	}
-	for (const column of internals.metadata) {
-		const previous = state.values.get(column);
-		const current = row[column] ?? null;
-		if (String(previous ?? "") !== String(current ?? "")) state.unstable.add(column);
-	}
-}
-function ensureEndpointCount(internals, row, sequence) {
-	const key = String(row.ENA_UNIT ?? mergeColumns(row, internals.units));
-	let accumulator = internals.endpointCounts.get(key);
-	if (!accumulator) {
-		accumulator = {
-			row: {
-				...Object.fromEntries(internals.units.map((column) => [column, row[column] ?? null])),
-				ENA_UNIT: key
-			},
-			sums: zeros(internals.codeColumns.length),
-			sequence
-		};
-		internals.endpointCounts.set(key, accumulator);
-		internals.endpointOrder.push(key);
-	}
-	return accumulator;
-}
-function ensureStepCount(internals, row, sequence) {
-	const key = mergeColumns(row, [...internals.units, ...internals.conversation]);
-	let accumulator = internals.stepCounts.get(key);
-	if (!accumulator) {
-		accumulator = {
-			row: {
-				...Object.fromEntries(internals.units.map((column) => [column, row[column] ?? null])),
-				...Object.fromEntries(internals.conversation.map((column) => [column, row[column] ?? null])),
-				ENA_UNIT: row.ENA_UNIT ?? mergeColumns(row, internals.units),
-				TRAJ_UNIT: mergeColumns(row, internals.conversation)
-			},
-			sums: zeros(internals.codeColumns.length),
-			sequence
-		};
-		internals.stepCounts.set(key, accumulator);
-		internals.stepOrder.push(key);
-	}
-	return accumulator;
-}
-function addToAccumulator(accumulator, values) {
-	for (let index = 0; index < values.length; index += 1) accumulator.sums[index] = (accumulator.sums[index] ?? 0) + (values[index] ?? 0);
-}
-function registerCountAccumulator(internals, row, sequence) {
-	const unit = String(row.ENA_UNIT ?? "");
-	if (internals.unitFilter && !internals.unitFilter.has(unit)) return;
-	if (internals.model === "EndPoint") ensureEndpointCount(internals, row, sequence);
-	else ensureStepCount(internals, row, sequence);
-}
-function consumeRowConnection(internals, index, row) {
-	if (internals.materialization === "full") internals.rowConnectionRows.push({
-		index,
-		row
-	});
-	const unit = String(row.ENA_UNIT ?? "");
-	if (internals.unitFilter && !internals.unitFilter.has(unit)) return;
-	const values = internals.codeColumns.map((column) => numeric(row, column));
-	if (internals.model === "EndPoint") addToAccumulator(ensureEndpointCount(internals, row, index), values);
-	else addToAccumulator(ensureStepCount(internals, row, index), values);
-}
-function makeNoForwardCoOccurrence(state, entry, internals) {
-	const binary = internals.weightBy === "binary";
-	const back = internals.windowSizeBack;
-	if (back === 0 || back === 1) return coOccurrenceFromSums(entry.codeValues, void 0, binary);
-	if (!Number.isFinite(back)) {
-		const previous2 = state.noForwardRunningSum;
-		const total = addVectors(previous2, entry.codeValues);
-		state.noForwardRunningSum = total;
-		return coOccurrenceFromSums(total, previous2, binary);
-	}
-	const previous = sumCodeVectors(state.noForwardHistory.slice(-Math.max(0, back - 1)), internals.codes.length);
-	state.noForwardHistory.push(entry.codeValues);
-	while (state.noForwardHistory.length > back - 1) state.noForwardHistory.shift();
-	return coOccurrenceFromSums(addVectors(previous, entry.codeValues), previous, binary);
-}
-function rowsForLocalRange(state, earliest, last) {
-	return state.buffer.filter((entry) => entry.localIndex >= earliest && entry.localIndex <= last).sort((left, right) => left.localIndex - right.localIndex).map((entry) => entry.codeValues);
-}
-function computeWindowCoOccurrence(state, rowIndex, final, internals) {
-	const rowCount = state.rowsSeen;
-	const back = internals.windowSizeBack;
-	const forward = internals.windowSizeForward;
-	const binary = internals.weightBy === "binary";
-	const infiniteBack = !Number.isFinite(back);
-	const infiniteForward = !Number.isFinite(forward);
-	if (!final && (infiniteForward || rowIndex + forward >= rowCount)) return void 0;
-	let earliest = 0;
-	let last = rowIndex;
-	if (infiniteBack) earliest = 0;
-	else if (back === 0) earliest = rowIndex;
-	else if (rowIndex - (back - 1) >= 0) earliest = rowIndex - (back - 1);
-	if (infiniteForward || rowIndex + forward >= rowCount) last = rowCount - 1;
-	else if (forward > 0 && rowIndex + forward <= rowCount - 1) last = rowIndex + forward;
-	const currRows = rowsForLocalRange(state, earliest, last);
-	if (currRows.length !== last - earliest + 1) return void 0;
-	let co = vectorToUpperTriangle(sumCodeVectors(currRows, internals.codes.length));
-	const currRowCount = currRows.length;
-	if (currRowCount > 0 && back > 1 && rowIndex - 1 >= 0) {
-		const headRows = currRowCount - 1 - forward;
-		if (headRows > 0) co = subtractVectors(co, vectorToUpperTriangle(sumCodeVectors(currRows.slice(0, headRows), internals.codes.length)));
-	}
-	if (currRowCount > 0 && forward > 0 && last <= rowCount - 1) {
-		const tailRowsToUse = last - rowIndex;
-		if (tailRowsToUse > 0) co = subtractVectors(co, vectorToUpperTriangle(sumCodeVectors(currRows.slice(-tailRowsToUse), internals.codes.length)));
-	}
-	return binary ? co.map((value) => value > 0 ? 1 : 0) : co;
-}
-function emitReadyRows(state, final, internals) {
-	while (state.nextEmitLocalIndex < state.rowsSeen) {
-		const entry = state.buffer.find((candidate) => candidate.localIndex === state.nextEmitLocalIndex);
-		if (!entry) break;
-		const co = computeWindowCoOccurrence(state, state.nextEmitLocalIndex, final, internals);
-		if (!co) break;
-		consumeRowConnection(internals, entry.globalIndex, rowWithCoOccurrences(entry.row, finalizeCoOccurrence(co, internals), internals.codeColumns));
-		state.nextEmitLocalIndex += 1;
-	}
-	if (Number.isFinite(internals.windowSizeBack)) {
-		const keepFrom = Math.max(0, state.nextEmitLocalIndex - Math.max(0, internals.windowSizeBack - 1));
-		while (state.buffer.length > 0 && (state.buffer[0]?.localIndex ?? 0) < keepFrom) {
-			state.buffer.shift();
-			state.bufferOffset = keepFrom;
-		}
-	}
-}
-function getMovingConversation(internals, key) {
-	let state = internals.movingConversations.get(key);
-	if (!state) {
-		state = {
-			key,
-			rowsSeen: 0,
-			nextEmitLocalIndex: 0,
-			bufferOffset: 0,
-			buffer: [],
-			noForwardHistory: [],
-			noForwardRunningSum: zeros(internals.codes.length)
-		};
-		internals.movingConversations.set(key, state);
-	}
-	return state;
-}
-function pushMovingRow(internals, row, globalIndex) {
-	const state = getMovingConversation(internals, mergeColumns(row, internals.conversation));
-	const entry = {
-		globalIndex,
-		localIndex: state.rowsSeen,
-		row,
-		codeValues: codeValues(row, internals.codes)
-	};
-	state.rowsSeen += 1;
-	if (internals.windowSizeForward === 0) {
-		consumeRowConnection(internals, globalIndex, rowWithCoOccurrences(row, finalizeCoOccurrence(makeNoForwardCoOccurrence(state, entry, internals), internals), internals.codeColumns));
-		return;
-	}
-	state.buffer.push(entry);
-	emitReadyRows(state, false, internals);
-}
-function pushConversationRow(internals, row, sequence) {
-	const key = mergeColumns(row, [...internals.conversation, "ENA_UNIT"]);
-	let aggregate = internals.conversationAggregates.get(key);
-	if (!aggregate) {
-		aggregate = {
-			key,
-			row: {
-				...Object.fromEntries(internals.codes.map((code) => [code, 0])),
-				...Object.fromEntries(internals.conversation.map((column) => [column, row[column] ?? null])),
-				...Object.fromEntries(internals.units.map((column) => [column, row[column] ?? null])),
-				ENA_UNIT: row.ENA_UNIT ?? mergeColumns(row, internals.units)
-			},
-			sums: zeros(internals.codes.length),
-			sequence
-		};
-		internals.conversationAggregates.set(key, aggregate);
-		internals.conversationAggregateOrder.push(key);
-	}
-	for (let index = 0; index < internals.codes.length; index += 1) aggregate.sums[index] = (aggregate.sums[index] ?? 0) + numeric(row, internals.codes[index] ?? "");
-}
-function flushConversationWindow(internals) {
-	const binary = internals.weightBy === "binary";
-	for (const key of internals.conversationAggregateOrder) {
-		const aggregate = internals.conversationAggregates.get(key);
-		if (!aggregate) continue;
-		const co = coOccurrenceFromSums(aggregate.sums, void 0, binary);
-		const row = {
-			...aggregate.row,
-			...Object.fromEntries(internals.codes.map((code, index) => [code, aggregate.sums[index] ?? 0]))
-		};
-		consumeRowConnection(internals, aggregate.sequence, rowWithCoOccurrences(row, finalizeCoOccurrence(co, internals), internals.codeColumns));
-	}
-}
-function stableMetadataColumns(internals) {
-	if (!internals.includeMeta) return [];
-	return internals.metadata.filter((column) => {
-		for (const state of internals.metadataStates.values()) if (state.unstable.has(column)) return false;
-		return true;
-	});
-}
-function buildMetadataRows(internals, countUnits) {
-	const stable = stableMetadataColumns(internals);
-	return internals.metadataOrder.filter((unit) => countUnits.has(unit)).map((unit) => {
-		const state = internals.metadataStates.get(unit);
-		return {
-			...state?.row ?? { ENA_UNIT: unit },
-			...Object.fromEntries(stable.map((column) => [column, state?.values.get(column) ?? null]))
-		};
-	});
-}
-function matrixFromRows(rows, columns) {
-	return rows.map((row) => columns.map((column) => numeric(row, column)));
-}
-function makeEndpointResult(internals) {
-	const countRows = internals.endpointOrder.map((key) => {
-		const accumulator = internals.endpointCounts.get(key);
-		return {
-			...accumulator?.row ?? { ENA_UNIT: key },
-			...Object.fromEntries(internals.codeColumns.map((column, index) => [column, accumulator?.sums[index] ?? 0]))
-		};
-	});
-	const metaData = buildMetadataRows(internals, new Set(countRows.map((row) => String(row.ENA_UNIT ?? ""))));
-	const metaByUnit = new Map(metaData.map((row) => [String(row.ENA_UNIT ?? ""), row]));
-	return {
-		countRows,
-		metaData,
-		connectionCounts: countRows.map((row) => ({
-			...metaByUnit.get(String(row.ENA_UNIT ?? "")) ?? {},
-			...Object.fromEntries(internals.codeColumns.map((column) => [column, row[column] ?? 0]))
-		}))
-	};
-}
-function makeTrajectoryRows(internals) {
-	return internals.stepOrder.map((key) => {
-		const accumulator = internals.stepCounts.get(key);
-		return {
-			...accumulator?.row ?? {},
-			...Object.fromEntries(internals.codeColumns.map((column, index) => [column, accumulator?.sums[index] ?? 0]))
-		};
-	});
-}
-function makeTrajectoryResult(internals) {
-	const perStepRows = makeTrajectoryRows(internals);
-	const countRows = [];
-	if (internals.model === "SeparateTrajectory") countRows.push(...perStepRows);
-	else {
-		const rowsByUnit = /* @__PURE__ */ new Map();
-		for (const row of perStepRows) {
-			const unit = String(row.ENA_UNIT ?? "");
-			const current = rowsByUnit.get(unit);
-			if (current) current.push(row);
-			else rowsByUnit.set(unit, [row]);
-		}
-		for (const groupRows of rowsByUnit.values()) {
-			const running = Object.fromEntries(internals.codeColumns.map((column) => [column, 0]));
-			for (const row of groupRows) {
-				for (const column of internals.codeColumns) running[column] = numeric(running, column) + numeric(row, column);
-				countRows.push({
-					...row,
-					...running
-				});
-			}
-		}
-	}
-	const trajectories = countRows.map((row) => Object.fromEntries([
-		...internals.units,
-		"ENA_UNIT",
-		...internals.conversation
-	].map((column) => [column, row[column] ?? null])));
-	const metaData = countRows.map((row) => Object.fromEntries([...internals.units, "ENA_UNIT"].map((column) => [column, row[column] ?? null])));
-	return {
-		connectionCounts: countRows.map((row) => ({
-			...Object.fromEntries(internals.units.map((column) => [column, row[column] ?? null])),
-			ENA_UNIT: row.ENA_UNIT ?? mergeColumns(row, internals.units),
-			...Object.fromEntries(internals.codeColumns.map((column) => [column, row[column] ?? 0]))
-		})),
-		metaData,
-		countRows,
-		trajectories
-	};
-}
-function flushMovingWindow(internals) {
-	if (internals.windowSizeForward === 0) return;
-	for (const state of internals.movingConversations.values()) emitReadyRows(state, true, internals);
-}
-function finishInternals(internals) {
-	if (internals.window === "Conversation") flushConversationWindow(internals);
-	else flushMovingWindow(internals);
-	const resultRows = internals.model === "EndPoint" ? makeEndpointResult(internals) : makeTrajectoryResult(internals);
-	if (internals.unitFilter && resultRows.countRows.length === 0) throw new Error("unitsUsed did not match any accumulated units; check the labels against the merged unit column (units joined with \".\").");
-	const connectionMatrix = matrixFromRows(resultRows.connectionCounts, internals.codeColumns);
-	const unitLabels = resultRows.countRows.map((row) => internals.model === "EndPoint" ? String(row.ENA_UNIT ?? "") : `${String(row.ENA_UNIT ?? "")}::${String(row.TRAJ_UNIT ?? "")}`);
-	const rowConnectionCounts = internals.materialization === "full" ? internals.rowConnectionRows.sort((left, right) => left.index - right.index).map((entry) => entry.row) : [];
-	const rawRows = internals.materialization === "full" ? internals.rawRows : [];
-	const result = {
-		modelType: internals.model,
-		codes: internals.codes,
-		units: internals.units,
-		conversation: internals.conversation,
-		codeColumns: internals.codeColumns,
-		adjacencyKey: adjacencyKey(internals.codes),
-		rawRows,
-		rowConnectionCounts,
-		connectionCounts: resultRows.connectionCounts,
-		connectionMatrix,
-		metaData: resultRows.metaData,
-		unitLabels,
-		functionParams: {
-			model: internals.model,
-			weightBy: internals.weightBy,
-			window: internals.window,
-			windowSizeBack: internals.reportedWindowSizeBack,
-			windowSizeForward: internals.windowSizeForward,
-			includeMeta: internals.includeMeta,
-			...internals.unitFilter ? { unitsUsed: [...internals.unitFilter] } : {}
-		}
-	};
-	const trajectoryRows = resultRows.trajectories;
-	if (trajectoryRows) result.trajectories = trajectoryRows;
-	return result;
-}
-function activeBufferedRows(internals) {
-	let total = 0;
-	for (const state of internals.movingConversations.values()) total += state.buffer.length + state.noForwardHistory.length;
-	return total;
-}
-function updateProgress(state, internals, expectedRows) {
-	state.progress = expectedRows && expectedRows > 0 ? Math.min(.99, state.rowsSeen / expectedRows) : 0;
-	state.activeConversations = internals.movingConversations.size + internals.conversationAggregates.size;
-	state.activeBufferedRows = activeBufferedRows(internals);
-	state.activeConversationsPeak = Math.max(state.activeConversationsPeak, state.activeConversations);
-	state.activeBufferedRowsPeak = Math.max(state.activeBufferedRowsPeak, state.activeBufferedRows);
-}
-function makeInternals(options) {
-	const model = normalizeModel(options.model);
-	const window = normalizeWindow(options.window);
-	const weightBy = normalizeWeightBy(options.weightBy);
-	const metadata = options.metadata ?? [];
-	assertNonEmptyColumns(options.units, "units");
-	assertNonEmptyColumns(options.conversation, "conversation");
-	assertNonEmptyColumns(options.codes, "codes");
-	if (options.rows) assertRowsHaveColumns(options.rows, [
-		...options.units,
-		...options.conversation,
-		...options.codes,
-		...metadata
-	]);
-	return {
-		model,
-		window,
-		weightBy,
-		windowSizeBack: window === "Conversation" ? Number.POSITIVE_INFINITY : options.windowSizeBack ?? 1,
-		reportedWindowSizeBack: options.windowSizeBack ?? 1,
-		windowSizeForward: options.windowSizeForward ?? 0,
-		includeMeta: options.includeMeta ?? true,
-		materialization: options.materialization ?? "full",
-		units: options.units,
-		conversation: options.conversation,
-		codes: options.codes,
-		metadata,
-		codeColumns: stringVectorToUpperTriangle(options.codes),
-		...options.mask ? { mask: flattenMask(options.mask) } : {},
-		...options.unitsUsed ? { unitFilter: new Set(options.unitsUsed.map(String)) } : {},
-		rawRows: [],
-		rowConnectionRows: [],
-		movingConversations: /* @__PURE__ */ new Map(),
-		conversationAggregates: /* @__PURE__ */ new Map(),
-		conversationAggregateOrder: [],
-		endpointCounts: /* @__PURE__ */ new Map(),
-		endpointOrder: [],
-		stepCounts: /* @__PURE__ */ new Map(),
-		stepOrder: [],
-		metadataStates: /* @__PURE__ */ new Map(),
-		metadataOrder: [],
-		rowConnectionSequence: 0
-	};
-}
-function ingestRow(internals, row, globalIndex) {
-	const rowWithUnit = makeUnitRow(row, internals.units);
-	if (internals.materialization === "full") internals.rawRows.push(rowWithUnit);
-	ensureMetadata(internals, rowWithUnit, globalIndex);
-	registerCountAccumulator(internals, rowWithUnit, globalIndex);
-	if (internals.window === "Conversation") pushConversationRow(internals, rowWithUnit, internals.rowConnectionSequence);
-	else pushMovingRow(internals, rowWithUnit, globalIndex);
-	internals.rowConnectionSequence += 1;
-}
-function accumulateDataChunked(options) {
-	const chunkSize = options.chunkSize ?? 1e4;
-	if (chunkSize <= 0 || !Number.isFinite(chunkSize)) throw new Error("chunkSize must be a positive finite number.");
-	options.onProgress?.(0);
-	const stream = createAccumulationStream({
-		...options,
-		rows: [],
-		expectedRows: options.rows.length,
-		onProgress: (progress) => options.onProgress?.(progress)
-	});
-	for (let index = 0; index < options.rows.length; index += chunkSize) stream.push(options.rows.slice(index, index + chunkSize));
-	const result = stream.finish();
-	options.onProgress?.(1);
-	return result;
-}
-function createAccumulationStream(options) {
-	const { rows: initialRows, chunkSize = 1e4, expectedRows, onProgress } = options;
-	if (chunkSize <= 0 || !Number.isFinite(chunkSize)) throw new Error("chunkSize must be a positive finite number.");
-	validateAccumulateOptions(options, { requireRows: false });
-	const internals = makeInternals(options);
-	const state = {
-		rowsSeen: 0,
-		chunksSeen: 0,
-		isFinished: false,
-		progress: 0,
-		activeConversations: 0,
-		activeBufferedRows: 0,
-		activeConversationsPeak: 0,
-		activeBufferedRowsPeak: 0
-	};
-	const push = (rows) => {
-		if (state.isFinished) throw new Error("Cannot push rows after accumulation stream has finished.");
-		assertRowsHaveColumns(rows, [
-			...options.units,
-			...options.conversation,
-			...options.codes,
-			...options.metadata ?? []
-		]);
-		for (const row of rows) {
-			ingestRow(internals, row, state.rowsSeen);
-			state.rowsSeen += 1;
-		}
-		state.chunksSeen += 1;
-		updateProgress(state, internals, expectedRows);
-		onProgress?.(state.progress, { ...state });
-		return { ...state };
-	};
-	if (initialRows && initialRows.length > 0) for (let index = 0; index < initialRows.length; index += chunkSize) push(initialRows.slice(index, index + chunkSize));
-	return {
-		state,
-		push,
-		finish() {
-			if (state.isFinished) throw new Error("Accumulation stream has already finished.");
-			state.isFinished = true;
-			const result = finishInternals(internals);
-			state.progress = 1;
-			updateProgress(state, internals, expectedRows);
-			state.progress = 1;
-			onProgress?.(1, { ...state });
-			return result;
-		},
-		reset() {
-			throw new Error("Reset is not supported for incremental accumulation streams. Create a new stream instead.");
-		}
-	};
-}
-var MODELS, WINDOWS, ROTATION_METHODS, NODE_POSITION_METHODS;
-var init_chunk_FJ7A67ES = __esmMin((() => {
-	init_chunk_6BOINFRO();
-	init_chunk_HJSM5RET();
-	MODELS = /* @__PURE__ */ new Set([
-		"EndPoint",
-		"AccumulatedTrajectory",
-		"SeparateTrajectory"
-	]);
-	WINDOWS = /* @__PURE__ */ new Set(["MovingStanzaWindow", "Conversation"]);
-	ROTATION_METHODS = /* @__PURE__ */ new Set([
-		"svd",
-		"mean",
-		"generalized",
-		"regression",
-		"regression2",
-		"hena",
-		"spherical"
-	]);
-	NODE_POSITION_METHODS = /* @__PURE__ */ new Set([
-		"undirected",
-		"directed",
-		"directed-ground-response"
-	]);
-}));
-//#endregion
-//#region ../../node_modules/jena-js/dist/chunk-4NYP2CS4.js
-function prepareDesign(x, standardize) {
-	const rows = x.length;
-	const cols = x[0]?.length ?? 0;
-	const means = Array.from({ length: cols }, (_unused, col) => {
-		let total = 0;
-		for (const row of x) total += row[col] ?? 0;
-		return total / Math.max(1, rows);
-	});
-	const scales = Array.from({ length: cols }, () => 1);
-	const active = Array.from({ length: cols }, () => true);
-	const centered = x.map((row) => row.map((value, col) => value - (means[col] ?? 0)));
-	for (let col = 0; col < cols; col += 1) {
-		let sumSquares = 0;
-		for (const row of centered) sumSquares += (row[col] ?? 0) ** 2;
-		const sd = Math.sqrt(sumSquares / Math.max(1, rows));
-		if (sd === 0) {
-			active[col] = false;
-			continue;
-		}
-		if (standardize) {
-			scales[col] = sd;
-			for (const row of centered) row[col] = (row[col] ?? 0) / sd;
-		}
-	}
-	return {
-		rows,
-		cols,
-		centered,
-		means,
-		scales,
-		active,
-		columnNorms: Array.from({ length: cols }, (_unused, col) => {
-			let sumSquares = 0;
-			for (const row of centered) sumSquares += (row[col] ?? 0) ** 2;
-			return sumSquares / Math.max(1, rows);
-		})
-	};
-}
-function centerResponses(y) {
-	const rows = y.length;
-	const cols = y[0]?.length ?? 0;
-	const means = Array.from({ length: cols }, (_unused, col) => {
-		let total = 0;
-		for (const row of y) total += row[col] ?? 0;
-		return total / Math.max(1, rows);
-	});
-	return {
-		centered: y.map((row) => row.map((value, col) => value - (means[col] ?? 0))),
-		means
-	};
-}
-function rescalePenaltyFactors(penaltyFactor, cols) {
-	const raw = penaltyFactor ?? Array.from({ length: cols }, () => 1);
-	if (raw.length !== cols) throw new Error(`penaltyFactor must have one entry per predictor (${cols}); got ${raw.length}.`);
-	const total = raw.reduce((sum, value) => sum + value, 0);
-	if (total <= 0) return raw.map(() => 0);
-	return raw.map((value) => value * cols / total);
-}
-function solveStandardized(design, centeredY, responses, lambda, alpha, penalty, maxIterations, tolerance) {
-	const { rows, cols, centered, columnNorms, active } = design;
-	const beta = Array.from({ length: cols }, () => Array.from({ length: responses }, () => 0));
-	const residual = centeredY.map((row) => [...row]);
-	for (let iteration = 0; iteration < maxIterations; iteration += 1) {
-		let maxDelta = 0;
-		for (let col = 0; col < cols; col += 1) {
-			if (!active[col]) continue;
-			const norm = columnNorms[col] ?? 0;
-			const current = beta[col] ?? [];
-			const u = Array.from({ length: responses }, (_unused, k) => {
-				let total = 0;
-				for (let row = 0; row < rows; row += 1) total += (centered[row]?.[col] ?? 0) * (residual[row]?.[k] ?? 0);
-				return total / Math.max(1, rows) + norm * (current[k] ?? 0);
-			});
-			const uNorm = Math.sqrt(u.reduce((sum, value) => sum + value * value, 0));
-			const groupPenalty = lambda * alpha * (penalty[col] ?? 1);
-			const shrink = uNorm > groupPenalty ? 1 - groupPenalty / uNorm : 0;
-			const denominator = norm + lambda * (1 - alpha) * (penalty[col] ?? 1);
-			for (let k = 0; k < responses; k += 1) {
-				const next = denominator > 0 ? (u[k] ?? 0) * shrink / denominator : 0;
-				const delta = next - (current[k] ?? 0);
-				if (delta !== 0) {
-					for (let row = 0; row < rows; row += 1) {
-						const residualRow = residual[row];
-						if (residualRow) residualRow[k] = (residualRow[k] ?? 0) - (centered[row]?.[col] ?? 0) * delta;
-					}
-					current[k] = next;
-					maxDelta = Math.max(maxDelta, Math.abs(delta));
-				}
-			}
-		}
-		if (maxDelta < tolerance) break;
-	}
-	return beta;
-}
-function multiGaussianElasticNet(x, y, options) {
-	const alpha = options.alpha ?? 1;
-	const standardize = options.standardize ?? true;
-	const maxIterations = options.maxIterations ?? 1e4;
-	const tolerance = options.tolerance ?? 1e-12;
-	const design = prepareDesign(x, standardize);
-	const { centered: centeredY, means: yMeans } = centerResponses(y);
-	const responses = y[0]?.length ?? 0;
-	const penalty = rescalePenaltyFactors(options.penaltyFactor, design.cols);
-	const coefficients = solveStandardized(design, centeredY, responses, options.lambda, alpha, penalty, maxIterations, tolerance).map((row, col) => row.map((value) => value / (design.scales[col] ?? 1)));
-	return {
-		intercepts: Array.from({ length: responses }, (_unused, k) => {
-			let offset = 0;
-			for (let col = 0; col < design.cols; col += 1) offset += (coefficients[col]?.[k] ?? 0) * (design.means[col] ?? 0);
-			return (yMeans[k] ?? 0) - offset;
-		}),
-		coefficients,
-		lambda: options.lambda
-	};
-}
-function lambdaPath(design, centeredY, alpha, penalty, nlambda, minRatio) {
-	const responses = centeredY[0]?.length ?? 0;
-	const effectiveAlpha = Math.max(alpha, .001);
-	let lambdaMax = 0;
-	for (let col = 0; col < design.cols; col += 1) {
-		if (!design.active[col] || (penalty[col] ?? 1) <= 0) continue;
-		let sumSquares = 0;
-		for (let k = 0; k < responses; k += 1) {
-			let inner = 0;
-			for (let row = 0; row < design.rows; row += 1) inner += (design.centered[row]?.[col] ?? 0) * (centeredY[row]?.[k] ?? 0);
-			sumSquares += (inner / Math.max(1, design.rows)) ** 2;
-		}
-		lambdaMax = Math.max(lambdaMax, Math.sqrt(sumSquares) / (effectiveAlpha * (penalty[col] ?? 1)));
-	}
-	if (lambdaMax <= 0) lambdaMax = 1;
-	const path = [];
-	for (let index = 0; index < nlambda; index += 1) path.push(lambdaMax * Math.pow(minRatio, index / (nlambda - 1)));
-	return path;
-}
-function multiGaussianElasticNetCV(x, y, options = {}) {
-	const rows = x.length;
-	const cols = x[0]?.length ?? 0;
-	const alpha = options.alpha ?? 1;
-	const standardize = options.standardize ?? true;
-	const nfolds = Math.max(2, Math.min(options.nfolds ?? 10, rows));
-	const nlambda = options.nlambda ?? 60;
-	const minRatio = options.lambdaMinRatio ?? (rows < cols ? .01 : 1e-4);
-	const pathDesign = prepareDesign(x, standardize);
-	const { centered: centeredY } = centerResponses(y);
-	const lambdas = lambdaPath(pathDesign, centeredY, alpha, rescalePenaltyFactors(options.penaltyFactor, cols), nlambda, minRatio);
-	const netOptions = (lambda) => {
-		const base = {
-			lambda,
-			alpha,
-			standardize
-		};
-		if (options.penaltyFactor !== void 0) base.penaltyFactor = options.penaltyFactor;
-		if (options.maxIterations !== void 0) base.maxIterations = options.maxIterations;
-		if (options.tolerance !== void 0) base.tolerance = options.tolerance;
-		return base;
-	};
-	const foldOf = (row) => row % nfolds;
-	let bestLambda = lambdas[0] ?? 1;
-	let bestError = Number.POSITIVE_INFINITY;
-	for (const lambda of lambdas) {
-		let squaredError = 0;
-		let count = 0;
-		for (let fold = 0; fold < nfolds; fold += 1) {
-			const trainX = [];
-			const trainY = [];
-			const testX = [];
-			const testY = [];
-			for (let row = 0; row < rows; row += 1) {
-				(foldOf(row) === fold ? testX : trainX).push(x[row] ?? []);
-				(foldOf(row) === fold ? testY : trainY).push(y[row] ?? []);
-			}
-			if (trainX.length === 0 || testX.length === 0) continue;
-			const fit = multiGaussianElasticNet(trainX, trainY, netOptions(lambda));
-			for (let row = 0; row < testX.length; row += 1) for (let k = 0; k < (testY[row]?.length ?? 0); k += 1) {
-				let predicted = fit.intercepts[k] ?? 0;
-				for (let col = 0; col < cols; col += 1) predicted += (fit.coefficients[col]?.[k] ?? 0) * (testX[row]?.[col] ?? 0);
-				squaredError += ((testY[row]?.[k] ?? 0) - predicted) ** 2;
-				count += 1;
-			}
-		}
-		const meanError = squaredError / Math.max(1, count);
-		if (meanError < bestError) {
-			bestError = meanError;
-			bestLambda = lambda;
-		}
-	}
-	return {
-		...multiGaussianElasticNet(x, y, netOptions(bestLambda)),
-		lambdas
-	};
-}
-var init_chunk_4NYP2CS4 = __esmMin((() => {}));
-//#endregion
-//#region ../../node_modules/jena-js/dist/chunk-CLCQQLKK.js
-function svdRotation(pointsForProjection) {
-	const eigen = symmetricJacobiEigen(covarianceLike(pointsForProjection));
-	const divisor = Math.max(1, pointsForProjection.length - 1);
-	const eigenvalues = eigen.eigenvalues.map((value) => value / divisor);
-	return {
-		rotationMatrix: eigen.eigenvectors,
-		rotationColumns: eigen.eigenvalues.map((_value, index) => `SVD${index + 1}`),
-		eigenvalues
-	};
-}
-function nodeWeightsFromLineWeights(lineWeights, numNodes) {
-	return lineWeights.map((adjacency) => {
-		const weights = Array.from({ length: numNodes }, () => 0);
-		let z = 0;
-		for (let x = 0; x < numNodes - 1; x += 1) for (let y = 0; y <= x; y += 1) {
-			const value = adjacency[z] ?? 0;
-			weights[x + 1] = (weights[x + 1] ?? 0) + .5 * value;
-			weights[y] = (weights[y] ?? 0) + .5 * value;
-			z += 1;
-		}
-		const length = Math.max(1e-4, weights.reduce((sum, value) => sum + Math.abs(value), 0));
-		return weights.map((value) => value / length);
-	});
-}
-function directedWeightsFromLineWeights(lineWeights, numNodes) {
-	return lineWeights.map((adjacency) => {
-		const weights = Array.from({ length: numNodes }, () => 0);
-		let z = 0;
-		for (let x = 0; x < numNodes; x += 1) for (let y = 0; y < numNodes; y += 1) {
-			const value = adjacency[z] ?? 0;
-			weights[x] = (weights[x] ?? 0) + value;
-			weights[y] = (weights[y] ?? 0) + value;
-			z += 1;
-		}
-		const length = Math.max(1e-4, weights.reduce((sum, value) => sum + Math.abs(value), 0));
-		return weights.map((value) => value / length);
-	});
-}
-function solveNodePositionsFromWeights(weights, points) {
-	const wt = transpose(weights);
-	const normal = multiplyMatrices(wt, weights);
-	const dims = points[0]?.length ?? 0;
-	const nodeCount = weights[0]?.length ?? 0;
-	const nodeColumns = [];
-	for (let dim = 0; dim < dims; dim += 1) {
-		const rhs = multiplyMatrices(wt, points.map((row) => [row[dim] ?? 0])).map((row) => row[0] ?? 0);
-		nodeColumns.push(solveLinearSystem(normal, rhs));
-	}
-	const nodes = Array.from({ length: nodeCount }, (_unused, nodeIndex) => nodeColumns.map((col) => col[nodeIndex] ?? 0));
-	return {
-		nodes,
-		centroids: multiplyMatrices(weights, nodes),
-		weights
-	};
-}
-function lwsLeastSquaresPositions(lineWeights, points, numNodes) {
-	if (lineWeights.length !== points.length) throw new Error("lineWeights and points must have the same number of rows.");
-	if (points.length === 0) return {
-		nodes: [],
-		centroids: [],
-		weights: []
-	};
-	return solveNodePositionsFromWeights(nodeWeightsFromLineWeights(lineWeights, numNodes), points);
-}
-function directedNodeCount(adjacencyLength, method) {
-	const numNodes = Math.round(Math.sqrt(adjacencyLength));
-	if (numNodes * numNodes !== adjacencyLength) throw new Error(`${method} requires a directed adjacency with n*n columns per row, got ${adjacencyLength}. Undirected models produce n*(n-1)/2 upper-triangle columns; use nodePositionMethod: "undirected" for them.`);
-	return numNodes;
-}
-function directedNodePositions(lineWeights, points) {
-	if (lineWeights.length !== points.length) throw new Error("lineWeights and points must have the same number of rows.");
-	if (points.length === 0) return {
-		nodes: [],
-		centroids: [],
-		weights: []
-	};
-	return solveNodePositionsFromWeights(directedWeightsFromLineWeights(lineWeights, directedNodeCount(lineWeights[0]?.length ?? 0, "directedNodePositions")), points);
-}
-function directedNodePositionsWithGroundResponseAdded(lineWeights, points) {
-	if (lineWeights.length !== points.length) throw new Error("lineWeights and points must have the same number of rows.");
-	if (points.length === 0) return {
-		nodes: [],
-		centroids: [],
-		weights: []
-	};
-	const numNodes = directedNodeCount(lineWeights[0]?.length ?? 0, "directedNodePositionsWithGroundResponseAdded");
-	const weights = directedWeightsFromLineWeights(lineWeights, numNodes);
-	const addedWeights = [];
-	const addedPoints = [];
-	for (let row = 0; row + 1 < weights.length; row += 2) {
-		addedWeights.push(Array.from({ length: numNodes }, (_unused, col) => (weights[row]?.[col] ?? 0) + (weights[row + 1]?.[col] ?? 0)));
-		const dims = points[0]?.length ?? 0;
-		addedPoints.push(Array.from({ length: dims }, (_unused, col) => (points[row]?.[col] ?? 0) + (points[row + 1]?.[col] ?? 0)));
-	}
-	const solved = solveNodePositionsFromWeights(addedWeights, addedPoints);
-	return {
-		nodes: solved.nodes,
-		centroids: multiplyMatrices(weights, solved.nodes),
-		weights
-	};
-}
-function nodesAsRows(codes, nodeMatrix, dimensions) {
-	return nodeMatrix.map((row, index) => ({
-		code: codes[index] ?? String(index),
-		...Object.fromEntries(dimensions.map((dimension, dimIndex) => [dimension, row[dimIndex] ?? 0]))
-	}));
-}
-function centroidsAsRows(unitLabels, centroidMatrix, dimensions) {
-	return centroidMatrix.map((row, index) => ({
-		unit: unitLabels[index] ?? String(index),
-		...Object.fromEntries(dimensions.map((dimension, dimIndex) => [dimension, row[dimIndex] ?? 0]))
-	}));
-}
-function isBooleanSelector(selector) {
-	return selector.every((value) => typeof value === "boolean");
-}
-function groupMask(selector, rows) {
-	if (isBooleanSelector(selector)) {
-		if (selector.length !== rows.length) throw new Error("Group selector length must match row count.");
-		return selector;
-	}
-	const values = new Set(selector.map(String));
-	return rows.map((row) => values.has(String(row.ENA_UNIT ?? row.unit ?? "")));
-}
-function isSelector(value) {
-	return Array.isArray(value) && value.every((entry) => typeof entry === "string" || typeof entry === "boolean");
-}
-function normalizeMeanGroups(groups) {
-	if (Array.isArray(groups) && groups.length === 2 && isSelector(groups[0]) && isSelector(groups[1])) return [[groups[0], groups[1]]];
-	return groups;
-}
-function rowsByMask(matrix, mask) {
-	return matrix.filter((_row, index) => mask[index] ?? false);
-}
-function columnsToMatrix(columns, rows) {
-	return Array.from({ length: rows }, (_unused, row) => columns.map((col) => col[row] ?? 0));
-}
-function combineRotationColumns(columns) {
-	return columnsToMatrix(columns, columns[0]?.length ?? 0);
-}
-function orthogonalSvd(data, leadingColumns) {
-	const width = data[0]?.length ?? 0;
-	if (width === 0) return [];
-	const q = gramSchmidtComplete(leadingColumns, width);
-	const leadingCount = leadingColumns.length;
-	const qLeading = q.map((row) => row.slice(0, leadingCount));
-	const qRest = q.map((row) => row.slice(leadingCount));
-	if ((qRest[0]?.length ?? 0) === 0) return qLeading;
-	const restRotation = svdRotation(multiplyMatrices(data, qRest)).rotationMatrix;
-	const rest = multiplyMatrices(qRest, restRotation);
-	return q.map((_row, index) => [...qLeading[index] ?? [], ...rest[index] ?? []]);
-}
-function makeColumnNames(prefix, count, start = 1) {
-	return Array.from({ length: count }, (_unused, index) => `${prefix}${index + start}`);
-}
-function makeUniqueNames(names) {
-	const seen = /* @__PURE__ */ new Map();
-	return names.map((name) => {
-		const count = seen.get(name) ?? 0;
-		seen.set(name, count + 1);
-		return count === 0 ? name : `${name}.${count}`;
-	});
-}
-function assembleRotation(points, leading, leadingNames) {
-	const width = points[0]?.length ?? 0;
-	let deflated = points;
-	for (const vector of leading) deflated = subtractOuterProjection(deflated, vector);
-	const svd = svdRotation(deflated);
-	const leadingEigenvalue = svd.eigenvalues[0] ?? 0;
-	const rankThreshold = Math.max(Number.MIN_VALUE, leadingEigenvalue * 1e-12);
-	const significant = Math.min(svd.eigenvalues.filter((value) => value > rankThreshold).length, Math.max(0, width - leading.length));
-	const columns = [...leading];
-	for (let index = 0; index < significant; index += 1) columns.push(svd.rotationMatrix.map((row) => row[index] ?? 0));
-	const completed = gramSchmidtComplete(columns, width);
-	for (let index = columns.length; index < width; index += 1) columns.push(completed.map((row) => row[index] ?? 0));
-	const residualCount = Math.max(0, width - leading.length);
-	return {
-		rotationMatrix: combineRotationColumns(columns),
-		rotationColumns: makeUniqueNames([...leadingNames, ...makeColumnNames("SVD", residualCount, leading.length + 1)]),
-		eigenvalues: []
-	};
-}
-function rotateWithLeadingColumns(data, leadingColumns, leadingNames) {
-	const rotationMatrix = orthogonalSvd(data, leadingColumns);
-	const residualCount = Math.max(0, (rotationMatrix[0]?.length ?? 0) - leadingNames.length);
-	return {
-		rotationMatrix,
-		rotationColumns: [...leadingNames, ...makeColumnNames("SVD", residualCount, leadingNames.length + 1)],
-		eigenvalues: []
-	};
-}
-function rotateByMean(pointsForProjection, enadata, params) {
-	const groups = normalizeMeanGroups(params.groups);
-	if (groups.length === 0) throw new Error("Unable to rotate without at least one pair of groups.");
-	const rows = enadata.connectionCounts;
-	let deflated = centerData(pointsForProjection);
-	const weights = [];
-	for (const [leftSelector, rightSelector] of groups) {
-		const left = rowsByMask(deflated, groupMask(leftSelector, rows));
-		const right = rowsByMask(deflated, groupMask(rightSelector, rows));
-		if (left.length === 0 || right.length === 0) throw new Error("Mean rotation groups must both contain at least one row.");
-		const direction = normalizeVector(subtractVectors$1(meanColumns(left), meanColumns(right)));
-		if (l2Norm(direction) === 0) throw new Error("Mean rotation groups have identical means.");
-		deflated = subtractOuterProjection(deflated, direction);
-		weights.push(direction);
-	}
-	return rotateWithLeadingColumns(deflated, weights, makeColumnNames("MR", weights.length));
-}
-function scalarToNumber(value) {
-	if (typeof value === "number") return value;
-	if (typeof value === "boolean") return value ? 1 : 0;
-	if (value === null) return 0;
-	const parsed = Number(value);
-	return Number.isFinite(parsed) ? parsed : NaN;
-}
-function metadataVector(rows, columnName) {
-	return rows.map((row) => row[columnName] ?? null);
-}
-function encodeVector(values) {
-	const numeric = values.map(scalarToNumber);
-	if (numeric.every(Number.isFinite)) return numeric;
-	const levels = [...new Set(values.map((value) => String(value)))].sort();
-	return values.map((value) => levels.indexOf(String(value)) + 1);
-}
-function isNumericVector(values) {
-	return values.map(scalarToNumber).every(Number.isFinite);
-}
-function resolveVarNames(value) {
-	return Array.isArray(value) ? value : [value];
-}
-function simpleLinearFit(response, predictor) {
-	const design = predictor.map((value) => [1, value]);
-	const coefficients = designSolve(design, response);
-	return {
-		coefficients,
-		fitted: multiplyMatrices(design, coefficients)
-	};
-}
-function categoricalMainEffect(response, target) {
-	const levels = [...new Set(target.map((value) => String(value)))];
-	const means = /* @__PURE__ */ new Map();
-	for (const level of levels) {
-		const rows = response.filter((_row, index) => String(target[index] ?? "") === level);
-		means.set(level, meanColumns(rows));
-	}
-	return response.map((_row, index) => means.get(String(target[index] ?? "")) ?? []);
-}
-function computeBetweenGroupScatter(matrix, groups) {
-	const width = matrix[0]?.length ?? 0;
-	const totalMean = meanColumns(matrix);
-	const out = Array.from({ length: width }, () => Array.from({ length: width }, () => 0));
-	const levels = [...new Set(groups.map((value) => String(value)))];
-	for (const level of levels) {
-		const rows = matrix.filter((_row, index) => String(groups[index] ?? "") === level);
-		if (rows.length === 0) continue;
-		const diff = subtractVectors$1(meanColumns(rows), totalMean);
-		for (let i = 0; i < width; i += 1) for (let j = 0; j < width; j += 1) {
-			const outRow = out[i];
-			if (outRow) outRow[j] = (outRow[j] ?? 0) + rows.length * (diff[i] ?? 0) * (diff[j] ?? 0);
-		}
-	}
-	return out;
-}
-function gmr(points, rows, vars) {
-	const target = metadataVector(rows, vars[0] ?? "");
-	const targetEncoded = encodeVector(target);
-	const numericTarget = isNumericVector(target);
-	const simple = simpleLinearFit(points, targetEncoded);
-	const fittedUnadjusted = numericTarget ? simple.fitted : categoricalMainEffect(points, target);
-	let fittedMainEffect = fittedUnadjusted;
-	if (vars.length > 1) {
-		const design = buildMetadataDesign(rows, vars);
-		const predictors = design.matrix.map((row) => row.slice(1));
-		const predictorLabels = design.labels.slice(1);
-		const fit = multiGaussianElasticNetCV(predictors, points, {
-			alpha: 1,
-			penaltyFactor: predictorLabels.map((label) => label === (vars[0] ?? "") ? 0 : 1)
-		});
-		const x1Index = predictorLabels.indexOf(vars[0] ?? "");
-		const x1Coefficients = fit.coefficients[x1Index] ?? [];
-		fittedMainEffect = predictors.map((row) => x1Coefficients.map((coefficient) => (row[x1Index] ?? 0) * coefficient));
-	}
-	if (numericTarget) return {
-		direction: normalizeVector(simple.coefficients[1] ?? []),
-		fittedMainEffect,
-		fittedUnadjusted,
-		target
-	};
-	return {
-		direction: normalizeVector(symmetricJacobiEigen(computeBetweenGroupScatter(fittedMainEffect, target)).eigenvectors.map((row) => row[0] ?? 0)),
-		fittedMainEffect,
-		fittedUnadjusted,
-		target
-	};
-}
-function rotateByGeneralized(pointsForProjection, enadata, params) {
-	const x = gmr(pointsForProjection, enadata.metaData, resolveVarNames(params.xVar));
-	const a = pointsForProjection;
-	let deflated = subtractOuterProjection(a, x.direction);
-	let x1;
-	if (params.select2Groups) {
-		const [left, right] = params.select2Groups;
-		const leftRows = deflated.filter((_row, index) => String(x.target[index] ?? "") === String(left));
-		const rightRows = deflated.filter((_row, index) => String(x.target[index] ?? "") === String(right));
-		if (leftRows.length > 0 && rightRows.length > 0) {
-			const diff = subtractVectors$1(meanColumns(leftRows), meanColumns(rightRows));
-			if (l2Norm(diff) > 1e-10) x1 = normalizeVector(diff);
-		}
-	}
-	if (!x1) x1 = svdRotation(x.fittedUnadjusted).rotationMatrix.map((row) => row[0] ?? 0);
-	const projection = dot(x1, x.direction);
-	if (Math.abs(projection) < .99) {
-		x1 = normalizeVector(subtractVectors$1(x1, x.direction.map((value) => value * projection)));
-		deflated = subtractOuterProjection(deflated, x1);
-	}
-	const yDirection = params.yVar ? gmr(deflated, enadata.metaData, resolveVarNames(params.yVar)).direction : svdRotation(deflated).rotationMatrix.map((row) => row[0] ?? 0);
-	const yName = params.yVar ? "RR2" : "SVD2";
-	return assembleRotation(a, [x.direction, normalizeVector(yDirection)], ["RR1", yName]);
-}
-function stripLmWrapper(formula) {
-	const match = formula.match(/formula\s*=\s*([^,)]+)/);
-	if (match?.[1]) return match[1].trim();
-	return formula.replace(/^lm\s*\(/, "").replace(/\)$/, "").trim();
-}
-function parseFormula(formula) {
-	const [lhsRaw, rhsRaw] = stripLmWrapper(formula).split("~");
-	const lhs = lhsRaw?.trim();
-	const rhs = rhsRaw?.trim();
-	if (!lhs || !rhs) throw new Error(`Invalid regression formula: ${formula}`);
-	return {
-		lhs,
-		rhsTerms: rhs.split("+").map((term) => term.trim()).filter(Boolean)
-	};
-}
-function buildMetadataDesign(rows, terms) {
-	const columns = [Array.from({ length: rows.length }, () => 1)];
-	const labels = ["(Intercept)"];
-	for (const term of terms) {
-		const pieces = term.split(":").map((piece) => piece.trim());
-		let values = Array.from({ length: rows.length }, () => 1);
-		for (const piece of pieces) {
-			const encoded = encodeVector(metadataVector(rows, piece));
-			values = values.map((value, index) => value * (encoded[index] ?? 0));
-		}
-		columns.push(values);
-		labels.push(term);
-	}
-	return {
-		matrix: columnsToMatrix(columns, rows.length),
-		labels
-	};
-}
-function buildFormulaDesign(rows, points, terms) {
-	const columns = [Array.from({ length: rows.length }, () => 1)];
-	const labels = ["(Intercept)"];
-	for (const term of terms) {
-		const pieces = term.split(":").map((piece) => piece.trim());
-		const hasV = pieces.includes("V");
-		const nonV = pieces.filter((piece) => piece !== "V");
-		const metaMultiplier = nonV.reduce((current, piece) => {
-			const encoded = encodeVector(metadataVector(rows, piece));
-			return current.map((value, index) => value * (encoded[index] ?? 0));
-		}, Array.from({ length: rows.length }, () => 1));
-		if (hasV) {
-			const width = points[0]?.length ?? 0;
-			for (let dim = 0; dim < width; dim += 1) {
-				columns.push(points.map((row, index) => (row[dim] ?? 0) * (metaMultiplier[index] ?? 1)));
-				labels.push(nonV.length > 0 ? `V${dim + 1}:${nonV.join(":")}` : `V${dim + 1}`);
-			}
-		} else {
-			columns.push(metaMultiplier);
-			labels.push(term);
-		}
-	}
-	return {
-		matrix: columnsToMatrix(columns, rows.length),
-		labels
-	};
-}
-function firstPredictorVectorFromRegression(points, rows, formula, fallbackName) {
-	const spec = parseFormula(formula);
-	const design = buildMetadataDesign(rows, spec.rhsTerms);
-	return {
-		vector: normalizeVector(designSolve(design.matrix, points)[1] ?? []),
-		name: `${fallbackName || design.labels[1] || spec.lhs}_reg`
-	};
-}
-function vCoefficientVectorFromRegression(points, rows, formula) {
-	const spec = parseFormula(formula);
-	const design = buildFormulaDesign(rows, points, spec.rhsTerms);
-	const response = encodeVector(metadataVector(rows, spec.lhs)).map((value) => [value]);
-	const coefficients = designSolve(design.matrix, response);
-	return {
-		vector: normalizeVector(design.labels.map((label, index) => ({
-			label,
-			value: coefficients[index]?.[0] ?? 0
-		})).filter((entry) => entry.label.startsWith("V") && !entry.label.includes(":")).map((entry) => entry.value)),
-		name: "V_reg"
-	};
-}
-function rotateByRegression(pointsForProjection, enadata, params) {
-	const fallbackName = enadata.codeColumns[0] ?? "V";
-	const x = firstPredictorVectorFromRegression(pointsForProjection, enadata.metaData, params.xVar, fallbackName);
-	const columns = [x.vector];
-	const names = [x.name];
-	if (params.yVar) {
-		const y = firstPredictorVectorFromRegression(pointsForProjection, enadata.metaData, params.yVar, fallbackName);
-		columns.push(y.vector);
-		names.push(y.name);
-	}
-	return assembleRotation(pointsForProjection, columns, names);
-}
-function rotateByRegression2(pointsForProjection, enadata, params) {
-	const x = vCoefficientVectorFromRegression(pointsForProjection, enadata.metaData, params.xVar);
-	const columns = [x.vector];
-	const names = [x.name];
-	if (params.yVar) {
-		const y = vCoefficientVectorFromRegression(pointsForProjection, enadata.metaData, params.yVar);
-		columns.push(y.vector);
-		names.push(y.name);
-	}
-	return assembleRotation(pointsForProjection, columns, names);
-}
-function runLengthEncode(values) {
-	let id = -1;
-	let previous;
-	return values.map((value) => {
-		const key = String(value);
-		if (key !== previous) {
-			id += 1;
-			previous = key;
-		}
-		return id;
-	});
-}
-function centerVectorValues(values) {
-	const mean = values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
-	return values.map((value) => value - mean);
-}
-function isNumericColumn(values) {
-	return values.every((value) => typeof value === "number" && Number.isFinite(value));
-}
-function factorContrastColumns(values, name) {
-	const levels = [...new Set(values.map((value) => String(value)))].sort();
-	const columns = [];
-	const names = [];
-	for (const level of levels.slice(1)) {
-		columns.push(values.map((value) => String(value) === level ? 1 : 0));
-		names.push(`${name}${level}`);
-	}
-	return {
-		columns,
-		names
-	};
-}
-function rotateByHena(pointsForProjection, enadata, params) {
-	const data = centerData(pointsForProjection);
-	const rows = enadata.metaData;
-	const centering = params.centering ?? true;
-	const encodeVariable = (name) => {
-		const raw = metadataVector(rows, name);
-		if (isNumericColumn(raw)) return {
-			values: raw.map((value) => Number(value)),
-			label: name
-		};
-		return {
-			values: runLengthEncode(raw),
-			label: `${name}_f`
-		};
-	};
-	const x = encodeVariable(params.xVar);
-	const y = params.yVar ? encodeVariable(params.yVar) : void 0;
-	if (centering) {
-		x.values = centerVectorValues(x.values);
-		if (y) y.values = centerVectorValues(y.values);
-	}
-	const columns = [Array.from({ length: rows.length }, () => 1), x.values];
-	if (y) columns.push(y.values);
-	for (const control of params.controlVars ?? []) {
-		const raw = metadataVector(rows, control);
-		if (isNumericColumn(raw)) columns.push(raw.map((value) => Number(value)));
-		else columns.push(...factorContrastColumns(raw, control).columns);
-	}
-	if (params.includeXY && y) columns.push(x.values.map((value, index) => value * (y.values[index] ?? 0)));
-	const coefficients = designSolve(columnsToMatrix(columns, rows.length), data);
-	const v1 = normalizeVector(coefficients[1] ?? []);
-	if (l2Norm(v1) === 0) throw new Error("HENA rotation could not derive a non-zero rotation vector.");
-	const leadingColumns = [v1];
-	const leadingNames = [`x_${x.label}`];
-	if (y) {
-		const rawY = coefficients[2] ?? [];
-		const orthogonalized = normalizeVector(subtractVectors$1(rawY, v1.map((value) => value * dot(rawY, v1))));
-		if (l2Norm(orthogonalized) > 0) {
-			leadingColumns.push(orthogonalized);
-			leadingNames.push(`y_${y.label}`);
-		}
-	}
-	const result = assembleRotation(data, leadingColumns, leadingNames);
-	const svd = svdRotation(deflateMatrix(data, leadingColumns));
-	return {
-		...result,
-		eigenvalues: svd.eigenvalues
-	};
-}
-function anchorVector(anchor, enadata, width) {
-	if (Array.isArray(anchor)) {
-		if (anchor.length !== width) throw new Error("Spherical rotation anchor length must match adjacency width.");
-		return normalizeVector(anchor);
-	}
-	if (typeof anchor === "string") {
-		const index = enadata.codeColumns.indexOf(anchor);
-		if (index < 0) throw new Error(`Unknown spherical rotation anchor: ${anchor}`);
-		return Array.from({ length: width }, (_unused, col) => col === index ? 1 : 0);
-	}
-	return Array.from({ length: width }, (_unused, col) => col === 0 ? 1 : 0);
-}
-function rotateBySpherical(pointsForProjection, enadata, params = {}) {
-	const width = pointsForProjection[0]?.length ?? 0;
-	const first = anchorVector(params.anchor, enadata, width);
-	let second = anchorVector(params.secondaryAnchor, enadata, width);
-	second = normalizeVector(subtractVectors$1(second, first.map((value) => value * dot(second, first))));
-	const leading = l2Norm(second) > 0 ? [first, second] : [first];
-	return rotateWithLeadingColumns(deflateMatrix(pointsForProjection, leading), leading, leading.map((_column, index) => `SPH${index + 1}`));
-}
-function deflateMatrix(matrix, vectors) {
-	return vectors.reduce((current, vector) => subtractOuterProjection(current, vector), matrix);
-}
-var init_chunk_CLCQQLKK = __esmMin((() => {
-	init_chunk_4NYP2CS4();
-	init_chunk_HJSM5RET();
-}));
-//#endregion
-//#region ../../node_modules/jena-js/dist/chunk-NBNXKV6L.js
-function accumulateData(options) {
-	validateAccumulateOptions(options);
-	return accumulateDataChunked({
-		...options,
-		chunkSize: Math.max(1, options.rows.length)
-	});
-}
-function nonCodePart(row, codeColumns) {
-	const codeSet = new Set(codeColumns);
-	return Object.fromEntries(Object.entries(row).filter(([key]) => !codeSet.has(key)));
-}
-function rowsFromMatrix(baseRows, codeColumns, columns, matrix) {
-	return baseRows.map((row, rowIndex) => ({
-		...nonCodePart(row, codeColumns),
-		...Object.fromEntries(columns.map((column, columnIndex) => [column, matrix[rowIndex]?.[columnIndex] ?? 0]))
-	}));
-}
-function selectMatrixColumns(matrix, count) {
-	return matrix.map((row) => row.slice(0, count));
-}
-function rowHasSignal(row) {
-	return row.reduce((sum, value) => sum + value, 0) !== 0;
-}
-function centerForProjection(lineWeights, centerAlignToOrigin, rotationSet) {
-	if (rotationSet) {
-		const centerVector2 = rotationSet.centerVector;
-		return {
-			centerVector: centerVector2,
-			pointsForProjection: lineWeights.map((row) => centerAlignToOrigin && !rowHasSignal(row) ? row.map(() => 0) : row.map((value, index) => value - (centerVector2[index] ?? 0)))
-		};
-	}
-	if (!centerAlignToOrigin) {
-		const centerVector2 = meanColumns(lineWeights);
-		return {
-			pointsForProjection: centerData(lineWeights, centerVector2),
-			centerVector: centerVector2
-		};
-	}
-	const nonZeroRows = lineWeights.filter(rowHasSignal);
-	if (nonZeroRows.length === 0) throw new Error("There were no co-occurrences of codes for any of the units within the model as defined.");
-	const centerVector = meanColumns(nonZeroRows);
-	return {
-		centerVector,
-		pointsForProjection: lineWeights.map((row) => rowHasSignal(row) ? row.map((value, index) => value - (centerVector[index] ?? 0)) : row.map(() => 0))
-	};
-}
-function adjacencyKeysEqual(left, right) {
-	if (left.length !== right.length) return false;
-	return left.every((entry, index) => {
-		const other = right[index];
-		return other?.source === entry.source && other.target === entry.target && other.sourceIndex === entry.sourceIndex && other.targetIndex === entry.targetIndex;
-	});
-}
-function makeRotation(enadata, pointsForProjection, options) {
-	if (options.rotationSet) {
-		if (!adjacencyKeysEqual(enadata.adjacencyKey, options.rotationSet.adjacencyKey)) throw new Error("Rotation sets must have identical adjacency keys.");
-		return {
-			rotationMatrix: options.rotationSet.rotationMatrix,
-			rotationColumns: options.rotationSet.rotationColumns,
-			eigenvalues: options.rotationSet.eigenvalues
-		};
-	}
-	const rotation = options.rotation;
-	if (!rotation || rotation.method === "svd") return svdRotation(pointsForProjection);
-	switch (rotation.method) {
-		case "mean": return rotateByMean(pointsForProjection, enadata, rotation.params);
-		case "generalized": return rotateByGeneralized(pointsForProjection, enadata, rotation.params);
-		case "regression": return rotateByRegression(pointsForProjection, enadata, rotation.params);
-		case "regression2": return rotateByRegression2(pointsForProjection, enadata, rotation.params);
-		case "hena": return rotateByHena(pointsForProjection, enadata, rotation.params);
-		case "spherical": return rotateBySpherical(pointsForProjection, enadata, rotation.params ?? {});
-	}
-}
-function makeNodePositions(lineWeights, points, codeCount, options) {
-	const method = options.nodePositionMethod ?? "undirected";
-	if (method !== "undirected") {
-		const width = lineWeights[0]?.length ?? 0;
-		if (width !== codeCount * codeCount) throw new Error(`nodePositionMethod "${method}" requires a directed adjacency (${codeCount * codeCount} columns for ${codeCount} codes), but this model is undirected (${width} upper-triangle columns). Use nodePositionMethod: "undirected".`);
-	}
-	switch (method) {
-		case "undirected": return lwsLeastSquaresPositions(lineWeights, points, codeCount);
-		case "directed": return directedNodePositions(lineWeights, points);
-		case "directed-ground-response": return directedNodePositionsWithGroundResponseAdded(lineWeights, points);
-	}
-}
-function makeSet(enadata, options = {}) {
-	validateMakeSetOptions(options);
-	const dimensions = options.dimensions ?? 2;
-	const centerAlignToOrigin = options.centerAlignToOrigin ?? true;
-	const lineWeightsMatrix = sphereNorm(enadata.connectionMatrix);
-	const { pointsForProjection, centerVector } = centerForProjection(lineWeightsMatrix, centerAlignToOrigin, options.rotationSet);
-	const rotationResult = makeRotation(enadata, pointsForProjection, options);
-	const dimCount = Math.min(dimensions, rotationResult.rotationColumns.length);
-	const dimensionNames = rotationResult.rotationColumns.slice(0, dimCount);
-	const fullPointsMatrix = multiplyMatrices(pointsForProjection, rotationResult.rotationMatrix);
-	const pointsMatrix = selectMatrixColumns(fullPointsMatrix, dimCount);
-	const nodePositionResult = makeNodePositions(lineWeightsMatrix, pointsMatrix, enadata.codes.length, options);
-	const variances = varianceColumns(fullPointsMatrix);
-	const varianceTotal = variances.reduce((sum, value) => sum + value, 0);
-	const variance = Object.fromEntries(rotationResult.rotationColumns.map((name, index) => [name, varianceTotal === 0 ? 0 : (variances[index] ?? 0) / varianceTotal]));
-	const rotation = {
-		codes: enadata.codes,
-		adjacencyKey: enadata.adjacencyKey,
-		rotationMatrix: rotationResult.rotationMatrix,
-		rotationColumns: rotationResult.rotationColumns,
-		eigenvalues: rotationResult.eigenvalues,
-		centerVector,
-		nodes: options.rotationSet?.nodes ?? nodesAsRows(enadata.codes, nodePositionResult.nodes, dimensionNames)
-	};
-	return {
-		...enadata,
-		lineWeights: rowsFromMatrix(enadata.connectionCounts, enadata.codeColumns, enadata.codeColumns, lineWeightsMatrix),
-		pointsForProjection: rowsFromMatrix(enadata.connectionCounts, enadata.codeColumns, enadata.codeColumns, pointsForProjection),
-		points: rowsFromMatrix(enadata.connectionCounts, enadata.codeColumns, dimensionNames, pointsMatrix),
-		rotation,
-		variance,
-		centroids: centroidsAsRows(enadata.unitLabels, nodePositionResult.centroids, dimensionNames)
-	};
-}
-function extractMakeSetOptions(options) {
-	const makeOptions = {};
-	if (options.dimensions !== void 0) makeOptions.dimensions = options.dimensions;
-	if (options.centerAlignToOrigin !== void 0) makeOptions.centerAlignToOrigin = options.centerAlignToOrigin;
-	if (options.rotation !== void 0) makeOptions.rotation = options.rotation;
-	if (options.rotationSet !== void 0) makeOptions.rotationSet = options.rotationSet;
-	if (options.nodePositionMethod !== void 0) makeOptions.nodePositionMethod = options.nodePositionMethod;
-	return makeOptions;
-}
-function ena(options) {
-	return makeSet(accumulateData(options), extractMakeSetOptions(options));
-}
-var init_chunk_NBNXKV6L = __esmMin((() => {
-	init_chunk_FJ7A67ES();
-	init_chunk_CLCQQLKK();
-	init_chunk_HJSM5RET();
-}));
-//#endregion
-//#region ../../node_modules/jena-js/dist/index.js
-var init_dist = __esmMin((() => {
-	init_chunk_NBNXKV6L();
-}));
 //#endregion
 //#region src/validation.ts
 function issue(code, path, message) {
@@ -38730,7 +38751,7 @@ function typedValue(value) {
 		value
 	};
 }
-function entityKey(row, columns) {
+function entityKey$1(row, columns) {
 	const values = columns.map((column) => row[column] ?? null);
 	return {
 		canonical: canonicalScalars(values),
@@ -38901,10 +38922,10 @@ function prepareAnalysisInput(input) {
 		}
 		for (const column of requiredColumns) if (!Object.hasOwn(row, column)) throw new AnalysisValidationError([issue("MISSING_COLUMN", `rows[${rowIndex}].${column}`, "required mapped column is missing")]);
 		for (const column of [...input.mapping.units, ...input.mapping.conversation]) validateIdentityValue(row[column] ?? null, `rows[${rowIndex}].${column}`);
-		const unit = entityKey(row, input.mapping.units);
-		const step = entityKey(row, input.mapping.conversation);
+		const unit = entityKey$1(row, input.mapping.units);
+		const step = entityKey$1(row, input.mapping.conversation);
 		predictedPointKeys.add(config.model === "EndPoint" ? unit.canonical : JSON.stringify([unit.canonical, step.canonical]));
-		const participantLabel = entityKey(row, input.mapping.trajectory?.participant ?? input.mapping.units);
+		const participantLabel = entityKey$1(row, input.mapping.trajectory?.participant ?? input.mapping.units);
 		const group = input.mapping.trajectory ? typedValue(row[input.mapping.trajectory.group] ?? null) : void 0;
 		const time = input.mapping.trajectory ? typedValue(row[input.mapping.trajectory.time] ?? null) : void 0;
 		if (group) observedGroups.add(group.canonical);
@@ -39245,7 +39266,7 @@ function accumulationTables(set, prepared, points) {
 		rowCounts
 	};
 }
-function pointRows(set, prepared, dimensions, diagnostics) {
+function pointRows$1(set, prepared, dimensions, diagnostics) {
 	if (set.points.length > prepared.limits.maxOutputPoints) throw new Error(`jENA produced ${set.points.length} points, exceeding maxOutputPoints=${prepared.limits.maxOutputPoints}.`);
 	return set.points.map((row, index) => {
 		const unitKey = String(row["__3dena_unit_key_v1"] ?? "");
@@ -39273,7 +39294,7 @@ function pointRows(set, prepared, dimensions, diagnostics) {
 		};
 	});
 }
-function nodeRows(set, dimensions, diagnostics) {
+function nodeRows$1(set, dimensions, diagnostics) {
 	return (set.rotation.nodes ?? []).map((row, index) => ({
 		index,
 		code: String(row.code ?? set.codes[index] ?? index),
@@ -39281,7 +39302,7 @@ function nodeRows(set, dimensions, diagnostics) {
 		fullCoordinates: fullCoordinates(row, dimensions, `nodes[${index}]`)
 	}));
 }
-function edgeRows(set, points) {
+function edgeRows$1(set, points) {
 	return set.adjacencyKey.map((entry, index) => {
 		const weights = points.map((point) => point.lineWeights[index] ?? 0);
 		return {
@@ -39328,9 +39349,9 @@ function analyzeRows(input) {
 	if (dimensions.length > prepared.limits.maxDimensions) throw new Error(`jENA returned ${dimensions.length} dimensions, exceeding maxDimensions=${prepared.limits.maxDimensions}.`);
 	const coordinateCells = (set.points.length + (set.rotation.nodes?.length ?? 0)) * dimensions.length;
 	if (!Number.isSafeInteger(coordinateCells) || coordinateCells > prepared.limits.maxCoordinateCells) throw new Error(`jENA returned ${coordinateCells} point/node coordinate cells, exceeding maxCoordinateCells=${prepared.limits.maxCoordinateCells}.`);
-	const points = pointRows(set, prepared, dimensions, diagnostics);
-	const nodes = nodeRows(set, dimensions, diagnostics);
-	const edges = edgeRows(set, points);
+	const points = pointRows$1(set, prepared, dimensions, diagnostics);
+	const nodes = nodeRows$1(set, dimensions, diagnostics);
+	const edges = edgeRows$1(set, points);
 	const accumulation = accumulationTables(set, prepared, points);
 	const trajectory = prepared.mapping.trajectory ? buildSharedSpaceTrajectories(points, prepared.mapping.trajectory, dimensions) : void 0;
 	diagnostics.push({
@@ -39382,23 +39403,25 @@ function analyzeRows(input) {
 		diagnostics,
 		provenance: {
 			adapter: "@3dena/analysis",
-			adapterVersion: "0.1.0",
+			adapterVersion: ANALYSIS_BUILD_IDENTITY.sdkVersion,
 			jenaPackage: "jena-js",
-			jenaVersion: "0.6.2",
-			jenaCommit: "2f63db4c6ccf5684afc8437ae81ed1a3ccd0c1a3",
+			jenaVersion: ANALYSIS_BUILD_IDENTITY.jenaVersion,
+			jenaCommit: ANALYSIS_BUILD_IDENTITY.jenaCommit,
 			coreGoldenContract: "jena-package-golden-v1",
 			legacyGoldenContract: "legacy-application-golden-v1",
 			legacyGoldenStatus: "not-assessed",
 			parityContract: "3dena.parity-contract.v1",
 			resultSemantics: "one shared SVD rotation; participant-period reduction before group-time centroids",
-			resolvedConfig: { ...prepared.config },
+			resolvedConfig: {
+				...prepared.config,
+				windowSizeBack: Number.isFinite(prepared.config.windowSizeBack) ? prepared.config.windowSizeBack : "Infinity"
+			},
 			resolvedLimits: { ...prepared.limits }
 		}
 	};
 }
 var AXES;
 var init_analyze = __esmMin((() => {
-	init_dist();
 	init_trajectory();
 	init_validation();
 	AXES = [
@@ -39409,7 +39432,8 @@ var init_analyze = __esmMin((() => {
 }));
 //#endregion
 //#region src/task-executor.ts
-var SHA256 = /^[a-f0-9]{64}$/u;
+init_build_identity();
+var SHA256$1 = /^[a-f0-9]{64}$/u;
 var ANALYSIS_EXECUTION_DATASET_VERSION_V2 = "3dena.analysis-execution-dataset.v2";
 var AnalysisTaskExecutionError = class extends Error {
 	code;
@@ -39421,21 +39445,21 @@ var AnalysisTaskExecutionError = class extends Error {
 		this.path = path;
 	}
 };
-function reject$3(code, path, message) {
+function reject$4(code, path, message) {
 	throw new AnalysisTaskExecutionError(code, path, message);
 }
 function canonicalJson(value, path = "value") {
 	if (value === null) return "null";
 	if (typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
 	if (typeof value === "number") {
-		if (!Number.isFinite(value)) reject$3("NON_FINITE_HASH_VALUE", path, "cannot be hashed canonically");
+		if (!Number.isFinite(value)) reject$4("NON_FINITE_HASH_VALUE", path, "cannot be hashed canonically");
 		return Object.is(value, -0) ? "-0" : JSON.stringify(value);
 	}
 	if (Array.isArray(value)) return `[${value.map((entry, index) => canonicalJson(entry, `${path}[${index}]`)).join(",")}]`;
-	if (typeof value !== "object" || value === void 0) reject$3("UNSUPPORTED_HASH_VALUE", path, "contains an unsupported canonical JSON value");
+	if (typeof value !== "object" || value === void 0) reject$4("UNSUPPORTED_HASH_VALUE", path, "contains an unsupported canonical JSON value");
 	const record = value;
 	return `{${Object.keys(record).sort().map((key) => {
-		if (record[key] === void 0) reject$3("UNSUPPORTED_HASH_VALUE", `${path}.${key}`, "must not be undefined");
+		if (record[key] === void 0) reject$4("UNSUPPORTED_HASH_VALUE", `${path}.${key}`, "must not be undefined");
 		return `${JSON.stringify(key)}:${canonicalJson(record[key], `${path}.${key}`)}`;
 	}).join(",")}}`;
 }
@@ -39445,16 +39469,16 @@ function hex(bytes) {
 /** SHA-256 over the v1 lexicographically-keyed canonical JSON encoding. */
 async function hashAnalysisValueV1(value) {
 	const subtle = globalThis.crypto?.subtle;
-	if (!subtle) reject$3("CRYPTO_UNAVAILABLE", "crypto.subtle", "WebCrypto SHA-256 is required by Node >=20.9 and supported browsers");
+	if (!subtle) reject$4("CRYPTO_UNAVAILABLE", "crypto.subtle", "WebCrypto SHA-256 is required by Node >=20.9 and supported browsers");
 	const bytes = new TextEncoder().encode(canonicalJson(value));
 	return hex(new Uint8Array(await subtle.digest("SHA-256", bytes)));
 }
-function exactFields(value, allowed, required, path) {
+function exactFields$1(value, allowed, required, path) {
 	const allowedSet = new Set(allowed);
 	const unknown = Object.keys(value).find((field) => !allowedSet.has(field));
-	if (unknown) reject$3("UNKNOWN_EXECUTION_FIELD", path, `contains unknown field ${JSON.stringify(unknown)}`);
+	if (unknown) reject$4("UNKNOWN_EXECUTION_FIELD", path, `contains unknown field ${JSON.stringify(unknown)}`);
 	const missing = required.find((field) => !Object.hasOwn(value, field));
-	if (missing) reject$3("MISSING_EXECUTION_FIELD", path, `is missing required field ${JSON.stringify(missing)}`);
+	if (missing) reject$4("MISSING_EXECUTION_FIELD", path, `is missing required field ${JSON.stringify(missing)}`);
 }
 /**
 * Standalone V2 execution-dataset validator shared by local SDK callers,
@@ -39462,9 +39486,9 @@ function exactFields(value, allowed, required, path) {
 * source discriminant and complete raw result fields before any task runs.
 */
 function assertAnalysisExecutionDatasetV2(value, path = "dataset") {
-	if (!value || typeof value !== "object" || Array.isArray(value)) reject$3("INVALID_EXECUTION_DATASET", path, "must be an object");
+	if (!value || typeof value !== "object" || Array.isArray(value)) reject$4("INVALID_EXECUTION_DATASET", path, "must be an object");
 	const dataset = value;
-	exactFields(dataset, [
+	exactFields$1(dataset, [
 		"schemaVersion",
 		"receipt",
 		"specHash",
@@ -39477,15 +39501,15 @@ function assertAnalysisExecutionDatasetV2(value, path = "dataset") {
 		"specHash",
 		"buildId"
 	], path);
-	if (dataset.schemaVersion !== "3dena.analysis-execution-dataset.v2") reject$3("INVALID_EXECUTION_DATASET", `${path}.schemaVersion`, `must be ${ANALYSIS_EXECUTION_DATASET_VERSION_V2}`);
+	if (dataset.schemaVersion !== "3dena.analysis-execution-dataset.v2") reject$4("INVALID_EXECUTION_DATASET", `${path}.schemaVersion`, `must be ${ANALYSIS_EXECUTION_DATASET_VERSION_V2}`);
 	assertDatasetReceiptV1(dataset.receipt, `${path}.receipt`);
-	if (typeof dataset.specHash !== "string" || !SHA256.test(dataset.specHash)) reject$3("INVALID_SPEC_HASH", `${path}.specHash`, "must be a lowercase SHA-256 digest");
-	if (typeof dataset.buildId !== "string" || dataset.buildId.trim() === "") reject$3("INVALID_BUILD_ID", `${path}.buildId`, "must be non-empty");
-	if (dataset.generatedAt !== void 0 && (typeof dataset.generatedAt !== "string" || Number.isNaN(Date.parse(dataset.generatedAt)))) reject$3("INVALID_GENERATED_AT", `${path}.generatedAt`, "must be an ISO timestamp");
+	if (typeof dataset.specHash !== "string" || !SHA256$1.test(dataset.specHash)) reject$4("INVALID_SPEC_HASH", `${path}.specHash`, "must be a lowercase SHA-256 digest");
+	if (typeof dataset.buildId !== "string" || dataset.buildId.trim() === "") reject$4("INVALID_BUILD_ID", `${path}.buildId`, "must be non-empty");
+	if (dataset.generatedAt !== void 0 && (typeof dataset.generatedAt !== "string" || Number.isNaN(Date.parse(dataset.generatedAt)))) reject$4("INVALID_GENERATED_AT", `${path}.generatedAt`, "must be an ISO timestamp");
 	if (dataset.sourceResult === void 0) return;
-	if (!dataset.sourceResult || typeof dataset.sourceResult !== "object" || Array.isArray(dataset.sourceResult)) reject$3("INVALID_SOURCE_RESULT", `${path}.sourceResult`, "must be an object");
+	if (!dataset.sourceResult || typeof dataset.sourceResult !== "object" || Array.isArray(dataset.sourceResult)) reject$4("INVALID_SOURCE_RESULT", `${path}.sourceResult`, "must be an object");
 	const source = dataset.sourceResult;
-	exactFields(source, [
+	exactFields$1(source, [
 		"sourceKind",
 		"hash",
 		"result"
@@ -39494,42 +39518,42 @@ function assertAnalysisExecutionDatasetV2(value, path = "dataset") {
 		"hash",
 		"result"
 	], `${path}.sourceResult`);
-	if (typeof source.hash !== "string" || !SHA256.test(source.hash)) reject$3("INVALID_SOURCE_RESULT_HASH", `${path}.sourceResult.hash`, "must be a lowercase SHA-256 digest");
+	if (typeof source.hash !== "string" || !SHA256$1.test(source.hash)) reject$4("INVALID_SOURCE_RESULT_HASH", `${path}.sourceResult.hash`, "must be a lowercase SHA-256 digest");
 	if (source.sourceKind === "raw-jena") {
-		if (!source.result || typeof source.result !== "object" || source.result.schemaVersion !== "3dena.analysis-result.v1") reject$3("SOURCE_KIND_RESULT_MISMATCH", `${path}.sourceResult.result`, "raw-jena must contain 3dena.analysis-result.v1");
+		if (!source.result || typeof source.result !== "object" || source.result.schemaVersion !== "3dena.analysis-result.v1") reject$4("SOURCE_KIND_RESULT_MISMATCH", `${path}.sourceResult.result`, "raw-jena must contain 3dena.analysis-result.v1");
 		assertAnalysisTaskResultV1(source.result, "ena-model", `${path}.sourceResult.result`);
 		return;
 	}
-	if (source.sourceKind !== "prepared-exchange") reject$3("INVALID_SOURCE_KIND", `${path}.sourceResult.sourceKind`, "must be raw-jena or prepared-exchange");
-	if (!source.result || typeof source.result !== "object" || source.result.schemaVersion !== "3dena.prepared-space-result.v1") reject$3("SOURCE_KIND_RESULT_MISMATCH", `${path}.sourceResult.result`, "prepared-exchange must contain 3dena.prepared-space-result.v1");
+	if (source.sourceKind !== "prepared-exchange") reject$4("INVALID_SOURCE_KIND", `${path}.sourceResult.sourceKind`, "must be raw-jena or prepared-exchange");
+	if (!source.result || typeof source.result !== "object" || source.result.schemaVersion !== "3dena.prepared-space-result.v1") reject$4("SOURCE_KIND_RESULT_MISMATCH", `${path}.sourceResult.result`, "prepared-exchange must contain 3dena.prepared-space-result.v1");
 	assertPreparedDerivedSource(source.result);
 	const prepared = source.result;
 	const receipt = dataset.receipt;
-	if (receipt.format !== "ena3d-json") reject$3("PREPARED_RECEIPT_FORMAT_MISMATCH", `${path}.receipt.format`, "must be ena3d-json for a prepared-exchange source");
-	if (prepared.sourceReceipt.sha256 !== receipt.sha256 || prepared.sourceReceipt.byteLength !== receipt.byteLength) reject$3("PREPARED_SOURCE_RECEIPT_MISMATCH", `${path}.sourceResult.result.sourceReceipt`, "does not match the activated exact-byte dataset receipt");
+	if (receipt.format !== "ena3d-json") reject$4("PREPARED_RECEIPT_FORMAT_MISMATCH", `${path}.receipt.format`, "must be ena3d-json for a prepared-exchange source");
+	if (prepared.sourceReceipt.sha256 !== receipt.sha256 || prepared.sourceReceipt.byteLength !== receipt.byteLength) reject$4("PREPARED_SOURCE_RECEIPT_MISMATCH", `${path}.sourceResult.result.sourceReceipt`, "does not match the activated exact-byte dataset receipt");
 }
 function validateDataset(dataset, task) {
-	if (!dataset || dataset.schemaVersion !== "3dena.analysis-execution-dataset.v1" && dataset.schemaVersion !== "3dena.analysis-execution-dataset.v2") reject$3("INVALID_EXECUTION_DATASET", "dataset.schemaVersion", "must be 3dena.analysis-execution-dataset.v1 or 3dena.analysis-execution-dataset.v2");
+	if (!dataset || dataset.schemaVersion !== "3dena.analysis-execution-dataset.v1" && dataset.schemaVersion !== "3dena.analysis-execution-dataset.v2") reject$4("INVALID_EXECUTION_DATASET", "dataset.schemaVersion", "must be 3dena.analysis-execution-dataset.v1 or 3dena.analysis-execution-dataset.v2");
 	if (dataset.schemaVersion === "3dena.analysis-execution-dataset.v2") {
 		assertAnalysisExecutionDatasetV2(dataset);
-		if (task.kind === "ena-model" && dataset.sourceResult?.sourceKind === "prepared-exchange") reject$3("PREPARED_TASK_UNSUPPORTED", "dataset.sourceResult.sourceKind", "ena-model cannot consume PreparedSpaceResult as though it were raw rows");
+		if (task.kind === "ena-model" && dataset.sourceResult?.sourceKind === "prepared-exchange") reject$4("PREPARED_TASK_UNSUPPORTED", "dataset.sourceResult.sourceKind", "ena-model cannot consume PreparedSpaceResult as though it were raw rows");
 	}
 	assertDatasetReceiptV1(dataset.receipt, "dataset.receipt");
-	if (!SHA256.test(dataset.specHash)) reject$3("INVALID_SPEC_HASH", "dataset.specHash", "must be a lowercase SHA-256 digest");
-	if (typeof dataset.buildId !== "string" || dataset.buildId.trim() === "") reject$3("INVALID_BUILD_ID", "dataset.buildId", "must be non-empty");
-	if (dataset.receipt.sha256 !== task.owner.datasetHash) reject$3("DATASET_OWNER_MISMATCH", "task.owner.datasetHash", "does not match the activated dataset receipt");
-	if (dataset.specHash !== task.owner.specHash) reject$3("SPEC_OWNER_MISMATCH", "task.owner.specHash", "does not match the activated scientific spec");
-	if (Date.now() > task.deadlineEpochMilliseconds) reject$3("TASK_DEADLINE_EXCEEDED", "task.deadlineEpochMilliseconds", "expired before execution began");
+	if (!SHA256$1.test(dataset.specHash)) reject$4("INVALID_SPEC_HASH", "dataset.specHash", "must be a lowercase SHA-256 digest");
+	if (typeof dataset.buildId !== "string" || dataset.buildId.trim() === "") reject$4("INVALID_BUILD_ID", "dataset.buildId", "must be non-empty");
+	if (dataset.receipt.sha256 !== task.owner.datasetHash) reject$4("DATASET_OWNER_MISMATCH", "task.owner.datasetHash", "does not match the activated dataset receipt");
+	if (dataset.specHash !== task.owner.specHash) reject$4("SPEC_OWNER_MISMATCH", "task.owner.specHash", "does not match the activated scientific spec");
+	if (Date.now() > task.deadlineEpochMilliseconds) reject$4("TASK_DEADLINE_EXCEEDED", "task.deadlineEpochMilliseconds", "expired before execution began");
 	const generatedAt = dataset.generatedAt ?? (/* @__PURE__ */ new Date()).toISOString();
-	if (Number.isNaN(Date.parse(generatedAt))) reject$3("INVALID_GENERATED_AT", "dataset.generatedAt", "must be an ISO timestamp");
+	if (Number.isNaN(Date.parse(generatedAt))) reject$4("INVALID_GENERATED_AT", "dataset.generatedAt", "must be an ISO timestamp");
 	return generatedAt;
 }
 async function sourceResult(dataset, task) {
 	const source = dataset.sourceResult;
-	if (!source) reject$3("MISSING_SOURCE_RESULT", "dataset.sourceResult", `is required for ${task.kind}`);
+	if (!source) reject$4("MISSING_SOURCE_RESULT", "dataset.sourceResult", `is required for ${task.kind}`);
 	let resolved;
 	if (dataset.schemaVersion === "3dena.analysis-execution-dataset.v1") {
-		if (source.result?.schemaVersion !== "3dena.analysis-result.v1") reject$3("INVALID_RAW_SOURCE_RESULT", "dataset.sourceResult.result.schemaVersion", "V1 execution datasets accept raw AnalysisResult only");
+		if (source.result?.schemaVersion !== "3dena.analysis-result.v1") reject$4("INVALID_RAW_SOURCE_RESULT", "dataset.sourceResult.result.schemaVersion", "V1 execution datasets accept raw AnalysisResult only");
 		resolved = {
 			sourceKind: "raw-jena",
 			hash: source.hash,
@@ -39537,8 +39561,8 @@ async function sourceResult(dataset, task) {
 		};
 	} else {
 		const sourceV2 = dataset.sourceResult;
-		if (!sourceV2) reject$3("MISSING_SOURCE_RESULT", "dataset.sourceResult", `is required for ${task.kind}`);
-		exactFields(sourceV2, [
+		if (!sourceV2) reject$4("MISSING_SOURCE_RESULT", "dataset.sourceResult", `is required for ${task.kind}`);
+		exactFields$1(sourceV2, [
 			"sourceKind",
 			"hash",
 			"result"
@@ -39548,38 +39572,38 @@ async function sourceResult(dataset, task) {
 			"result"
 		], "dataset.sourceResult");
 		if (sourceV2.sourceKind === "raw-jena") {
-			if (sourceV2.result?.schemaVersion !== "3dena.analysis-result.v1") reject$3("SOURCE_KIND_RESULT_MISMATCH", "dataset.sourceResult", "raw-jena must contain 3dena.analysis-result.v1");
+			if (sourceV2.result?.schemaVersion !== "3dena.analysis-result.v1") reject$4("SOURCE_KIND_RESULT_MISMATCH", "dataset.sourceResult", "raw-jena must contain 3dena.analysis-result.v1");
 			resolved = sourceV2;
 		} else if (sourceV2.sourceKind === "prepared-exchange") {
-			if (sourceV2.result?.schemaVersion !== "3dena.prepared-space-result.v1") reject$3("SOURCE_KIND_RESULT_MISMATCH", "dataset.sourceResult", "prepared-exchange must contain 3dena.prepared-space-result.v1");
+			if (sourceV2.result?.schemaVersion !== "3dena.prepared-space-result.v1") reject$4("SOURCE_KIND_RESULT_MISMATCH", "dataset.sourceResult", "prepared-exchange must contain 3dena.prepared-space-result.v1");
 			resolved = sourceV2;
-		} else reject$3("INVALID_SOURCE_KIND", "dataset.sourceResult.sourceKind", "must be raw-jena or prepared-exchange");
+		} else reject$4("INVALID_SOURCE_KIND", "dataset.sourceResult.sourceKind", "must be raw-jena or prepared-exchange");
 	}
-	if (!SHA256.test(resolved.hash)) reject$3("INVALID_SOURCE_RESULT_HASH", "dataset.sourceResult.hash", "must be a lowercase SHA-256 digest");
-	if (resolved.hash !== task.sourceResultHash) reject$3("SOURCE_RESULT_OWNER_MISMATCH", "task.sourceResultHash", "does not match dataset.sourceResult.hash");
-	if (await hashAnalysisValueV1(resolved.result) !== resolved.hash) reject$3("SOURCE_RESULT_HASH_MISMATCH", "dataset.sourceResult", "result bytes do not match the immutable source hash");
+	if (!SHA256$1.test(resolved.hash)) reject$4("INVALID_SOURCE_RESULT_HASH", "dataset.sourceResult.hash", "must be a lowercase SHA-256 digest");
+	if (resolved.hash !== task.sourceResultHash) reject$4("SOURCE_RESULT_OWNER_MISMATCH", "task.sourceResultHash", "does not match dataset.sourceResult.hash");
+	if (await hashAnalysisValueV1(resolved.result) !== resolved.hash) reject$4("SOURCE_RESULT_HASH_MISMATCH", "dataset.sourceResult", "result bytes do not match the immutable source hash");
 	if (resolved.sourceKind === "prepared-exchange") {
 		assertPreparedDerivedSource(resolved.result);
-		if (dataset.receipt.format !== "ena3d-json") reject$3("PREPARED_RECEIPT_FORMAT_MISMATCH", "dataset.receipt.format", "must be ena3d-json for a prepared-exchange source");
-		if (resolved.result.sourceReceipt.sha256 !== dataset.receipt.sha256 || resolved.result.sourceReceipt.byteLength !== dataset.receipt.byteLength) reject$3("PREPARED_SOURCE_RECEIPT_MISMATCH", "dataset.sourceResult.result.sourceReceipt", "does not match the activated exact-byte dataset receipt");
+		if (dataset.receipt.format !== "ena3d-json") reject$4("PREPARED_RECEIPT_FORMAT_MISMATCH", "dataset.receipt.format", "must be ena3d-json for a prepared-exchange source");
+		if (resolved.result.sourceReceipt.sha256 !== dataset.receipt.sha256 || resolved.result.sourceReceipt.byteLength !== dataset.receipt.byteLength) reject$4("PREPARED_SOURCE_RECEIPT_MISMATCH", "dataset.sourceResult.result.sourceReceipt", "does not match the activated exact-byte dataset receipt");
 	}
 	return resolved;
 }
 function dimensionIndex(result, dimension, path) {
 	const index = result.dimensions.indexOf(dimension);
-	if (index < 0) reject$3("UNKNOWN_DIMENSION", path, `is not retained in the source result: ${JSON.stringify(dimension)}`);
+	if (index < 0) reject$4("UNKNOWN_DIMENSION", path, `is not retained in the source result: ${JSON.stringify(dimension)}`);
 	return index;
 }
 function groupPoints(result, canonical, path) {
 	const points = result.points.filter((point) => point.group?.canonical === canonical);
-	if (points.length === 0) reject$3("UNKNOWN_OR_EMPTY_GROUP", path, "does not select any source points");
+	if (points.length === 0) reject$4("UNKNOWN_OR_EMPTY_GROUP", path, "does not select any source points");
 	return points;
 }
 function identityComponent(name, value, path) {
-	if (value === null) reject$3("MISSING_PAIRED_IDENTITY", path, "paired identity components must not be null");
+	if (value === null) reject$4("MISSING_PAIRED_IDENTITY", path, "paired identity components must not be null");
 	if (typeof value === "number") {
-		if (!Number.isFinite(value)) reject$3("NON_FINITE_PAIRED_IDENTITY", path, "must be finite");
-		if (Number.isInteger(value) && !Number.isSafeInteger(value)) reject$3("UNSAFE_PAIRED_IDENTITY", path, "unsafe integer IDs must be source strings");
+		if (!Number.isFinite(value)) reject$4("NON_FINITE_PAIRED_IDENTITY", path, "must be finite");
+		if (Number.isInteger(value) && !Number.isSafeInteger(value)) reject$4("UNSAFE_PAIRED_IDENTITY", path, "unsafe integer IDs must be source strings");
 		return {
 			name,
 			type: "number",
@@ -39736,24 +39760,24 @@ function trajectorySeries(result, group, namespace, participantIdentity = "unit"
 }
 function executeTrajectoryDynamics(source, task) {
 	const trajectory = source.trajectory;
-	if (!trajectory) reject$3("MISSING_SOURCE_TRAJECTORY", "sourceResult.trajectory", "is required for a trajectory task");
+	if (!trajectory) reject$4("MISSING_SOURCE_TRAJECTORY", "sourceResult.trajectory", "is required for a trajectory task");
 	const series = trajectorySeries(source, task.group, `${task.owner.taskId}:trajectory`);
-	if (task.periods.length !== trajectory.timeOrder.length || task.periods.length !== series.timeOrder.length) reject$3("TRAJECTORY_PERIOD_BINDING_MISMATCH", "task.periods", "must bind every source period exactly once in source order");
+	if (task.periods.length !== trajectory.timeOrder.length || task.periods.length !== series.timeOrder.length) reject$4("TRAJECTORY_PERIOD_BINDING_MISMATCH", "task.periods", "must bind every source period exactly once in source order");
 	const periods = task.periods.map((period, index) => {
 		const sourceTime = trajectory.timeOrder[index];
 		const seriesTime = series.timeOrder[index];
-		if (!sourceTime || !seriesTime || sourceTime.canonical !== period.sourceTimeCanonical) reject$3("TRAJECTORY_PERIOD_BINDING_MISMATCH", `task.periods[${index}].sourceTimeCanonical`, "does not match the immutable source trajectory time key at this index");
+		if (!sourceTime || !seriesTime || sourceTime.canonical !== period.sourceTimeCanonical) reject$4("TRAJECTORY_PERIOD_BINDING_MISMATCH", `task.periods[${index}].sourceTimeCanonical`, "does not match the immutable source trajectory time key at this index");
 		return {
 			time: seriesTime,
 			value: structuredClone(period.value)
 		};
 	});
 	const sourcePoints = groupPoints(source, task.group, "task.group");
-	if (sourcePoints.length !== series.points.length) reject$3("TRAJECTORY_ADAPTER_SHAPE_MISMATCH", "sourceResult.points", "adapter point order does not match the immutable source group");
+	if (sourcePoints.length !== series.points.length) reject$4("TRAJECTORY_ADAPTER_SHAPE_MISMATCH", "sourceResult.points", "adapter point order does not match the immutable source group");
 	const points = series.points.map((point, index) => {
 		if (task.estimand.kind === "equal-participant-v1") return { ...point };
 		const value = sourcePoints[index].metadata[task.estimand.metadataField];
-		if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) reject$3("INVALID_TRAJECTORY_WEIGHT", `sourceResult.points[${sourcePoints[index].index}].metadata.${task.estimand.metadataField}`, "weighted trajectories require a finite, strictly positive numeric metadata value for every point");
+		if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) reject$4("INVALID_TRAJECTORY_WEIGHT", `sourceResult.points[${sourcePoints[index].index}].metadata.${task.estimand.metadataField}`, "weighted trajectories require a finite, strictly positive numeric metadata value for every point");
 		return {
 			...point,
 			weight: value
@@ -39771,7 +39795,7 @@ function executeTrajectoryDynamics(source, task) {
 			estimand: { kind: task.estimand.kind }
 		});
 	} catch (error) {
-		if (error instanceof TrajectoryDynamicsError) reject$3(error.code, `trajectory.${error.path}`, error.message);
+		if (error instanceof TrajectoryDynamicsError) reject$4(error.code, `trajectory.${error.path}`, error.message);
 		throw error;
 	}
 }
@@ -39788,11 +39812,11 @@ function executePreparedTrajectoryDynamics(source, task) {
 	});
 	task.selectedDimensions.forEach((dimension, index) => preparedDimensionIndex(source, dimension, `task.selectedDimensions[${index}]`));
 	const sourceTimeOrder = source.displaySpace.trajectory.timeOrder;
-	if (task.periods.length !== sourceTimeOrder.length || task.periods.length !== series.timeOrder.length) reject$3("TRAJECTORY_PERIOD_BINDING_MISMATCH", "task.periods", "must bind every prepared source period exactly once in source order");
+	if (task.periods.length !== sourceTimeOrder.length || task.periods.length !== series.timeOrder.length) reject$4("TRAJECTORY_PERIOD_BINDING_MISMATCH", "task.periods", "must bind every prepared source period exactly once in source order");
 	const periods = task.periods.map((period, index) => {
 		const sourceTime = sourceTimeOrder[index];
 		const seriesTime = series.timeOrder[index];
-		if (!sourceTime || !seriesTime || sourceTime.canonical !== period.sourceTimeCanonical) reject$3("TRAJECTORY_PERIOD_BINDING_MISMATCH", `task.periods[${index}].sourceTimeCanonical`, "does not match the immutable prepared time key at this index");
+		if (!sourceTime || !seriesTime || sourceTime.canonical !== period.sourceTimeCanonical) reject$4("TRAJECTORY_PERIOD_BINDING_MISMATCH", `task.periods[${index}].sourceTimeCanonical`, "does not match the immutable prepared time key at this index");
 		return {
 			time: seriesTime,
 			value: structuredClone(period.value)
@@ -39802,7 +39826,7 @@ function executePreparedTrajectoryDynamics(source, task) {
 	const points = series.points.map((point, index) => {
 		if (task.estimand.kind === "equal-participant-v1") return { ...point };
 		const weight = sourcePoints[index]?.metadata[task.estimand.metadataField];
-		if (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0) reject$3("INVALID_TRAJECTORY_WEIGHT", `sourceResult.fullSpace.points[${sourcePoints[index]?.index ?? index}].metadata.${task.estimand.metadataField}`, "weighted prepared trajectories require one finite, strictly positive numeric metadata value per point");
+		if (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0) reject$4("INVALID_TRAJECTORY_WEIGHT", `sourceResult.fullSpace.points[${sourcePoints[index]?.index ?? index}].metadata.${task.estimand.metadataField}`, "weighted prepared trajectories require one finite, strictly positive numeric metadata value per point");
 		return {
 			...point,
 			weight
@@ -39830,7 +39854,7 @@ function executePreparedTrajectoryDynamics(source, task) {
 			}
 		};
 	} catch (error) {
-		if (error instanceof TrajectoryDynamicsError) reject$3(error.code, `trajectory.${error.path}`, error.message);
+		if (error instanceof TrajectoryDynamicsError) reject$4(error.code, `trajectory.${error.path}`, error.message);
 		throw error;
 	}
 }
@@ -39846,17 +39870,17 @@ function decodePreparedBase64(value) {
 	try {
 		binary = globalThis.atob(value);
 	} catch {
-		reject$3("INVALID_PREPARED_BASE64", "task.input.exactBytesBase64", "must decode as canonical base64");
+		reject$4("INVALID_PREPARED_BASE64", "task.input.exactBytesBase64", "must decode as canonical base64");
 	}
-	if (globalThis.btoa(binary) !== value) reject$3("INVALID_PREPARED_BASE64", "task.input.exactBytesBase64", "must use canonical padding and trailing bits");
+	if (globalThis.btoa(binary) !== value) reject$4("INVALID_PREPARED_BASE64", "task.input.exactBytesBase64", "must use canonical padding and trailing bits");
 	const bytes = new Uint8Array(binary.length);
 	for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
 	return bytes;
 }
 async function executePreparedImport(dataset, task) {
-	if (dataset.receipt.format !== "ena3d-json") reject$3("PREPARED_RECEIPT_FORMAT_MISMATCH", "dataset.receipt.format", "must be ena3d-json for prepared-import");
+	if (dataset.receipt.format !== "ena3d-json") reject$4("PREPARED_RECEIPT_FORMAT_MISMATCH", "dataset.receipt.format", "must be ena3d-json for prepared-import");
 	const artifact = await decodeEna3dExchangeV1WithSha256(decodePreparedBase64(task.input.exactBytesBase64));
-	if (artifact.sha256 !== dataset.receipt.sha256 || artifact.byteLength !== dataset.receipt.byteLength) reject$3("PREPARED_SOURCE_RECEIPT_MISMATCH", "task.input.exactBytesBase64", "does not match the immutable upload receipt");
+	if (artifact.sha256 !== dataset.receipt.sha256 || artifact.byteLength !== dataset.receipt.byteLength) reject$4("PREPARED_SOURCE_RECEIPT_MISMATCH", "task.input.exactBytesBase64", "does not match the immutable upload receipt");
 	const result = analyzePreparedSpace({
 		source: {
 			artifact,
@@ -39865,7 +39889,7 @@ async function executePreparedImport(dataset, task) {
 		mapping: task.input.mapping
 	});
 	const dimensions = result.fullSpace.dimensions;
-	if (dataset.receipt.rows !== result.fullSpace.points.length || dataset.receipt.columns !== dimensions.length || dataset.receipt.schema.headers.length !== dimensions.length || dataset.receipt.schema.columns.length !== dimensions.length || dimensions.some((dimension, index) => dataset.receipt.schema.headers[index] !== dimension || dataset.receipt.schema.columns[index]?.name !== dimension || dataset.receipt.schema.columns[index]?.inferredType !== "number" || dataset.receipt.schema.columns[index]?.roles.length !== 1 || dataset.receipt.schema.columns[index]?.roles[0] !== "unmapped")) reject$3("PREPARED_INVENTORY_MISMATCH", "dataset.receipt", "does not match the service-decoded prepared exchange result");
+	if (dataset.receipt.rows !== result.fullSpace.points.length || dataset.receipt.columns !== dimensions.length || dataset.receipt.schema.headers.length !== dimensions.length || dataset.receipt.schema.columns.length !== dimensions.length || dimensions.some((dimension, index) => dataset.receipt.schema.headers[index] !== dimension || dataset.receipt.schema.columns[index]?.name !== dimension || dataset.receipt.schema.columns[index]?.inferredType !== "number" || dataset.receipt.schema.columns[index]?.roles.length !== 1 || dataset.receipt.schema.columns[index]?.roles[0] !== "unmapped")) reject$4("PREPARED_INVENTORY_MISMATCH", "dataset.receipt", "does not match the service-decoded prepared exchange result");
 	return result;
 }
 async function executeTaskResult(dataset, task) {
@@ -39931,7 +39955,7 @@ async function executeTaskResult(dataset, task) {
 			});
 			if (paired) {
 				const pairedId = source.sourceKind === "raw-jena" ? source.result.points.find((point) => point.group?.canonical === task.groups[0])?.participantLabel.columns ?? [] : source.result.fullSpace.points.find((point) => point.group.canonical === task.groups[0])?.participant.columns ?? [];
-				if (pairedId.length === 0) reject$3("MISSING_PAIRED_ID", "sourceResult.points", "does not expose a participant-label identity");
+				if (pairedId.length === 0) reject$4("MISSING_PAIRED_ID", "sourceResult.points", "does not expose a participant-label identity");
 				return {
 					result: source.sourceKind === "prepared-exchange" ? withPreparedDiagnostic(compareTrajectoryPaths({
 						design: "paired",
@@ -40010,7 +40034,7 @@ async function executeAnalysisTask(dataset, task) {
 	assertAnalysisTaskV1(task);
 	const generatedAt = validateDataset(dataset, task);
 	const { result, sourceKind } = await executeTaskResult(dataset, task);
-	if (Date.now() > task.deadlineEpochMilliseconds) reject$3("TASK_DEADLINE_EXCEEDED", "task.deadlineEpochMilliseconds", "expired before result publication");
+	if (Date.now() > task.deadlineEpochMilliseconds) reject$4("TASK_DEADLINE_EXCEEDED", "task.deadlineEpochMilliseconds", "expired before result publication");
 	assertAnalysisTaskResultV1(result, task.kind);
 	const resultHash = await hashAnalysisValueV1(result);
 	const sourceSchemaVersion = task.kind === "ena-model" ? null : dataset.sourceResult?.result.schemaVersion ?? null;
@@ -40034,14 +40058,14 @@ async function executeAnalysisTask(dataset, task) {
 			datasetHash: task.owner.datasetHash,
 			specHash: task.owner.specHash,
 			resultHash,
-			adapterVersion: "0.1.0",
+			adapterVersion: ANALYSIS_BUILD_IDENTITY.sdkVersion,
 			jenaPackage: "jena-js",
-			jenaVersion: "0.6.2",
-			jenaCommit: "2f63db4c6ccf5684afc8437ae81ed1a3ccd0c1a3",
+			jenaVersion: ANALYSIS_BUILD_IDENTITY.jenaVersion,
+			jenaCommit: ANALYSIS_BUILD_IDENTITY.jenaCommit,
 			sourceKind,
 			jenaExecuted: sourceKind === "raw-jena",
 			sdkPackage: "@3dena/analysis",
-			sdkVersion: "0.1.0",
+			sdkVersion: ANALYSIS_BUILD_IDENTITY.sdkVersion,
 			appVersion: "sdk-local",
 			contractVersion: ANALYSIS_CONTRACT_VERSION_V1,
 			buildId: dataset.buildId,
@@ -40060,6 +40084,2198 @@ async function executeAnalysisTask(dataset, task) {
 	return envelope;
 }
 //#endregion
+//#region src/longitudinal-v2.ts
+var SHA256 = /^[a-f0-9]{64}$/u;
+var TRAJECTORY_RUN_SPEC_VERSION_V2 = "3dena.trajectory-run-spec.v2";
+var LONGITUDINAL_BUNDLE_VERSION_V2 = "3dena.longitudinal-analysis-bundle.v2";
+var TRAJECTORY_DISPLAY_SPEC_VERSION_V2 = "3dena.trajectory-display-spec.v2";
+var LongitudinalExecutionErrorV2 = class extends Error {
+	code;
+	path;
+	constructor(code, path, message) {
+		super(`${path}: ${message}`);
+		this.name = "LongitudinalExecutionErrorV2";
+		this.code = code;
+		this.path = path;
+	}
+};
+function contractError(path, message) {
+	throw new TypeError(`${path}: ${message}`);
+}
+function objectAt(value, path) {
+	if (!value || typeof value !== "object" || Array.isArray(value)) contractError(path, "must be an object");
+	return value;
+}
+function exactFields(value, allowed, required, path) {
+	const allowedSet = new Set(allowed);
+	const unknown = Object.keys(value).find((field) => !allowedSet.has(field));
+	if (unknown) contractError(path, `contains unknown field ${JSON.stringify(unknown)}`);
+	const missing = required.find((field) => !Object.hasOwn(value, field));
+	if (missing) contractError(path, `is missing required field ${JSON.stringify(missing)}`);
+}
+function nonEmptyString(value, path) {
+	if (typeof value !== "string" || value.trim() === "") contractError(path, "must be a non-empty string");
+	return value;
+}
+function stringList(value, path, exactLength) {
+	if (!Array.isArray(value) || value.length === 0) contractError(path, "must be a non-empty string array");
+	if (exactLength !== void 0 && value.length !== exactLength) contractError(path, `must contain exactly ${exactLength} values`);
+	const output = value.map((entry, index) => nonEmptyString(entry, `${path}[${index}]`));
+	if (new Set(output).size !== output.length) contractError(path, "must contain distinct values");
+	return output;
+}
+function assertIdentity(value, path) {
+	const identity = objectAt(value, path);
+	exactFields(identity, ["components"], ["components"], path);
+	if (!Array.isArray(identity.components) || identity.components.length === 0) contractError(`${path}.components`, "must be a non-empty array");
+	const names = /* @__PURE__ */ new Set();
+	identity.components.forEach((candidate, index) => {
+		const componentPath = `${path}.components[${index}]`;
+		const component = objectAt(candidate, componentPath);
+		exactFields(component, [
+			"name",
+			"type",
+			"value",
+			"declaredType"
+		], [
+			"name",
+			"type",
+			"value"
+		], componentPath);
+		const name = nonEmptyString(component.name, `${componentPath}.name`);
+		if (names.has(name)) contractError(`${componentPath}.name`, "duplicates an earlier component name");
+		names.add(name);
+		if (component.type === "string" && typeof component.value === "string") return;
+		if (component.type === "boolean" && typeof component.value === "boolean") return;
+		if (component.type === "number" && typeof component.value === "number" && Number.isFinite(component.value)) {
+			if (Number.isInteger(component.value) && !Number.isSafeInteger(component.value)) contractError(`${componentPath}.value`, "unsafe integer identities must be supplied as strings");
+			return;
+		}
+		contractError(componentPath, "declared identity type must match its finite value");
+	});
+}
+function assertOrderedPeriodValue(value, path) {
+	const period = objectAt(value, path);
+	const type = nonEmptyString(period.type, `${path}.type`);
+	if (type === "ordered-index-v2") {
+		exactFields(period, ["type", "index"], ["type", "index"], path);
+		if (!Number.isSafeInteger(period.index) || period.index < 0) contractError(`${path}.index`, "must be a non-negative safe integer");
+		return type;
+	}
+	if (type === "numeric-v1") {
+		exactFields(period, [
+			"type",
+			"value",
+			"unit"
+		], [
+			"type",
+			"value",
+			"unit"
+		], path);
+		if (typeof period.value !== "number" || !Number.isFinite(period.value)) contractError(`${path}.value`, "must be finite");
+		nonEmptyString(period.unit, `${path}.unit`);
+		return type;
+	}
+	if (type === "date-v1") {
+		exactFields(period, ["type", "value"], ["type", "value"], path);
+		const date = nonEmptyString(period.value, `${path}.value`);
+		if (!/^\d{4}-\d{2}-\d{2}$/u.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) contractError(`${path}.value`, "must be a valid ISO civil date");
+		return type;
+	}
+	if (type === "instant-v1") {
+		exactFields(period, [
+			"type",
+			"epochMilliseconds",
+			"timeZone",
+			"offsetMinutes",
+			"fold",
+			"elapsedUnit"
+		], [
+			"type",
+			"epochMilliseconds",
+			"timeZone",
+			"offsetMinutes",
+			"fold",
+			"elapsedUnit"
+		], path);
+		if (typeof period.epochMilliseconds !== "string" || !/^-?(?:0|[1-9]\d*)$/u.test(period.epochMilliseconds)) contractError(`${path}.epochMilliseconds`, "must be a canonical integer string");
+		nonEmptyString(period.timeZone, `${path}.timeZone`);
+		if (!Number.isInteger(period.offsetMinutes) || period.offsetMinutes < -840 || period.offsetMinutes > 840) contractError(`${path}.offsetMinutes`, "must be an integer in [-840, 840]");
+		if (period.fold !== 0 && period.fold !== 1) contractError(`${path}.fold`, "must be 0 or 1");
+		nonEmptyString(period.elapsedUnit, `${path}.elapsedUnit`);
+		return type;
+	}
+	if (type === "difftime-v1") {
+		exactFields(period, [
+			"type",
+			"value",
+			"unit",
+			"elapsedUnit"
+		], [
+			"type",
+			"value",
+			"unit",
+			"elapsedUnit"
+		], path);
+		if (typeof period.value !== "number" || !Number.isFinite(period.value)) contractError(`${path}.value`, "must be finite");
+		nonEmptyString(period.unit, `${path}.unit`);
+		nonEmptyString(period.elapsedUnit, `${path}.elapsedUnit`);
+		return type;
+	}
+	contractError(`${path}.type`, `unsupported ordered-period value ${JSON.stringify(type)}`);
+}
+function periodCoordinate(value) {
+	if (value.type === "ordered-index-v2") return value.index;
+	if (value.type === "numeric-v1") return value.value;
+	if (value.type === "date-v1") return Date.parse(`${value.value}T00:00:00Z`);
+	if (value.type === "instant-v1") return BigInt(value.epochMilliseconds);
+	const milliseconds = {
+		milliseconds: 1,
+		seconds: 1e3,
+		minutes: 6e4,
+		hours: 36e5,
+		days: 864e5,
+		weeks: 6048e5
+	};
+	return value.value * milliseconds[value.unit] / milliseconds[value.elapsedUnit];
+}
+function assertTrajectoryRunSpecV2(value, path = "runSpec") {
+	const spec = objectAt(value, path);
+	exactFields(spec, [
+		"schemaVersion",
+		"sourceResultHash",
+		"participantColumns",
+		"timeColumn",
+		"groupColumn",
+		"orderedPeriods",
+		"selectedDimensions",
+		"cohortPolicy",
+		"missingValuePolicy",
+		"estimand"
+	], [
+		"schemaVersion",
+		"sourceResultHash",
+		"participantColumns",
+		"timeColumn",
+		"groupColumn",
+		"orderedPeriods",
+		"selectedDimensions",
+		"cohortPolicy",
+		"missingValuePolicy",
+		"estimand"
+	], path);
+	if (spec.schemaVersion !== "3dena.trajectory-run-spec.v2") contractError(`${path}.schemaVersion`, `must be ${TRAJECTORY_RUN_SPEC_VERSION_V2}`);
+	if (typeof spec.sourceResultHash !== "string" || !SHA256.test(spec.sourceResultHash)) contractError(`${path}.sourceResultHash`, "must be a lowercase SHA-256 digest");
+	stringList(spec.participantColumns, `${path}.participantColumns`);
+	nonEmptyString(spec.timeColumn, `${path}.timeColumn`);
+	if (spec.groupColumn !== null) nonEmptyString(spec.groupColumn, `${path}.groupColumn`);
+	const selected = stringList(spec.selectedDimensions, `${path}.selectedDimensions`, 3);
+	if (new Set(selected).size !== 3) contractError(`${path}.selectedDimensions`, "must contain three distinct dimensions");
+	if (spec.cohortPolicy !== "available" && spec.cohortPolicy !== "complete") contractError(`${path}.cohortPolicy`, "must be available or complete");
+	if (spec.missingValuePolicy !== "complete-analytical-rows") contractError(`${path}.missingValuePolicy`, "must be complete-analytical-rows");
+	const estimand = objectAt(spec.estimand, `${path}.estimand`);
+	if (estimand.kind === "equal-participant") exactFields(estimand, ["kind"], ["kind"], `${path}.estimand`);
+	else if (estimand.kind === "weighted-participant") {
+		exactFields(estimand, ["kind", "metadataField"], ["kind", "metadataField"], `${path}.estimand`);
+		nonEmptyString(estimand.metadataField, `${path}.estimand.metadataField`);
+	} else contractError(`${path}.estimand.kind`, "must be equal-participant or weighted-participant");
+	if (!Array.isArray(spec.orderedPeriods) || spec.orderedPeriods.length === 0) contractError(`${path}.orderedPeriods`, "must be a non-empty array");
+	const sourceCanonicals = /* @__PURE__ */ new Set();
+	const identityCanonicals = /* @__PURE__ */ new Set();
+	let valueType = null;
+	let priorCoordinate = null;
+	spec.orderedPeriods.forEach((candidate, index) => {
+		const periodPath = `${path}.orderedPeriods[${index}]`;
+		const period = objectAt(candidate, periodPath);
+		exactFields(period, [
+			"identity",
+			"sourceTimeCanonical",
+			"displayLabel",
+			"expected",
+			"value"
+		], [
+			"identity",
+			"sourceTimeCanonical",
+			"displayLabel",
+			"expected",
+			"value"
+		], periodPath);
+		assertIdentity(period.identity, `${periodPath}.identity`);
+		const canonicalIdentity = JSON.stringify(period.identity);
+		if (identityCanonicals.has(canonicalIdentity)) contractError(`${periodPath}.identity`, "duplicates an earlier typed identity");
+		identityCanonicals.add(canonicalIdentity);
+		const sourceCanonical = nonEmptyString(period.sourceTimeCanonical, `${periodPath}.sourceTimeCanonical`);
+		if (sourceCanonicals.has(sourceCanonical)) contractError(`${periodPath}.sourceTimeCanonical`, "duplicates an earlier source identity");
+		sourceCanonicals.add(sourceCanonical);
+		nonEmptyString(period.displayLabel, `${periodPath}.displayLabel`);
+		if (typeof period.expected !== "boolean") contractError(`${periodPath}.expected`, "must be boolean");
+		const currentType = assertOrderedPeriodValue(period.value, `${periodPath}.value`);
+		if (valueType !== null && currentType !== valueType) contractError(`${periodPath}.value.type`, `must use ${valueType} for every ordered period`);
+		valueType = currentType;
+		const coordinate = periodCoordinate(period.value);
+		if (priorCoordinate !== null) {
+			if (!(typeof coordinate === "bigint" && typeof priorCoordinate === "bigint" ? coordinate > priorCoordinate : typeof coordinate === "number" && typeof priorCoordinate === "number" && coordinate > priorCoordinate)) contractError(`${periodPath}.value`, "period values must be strictly increasing");
+		}
+		priorCoordinate = coordinate;
+	});
+}
+/** Strict structural guard for persisted or remotely returned V2 envelopes. */
+function assertLongitudinalAnalysisBundleV2(value, path = "bundle") {
+	const bundle = objectAt(value, path);
+	exactFields(bundle, [
+		"schemaVersion",
+		"identity",
+		"runSpec",
+		"model",
+		"paths",
+		"inference",
+		"pathComparisons",
+		"bootstrap",
+		"networkOverlays",
+		"diagnostics",
+		"execution"
+	], [
+		"schemaVersion",
+		"identity",
+		"runSpec",
+		"model",
+		"paths",
+		"inference",
+		"pathComparisons",
+		"bootstrap",
+		"networkOverlays",
+		"diagnostics",
+		"execution"
+	], path);
+	if (bundle.schemaVersion !== "3dena.longitudinal-analysis-bundle.v2") contractError(`${path}.schemaVersion`, `must be ${LONGITUDINAL_BUNDLE_VERSION_V2}`);
+	const identity = objectAt(bundle.identity, `${path}.identity`);
+	exactFields(identity, [
+		"datasetHash",
+		"specHash",
+		"sourceResultHash",
+		"resultHash",
+		"runId",
+		"jenaBuildId"
+	], [
+		"datasetHash",
+		"specHash",
+		"sourceResultHash",
+		"resultHash",
+		"runId",
+		"jenaBuildId"
+	], `${path}.identity`);
+	for (const field of [
+		"datasetHash",
+		"specHash",
+		"sourceResultHash",
+		"resultHash"
+	]) if (typeof identity[field] !== "string" || !SHA256.test(identity[field])) contractError(`${path}.identity.${field}`, "must be a lowercase SHA-256 digest");
+	nonEmptyString(identity.runId, `${path}.identity.runId`);
+	nonEmptyString(identity.jenaBuildId, `${path}.identity.jenaBuildId`);
+	assertTrajectoryRunSpecV2(bundle.runSpec, `${path}.runSpec`);
+	const model = objectAt(bundle.model, `${path}.model`);
+	exactFields(model, [
+		"type",
+		"fullRotationDimensions",
+		"selectedDimensions"
+	], [
+		"type",
+		"fullRotationDimensions",
+		"selectedDimensions"
+	], `${path}.model`);
+	if (model.type !== "SeparateTrajectory" && model.type !== "AccumulatedTrajectory") contractError(`${path}.model.type`, "must be SeparateTrajectory or AccumulatedTrajectory");
+	stringList(model.fullRotationDimensions, `${path}.model.fullRotationDimensions`);
+	stringList(model.selectedDimensions, `${path}.model.selectedDimensions`, 3);
+	if (JSON.stringify(model.selectedDimensions) !== JSON.stringify(bundle.runSpec.selectedDimensions)) contractError(`${path}.model.selectedDimensions`, "must match runSpec.selectedDimensions");
+	for (const field of [
+		"paths",
+		"inference",
+		"pathComparisons",
+		"bootstrap",
+		"networkOverlays",
+		"diagnostics"
+	]) if (!Array.isArray(bundle[field])) contractError(`${path}.${field}`, "must be an array");
+	if (bundle.paths.length === 0) contractError(`${path}.paths`, "must contain at least one computed group path");
+	bundle.paths.forEach((candidate, index) => {
+		const groupPath = objectAt(candidate, `${path}.paths[${index}]`);
+		exactFields(groupPath, ["group", "dynamics"], ["group", "dynamics"], `${path}.paths[${index}]`);
+		const group = objectAt(groupPath.group, `${path}.paths[${index}].group`);
+		exactFields(group, ["canonical", "display"], ["canonical", "display"], `${path}.paths[${index}].group`);
+		nonEmptyString(group.canonical, `${path}.paths[${index}].group.canonical`);
+		nonEmptyString(group.display, `${path}.paths[${index}].group.display`);
+		if (objectAt(groupPath.dynamics, `${path}.paths[${index}].dynamics`).schemaVersion !== "3dena.trajectory-dynamics.v1") contractError(`${path}.paths[${index}].dynamics.schemaVersion`, "must be 3dena.trajectory-dynamics.v1");
+	});
+	const execution = objectAt(bundle.execution, `${path}.execution`);
+	exactFields(execution, [
+		"target",
+		"jenaVersion",
+		"jenaCommit",
+		"jenaTarballIntegrity",
+		"sdkVersion",
+		"buildId",
+		"seed",
+		"permutationPlanHashes",
+		"resamplingPlanHashes",
+		"evidenceStatus"
+	], [
+		"target",
+		"jenaVersion",
+		"jenaCommit",
+		"jenaTarballIntegrity",
+		"sdkVersion",
+		"buildId",
+		"seed",
+		"permutationPlanHashes",
+		"resamplingPlanHashes",
+		"evidenceStatus"
+	], `${path}.execution`);
+	validateExecutionMetadata(execution);
+	for (const [field, values] of [["permutationPlanHashes", execution.permutationPlanHashes], ["resamplingPlanHashes", execution.resamplingPlanHashes]]) if (!Array.isArray(values) || values.some((hash) => typeof hash !== "string" || !SHA256.test(hash))) contractError(`${path}.execution.${field}`, "must be an array of lowercase SHA-256 digests");
+	if (![
+		"IMPLEMENTED_UNVERIFIED",
+		"PARITY_CANDIDATE",
+		"PRODUCTION_CANDIDATE",
+		"PRODUCTION_READY"
+	].includes(String(execution.evidenceStatus))) contractError(`${path}.execution.evidenceStatus`, "is unsupported");
+	const typed = bundle;
+	if (typed.identity.sourceResultHash !== typed.runSpec.sourceResultHash) contractError(`${path}.identity.sourceResultHash`, "must match runSpec.sourceResultHash");
+}
+function scientificCoreFromBundleV2(bundle) {
+	const { resultHash: _resultHash, ...identity } = bundle.identity;
+	const { target: _target, ...scientificExecution } = bundle.execution;
+	return {
+		schemaVersion: bundle.schemaVersion,
+		identity,
+		runSpec: bundle.runSpec,
+		model: bundle.model,
+		paths: bundle.paths,
+		inference: bundle.inference,
+		pathComparisons: bundle.pathComparisons,
+		bootstrap: bundle.bootstrap,
+		networkOverlays: bundle.networkOverlays,
+		diagnostics: bundle.diagnostics,
+		scientificExecution
+	};
+}
+/** Recomputes the canonical scientific hash; execution target is intentionally display/transport provenance only. */
+async function verifyLongitudinalAnalysisBundleV2(bundle) {
+	assertLongitudinalAnalysisBundleV2(bundle);
+	if (await hashAnalysisValueV1(scientificCoreFromBundleV2(bundle)) !== bundle.identity.resultHash) executionReject("LONGITUDINAL_RESULT_HASH_MISMATCH", "bundle.identity.resultHash", "does not match the canonical scientific envelope");
+}
+function assertDisplaySpec(value) {
+	const spec = objectAt(value, "displaySpec");
+	exactFields(spec, [
+		"schemaVersion",
+		"projection",
+		"displayedGroups",
+		"traces",
+		"axisFlips",
+		"camera",
+		"style"
+	], [
+		"schemaVersion",
+		"projection",
+		"displayedGroups",
+		"traces",
+		"axisFlips",
+		"camera",
+		"style"
+	], "displaySpec");
+	if (spec.schemaVersion !== "3dena.trajectory-display-spec.v2") contractError("displaySpec.schemaVersion", `must be ${TRAJECTORY_DISPLAY_SPEC_VERSION_V2}`);
+	if (![
+		"3d",
+		"xy",
+		"xz",
+		"yz",
+		"yx",
+		"zx",
+		"zy"
+	].includes(String(spec.projection))) contractError("displaySpec.projection", "is unsupported");
+	if (!Array.isArray(spec.displayedGroups) || spec.displayedGroups.some((group) => typeof group !== "string")) contractError("displaySpec.displayedGroups", "must be a string array");
+	if (!Array.isArray(spec.axisFlips) || spec.axisFlips.length !== 3 || spec.axisFlips.some((entry) => typeof entry !== "boolean")) contractError("displaySpec.axisFlips", "must contain three booleans");
+	const traces = objectAt(spec.traces, "displaySpec.traces");
+	const traceFields = [
+		"participants",
+		"individualPaths",
+		"centroids",
+		"paths",
+		"directionArrows",
+		"uncertainty",
+		"networkOverlay",
+		"labels"
+	];
+	exactFields(traces, traceFields, traceFields, "displaySpec.traces");
+	if (traceFields.some((field) => typeof traces[field] !== "boolean")) contractError("displaySpec.traces", "all trace controls must be boolean");
+	const style = objectAt(spec.style, "displaySpec.style");
+	exactFields(style, [
+		"participantSize",
+		"participantOpacity",
+		"centroidSize",
+		"pathWidth"
+	], [
+		"participantSize",
+		"participantOpacity",
+		"centroidSize",
+		"pathWidth"
+	], "displaySpec.style");
+	if (typeof style.participantSize !== "number" || style.participantSize <= 0) contractError("displaySpec.style.participantSize", "must be positive");
+	if (typeof style.participantOpacity !== "number" || style.participantOpacity < 0 || style.participantOpacity > 1) contractError("displaySpec.style.participantOpacity", "must be in [0,1]");
+	if (typeof style.centroidSize !== "number" || style.centroidSize <= 0) contractError("displaySpec.style.centroidSize", "must be positive");
+	if (typeof style.pathWidth !== "number" || style.pathWidth <= 0) contractError("displaySpec.style.pathWidth", "must be positive");
+}
+var GROUP_COLORS = [
+	"#2563eb",
+	"#b45309",
+	"#7c3aed",
+	"#0f766e",
+	"#be123c",
+	"#475569"
+];
+var AXIS_COLORS$1 = [
+	"#dc2626",
+	"#2563eb",
+	"#16a34a"
+];
+function hashString$1(value) {
+	let hash = 0;
+	for (let index = 0; index < value.length; index += 1) hash = Math.imul(hash, 31) + value.charCodeAt(index) >>> 0;
+	return hash;
+}
+function groupColor$1(canonical) {
+	return GROUP_COLORS[hashString$1(canonical) % GROUP_COLORS.length] ?? GROUP_COLORS[0];
+}
+function deepFreeze$1(value) {
+	if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+		for (const child of Object.values(value)) deepFreeze$1(child);
+		Object.freeze(value);
+	}
+	return value;
+}
+function projectionIndexes(projection) {
+	if (projection === "3d") return null;
+	return [...{
+		xy: [0, 1],
+		xz: [0, 2],
+		yz: [1, 2],
+		yx: [1, 0],
+		zx: [2, 0],
+		zy: [2, 1]
+	}[projection]];
+}
+function trace$1(dimension, resultHash, role, fields, meta = {}) {
+	return {
+		type: dimension === 3 ? "scatter3d" : "scatter",
+		...fields,
+		meta: {
+			role,
+			resultHash,
+			...meta
+		}
+	};
+}
+function projectedFields(coordinates, projection, flips) {
+	const flip = (value, index) => flips[index] ? -value : value;
+	const indexes = projectionIndexes(projection);
+	if (indexes === null) return {
+		x: coordinates.map((point) => point === null ? null : flip(point[0], 0)),
+		y: coordinates.map((point) => point === null ? null : flip(point[1], 1)),
+		z: coordinates.map((point) => point === null ? null : flip(point[2], 2))
+	};
+	return {
+		x: coordinates.map((point) => point === null ? null : flip(point[indexes[0]], indexes[0])),
+		y: coordinates.map((point) => point === null ? null : flip(point[indexes[1]], indexes[1]))
+	};
+}
+/**
+* Pure presenter compiler. It accepts only a completed longitudinal bundle;
+* projection, filtering, labels, camera and axis flips cannot execute or alter
+* any scientific task.
+*/
+function compileTrajectoryPlotlySpec(bundle, displaySpec) {
+	assertLongitudinalAnalysisBundleV2(bundle);
+	assertDisplaySpec(displaySpec);
+	const resultHash = bundle.identity.resultHash;
+	const dimension = displaySpec.projection === "3d" ? 3 : 2;
+	const selectedGroups = new Set(displaySpec.displayedGroups);
+	const groups = bundle.paths.filter(({ group }) => selectedGroups.size === 0 || selectedGroups.has(group.canonical));
+	const data = [];
+	const allCoordinates = groups.flatMap(({ dynamics }) => [...dynamics.participantPeriods.map((point) => point.selectedCoordinates), ...dynamics.periods.flatMap((period) => period.selectedCentroid ? [period.selectedCentroid] : [])]);
+	const extent = Math.max(1, ...allCoordinates.flatMap((coordinate) => coordinate.map(Math.abs))) * 1.08;
+	const axes = projectionIndexes(displaySpec.projection) ?? [
+		0,
+		1,
+		2
+	];
+	for (const axisIndex of axes) {
+		const axisName = bundle.model.selectedDimensions[axisIndex];
+		const end = [
+			0,
+			0,
+			0
+		];
+		end[axisIndex] = extent;
+		data.push(trace$1(dimension, resultHash, "axis-shaft", {
+			mode: "lines+text",
+			name: `${axisName} axis`,
+			...projectedFields([[
+				0,
+				0,
+				0
+			], end], displaySpec.projection, displaySpec.axisFlips),
+			text: ["", axisName],
+			line: {
+				color: AXIS_COLORS$1[axisIndex],
+				width: 5
+			},
+			showlegend: false,
+			hoverinfo: "skip"
+		}, { axis: axisName }));
+		if (dimension === 3) {
+			const direction = [
+				0,
+				0,
+				0
+			];
+			direction[axisIndex] = displaySpec.axisFlips[axisIndex] ? -1 : 1;
+			const projectedEnd = projectedFields([end], "3d", displaySpec.axisFlips);
+			data.push({
+				type: "cone",
+				x: projectedEnd.x,
+				y: projectedEnd.y,
+				z: projectedEnd.z,
+				u: [direction[0]],
+				v: [direction[1]],
+				w: [direction[2]],
+				anchor: "tip",
+				sizemode: "absolute",
+				sizeref: extent * .08,
+				colorscale: [[0, AXIS_COLORS$1[axisIndex]], [1, AXIS_COLORS$1[axisIndex]]],
+				showscale: false,
+				showlegend: false,
+				hoverinfo: "skip",
+				meta: {
+					role: "axis-arrowhead",
+					resultHash,
+					axis: axisName
+				}
+			});
+		}
+	}
+	for (const { group, dynamics } of groups) {
+		const color = groupColor$1(group.canonical);
+		if (displaySpec.traces.participants) {
+			const points = dynamics.participantPeriods.filter((point) => point.includedInCohort);
+			data.push(trace$1(dimension, resultHash, "participant", {
+				mode: "markers",
+				name: `${group.display} participant-periods`,
+				...projectedFields(points.map((point) => point.selectedCoordinates), displaySpec.projection, displaySpec.axisFlips),
+				text: points.map((point) => point.participant.display),
+				customdata: points.map((point) => [point.time.display]),
+				hovertemplate: "%{text}<br>%{customdata[0]}<extra></extra>",
+				marker: {
+					color,
+					size: displaySpec.style.participantSize,
+					opacity: displaySpec.style.participantOpacity
+				}
+			}, { groupCanonical: group.canonical }));
+		}
+		if (displaySpec.traces.individualPaths) {
+			const periodIndex = new Map(dynamics.periods.map((period) => [period.time.canonical, period.index]));
+			const participants = /* @__PURE__ */ new Map();
+			for (const point of dynamics.participantPeriods.filter((entry) => entry.includedInCohort)) participants.set(point.participant.canonical, [...participants.get(point.participant.canonical) ?? [], point]);
+			for (const [participantCanonical, participantPoints] of participants) {
+				const byPeriod = new Map(participantPoints.map((point) => [periodIndex.get(point.time.canonical), point]));
+				const coordinates = dynamics.periods.map((period) => {
+					const point = byPeriod.get(period.index);
+					return point ? point.selectedCoordinates : null;
+				});
+				data.push(trace$1(dimension, resultHash, "individual-path", {
+					mode: "lines+markers",
+					name: participantPoints[0].participant.display,
+					...projectedFields(coordinates, displaySpec.projection, displaySpec.axisFlips),
+					connectgaps: false,
+					showlegend: false,
+					line: {
+						color,
+						width: Math.max(1, displaySpec.style.pathWidth * .35)
+					},
+					marker: {
+						color,
+						size: Math.max(3, displaySpec.style.participantSize - 1)
+					}
+				}, {
+					groupCanonical: group.canonical,
+					participantCanonical
+				}));
+			}
+		}
+		const centroidCoordinates = dynamics.periods.map((period) => period.selectedCentroid);
+		if (displaySpec.traces.paths) data.push(trace$1(dimension, resultHash, "trajectory-path", {
+			mode: "lines+markers",
+			name: `${group.display} trajectory`,
+			...projectedFields(centroidCoordinates, displaySpec.projection, displaySpec.axisFlips),
+			connectgaps: false,
+			line: {
+				color,
+				width: displaySpec.style.pathWidth
+			},
+			marker: {
+				color,
+				size: displaySpec.style.centroidSize
+			},
+			text: dynamics.periods.map((period) => period.time.display),
+			hovertemplate: "%{text}<extra></extra>"
+		}, { groupCanonical: group.canonical }));
+		if (displaySpec.traces.centroids) {
+			const available = dynamics.periods.filter((period) => period.selectedCentroid !== null);
+			data.push(trace$1(dimension, resultHash, "centroid", {
+				mode: displaySpec.traces.labels ? "markers+text" : "markers",
+				name: `${group.display} centroids`,
+				...projectedFields(available.map((period) => period.selectedCentroid), displaySpec.projection, displaySpec.axisFlips),
+				text: available.map((period) => period.time.display),
+				customdata: available.map((period) => [period.nUsed]),
+				marker: {
+					color,
+					size: displaySpec.style.centroidSize,
+					symbol: "square",
+					line: {
+						color: "#ffffff",
+						width: 1.5
+					}
+				},
+				hovertemplate: "%{text}<br>n=%{customdata[0]}<extra></extra>"
+			}, { groupCanonical: group.canonical }));
+		}
+		if (displaySpec.traces.uncertainty) {
+			const bootstrap = bundle.bootstrap.find((entry) => entry.groupCanonical === group.canonical);
+			if (bootstrap) {
+				const projectedIndexes = projectionIndexes(displaySpec.projection) ?? [
+					0,
+					1,
+					2
+				];
+				const available = bootstrap.result.periods.filter((period) => projectedIndexes.every((axisIndex) => period.selectedCentroid[axisIndex] !== null));
+				if (available.length > 0) {
+					const estimates = available.map((period) => [
+						0,
+						1,
+						2
+					].map((axisIndex) => period.selectedCentroid[axisIndex]?.estimate ?? 0));
+					const error = (axisIndex) => {
+						const intervals = available.map((period) => period.selectedCentroid[axisIndex]);
+						const positive = intervals.map((interval) => interval.upper - interval.estimate);
+						const negative = intervals.map((interval) => interval.estimate - interval.lower);
+						return {
+							type: "data",
+							symmetric: false,
+							visible: true,
+							color,
+							thickness: 2,
+							width: 4,
+							array: displaySpec.axisFlips[axisIndex] ? negative : positive,
+							arrayminus: displaySpec.axisFlips[axisIndex] ? positive : negative
+						};
+					};
+					const projected = projectedFields(estimates, displaySpec.projection, displaySpec.axisFlips);
+					data.push(trace$1(dimension, resultHash, "uncertainty", {
+						mode: "markers",
+						name: `${group.display} pointwise ${Math.round(bootstrap.result.confidenceLevel * 100)}% intervals`,
+						...projected,
+						marker: {
+							color,
+							size: Math.max(3, displaySpec.style.centroidSize * .45),
+							opacity: .32
+						},
+						error_x: error(projectedIndexes[0]),
+						error_y: error(projectedIndexes[1]),
+						...dimension === 3 ? { error_z: error(projectedIndexes[2]) } : {},
+						text: available.map((period) => period.time.display),
+						hovertemplate: "%{text}<br>pointwise centroid interval<extra></extra>"
+					}, { groupCanonical: group.canonical }));
+				}
+			}
+		}
+		if (displaySpec.traces.directionArrows) for (let index = 1; index < dynamics.periods.length; index += 1) {
+			const previous = dynamics.periods[index - 1].selectedCentroid;
+			const current = dynamics.periods[index].selectedCentroid;
+			if (previous === null || current === null || dynamics.periods[index].selected3d.stepDistance === null) continue;
+			if (dimension === 3) {
+				const currentProjected = projectedFields([current], "3d", displaySpec.axisFlips);
+				const delta = current.map((value, axisIndex) => {
+					const raw = value - previous[axisIndex];
+					return displaySpec.axisFlips[axisIndex] ? -raw : raw;
+				});
+				data.push({
+					type: "cone",
+					x: currentProjected.x,
+					y: currentProjected.y,
+					z: currentProjected.z,
+					u: [delta[0]],
+					v: [delta[1]],
+					w: [delta[2]],
+					anchor: "tip",
+					sizemode: "absolute",
+					sizeref: Math.max(.06, extent * .06),
+					colorscale: [[0, color], [1, color]],
+					showscale: false,
+					showlegend: false,
+					hoverinfo: "skip",
+					meta: {
+						role: "direction-arrow",
+						resultHash,
+						groupCanonical: group.canonical
+					}
+				});
+			} else {
+				const indexes = projectionIndexes(displaySpec.projection);
+				const projected = projectedFields([previous, current], displaySpec.projection, displaySpec.axisFlips);
+				const dx = (current[indexes[0]] - previous[indexes[0]]) * (displaySpec.axisFlips[indexes[0]] ? -1 : 1);
+				const dy = (current[indexes[1]] - previous[indexes[1]]) * (displaySpec.axisFlips[indexes[1]] ? -1 : 1);
+				const angle = 90 - Math.atan2(dy, dx) * 180 / Math.PI;
+				data.push(trace$1(2, resultHash, "direction-arrow", {
+					mode: "lines+markers",
+					name: `${group.display} direction`,
+					...projected,
+					line: {
+						color,
+						width: Math.max(1, displaySpec.style.pathWidth * .45)
+					},
+					marker: {
+						color,
+						size: [0, Math.max(9, displaySpec.style.centroidSize * .85)],
+						symbol: ["circle", "arrow-up"],
+						angle: [0, angle]
+					},
+					showlegend: false,
+					hoverinfo: "skip"
+				}, { groupCanonical: group.canonical }));
+			}
+		}
+	}
+	if (displaySpec.traces.networkOverlay) {
+		const overlays = bundle.networkOverlays.filter((overlay) => overlay.status === "available" && (overlay.groupCanonical === null || selectedGroups.size === 0 || selectedGroups.has(overlay.groupCanonical)));
+		for (const overlay of overlays) {
+			const nodes = overlay.nodes;
+			data.push(trace$1(dimension, resultHash, "network-node", {
+				mode: "markers+text",
+				name: "Mean network nodes",
+				...projectedFields(nodes.map((node) => node.coordinates), displaySpec.projection, displaySpec.axisFlips),
+				text: nodes.map((node) => node.code),
+				marker: {
+					size: nodes.map((node) => 8 + Math.sqrt(Math.max(0, node.weight)) * 4),
+					color: "#f8fafc",
+					line: {
+						color: "#0f172a",
+						width: 2
+					}
+				}
+			}, { ...overlay.groupCanonical ? { groupCanonical: overlay.groupCanonical } : {} }));
+			for (const edge of overlay.edges) {
+				const source = nodes[edge.sourceIndex];
+				const target = nodes[edge.targetIndex];
+				if (!source || !target) continue;
+				data.push(trace$1(dimension, resultHash, "network-edge", {
+					mode: "lines",
+					name: edge.id,
+					...projectedFields([source.coordinates, target.coordinates], displaySpec.projection, displaySpec.axisFlips),
+					line: {
+						width: Math.max(.75, Math.abs(edge.weight) * 5),
+						color: edge.weight < 0 ? "#be123c" : "#64748b"
+					},
+					showlegend: false
+				}, { ...overlay.groupCanonical ? { groupCanonical: overlay.groupCanonical } : {} }));
+			}
+		}
+	}
+	const axisTitle = (index) => `${displaySpec.axisFlips[index] ? "−" : ""}${bundle.model.selectedDimensions[index]}`;
+	return deepFreeze$1({
+		schemaVersion: "3dena.trajectory-plotly-spec.v2",
+		resultHash,
+		data,
+		layout: {
+			autosize: true,
+			showlegend: true,
+			hovermode: "closest",
+			paper_bgcolor: "rgba(0,0,0,0)",
+			plot_bgcolor: "rgba(0,0,0,0)",
+			margin: {
+				l: 56,
+				r: 24,
+				t: 32,
+				b: 56
+			},
+			uirevision: `${resultHash}:${displaySpec.projection}`,
+			meta: {
+				scientificResultHash: resultHash,
+				scientificTaskExecuted: false,
+				projection: displaySpec.projection
+			},
+			...dimension === 3 ? { scene: {
+				xaxis: {
+					title: axisTitle(0),
+					zeroline: true,
+					showgrid: true
+				},
+				yaxis: {
+					title: axisTitle(1),
+					zeroline: true,
+					showgrid: true
+				},
+				zaxis: {
+					title: axisTitle(2),
+					zeroline: true,
+					showgrid: true
+				},
+				aspectmode: "data",
+				...displaySpec.camera ? { camera: structuredClone(displaySpec.camera) } : {}
+			} } : {
+				xaxis: {
+					title: axisTitle(axes[0]),
+					zeroline: true,
+					showgrid: true
+				},
+				yaxis: {
+					title: axisTitle(axes[1]),
+					zeroline: true,
+					showgrid: true,
+					scaleanchor: "x",
+					scaleratio: 1
+				}
+			}
+		},
+		config: {
+			responsive: true,
+			displaylogo: false,
+			scrollZoom: true,
+			toImageButtonOptions: {
+				format: "png",
+				filename: "3dena-longitudinal-trajectory"
+			}
+		},
+		diagnostics: structuredClone(bundle.diagnostics)
+	});
+}
+function executionReject(code, path, message) {
+	throw new LongitudinalExecutionErrorV2(code, path, message);
+}
+function assertPathTaskV2(task, path = "pathTask") {
+	const record = objectAt(task, path);
+	exactFields(record, [
+		"schemaVersion",
+		"kind",
+		"datasetHash",
+		"specHash",
+		"runId",
+		"runSpec"
+	], [
+		"schemaVersion",
+		"kind",
+		"datasetHash",
+		"specHash",
+		"runId",
+		"runSpec"
+	], path);
+	if (record.schemaVersion !== "3dena.trajectory-path-task.v2") contractError(`${path}.schemaVersion`, "must be 3dena.trajectory-path-task.v2");
+	if (record.kind !== "trajectory-path-v2") contractError(`${path}.kind`, "must be trajectory-path-v2");
+	for (const field of ["datasetHash", "specHash"]) if (typeof record[field] !== "string" || !SHA256.test(record[field])) contractError(`${path}.${field}`, "must be a lowercase SHA-256 digest");
+	nonEmptyString(record.runId, `${path}.runId`);
+	assertTrajectoryRunSpecV2(record.runSpec, `${path}.runSpec`);
+}
+function scalarType(value, path) {
+	if (value === null) executionReject("MISSING_TRAJECTORY_IDENTITY", path, "must not be null");
+	if (typeof value === "string") return "string";
+	if (typeof value === "boolean") return "boolean";
+	if (!Number.isFinite(value)) executionReject("NON_FINITE_TRAJECTORY_IDENTITY", path, "must be finite");
+	if (Number.isInteger(value) && !Number.isSafeInteger(value)) executionReject("UNSAFE_TRAJECTORY_IDENTITY", path, "unsafe integer identities must be source strings");
+	return "number";
+}
+function rawGroupIdentity(value, column) {
+	return { components: [{
+		name: column ?? "@3dena/group",
+		type: scalarType(value, "sourceResult.trajectory.group"),
+		value
+	}] };
+}
+function toTrajectoryTimeValueV1(value) {
+	if (value.type === "ordered-index-v2") return {
+		type: "numeric-v1",
+		value: value.index,
+		unit: "ordered-period"
+	};
+	return structuredClone(value);
+}
+function validateExecutionMetadata(input) {
+	if (![
+		"browser-worker",
+		"persistent-compute-service",
+		"node-service"
+	].includes(input.target)) executionReject("INVALID_EXECUTION_TARGET", "execution.target", "is unsupported");
+	for (const field of [
+		"jenaVersion",
+		"jenaCommit",
+		"jenaTarballIntegrity",
+		"sdkVersion",
+		"buildId"
+	]) if (typeof input[field] !== "string" || input[field].trim() === "") executionReject("INVALID_BUILD_METADATA", `execution.${field}`, "must be non-empty");
+	if (!Number.isSafeInteger(input.seed) || input.seed < 0 || input.seed > 4294967295) executionReject("INVALID_EXECUTION_SEED", "execution.seed", "must be a uint32 safe integer");
+}
+function validateMappingBinding(point, runSpec) {
+	if (JSON.stringify(point.participantLabel.columns) !== JSON.stringify(runSpec.participantColumns)) executionReject("TRAJECTORY_PARTICIPANT_MAPPING_MISMATCH", "pathTask.runSpec.participantColumns", "does not match the immutable fitted participant identity columns");
+	if (runSpec.groupColumn !== null && !point.unit.columns.includes(runSpec.groupColumn)) executionReject("TRAJECTORY_GROUP_MAPPING_MISMATCH", "pathTask.runSpec.groupColumn", "is absent from the immutable fitted unit mapping");
+	if (!point.id.columns.includes(runSpec.timeColumn) || point.unit.columns.includes(runSpec.timeColumn)) executionReject("TRAJECTORY_TIME_MAPPING_MISMATCH", "pathTask.runSpec.timeColumn", "does not match the immutable fitted time/conversation mapping");
+}
+function sourcePointsForGroup(points, groupCanonical) {
+	return points.filter((point) => point.group?.canonical === groupCanonical);
+}
+function buildGroupInputsV2(source, runSpec) {
+	const result = source.result;
+	const trajectory = result.trajectory;
+	if (!trajectory) executionReject("MISSING_SOURCE_TRAJECTORY", "dataset.sourceResult.result.trajectory", "is required for a longitudinal task");
+	const model = result.provenance.resolvedConfig.model;
+	if (model !== "SeparateTrajectory" && model !== "AccumulatedTrajectory") executionReject("UNSUPPORTED_LONGITUDINAL_MODEL", "dataset.sourceResult.result.provenance.resolvedConfig.model", "must be SeparateTrajectory or AccumulatedTrajectory");
+	if (result.points.length === 0) executionReject("EMPTY_SOURCE_RESULT", "dataset.sourceResult.result.points", "must contain fitted points");
+	validateMappingBinding(result.points[0], runSpec);
+	for (const [index, dimension] of runSpec.selectedDimensions.entries()) if (!result.dimensions.includes(dimension)) executionReject("UNKNOWN_SELECTED_DIMENSION", `pathTask.runSpec.selectedDimensions[${index}]`, "is absent from the fitted full rotation");
+	if (result.dimensions.length < 3) executionReject("INSUFFICIENT_LONGITUDINAL_DIMENSIONS", "dataset.sourceResult.result.dimensions", "3D trajectory requires at least three fitted dimensions");
+	const sourceTimes = trajectory.timeOrder;
+	if (model === "AccumulatedTrajectory") {
+		const fittedTimes = new Set(sourceTimes.map((time) => time.canonical));
+		const requestedObserved = runSpec.orderedPeriods.map((period) => period.sourceTimeCanonical).filter((canonical) => fittedTimes.has(canonical));
+		const requestedSet = new Set(requestedObserved);
+		const fittedObserved = sourceTimes.map((time) => time.canonical).filter((canonical) => requestedSet.has(canonical));
+		if (JSON.stringify(requestedObserved) !== JSON.stringify(fittedObserved)) executionReject("ACCUMULATED_TRAJECTORY_ORDER_MISMATCH", "pathTask.runSpec.orderedPeriods", "must preserve the immutable fitted chronology because later accumulated points contain earlier history");
+	}
+	const firstGroup = trajectory.groupOrder[0];
+	if (!firstGroup) executionReject("EMPTY_TRAJECTORY_GROUPS", "dataset.sourceResult.result.trajectory.groupOrder", "must contain at least one group");
+	const firstSeries = adaptAnalysisResultTrajectorySeries(result, {
+		group: firstGroup.canonical,
+		namespace: `${runSpec.sourceResultHash}:period-binding`,
+		participantIdentity: "participant-label"
+	});
+	const periods = runSpec.orderedPeriods.map((period, index) => {
+		const observedIndex = sourceTimes.findIndex((sourceTime) => sourceTime.canonical === period.sourceTimeCanonical);
+		if (observedIndex >= 0) {
+			const time = firstSeries.timeOrder[observedIndex];
+			if (!time) executionReject("TRAJECTORY_PERIOD_BINDING_MISMATCH", `pathTask.runSpec.orderedPeriods[${index}]`, "does not align with the fitted trajectory time order");
+			return {
+				time,
+				value: toTrajectoryTimeValueV1(period.value)
+			};
+		}
+		return {
+			time: structuredClone(period.identity),
+			value: toTrajectoryTimeValueV1(period.value)
+		};
+	});
+	return {
+		groups: trajectory.groupOrder.map((group, groupIndex) => {
+			const series = adaptAnalysisResultTrajectorySeries(result, {
+				group: group.canonical,
+				namespace: `longitudinal-v2:${runSpec.sourceResultHash}:group:${groupIndex}`,
+				participantIdentity: "participant-label"
+			});
+			const rawPoints = sourcePointsForGroup(result.points, group.canonical);
+			if (rawPoints.length !== series.points.length) executionReject("TRAJECTORY_ADAPTER_SHAPE_MISMATCH", `dataset.sourceResult.result.trajectory.groupOrder[${groupIndex}]`, "adapter point order does not match fitted source points");
+			const points = series.points.map((point, pointIndex) => {
+				if (runSpec.estimand.kind === "equal-participant") return {
+					...point,
+					coordinates: [...point.coordinates]
+				};
+				const weight = rawPoints[pointIndex].metadata[runSpec.estimand.metadataField];
+				if (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0) executionReject("INVALID_TRAJECTORY_WEIGHT", `dataset.sourceResult.result.points[${rawPoints[pointIndex].index}].metadata.${runSpec.estimand.metadataField}`, "must be finite and strictly positive for every point");
+				return {
+					...point,
+					coordinates: [...point.coordinates],
+					weight
+				};
+			});
+			return {
+				group: rawGroupIdentity(group.value, runSpec.groupColumn),
+				namespace: series.namespace,
+				points
+			};
+		}),
+		sourcePoints: trajectory.groupOrder.map((group) => sourcePointsForGroup(result.points, group.canonical)),
+		sourceGroups: trajectory.groupOrder.map((group) => ({
+			canonical: group.canonical,
+			display: group.display
+		})),
+		periods,
+		fullDimensions: [...result.dimensions],
+		model
+	};
+}
+function groupContextsV2(built, paths) {
+	return paths.map((path, index) => ({
+		group: path.group,
+		dynamics: path.dynamics,
+		series: {
+			namespace: built.groups[index].namespace,
+			dimensions: [...built.fullDimensions],
+			selectedDimensions: [...path.dynamics.selectedDimensions],
+			timeOrder: built.periods.map((period) => structuredClone(period.time)),
+			cohortPolicy: path.dynamics.cohortPolicy,
+			estimand: path.dynamics.estimand.kind === "weighted-participant-v1" ? "weighted-participant" : "equal-participant",
+			points: built.groups[index].points.map((point) => ({
+				participant: structuredClone(point.participant),
+				time: structuredClone(point.time),
+				coordinates: [...point.coordinates],
+				...point.weight === void 0 ? {} : { weight: point.weight }
+			}))
+		},
+		sourcePoints: built.sourcePoints[index].map((point) => structuredClone(point))
+	}));
+}
+function assertDerivedTaskBinding(task, pathTask, path) {
+	if (task.datasetHash !== pathTask.datasetHash) executionReject("TRAJECTORY_DATASET_BINDING_MISMATCH", `${path}.datasetHash`, "does not match the path task");
+	if (task.specHash !== pathTask.specHash) executionReject("TRAJECTORY_SPEC_BINDING_MISMATCH", `${path}.specHash`, "does not match the path task");
+	if (task.sourceResultHash !== pathTask.runSpec.sourceResultHash) executionReject("TRAJECTORY_SOURCE_BINDING_MISMATCH", `${path}.sourceResultHash`, "does not match the path task");
+	if (task.runId !== pathTask.runId) executionReject("TRAJECTORY_RUN_BINDING_MISMATCH", `${path}.runId`, "does not match the path task");
+}
+function assertInferenceTaskV2(task, pathTask) {
+	const record = objectAt(task, "inferenceTask");
+	exactFields(record, [
+		"schemaVersion",
+		"kind",
+		"datasetHash",
+		"specHash",
+		"sourceResultHash",
+		"runId",
+		"requests",
+		"adjustment"
+	], [
+		"schemaVersion",
+		"kind",
+		"datasetHash",
+		"specHash",
+		"sourceResultHash",
+		"runId",
+		"requests",
+		"adjustment"
+	], "inferenceTask");
+	if (record.schemaVersion !== "3dena.trajectory-inference-task.v2" || record.kind !== "trajectory-inference-v2") contractError("inferenceTask", "must use the V2 inference task contract");
+	if (record.adjustment !== "holm") contractError("inferenceTask.adjustment", "must be holm");
+	for (const field of [
+		"datasetHash",
+		"specHash",
+		"sourceResultHash"
+	]) if (typeof record[field] !== "string" || !SHA256.test(record[field])) contractError(`inferenceTask.${field}`, "must be a lowercase SHA-256 digest");
+	nonEmptyString(record.runId, "inferenceTask.runId");
+	if (!Array.isArray(record.requests) || record.requests.length === 0) contractError("inferenceTask.requests", "must be a non-empty array");
+	record.requests.forEach((candidate, index) => {
+		const path = `inferenceTask.requests[${index}]`;
+		const request = objectAt(candidate, path);
+		if (request.kind === "independent-period") {
+			exactFields(request, [
+				"kind",
+				"groups",
+				"periodCanonical"
+			], [
+				"kind",
+				"groups",
+				"periodCanonical"
+			], path);
+			stringList(request.groups, `${path}.groups`, 2);
+			nonEmptyString(request.periodCanonical, `${path}.periodCanonical`);
+			return;
+		}
+		if (request.kind === "paired-periods") {
+			exactFields(request, [
+				"kind",
+				"group",
+				"earlierPeriodCanonical",
+				"laterPeriodCanonical",
+				"samePhysicalEntityConfirmed"
+			], [
+				"kind",
+				"group",
+				"earlierPeriodCanonical",
+				"laterPeriodCanonical",
+				"samePhysicalEntityConfirmed"
+			], path);
+			if (request.group !== null) nonEmptyString(request.group, `${path}.group`);
+			if (nonEmptyString(request.earlierPeriodCanonical, `${path}.earlierPeriodCanonical`) === nonEmptyString(request.laterPeriodCanonical, `${path}.laterPeriodCanonical`)) contractError(path, "paired periods must differ");
+			if (typeof request.samePhysicalEntityConfirmed !== "boolean") contractError(`${path}.samePhysicalEntityConfirmed`, "must be boolean");
+			return;
+		}
+		if (request.kind === "repeated-periods") {
+			exactFields(request, [
+				"kind",
+				"group",
+				"periodCanonicals",
+				"samePhysicalEntityConfirmed"
+			], [
+				"kind",
+				"group",
+				"periodCanonicals",
+				"samePhysicalEntityConfirmed"
+			], path);
+			if (request.group !== null) nonEmptyString(request.group, `${path}.group`);
+			stringList(request.periodCanonicals, `${path}.periodCanonicals`);
+			if (request.periodCanonicals.length < 3) contractError(`${path}.periodCanonicals`, "must contain at least three periods");
+			if (typeof request.samePhysicalEntityConfirmed !== "boolean") contractError(`${path}.samePhysicalEntityConfirmed`, "must be boolean");
+			return;
+		}
+		if (request.kind === "path-comparison") {
+			exactFields(request, [
+				"kind",
+				"design",
+				"groups",
+				"repetitions",
+				"seed",
+				"samePhysicalEntityConfirmed"
+			], [
+				"kind",
+				"design",
+				"groups",
+				"repetitions",
+				"seed",
+				"samePhysicalEntityConfirmed"
+			], path);
+			if (request.design !== "independent" && request.design !== "paired") contractError(`${path}.design`, "must be independent or paired");
+			stringList(request.groups, `${path}.groups`, 2);
+			if (!Number.isSafeInteger(request.repetitions) || request.repetitions < 1 || request.repetitions > 1e4) contractError(`${path}.repetitions`, "must be an integer in [1, 10000]");
+			if (!Number.isSafeInteger(request.seed) || request.seed < 0 || request.seed > 4294967295) contractError(`${path}.seed`, "must be a uint32 integer");
+			if (typeof request.samePhysicalEntityConfirmed !== "boolean") contractError(`${path}.samePhysicalEntityConfirmed`, "must be boolean");
+			if (request.design === "independent" && request.samePhysicalEntityConfirmed !== false) contractError(`${path}.samePhysicalEntityConfirmed`, "must be false for independent comparison");
+			return;
+		}
+		contractError(`${path}.kind`, "is unsupported");
+	});
+	assertDerivedTaskBinding(record, pathTask, "inferenceTask");
+}
+function assertBootstrapTaskV2(task, pathTask) {
+	const record = objectAt(task, "bootstrapTask");
+	exactFields(record, [
+		"schemaVersion",
+		"kind",
+		"datasetHash",
+		"specHash",
+		"sourceResultHash",
+		"runId",
+		"repetitions",
+		"confidenceLevel",
+		"seed",
+		"resamplingDesign",
+		"explicitStrataField",
+		"interval",
+		"rotationPolicy"
+	], [
+		"schemaVersion",
+		"kind",
+		"datasetHash",
+		"specHash",
+		"sourceResultHash",
+		"runId",
+		"repetitions",
+		"confidenceLevel",
+		"seed",
+		"resamplingDesign",
+		"explicitStrataField",
+		"interval",
+		"rotationPolicy"
+	], "bootstrapTask");
+	if (record.schemaVersion !== "3dena.trajectory-bootstrap-task.v2" || record.kind !== "trajectory-bootstrap-v2") contractError("bootstrapTask", "must use the V2 bootstrap task contract");
+	for (const field of [
+		"datasetHash",
+		"specHash",
+		"sourceResultHash"
+	]) if (typeof record[field] !== "string" || !SHA256.test(record[field])) contractError(`bootstrapTask.${field}`, "must be a lowercase SHA-256 digest");
+	nonEmptyString(record.runId, "bootstrapTask.runId");
+	if (!Number.isSafeInteger(record.repetitions) || record.repetitions < 1 || record.repetitions > 1e4) contractError("bootstrapTask.repetitions", "must be an integer in [1, 10000]");
+	if (typeof record.confidenceLevel !== "number" || !Number.isFinite(record.confidenceLevel) || record.confidenceLevel <= 0 || record.confidenceLevel >= 1) contractError("bootstrapTask.confidenceLevel", "must be finite and in (0,1)");
+	if (!Number.isSafeInteger(record.seed) || record.seed < 0 || record.seed > 4294967295) contractError("bootstrapTask.seed", "must be a uint32 integer");
+	if (![
+		"auto",
+		"global-participant",
+		"within-group",
+		"explicit-strata"
+	].includes(String(record.resamplingDesign))) contractError("bootstrapTask.resamplingDesign", "is unsupported");
+	if (record.resamplingDesign === "explicit-strata") nonEmptyString(record.explicitStrataField, "bootstrapTask.explicitStrataField");
+	else if (record.explicitStrataField !== null) contractError("bootstrapTask.explicitStrataField", "must be null unless explicit-strata is selected");
+	if (record.interval !== "pointwise-percentile-linear-type7") contractError("bootstrapTask.interval", "must be pointwise-percentile-linear-type7");
+	if (record.rotationPolicy !== "fixed-same-fit-projection") contractError("bootstrapTask.rotationPolicy", "must be fixed-same-fit-projection");
+	assertDerivedTaskBinding(record, pathTask, "bootstrapTask");
+}
+function assertNetworkOverlayTaskV2(task, pathTask) {
+	const record = objectAt(task, "networkOverlayTask");
+	exactFields(record, [
+		"schemaVersion",
+		"kind",
+		"datasetHash",
+		"specHash",
+		"sourceResultHash",
+		"runId",
+		"requests"
+	], [
+		"schemaVersion",
+		"kind",
+		"datasetHash",
+		"specHash",
+		"sourceResultHash",
+		"runId",
+		"requests"
+	], "networkOverlayTask");
+	if (record.schemaVersion !== "3dena.trajectory-network-overlay-task.v2" || record.kind !== "trajectory-network-overlay-v2") contractError("networkOverlayTask", "must use the V2 network-overlay task contract");
+	for (const field of [
+		"datasetHash",
+		"specHash",
+		"sourceResultHash"
+	]) if (typeof record[field] !== "string" || !SHA256.test(record[field])) contractError(`networkOverlayTask.${field}`, "must be a lowercase SHA-256 digest");
+	nonEmptyString(record.runId, "networkOverlayTask.runId");
+	if (!Array.isArray(record.requests) || record.requests.length === 0) contractError("networkOverlayTask.requests", "must be a non-empty array");
+	const unique = /* @__PURE__ */ new Set();
+	record.requests.forEach((candidate, index) => {
+		const path = `networkOverlayTask.requests[${index}]`;
+		const request = objectAt(candidate, path);
+		exactFields(request, ["periodCanonical", "groupCanonical"], ["periodCanonical", "groupCanonical"], path);
+		const period = nonEmptyString(request.periodCanonical, `${path}.periodCanonical`);
+		const group = request.groupCanonical === null ? null : nonEmptyString(request.groupCanonical, `${path}.groupCanonical`);
+		const key = JSON.stringify([period, group]);
+		if (unique.has(key)) contractError(path, "duplicates an earlier overlay request");
+		unique.add(key);
+	});
+	assertDerivedTaskBinding(record, pathTask, "networkOverlayTask");
+}
+function resolvePeriodIndex(runSpec, canonical, path) {
+	const index = runSpec.orderedPeriods.findIndex((period) => period.sourceTimeCanonical === canonical);
+	if (index < 0) executionReject("UNKNOWN_TRAJECTORY_PERIOD", path, "is absent from the ordered-period contract");
+	return index;
+}
+function selectContexts(contexts, canonical, path) {
+	if (canonical === null) return contexts;
+	const selected = contexts.find((context) => context.group.canonical === canonical);
+	if (!selected) executionReject("UNKNOWN_TRAJECTORY_GROUP", path, "is absent from the computed path set");
+	return [selected];
+}
+function participantRowsAtPeriod(context, periodIndex) {
+	const period = context.dynamics.periods[periodIndex];
+	if (!period) executionReject("UNKNOWN_TRAJECTORY_PERIOD", `paths.${context.group.canonical}.periods[${periodIndex}]`, "is absent");
+	return context.dynamics.participantPeriods.filter((row) => row.includedInCohort && row.time.canonical === period.time.canonical);
+}
+function selectedCoordinateAt(coordinates, axisIndex, path) {
+	const value = coordinates[axisIndex];
+	if (value === void 0 || !Number.isFinite(value)) executionReject("INVALID_SELECTED_COORDINATE", path, "must resolve to a finite selected-axis coordinate");
+	return value;
+}
+function withHolmRows(rows, familyId) {
+	const adjusted = holmAdjustFamilyV2(rows.map(({ memberId, pRaw }) => ({
+		memberId,
+		pRaw
+	})));
+	return rows.map((row, index) => ({
+		...row,
+		familyId,
+		familySize: adjusted[index].familySizePlanned,
+		pHolm: adjusted[index].pHolm,
+		holmRank: adjusted[index].holmRank,
+		holmMultiplier: adjusted[index].holmMultiplier
+	}));
+}
+function independentPeriodInference(request, contexts, runSpec) {
+	const [groupA, groupB] = request.groups.map((group, index) => selectContexts(contexts, group, `request.groups[${index}]`)[0]);
+	const periodIndex = resolvePeriodIndex(runSpec, request.periodCanonical, "request.periodCanonical");
+	const rows = runSpec.selectedDimensions.map((axis, axisIndex) => {
+		const result = mannWhitneyRankTestV2(participantRowsAtPeriod(groupA, periodIndex).map((row, rowIndex) => selectedCoordinateAt(row.selectedCoordinates, axisIndex, `groupA[${rowIndex}].selectedCoordinates[${axisIndex}]`)), participantRowsAtPeriod(groupB, periodIndex).map((row, rowIndex) => selectedCoordinateAt(row.selectedCoordinates, axisIndex, `groupB[${rowIndex}].selectedCoordinates[${axisIndex}]`)));
+		return {
+			memberId: `axis:${axis}`,
+			test: "mann-whitney",
+			design: "independent",
+			estimand: "participant-period-coordinate-distribution",
+			axis,
+			axisIndex,
+			periodCanonical: request.periodCanonical,
+			status: result.status,
+			reason: result.reason,
+			nPrimary: result.nPrimary,
+			nSecondary: result.nSecondary,
+			effect: result.rankBiserialPrimaryVsSecondary,
+			statistic: result.uPrimary,
+			pRaw: result.pValueTwoSided,
+			method: result.resolvedPMethod,
+			ties: {
+				groups: result.tieGroupCount,
+				observations: result.tiedObservationCount,
+				correctionSum: result.tieCorrectionSum
+			},
+			zeros: null,
+			exactTail: result.exactTail
+		};
+	});
+	const familyId = `independent-period:${request.periodCanonical}:${request.groups.join(":")}`;
+	return {
+		request: structuredClone(request),
+		status: rows.some((row) => row.status === "available") ? "available" : "not-estimable",
+		familyId,
+		familySize: rows.length,
+		rows: withHolmRows(rows, familyId),
+		reason: rows.some((row) => row.status === "available") ? null : "no-estimable-axis"
+	};
+}
+function entityPeriodMaps(contexts, periodIndexes) {
+	const output = /* @__PURE__ */ new Map();
+	for (const context of contexts) for (const periodIndex of periodIndexes) for (const row of participantRowsAtPeriod(context, periodIndex)) {
+		const entity = JSON.stringify([context.group.canonical, row.participant.canonical]);
+		const periods = output.get(entity) ?? /* @__PURE__ */ new Map();
+		if (periods.has(periodIndex)) executionReject("ENTITY_PERIOD_INSTABILITY", "paths.participantPeriods", "contains a duplicate reduced participant-period");
+		periods.set(periodIndex, [...row.selectedCoordinates]);
+		output.set(entity, periods);
+	}
+	return output;
+}
+function disabledInference(request) {
+	return {
+		request: structuredClone(request),
+		status: "disabled",
+		familyId: `${request.kind}:disabled`,
+		familySize: 0,
+		rows: [],
+		reason: "same-physical-entity-not-confirmed"
+	};
+}
+function pairedPeriodInference(request, contexts, runSpec) {
+	if (!request.samePhysicalEntityConfirmed) return disabledInference(request);
+	const selected = selectContexts(contexts, request.group, "request.group");
+	const earlier = resolvePeriodIndex(runSpec, request.earlierPeriodCanonical, "request.earlierPeriodCanonical");
+	const later = resolvePeriodIndex(runSpec, request.laterPeriodCanonical, "request.laterPeriodCanonical");
+	const maps = entityPeriodMaps(selected, [earlier, later]);
+	const earlierCount = [...maps.values()].filter((periods) => periods.has(earlier)).length;
+	const laterCount = [...maps.values()].filter((periods) => periods.has(later)).length;
+	const complete = [...maps.values()].filter((periods) => periods.has(earlier) && periods.has(later));
+	const audit = {
+		earlier: earlierCount,
+		later: laterCount,
+		overlap: complete.length,
+		earlierOnly: earlierCount - complete.length,
+		laterOnly: laterCount - complete.length,
+		samePhysicalEntityConfirmed: true
+	};
+	const rows = runSpec.selectedDimensions.map((axis, axisIndex) => {
+		const result = wilcoxonSignedRankTestV2(complete.map((periods, participantIndex) => selectedCoordinateAt(periods.get(later), axisIndex, `paired[${participantIndex}].later[${axisIndex}]`) - selectedCoordinateAt(periods.get(earlier), axisIndex, `paired[${participantIndex}].earlier[${axisIndex}]`)), { missingPairs: maps.size - complete.length });
+		return {
+			memberId: `axis:${axis}`,
+			test: "wilcoxon-signed-rank",
+			design: "paired",
+			estimand: "later-minus-earlier-participant-coordinate",
+			axis,
+			axisIndex,
+			earlierPeriodCanonical: request.earlierPeriodCanonical,
+			laterPeriodCanonical: request.laterPeriodCanonical,
+			status: result.status,
+			reason: result.reason,
+			n: result.nRanked,
+			effect: result.rankBiserialLaterVsEarlier,
+			statistic: result.t,
+			pRaw: result.pValueTwoSided,
+			method: result.resolvedPMethod,
+			ties: {
+				groups: result.tieGroupCount,
+				observations: result.tiedObservationCount,
+				correctionSum: result.tieCorrectionSum
+			},
+			zeros: result.nZero,
+			exactTail: result.exactTail,
+			identityOverlapAudit: audit
+		};
+	});
+	const familyId = `paired-periods:${request.group ?? "all"}:${request.earlierPeriodCanonical}:${request.laterPeriodCanonical}`;
+	return {
+		request: structuredClone(request),
+		status: rows.some((row) => row.status === "available") ? "available" : "not-estimable",
+		familyId,
+		familySize: rows.length,
+		rows: withHolmRows(rows, familyId),
+		reason: rows.some((row) => row.status === "available") ? null : "no-estimable-axis"
+	};
+}
+function repeatedPeriodInference(request, contexts, runSpec) {
+	if (!request.samePhysicalEntityConfirmed) return disabledInference(request);
+	const selected = selectContexts(contexts, request.group, "request.group");
+	const periodIndexes = request.periodCanonicals.map((canonical, index) => resolvePeriodIndex(runSpec, canonical, `request.periodCanonicals[${index}]`));
+	const maps = entityPeriodMaps(selected, periodIndexes);
+	const complete = [...maps.values()].filter((periods) => periodIndexes.every((period) => periods.has(period)));
+	const omnibus = withHolmRows(runSpec.selectedDimensions.map((axis, axisIndex) => {
+		const result = friedmanRankTestV2(complete.map((periods, participantIndex) => periodIndexes.map((period, periodIndex) => selectedCoordinateAt(periods.get(period), axisIndex, `repeated[${participantIndex}].periods[${periodIndex}][${axisIndex}]`))), {
+			missingCompleteBlocks: maps.size - complete.length,
+			periodCountWhenEmpty: periodIndexes.length
+		});
+		return {
+			memberId: `friedman:${axis}`,
+			test: "friedman",
+			design: "repeated",
+			estimand: "all-period-complete-participant-coordinate-ranks",
+			axis,
+			axisIndex,
+			selectedPeriodCanonicals: [...request.periodCanonicals],
+			status: result.status,
+			reason: result.reason,
+			n: result.nComplete,
+			effect: result.kendallsW,
+			statistic: result.q,
+			pRaw: result.pValueUpperTail,
+			method: result.resolvedPMethod,
+			ties: {
+				groups: result.tieGroupCount,
+				observations: result.tiedObservationCount,
+				correctionSum: result.tieCorrectionSum
+			},
+			zeros: null,
+			exactTail: result.exactTail,
+			identityOverlapAudit: {
+				totalEntities: maps.size,
+				completeBlocks: complete.length,
+				excludedIncomplete: maps.size - complete.length,
+				samePhysicalEntityConfirmed: true
+			}
+		};
+	}), `repeated-omnibus:${request.group ?? "all"}:${request.periodCanonicals.join(":")}`);
+	const posthocRows = [];
+	for (let earlierIndex = 0; earlierIndex < periodIndexes.length - 1; earlierIndex += 1) for (let laterIndex = earlierIndex + 1; laterIndex < periodIndexes.length; laterIndex += 1) for (const [axisIndex, axis] of runSpec.selectedDimensions.entries()) {
+		const result = wilcoxonSignedRankTestV2(complete.map((periods, participantIndex) => selectedCoordinateAt(periods.get(periodIndexes[laterIndex]), axisIndex, `posthoc[${participantIndex}].later[${axisIndex}]`) - selectedCoordinateAt(periods.get(periodIndexes[earlierIndex]), axisIndex, `posthoc[${participantIndex}].earlier[${axisIndex}]`)), { missingPairs: maps.size - complete.length });
+		posthocRows.push({
+			memberId: `posthoc:${earlierIndex}:${laterIndex}:${axis}`,
+			test: "wilcoxon-signed-rank",
+			design: "repeated-posthoc",
+			estimand: "later-minus-earlier-all-period-complete-coordinate",
+			axis,
+			axisIndex,
+			earlierPeriodCanonical: request.periodCanonicals[earlierIndex],
+			laterPeriodCanonical: request.periodCanonicals[laterIndex],
+			status: result.status,
+			reason: result.reason,
+			n: result.nRanked,
+			effect: result.rankBiserialLaterVsEarlier,
+			statistic: result.t,
+			pRaw: result.pValueTwoSided,
+			method: result.resolvedPMethod,
+			ties: {
+				groups: result.tieGroupCount,
+				observations: result.tiedObservationCount,
+				correctionSum: result.tieCorrectionSum
+			},
+			zeros: result.nZero,
+			exactTail: result.exactTail,
+			identityOverlapAudit: {
+				totalEntities: maps.size,
+				completeBlocks: complete.length,
+				excludedIncomplete: maps.size - complete.length,
+				samePhysicalEntityConfirmed: true
+			}
+		});
+	}
+	const posthoc = withHolmRows(posthocRows, `repeated-posthoc:${request.group ?? "all"}:${request.periodCanonicals.join(":")}`);
+	const rows = [...omnibus, ...posthoc];
+	return {
+		request: structuredClone(request),
+		status: rows.some((row) => row.status === "available") ? "available" : "not-estimable",
+		familyId: `repeated-periods:${request.group ?? "all"}`,
+		familySize: rows.length,
+		rows,
+		reason: rows.some((row) => row.status === "available") ? null : "no-estimable-test"
+	};
+}
+function mulberry32(seed) {
+	let state = seed >>> 0;
+	return () => {
+		state = state + 1831565813 >>> 0;
+		let value = state;
+		value = Math.imul(value ^ value >>> 15, value | 1);
+		value ^= value + Math.imul(value ^ value >>> 7, value | 61);
+		return ((value ^ value >>> 14) >>> 0) / 4294967296;
+	};
+}
+function createPermutationPlanV2(request, sideA, sideB) {
+	const comparison = request.design === "paired" ? {
+		design: "paired",
+		pairedId: [],
+		sideA: {
+			label: request.groups[0],
+			series: sideA
+		},
+		sideB: {
+			label: request.groups[1],
+			series: sideB
+		}
+	} : {
+		design: "independent",
+		sideA: {
+			label: request.groups[0],
+			series: sideA
+		},
+		sideB: {
+			label: request.groups[1],
+			series: sideB
+		}
+	};
+	if (request.design === "paired") comparison.pairedId = sideA.points[0]?.participant.components.map((component) => component.name) ?? [];
+	const units = getTrajectoryPermutationUnits(comparison);
+	const random = mulberry32(request.seed);
+	if (request.design === "paired") return {
+		kind: "paired-swap-indices-v1",
+		unitOrder: units.unitOrder,
+		replicates: Array.from({ length: request.repetitions }, () => units.unitOrder.map((_, index) => index).filter(() => random() < .5))
+	};
+	return {
+		kind: "independent-pool-indices-v1",
+		unitOrder: units.unitOrder,
+		replicates: Array.from({ length: request.repetitions }, () => {
+			const indexes = units.unitOrder.map((_, index) => index);
+			for (let index = indexes.length - 1; index > 0; index -= 1) {
+				const selected = Math.floor(random() * (index + 1));
+				[indexes[index], indexes[selected]] = [indexes[selected], indexes[index]];
+			}
+			return indexes;
+		})
+	};
+}
+function physicalTimeKey(point) {
+	return JSON.stringify(point.time.components.map((component) => [
+		component.name,
+		component.type,
+		component.value,
+		component.declaredType ?? null
+	]));
+}
+function pairedWholePathSeriesV2(sideA, sideB) {
+	const histories = (series) => {
+		const output = /* @__PURE__ */ new Map();
+		for (const point of series.points) {
+			const participant = physicalParticipantKey(point);
+			const times = output.get(participant) ?? /* @__PURE__ */ new Set();
+			times.add(physicalTimeKey(point));
+			output.set(participant, times);
+		}
+		return output;
+	};
+	const a = histories(sideA);
+	const b = histories(sideB);
+	const aKeys = new Set(a.keys());
+	const bKeys = new Set(b.keys());
+	const overlapping = [...aKeys].filter((key) => bKeys.has(key));
+	const requiredPeriods = /* @__PURE__ */ new Set([...sideA.points.map(physicalTimeKey), ...sideB.points.map(physicalTimeKey)]);
+	const pairedComplete = new Set(overlapping.filter((key) => [...requiredPeriods].every((period) => a.get(key).has(period) && b.get(key).has(period))));
+	const filter = (series) => ({
+		...series,
+		points: series.points.filter((point) => pairedComplete.has(physicalParticipantKey(point)))
+	});
+	return {
+		sideA: filter(sideA),
+		sideB: filter(sideB),
+		audit: {
+			sideAEntities: aKeys.size,
+			sideBEntities: bKeys.size,
+			overlappingEntities: overlapping.length,
+			pairedCompleteEntities: pairedComplete.size,
+			sideAOnly: [...aKeys].filter((key) => !bKeys.has(key)).length,
+			sideBOnly: [...bKeys].filter((key) => !aKeys.has(key)).length,
+			excludedIncompleteOverlap: overlapping.length - pairedComplete.size,
+			samePhysicalEntityConfirmed: true
+		}
+	};
+}
+async function runInferenceV2(task, pathTask, contexts) {
+	if (!task) return {
+		inference: [],
+		comparisons: [],
+		planHashes: []
+	};
+	assertInferenceTaskV2(task, pathTask);
+	const inference = [];
+	const comparisons = [];
+	const planHashes = [];
+	for (const request of task.requests) {
+		if (request.kind === "independent-period") {
+			inference.push(independentPeriodInference(request, contexts, pathTask.runSpec));
+			continue;
+		}
+		if (request.kind === "paired-periods") {
+			inference.push(pairedPeriodInference(request, contexts, pathTask.runSpec));
+			continue;
+		}
+		if (request.kind === "repeated-periods") {
+			inference.push(repeatedPeriodInference(request, contexts, pathTask.runSpec));
+			continue;
+		}
+		if (request.design === "paired" && !request.samePhysicalEntityConfirmed) {
+			inference.push(disabledInference(request));
+			continue;
+		}
+		const sideA = selectContexts(contexts, request.groups[0], "request.groups[0]")[0];
+		const sideB = selectContexts(contexts, request.groups[1], "request.groups[1]")[0];
+		const paired = request.design === "paired" ? pairedWholePathSeriesV2(sideA.series, sideB.series) : null;
+		if (paired && paired.audit.pairedCompleteEntities === 0) {
+			inference.push({
+				request: structuredClone(request),
+				status: "not-estimable",
+				familyId: `path-comparison:${request.groups.join(":")}`,
+				familySize: 0,
+				rows: [{
+					memberId: "identity-overlap-audit",
+					...paired.audit
+				}],
+				reason: "no-complete-paired-participant-histories"
+			});
+			continue;
+		}
+		const comparisonSideA = paired?.sideA ?? sideA.series;
+		const comparisonSideB = paired?.sideB ?? sideB.series;
+		const plan = createPermutationPlanV2(request, comparisonSideA, comparisonSideB);
+		const planHash = await hashAnalysisValueV1(plan);
+		const result = request.design === "paired" ? compareTrajectoryPaths({
+			design: "paired",
+			pairedId: pathTask.runSpec.participantColumns,
+			sideA: {
+				label: sideA.group.display,
+				series: comparisonSideA
+			},
+			sideB: {
+				label: sideB.group.display,
+				series: comparisonSideB
+			},
+			permutationPlan: plan
+		}) : compareTrajectoryPaths({
+			design: "independent",
+			sideA: {
+				label: sideA.group.display,
+				series: comparisonSideA
+			},
+			sideB: {
+				label: sideB.group.display,
+				series: comparisonSideB
+			},
+			permutationPlan: plan
+		});
+		comparisons.push({
+			groups: [...request.groups],
+			design: request.design,
+			seed: request.seed,
+			planHash,
+			identityOverlapAudit: paired?.audit ?? null,
+			result
+		});
+		planHashes.push(planHash);
+	}
+	return {
+		inference,
+		comparisons,
+		planHashes
+	};
+}
+function finiteReplicateAudit(result) {
+	const counts = result.periods.flatMap((period) => [
+		...period.selectedCentroid,
+		...period.fullCentroid,
+		period.selectedStepDistance,
+		period.fullStepDistance,
+		period.selectedCumulativeDistance,
+		period.fullCumulativeDistance
+	]).filter((interval) => interval !== null).map((interval) => interval.finiteReplicates);
+	return counts.length === 0 ? 0 : Math.min(...counts);
+}
+function scaleBootstrapInterval(interval, elapsed) {
+	if (interval === null || elapsed === null || !Number.isFinite(elapsed) || elapsed <= 0) return null;
+	return {
+		...interval,
+		estimate: interval.estimate / elapsed,
+		lower: interval.lower / elapsed,
+		upper: interval.upper / elapsed
+	};
+}
+function physicalParticipantKey(point) {
+	return JSON.stringify(point.participant.components.map((component) => [
+		component.name,
+		component.type,
+		component.value,
+		component.declaredType ?? null
+	]));
+}
+function buildGlobalParticipantUnitsV2(contexts) {
+	const units = /* @__PURE__ */ new Map();
+	contexts.forEach((context, groupIndex) => {
+		for (const point of context.series.points) {
+			const key = physicalParticipantKey(point);
+			const unit = units.get(key) ?? {
+				key,
+				historiesByGroup: /* @__PURE__ */ new Map()
+			};
+			const history = unit.historiesByGroup.get(groupIndex) ?? [];
+			history.push(point);
+			unit.historiesByGroup.set(groupIndex, history);
+			units.set(key, unit);
+		}
+	});
+	return [...units.values()].sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0);
+}
+function createGlobalParticipantPlanV2(units, repetitions, seed) {
+	if (units.length === 0) executionReject("EMPTY_GLOBAL_BOOTSTRAP_POOL", "bootstrapTask.resamplingDesign", "requires at least one physical participant history");
+	const random = mulberry32(seed);
+	return {
+		schemaVersion: "3dena.global-participant-bootstrap-plan.v2",
+		unitOrder: units.map(({ key }) => key),
+		replicates: Array.from({ length: repetitions }, () => Array.from({ length: units.length }, () => Math.floor(random() * units.length))),
+		generation: {
+			kind: "seeded",
+			algorithm: "mulberry32-uint32-v1",
+			seed,
+			unitSort: "utf16-code-unit-ascending",
+			randomEndpoint: "zero-inclusive-one-exclusive"
+		}
+	};
+}
+function globalReplicateSeriesV2(context, groupIndex, units, draw) {
+	const points = [];
+	draw.forEach((unitIndex, drawIndex) => {
+		const history = units[unitIndex]?.historiesByGroup.get(groupIndex);
+		if (!history) return;
+		for (const point of history) points.push({
+			...point,
+			participant: { components: [...point.participant.components.map((component) => ({ ...component })), {
+				name: "@3dena/global-bootstrap-draw",
+				type: "number",
+				value: drawIndex
+			}] },
+			time: { components: point.time.components.map((component) => ({ ...component })) },
+			coordinates: [...point.coordinates]
+		});
+	});
+	if (points.length === 0) return null;
+	return {
+		...context.series,
+		points,
+		dimensions: [...context.series.dimensions],
+		selectedDimensions: [...context.series.selectedDimensions],
+		timeOrder: context.series.timeOrder.map((time) => ({ components: time.components.map((component) => ({ ...component })) })),
+		...context.series.limits ? { limits: { ...context.series.limits } } : {}
+	};
+}
+function globalBootstrapIntervalV2(estimate, values, eligible, confidenceLevel, repetitions, requiredFiniteReplicates) {
+	if (estimate === null || !eligible) return null;
+	const finite = values.filter((value) => typeof value === "number" && Number.isFinite(value));
+	if (finite.length < requiredFiniteReplicates) return null;
+	const alpha = 1 - confidenceLevel;
+	return {
+		estimate,
+		lower: trajectoryPercentile(finite, alpha / 2),
+		upper: trajectoryPercentile(finite, 1 - alpha / 2),
+		finiteReplicates: finite.length,
+		requiredFiniteReplicates,
+		totalReplicates: repetitions
+	};
+}
+function summarizeGlobalParticipantBootstrapV2(context, replicatePaths, task, globalUnitCount) {
+	const base = analyzeTrajectoryPath(context.series);
+	const requiredFiniteReplicates = Math.max(Math.ceil(task.repetitions * .8), Math.ceil(10 / (1 - task.confidenceLevel) - 1e-12));
+	let insufficientClusters = false;
+	let insufficientReplicates = false;
+	let anyCentroidVariation = false;
+	const periods = base.periods.map((basePeriod, periodIndex) => {
+		const centroidEligible = basePeriod.nUsed >= 2;
+		const stepEligible = periodIndex > 0 && centroidEligible && base.periods[periodIndex - 1].nUsed >= 2;
+		const cumulativeEligible = centroidEligible && base.periods.slice(0, periodIndex + 1).every((period) => period.nUsed >= 2);
+		if (!centroidEligible || periodIndex > 0 && (!stepEligible || !cumulativeEligible)) insufficientClusters = true;
+		const interval = (estimate, selector, eligible) => {
+			const result = globalBootstrapIntervalV2(estimate, replicatePaths.map((path) => path === null ? null : selector(path)), eligible, task.confidenceLevel, task.repetitions, requiredFiniteReplicates);
+			if (eligible && estimate !== null && result === null) insufficientReplicates = true;
+			return result;
+		};
+		const selectedCentroid = Array.from({ length: 3 }, (_, dimension) => interval(basePeriod.selectedCentroid?.[dimension] ?? null, (path) => path.periods[periodIndex].selectedCentroid?.[dimension] ?? null, centroidEligible));
+		const fullCentroid = Array.from({ length: context.series.dimensions.length }, (_, dimension) => {
+			const values = replicatePaths.map((path) => path?.periods[periodIndex].fullCentroid?.[dimension] ?? null).filter((value) => typeof value === "number" && Number.isFinite(value));
+			if (values.length > 1 && values.some((value) => value !== values[0])) anyCentroidVariation = true;
+			return interval(basePeriod.fullCentroid?.[dimension] ?? null, (path) => path.periods[periodIndex].fullCentroid?.[dimension] ?? null, centroidEligible);
+		});
+		return {
+			index: periodIndex,
+			time: basePeriod.time,
+			selectedCentroid,
+			fullCentroid,
+			selectedStepDistance: interval(basePeriod.selected3d.stepDistance, (path) => path.periods[periodIndex].selected3d.stepDistance, stepEligible),
+			fullStepDistance: interval(basePeriod.fullSpace.stepDistance, (path) => path.periods[periodIndex].fullSpace.stepDistance, stepEligible),
+			selectedCumulativeDistance: interval(basePeriod.selected3d.cumulativeDistance, (path) => path.periods[periodIndex].selected3d.cumulativeDistance, cumulativeEligible),
+			fullCumulativeDistance: interval(basePeriod.fullSpace.cumulativeDistance, (path) => path.periods[periodIndex].fullSpace.cumulativeDistance, cumulativeEligible)
+		};
+	});
+	const diagnostics = [];
+	if (insufficientClusters) diagnostics.push({
+		code: "BOOTSTRAP_INSUFFICIENT_CLUSTERS",
+		severity: "warning",
+		message: "Intervals requiring fewer than two participant clusters were withheld."
+	});
+	if (globalUnitCount === 1) diagnostics.push({
+		code: "BOOTSTRAP_SINGLETON_STRATUM",
+		severity: "warning",
+		message: "The global participant pool contains one physical participant and has no resampling variation."
+	});
+	if (globalUnitCount >= 2 && !anyCentroidVariation) diagnostics.push({
+		code: "BOOTSTRAP_DEGENERATE_DISTRIBUTION",
+		severity: "warning",
+		message: "All finite global-participant bootstrap centroid replicates are identical."
+	});
+	if (insufficientReplicates) diagnostics.push({
+		code: "BOOTSTRAP_INSUFFICIENT_REPLICATES",
+		severity: "warning",
+		message: `Intervals with fewer than ${requiredFiniteReplicates} finite replicates were withheld.`
+	});
+	return {
+		schemaVersion: "3dena.trajectory-bootstrap.v1",
+		base,
+		confidenceLevel: task.confidenceLevel,
+		periods,
+		quantileRule: {
+			id: "linear-type7-v1",
+			sort: "ascending-numeric",
+			position: "(n-1)*p",
+			interpolation: "linear-between-floor-and-ceiling",
+			endpoints: "p=0-min-p=1-max"
+		},
+		resampling: {
+			unit: "participant-complete-history",
+			stratified: false,
+			strata: [{
+				key: {
+					components: [{
+						name: "@3dena/bootstrap",
+						type: "string",
+						value: "global-participant"
+					}],
+					canonical: "3dena:bootstrap:global-participant:v2",
+					display: "Global participants"
+				},
+				unitCount: globalUnitCount
+			}],
+			replicateCount: task.repetitions,
+			planKind: "global-participant-history-resample-indices-v2",
+			generation: {
+				kind: "seeded",
+				algorithm: "mulberry32-uint32-v1",
+				seed: task.seed,
+				unitSort: "utf16-code-unit-ascending",
+				randomEndpoint: "zero-inclusive-one-exclusive"
+			},
+			rngParityClaim: false
+		},
+		diagnostics
+	};
+}
+async function runBootstrapV2(task, pathTask, contexts) {
+	if (!task) return {
+		results: [],
+		planHashes: []
+	};
+	assertBootstrapTaskV2(task, pathTask);
+	const results = [];
+	const planHashes = [];
+	const resolvedResamplingDesign = task.resamplingDesign === "auto" ? contexts.length > 1 ? "within-group" : "global-participant" : task.resamplingDesign;
+	if (resolvedResamplingDesign === "global-participant") {
+		const units = buildGlobalParticipantUnitsV2(contexts);
+		const plan = createGlobalParticipantPlanV2(units, task.repetitions, task.seed);
+		const planHash = await hashAnalysisValueV1(plan);
+		for (const [groupIndex, context] of contexts.entries()) {
+			const result = summarizeGlobalParticipantBootstrapV2(context, plan.replicates.map((draw) => {
+				const series = globalReplicateSeriesV2(context, groupIndex, units, draw);
+				return series === null ? null : analyzeTrajectoryPath(series);
+			}), task, units.length);
+			const finiteReplicates = finiteReplicateAudit(result);
+			const requiredFiniteReplicates = Math.max(Math.ceil(task.repetitions * .8), Math.ceil(10 / (1 - task.confidenceLevel) - 1e-12));
+			const status = finiteReplicates >= requiredFiniteReplicates ? "available" : "not-estimable";
+			results.push({
+				groupCanonical: context.group.canonical,
+				status,
+				notEstimableReason: status === "available" ? null : "insufficient-finite-replicates-or-participant-clusters",
+				seed: task.seed,
+				planHash,
+				finiteReplicates,
+				requiredFiniteReplicates,
+				totalReplicates: task.repetitions,
+				confidenceLevel: task.confidenceLevel,
+				requestedResamplingDesign: task.resamplingDesign,
+				resolvedResamplingDesign,
+				resamplingAlgorithm: "global-participant-complete-history-mulberry32-uint32-v2",
+				intervalContract: task.interval,
+				rotationPolicy: task.rotationPolicy,
+				speedIntervals: result.periods.map((period, periodIndex) => ({
+					periodCanonical: period.time.canonical,
+					selected: scaleBootstrapInterval(period.selectedStepDistance, context.dynamics.periods[periodIndex].elapsedFromPrevious),
+					full: scaleBootstrapInterval(period.fullStepDistance, context.dynamics.periods[periodIndex].elapsedFromPrevious)
+				})),
+				result
+			});
+		}
+		return {
+			results,
+			planHashes: [planHash]
+		};
+	}
+	for (const context of contexts) {
+		const explicit = task.resamplingDesign === "explicit-strata";
+		const series = explicit ? {
+			...context.series,
+			points: context.series.points.map((point, pointIndex) => {
+				const sourcePoint = context.sourcePoints[pointIndex];
+				if (!sourcePoint) executionReject("TRAJECTORY_ADAPTER_SHAPE_MISMATCH", `paths.${context.group.canonical}.points[${pointIndex}]`, "has no aligned fitted source point");
+				const field = task.explicitStrataField;
+				const value = sourcePoint.metadata[field];
+				if (value === void 0 || value === null) executionReject("MISSING_BOOTSTRAP_STRATUM", `dataset.sourceResult.result.points[${sourcePoint.index}].metadata.${field}`, "must be present and non-null for every participant history");
+				return {
+					...point,
+					stratum: { components: [{
+						name: field,
+						type: scalarType(value, `metadata.${field}`),
+						value
+					}] }
+				};
+			})
+		} : context.series;
+		const stratifyBy = explicit ? "explicit" : "none";
+		const plan = createSeededTrajectoryBootstrapPlan({
+			units: getTrajectoryBootstrapUnits({
+				series,
+				stratifyBy
+			}),
+			repetitions: task.repetitions,
+			seed: task.seed
+		});
+		const planHash = await hashAnalysisValueV1(plan);
+		const result = bootstrapTrajectoryPath({
+			series,
+			stratifyBy,
+			confidenceLevel: task.confidenceLevel,
+			plan
+		});
+		const finiteReplicates = finiteReplicateAudit(result);
+		const requiredFiniteReplicates = Math.max(Math.ceil(task.repetitions * .8), Math.ceil(10 / (1 - task.confidenceLevel) - 1e-12));
+		const status = finiteReplicates >= requiredFiniteReplicates ? "available" : "not-estimable";
+		results.push({
+			groupCanonical: context.group.canonical,
+			status,
+			notEstimableReason: status === "available" ? null : "insufficient-finite-replicates-or-participant-clusters",
+			seed: task.seed,
+			planHash,
+			finiteReplicates,
+			requiredFiniteReplicates,
+			totalReplicates: task.repetitions,
+			confidenceLevel: task.confidenceLevel,
+			requestedResamplingDesign: task.resamplingDesign,
+			resolvedResamplingDesign,
+			resamplingAlgorithm: "participant-complete-history-mulberry32-uint32-v1",
+			intervalContract: task.interval,
+			rotationPolicy: task.rotationPolicy,
+			speedIntervals: result.periods.map((period, periodIndex) => ({
+				periodCanonical: period.time.canonical,
+				selected: scaleBootstrapInterval(period.selectedStepDistance, context.dynamics.periods[periodIndex].elapsedFromPrevious),
+				full: scaleBootstrapInterval(period.fullStepDistance, context.dynamics.periods[periodIndex].elapsedFromPrevious)
+			})),
+			result
+		});
+		planHashes.push(planHash);
+	}
+	return {
+		results,
+		planHashes
+	};
+}
+function meanFinite(values, path) {
+	if (values.length === 0) executionReject("EMPTY_NETWORK_MEAN", path, "must contain at least one value");
+	return values.reduce((sum, value, index) => {
+		if (!Number.isFinite(value)) executionReject("NON_FINITE_NETWORK_WEIGHT", `${path}[${index}]`, "must be finite");
+		const next = sum + value;
+		if (!Number.isFinite(next)) executionReject("NETWORK_WEIGHT_OVERFLOW", path, "sum exceeds finite arithmetic");
+		return next;
+	}, 0) / values.length;
+}
+function runNetworkOverlaysV2(task, pathTask, source) {
+	if (!task) return {
+		overlays: [],
+		diagnostics: []
+	};
+	assertNetworkOverlayTaskV2(task, pathTask);
+	const result = source.result;
+	const selectedIndexes = pathTask.runSpec.selectedDimensions.map((dimension, index) => {
+		const selected = result.dimensions.indexOf(dimension);
+		if (selected < 0) executionReject("UNKNOWN_SELECTED_DIMENSION", `pathTask.runSpec.selectedDimensions[${index}]`, "is absent from jENA node geometry");
+		return selected;
+	});
+	const knownGroups = new Set(result.trajectory?.groupOrder.map((group) => group.canonical) ?? []);
+	const knownPeriods = new Set(pathTask.runSpec.orderedPeriods.map((period) => period.sourceTimeCanonical));
+	const networkWeightField = pathTask.runSpec.estimand.kind === "weighted-participant" ? pathTask.runSpec.estimand.metadataField : null;
+	const diagnostics = [];
+	return {
+		overlays: task.requests.map((request, requestIndex) => {
+			if (!knownPeriods.has(request.periodCanonical)) executionReject("UNKNOWN_TRAJECTORY_PERIOD", `networkOverlayTask.requests[${requestIndex}].periodCanonical`, "is absent from the ordered-period contract");
+			if (request.groupCanonical !== null && !knownGroups.has(request.groupCanonical)) executionReject("UNKNOWN_TRAJECTORY_GROUP", `networkOverlayTask.requests[${requestIndex}].groupCanonical`, "is absent from the fitted trajectory groups");
+			const rows = result.points.filter((point) => point.time?.canonical === request.periodCanonical && (request.groupCanonical === null || point.group?.canonical === request.groupCanonical));
+			if (rows.length === 0) {
+				diagnostics.push({
+					code: "NETWORK_OVERLAY_NOT_ESTIMABLE",
+					severity: "warning",
+					message: `No fitted participant-period network is available for overlay request ${requestIndex + 1}.`,
+					path: `networkOverlayTask.requests[${requestIndex}]`
+				});
+				return {
+					status: "not-estimable",
+					reason: "no-observed-participant-period-network",
+					groupCanonical: request.groupCanonical,
+					periodCanonical: request.periodCanonical,
+					dimensions: [...pathTask.runSpec.selectedDimensions],
+					estimand: pathTask.runSpec.estimand.kind,
+					sourceRows: 0,
+					participantPeriods: 0,
+					effectiveParticipantN: null,
+					nodes: [],
+					edges: []
+				};
+			}
+			const grouped = /* @__PURE__ */ new Map();
+			for (const point of rows) {
+				if (point.lineWeights.length !== result.edges.length) executionReject("NETWORK_EDGE_SHAPE_MISMATCH", `dataset.sourceResult.result.points[${point.index}].lineWeights`, "must align with the fitted edge inventory");
+				const key = point.participantLabel.canonical;
+				const current = grouped.get(key) ?? [];
+				current.push(point);
+				grouped.set(key, current);
+			}
+			const participantNetworks = [...grouped.values()].map((participantRows, participantIndex) => {
+				return {
+					weight: networkWeightField === null ? 1 : (() => {
+						const values = participantRows.map((point) => point.metadata[networkWeightField]);
+						if (new Set(values).size !== 1 || typeof values[0] !== "number" || !Number.isFinite(values[0]) || values[0] <= 0) executionReject("UNSTABLE_NETWORK_PARTICIPANT_WEIGHT", `networkOverlayTask.requests[${requestIndex}].participants[${participantIndex}]`, "requires one constant, finite, positive participant-period weight");
+						return values[0];
+					})(),
+					edges: result.edges.map((_, edgeIndex) => meanFinite(participantRows.map((point) => point.lineWeights[edgeIndex]), `networkOverlayTask.requests[${requestIndex}].participants[${participantIndex}].edges[${edgeIndex}]`))
+				};
+			});
+			const weightSum = participantNetworks.reduce((sum, participant) => sum + participant.weight, 0);
+			const weightSquareSum = participantNetworks.reduce((sum, participant) => sum + participant.weight ** 2, 0);
+			if (!Number.isFinite(weightSum) || weightSum <= 0 || !Number.isFinite(weightSquareSum) || weightSquareSum <= 0) executionReject("NETWORK_WEIGHT_OVERFLOW", `networkOverlayTask.requests[${requestIndex}]`, "participant weight accumulation is invalid");
+			const edgeWeights = result.edges.map((_, edgeIndex) => participantNetworks.reduce((sum, participant) => sum + participant.edges[edgeIndex] * participant.weight, 0) / weightSum);
+			if (edgeWeights.some((weight) => !Number.isFinite(weight))) executionReject("NETWORK_WEIGHT_OVERFLOW", `networkOverlayTask.requests[${requestIndex}].edges`, "weighted mean is non-finite");
+			const nodeWeights = result.nodes.map((node) => result.edges.reduce((sum, edge, edgeIndex) => edge.sourceIndex === node.index || edge.targetIndex === node.index ? sum + Math.abs(edgeWeights[edgeIndex]) : sum, 0));
+			return {
+				status: "available",
+				reason: null,
+				groupCanonical: request.groupCanonical,
+				periodCanonical: request.periodCanonical,
+				dimensions: [...pathTask.runSpec.selectedDimensions],
+				estimand: pathTask.runSpec.estimand.kind,
+				sourceRows: rows.length,
+				participantPeriods: participantNetworks.length,
+				effectiveParticipantN: weightSum ** 2 / weightSquareSum,
+				nodes: result.nodes.map((node, nodeIndex) => ({
+					code: node.code,
+					coordinates: selectedIndexes.map((dimensionIndex) => node.fullCoordinates[dimensionIndex]),
+					weight: nodeWeights[nodeIndex]
+				})),
+				edges: result.edges.map((edge, edgeIndex) => ({
+					id: edge.id,
+					sourceIndex: edge.sourceIndex,
+					targetIndex: edge.targetIndex,
+					weight: edgeWeights[edgeIndex]
+				}))
+			};
+		}),
+		diagnostics
+	};
+}
+/**
+* Executes the display-independent base path against one immutable fitted
+* jENA result. Inference and bootstrap tasks are added to the same envelope by
+* the versioned task coordinator; presenter changes never enter this function.
+*/
+async function executeLongitudinalAnalysisV2(input) {
+	if (!input || typeof input !== "object") executionReject("INVALID_LONGITUDINAL_REQUEST", "input", "must be an object");
+	assertAnalysisExecutionDatasetV2(input.dataset);
+	assertPathTaskV2(input.pathTask);
+	validateExecutionMetadata(input.execution);
+	const { dataset, pathTask } = input;
+	if (pathTask.datasetHash !== dataset.receipt.sha256) executionReject("TRAJECTORY_DATASET_BINDING_MISMATCH", "pathTask.datasetHash", "does not match the immutable dataset receipt");
+	if (pathTask.specHash !== dataset.specHash) executionReject("TRAJECTORY_SPEC_BINDING_MISMATCH", "pathTask.specHash", "does not match the immutable fitted spec hash");
+	const source = dataset.sourceResult;
+	if (!source) executionReject("MISSING_SOURCE_RESULT", "dataset.sourceResult", "is required");
+	if (source.hash !== pathTask.runSpec.sourceResultHash) executionReject("TRAJECTORY_SOURCE_BINDING_MISMATCH", "pathTask.runSpec.sourceResultHash", "does not match dataset.sourceResult.hash");
+	if (await hashAnalysisValueV1(source.result) !== source.hash) executionReject("TRAJECTORY_SOURCE_HASH_MISMATCH", "dataset.sourceResult", "scientific result bytes do not match the bound source hash");
+	if (source.sourceKind !== "raw-jena") executionReject("PREPARED_RESULT_V2_READ_ONLY", "dataset.sourceResult.sourceKind", "new V2 longitudinal runs require a fitted raw-jena result; prepared V1 artifacts remain readable only");
+	const built = buildGroupInputsV2(source, pathTask.runSpec);
+	let pathSet;
+	try {
+		pathSet = analyzeTrajectoryPathSetV2({
+			schemaVersion: "3dena.trajectory-path-set-input.v2",
+			dimensions: built.fullDimensions,
+			selectedDimensions: [...pathTask.runSpec.selectedDimensions],
+			periods: built.periods,
+			cohortPolicy: pathTask.runSpec.cohortPolicy,
+			estimand: pathTask.runSpec.estimand.kind === "equal-participant" ? { kind: "equal-participant-v1" } : { kind: "weighted-participant-v1" },
+			groups: built.groups
+		});
+	} catch (error) {
+		if (error instanceof TrajectoryDynamicsError) executionReject(error.code, `trajectory.${error.path}`, error.message);
+		throw error;
+	}
+	const paths = pathSet.groups.map((group, index) => ({
+		group: structuredClone(built.sourceGroups[index]),
+		dynamics: group.dynamics
+	}));
+	const contexts = groupContextsV2(built, paths);
+	const derivedInference = await runInferenceV2(input.inferenceTask, pathTask, contexts);
+	const derivedBootstrap = await runBootstrapV2(input.bootstrapTask, pathTask, contexts);
+	const derivedNetworks = runNetworkOverlaysV2(input.networkOverlayTask, pathTask, source);
+	const jenaBuildId = `jena-js@${input.execution.jenaVersion}+${input.execution.jenaCommit}:${input.execution.buildId}`;
+	const scientificCore = {
+		schemaVersion: LONGITUDINAL_BUNDLE_VERSION_V2,
+		identity: {
+			datasetHash: pathTask.datasetHash,
+			specHash: pathTask.specHash,
+			sourceResultHash: source.hash,
+			runId: pathTask.runId,
+			jenaBuildId
+		},
+		runSpec: structuredClone(pathTask.runSpec),
+		model: {
+			type: built.model,
+			fullRotationDimensions: built.fullDimensions,
+			selectedDimensions: [...pathTask.runSpec.selectedDimensions]
+		},
+		paths,
+		inference: derivedInference.inference,
+		pathComparisons: derivedInference.comparisons,
+		bootstrap: derivedBootstrap.results,
+		networkOverlays: derivedNetworks.overlays,
+		diagnostics: [...pathSet.groups.flatMap((group) => group.dynamics.diagnostics.map((diagnostic) => ({
+			...diagnostic,
+			severity: diagnostic.severity
+		}))), ...derivedNetworks.diagnostics],
+		scientificExecution: {
+			jenaVersion: input.execution.jenaVersion,
+			jenaCommit: input.execution.jenaCommit,
+			jenaTarballIntegrity: input.execution.jenaTarballIntegrity,
+			sdkVersion: input.execution.sdkVersion,
+			buildId: input.execution.buildId,
+			seed: input.execution.seed,
+			permutationPlanHashes: derivedInference.planHashes,
+			resamplingPlanHashes: derivedBootstrap.planHashes,
+			evidenceStatus: "IMPLEMENTED_UNVERIFIED"
+		}
+	};
+	const resultHash = await hashAnalysisValueV1(scientificCore);
+	return deepFreeze$1({
+		schemaVersion: LONGITUDINAL_BUNDLE_VERSION_V2,
+		identity: {
+			...scientificCore.identity,
+			resultHash
+		},
+		runSpec: scientificCore.runSpec,
+		model: scientificCore.model,
+		paths: scientificCore.paths,
+		inference: scientificCore.inference,
+		pathComparisons: scientificCore.pathComparisons,
+		bootstrap: scientificCore.bootstrap,
+		networkOverlays: scientificCore.networkOverlays,
+		diagnostics: scientificCore.diagnostics,
+		execution: {
+			target: input.execution.target,
+			...scientificCore.scientificExecution
+		}
+	});
+}
+//#endregion
 //#region src/export-bundle.ts
 var ExportBundleError = class extends Error {
 	code;
@@ -40072,7 +42288,7 @@ var ExportBundleError = class extends Error {
 	}
 };
 var ENCODER = new TextEncoder();
-function reject$2(code, path, message) {
+function reject$3(code, path, message) {
 	throw new ExportBundleError(code, path, message);
 }
 function typedRaw(value) {
@@ -40091,20 +42307,20 @@ function stableJson(value, path = "value") {
 	if (value === null) return "null";
 	if (typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
 	if (typeof value === "number") {
-		if (!Number.isFinite(value)) reject$2("NON_FINITE_JSON", path, "cannot be emitted in deterministic JSON");
+		if (!Number.isFinite(value)) reject$3("NON_FINITE_JSON", path, "cannot be emitted in deterministic JSON");
 		return Object.is(value, -0) ? "-0" : JSON.stringify(value);
 	}
 	if (Array.isArray(value)) return `[${value.map((entry, index) => stableJson(entry, `${path}[${index}]`)).join(",")}]`;
-	if (!value || typeof value !== "object") reject$2("INVALID_JSON_VALUE", path, "contains an unsupported value");
+	if (!value || typeof value !== "object") reject$3("INVALID_JSON_VALUE", path, "contains an unsupported value");
 	const record = value;
 	return `{${Object.keys(record).sort().map((key) => {
-		if (record[key] === void 0) reject$2("INVALID_JSON_VALUE", `${path}.${key}`, "must not be undefined");
+		if (record[key] === void 0) reject$3("INVALID_JSON_VALUE", `${path}.${key}`, "must not be undefined");
 		return `${JSON.stringify(key)}:${stableJson(record[key], `${path}.${key}`)}`;
 	}).join(",")}}`;
 }
 async function sha256Bytes(bytes) {
 	const subtle = globalThis.crypto?.subtle;
-	if (!subtle) reject$2("CRYPTO_UNAVAILABLE", "crypto.subtle", "WebCrypto SHA-256 is required");
+	if (!subtle) reject$3("CRYPTO_UNAVAILABLE", "crypto.subtle", "WebCrypto SHA-256 is required");
 	const snapshot = new Uint8Array(bytes.byteLength);
 	snapshot.set(bytes);
 	return [...new Uint8Array(await subtle.digest("SHA-256", snapshot))].map((value) => value.toString(16).padStart(2, "0")).join("");
@@ -40683,7 +42899,7 @@ function validatePortfolio(value) {
 		schemaVersion: "3dena.analysis-export-portfolio.v1",
 		analysis: value
 	};
-	if (value.schemaVersion !== "3dena.analysis-export-portfolio.v1") reject$2("UNSUPPORTED_EXPORT_RESULT", "result.schemaVersion", "is unsupported");
+	if (value.schemaVersion !== "3dena.analysis-export-portfolio.v1") reject$3("UNSUPPORTED_EXPORT_RESULT", "result.schemaVersion", "is unsupported");
 	const allowed = /* @__PURE__ */ new Set([
 		"schemaVersion",
 		"analysis",
@@ -40695,22 +42911,496 @@ function validatePortfolio(value) {
 		"bootstrap"
 	]);
 	const unknown = Object.keys(value).find((field) => !allowed.has(field));
-	if (unknown) reject$2("INVALID_EXPORT_PORTFOLIO", "result", `contains unknown field ${JSON.stringify(unknown)}`);
-	if (value.analysis.schemaVersion !== "3dena.analysis-result.v1" && value.analysis.schemaVersion !== "3dena.prepared-space-result.v1") reject$2("INVALID_EXPORT_PORTFOLIO", "result.analysis", "must contain a raw or prepared result");
+	if (unknown) reject$3("INVALID_EXPORT_PORTFOLIO", "result", `contains unknown field ${JSON.stringify(unknown)}`);
+	if (value.analysis.schemaVersion !== "3dena.analysis-result.v1" && value.analysis.schemaVersion !== "3dena.prepared-space-result.v1") reject$3("INVALID_EXPORT_PORTFOLIO", "result.analysis", "must contain a raw or prepared result");
 	return value;
 }
 function bundleName(value) {
 	const name = value ?? "3dena-analysis.zip";
-	if (name.length > 255 || !name.toLocaleLowerCase("en-US").endsWith(".zip") || name.includes("/") || name.includes("\\") || /[\u0000-\u001f\u007f]/u.test(name)) reject$2("INVALID_EXPORT_FILE_NAME", "options.fileName", "must be a safe .zip basename");
+	if (name.length > 255 || !name.toLocaleLowerCase("en-US").endsWith(".zip") || name.includes("/") || name.includes("\\") || /[\u0000-\u001f\u007f]/u.test(name)) reject$3("INVALID_EXPORT_FILE_NAME", "options.fileName", "must be a safe .zip basename");
 	return name;
 }
-/** Creates a deterministic formal scientific CSV/ZIP bundle for raw or prepared results. */
+function aggregateTrajectoryEnvelope(bundle) {
+	const redactPath = (path) => ({
+		...path,
+		participantPeriods: []
+	});
+	return {
+		schemaVersion: "3dena.longitudinal-aggregate-export.v2",
+		sourceEnvelopeSchemaVersion: bundle.schemaVersion,
+		identity: structuredClone(bundle.identity),
+		runSpec: structuredClone(bundle.runSpec),
+		model: structuredClone(bundle.model),
+		paths: bundle.paths.map((path) => ({
+			group: structuredClone(path.group),
+			dynamics: redactPath(structuredClone(path.dynamics))
+		})),
+		inference: structuredClone(bundle.inference),
+		pathComparisons: bundle.pathComparisons.map((comparison) => ({
+			...structuredClone(comparison),
+			result: {
+				...structuredClone(comparison.result),
+				sideA: redactPath(structuredClone(comparison.result.sideA)),
+				sideB: redactPath(structuredClone(comparison.result.sideB)),
+				permutation: {
+					...structuredClone(comparison.result.permutation),
+					unitOrder: []
+				}
+			}
+		})),
+		bootstrap: bundle.bootstrap.map((entry) => ({
+			...structuredClone(entry),
+			result: {
+				...structuredClone(entry.result),
+				base: redactPath(structuredClone(entry.result.base))
+			}
+		})),
+		networkOverlays: structuredClone(bundle.networkOverlays),
+		diagnostics: structuredClone(bundle.diagnostics),
+		execution: structuredClone(bundle.execution),
+		privacy: {
+			participantLevelIncluded: false,
+			omittedFields: [
+				"paths[].dynamics.participantPeriods",
+				"pathComparisons[].result.sideA.participantPeriods",
+				"pathComparisons[].result.sideB.participantPeriods",
+				"pathComparisons[].result.permutation.unitOrder",
+				"bootstrap[].result.base.participantPeriods"
+			]
+		}
+	};
+}
+function contributorSet(bundle, groupIndex, periodCanonical) {
+	const dynamics = bundle.paths[groupIndex].dynamics;
+	return new Set(dynamics.participantPeriods.filter((row) => row.includedInCohort && row.time.canonical === periodCanonical).map((row) => row.participant.canonical));
+}
+function completeParticipantCount(bundle, groupIndex) {
+	const dynamics = bundle.paths[groupIndex].dynamics;
+	const observed = /* @__PURE__ */ new Map();
+	for (const row of dynamics.participantPeriods) {
+		const periods = observed.get(row.participant.canonical) ?? /* @__PURE__ */ new Set();
+		periods.add(row.time.canonical);
+		observed.set(row.participant.canonical, periods);
+	}
+	const expected = new Set(dynamics.periods.map((period) => period.time.canonical));
+	return [...observed.values()].filter((periods) => [...expected].every((period) => periods.has(period))).length;
+}
+function longitudinalPathEntry(bundle) {
+	const fullColumns = bundle.model.fullRotationDimensions.map((dimension) => `full:${dimension}`);
+	return csv("trajectory-path.csv", {
+		columns: [
+			"group_key_v1",
+			"group_display",
+			"period_index",
+			"time_key_v1",
+			"time_display",
+			"time_value_v1",
+			"rows",
+			"participant_periods",
+			"available",
+			"complete",
+			"included",
+			"excluded",
+			"duplicate_rows",
+			"contributor_overlap_previous",
+			...bundle.model.selectedDimensions.map((dimension) => `selected:${dimension}`),
+			...bundle.model.selectedDimensions.map((dimension) => `delta:${dimension}`),
+			...fullColumns,
+			"selected_step_distance",
+			"selected_cumulative_distance",
+			"selected_elapsed",
+			"selected_speed",
+			"full_step_distance",
+			"full_cumulative_distance",
+			"full_elapsed",
+			"full_speed",
+			"weight_sum",
+			"effective_participant_n"
+		],
+		rows: bundle.paths.flatMap((path, groupIndex) => {
+			const complete = completeParticipantCount(bundle, groupIndex);
+			return path.dynamics.periods.map((period, periodIndex) => {
+				const current = contributorSet(bundle, groupIndex, period.time.canonical);
+				const overlap = periodIndex === 0 ? null : [...current].filter((participant) => contributorSet(bundle, groupIndex, path.dynamics.periods[periodIndex - 1].time.canonical).has(participant)).length;
+				return [
+					path.group.canonical,
+					path.group.display,
+					period.index,
+					period.time.canonical,
+					period.time.display,
+					stableJson(period.timeValue),
+					period.nRows,
+					period.nParticipantPeriods,
+					period.nParticipantPeriods,
+					complete,
+					period.nUsed,
+					period.nCohortExcluded,
+					period.nDuplicateRows,
+					overlap,
+					...period.selectedCentroid ?? [
+						null,
+						null,
+						null
+					],
+					...period.selected3d.delta ?? [
+						null,
+						null,
+						null
+					],
+					...period.fullCentroid ?? bundle.model.fullRotationDimensions.map(() => null),
+					period.selected3d.stepDistance,
+					period.selected3d.cumulativeDistance,
+					period.elapsedFromPrevious,
+					period.selected3d.speed,
+					period.fullSpace.stepDistance,
+					period.fullSpace.cumulativeDistance,
+					period.elapsedFromPrevious,
+					period.fullSpace.speed,
+					period.weightSum,
+					period.effectiveParticipantN
+				];
+			});
+		})
+	});
+}
+function longitudinalMetadataEntry(bundle) {
+	const rows = [
+		[
+			"mapping",
+			"participant_columns",
+			stableJson(bundle.runSpec.participantColumns)
+		],
+		[
+			"mapping",
+			"time_column",
+			bundle.runSpec.timeColumn
+		],
+		[
+			"mapping",
+			"group_column",
+			bundle.runSpec.groupColumn
+		],
+		[
+			"cohort",
+			"policy",
+			bundle.runSpec.cohortPolicy
+		],
+		[
+			"missing",
+			"policy",
+			bundle.runSpec.missingValuePolicy
+		],
+		[
+			"estimand",
+			"contract",
+			stableJson(bundle.runSpec.estimand)
+		],
+		[
+			"dimensions",
+			"selected",
+			stableJson(bundle.model.selectedDimensions)
+		],
+		[
+			"dimensions",
+			"full_rotation",
+			stableJson(bundle.model.fullRotationDimensions)
+		],
+		[
+			"time",
+			"ordered_periods",
+			stableJson(bundle.runSpec.orderedPeriods)
+		],
+		[
+			"execution",
+			"target",
+			bundle.execution.target
+		],
+		[
+			"execution",
+			"evidence_status",
+			bundle.execution.evidenceStatus
+		]
+	];
+	for (const [groupIndex, path] of bundle.paths.entries()) {
+		rows.push([
+			"time-contract",
+			path.group.canonical,
+			stableJson(path.dynamics.timeContract)
+		]);
+		rows.push([
+			"cohort-complete-count",
+			path.group.canonical,
+			completeParticipantCount(bundle, groupIndex)
+		]);
+	}
+	for (const diagnostic of bundle.diagnostics) rows.push([
+		`diagnostic:${diagnostic.severity}`,
+		diagnostic.code,
+		stableJson(diagnostic)
+	]);
+	return csv("trajectory-metadata.csv", {
+		columns: [
+			"section",
+			"key",
+			"value"
+		],
+		rows
+	});
+}
+function longitudinalInferenceEntry(bundle) {
+	const rows = [];
+	for (const inference of bundle.inference) {
+		if (inference.rows.length === 0) {
+			rows.push([
+				inference.request.kind,
+				inference.status,
+				inference.reason,
+				inference.familyId,
+				inference.familySize,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				stableJson(inference.request)
+			]);
+			continue;
+		}
+		for (const row of inference.rows) rows.push([
+			inference.request.kind,
+			inference.status,
+			inference.reason,
+			String(row.familyId ?? inference.familyId),
+			Number(row.familySize ?? inference.familySize),
+			String(row.memberId ?? ""),
+			String(row.test ?? ""),
+			String(row.design ?? ""),
+			String(row.estimand ?? ""),
+			typeof row.n === "number" ? row.n : typeof row.nPrimary === "number" && typeof row.nSecondary === "number" ? `${row.nPrimary}/${row.nSecondary}` : null,
+			typeof row.effect === "number" ? row.effect : null,
+			typeof row.statistic === "number" ? row.statistic : null,
+			typeof row.pRaw === "number" ? row.pRaw : null,
+			typeof row.pHolm === "number" ? row.pHolm : null,
+			stableJson(row)
+		]);
+	}
+	for (const comparison of bundle.pathComparisons) for (const test of comparison.result.tests) rows.push([
+		"path-comparison",
+		"available",
+		null,
+		`path-comparison:${comparison.groups.join(":")}`,
+		comparison.result.tests.length,
+		test.id,
+		"permutation",
+		comparison.design,
+		bundle.runSpec.estimand.kind,
+		null,
+		test.observed,
+		test.observed,
+		test.pValue,
+		test.holmAdjustedPValue,
+		stableJson({
+			groups: comparison.groups,
+			seed: comparison.seed,
+			planHash: comparison.planHash,
+			test
+		})
+	]);
+	return csv("trajectory-inference.csv", {
+		columns: [
+			"request_kind",
+			"status",
+			"reason",
+			"family_id",
+			"family_size",
+			"member_id",
+			"test",
+			"design",
+			"estimand",
+			"n",
+			"effect",
+			"statistic",
+			"p_raw",
+			"p_holm",
+			"audit_json"
+		],
+		rows
+	});
+}
+function longitudinalBootstrapEntry(bundle) {
+	const rows = [];
+	for (const entry of bundle.bootstrap) for (const period of entry.result.periods) {
+		const add = (metric, dimension, interval) => rows.push([
+			entry.groupCanonical,
+			period.index,
+			period.time.canonical,
+			metric,
+			dimension,
+			interval?.estimate ?? null,
+			interval?.lower ?? null,
+			interval?.upper ?? null,
+			interval?.finiteReplicates ?? 0,
+			interval?.requiredFiniteReplicates ?? null,
+			entry.totalReplicates,
+			entry.result.confidenceLevel,
+			entry.seed,
+			entry.planHash,
+			entry.result.resampling.unit,
+			entry.result.resampling.stratified,
+			entry.status,
+			entry.notEstimableReason,
+			entry.requestedResamplingDesign,
+			entry.resolvedResamplingDesign
+		]);
+		period.selectedCentroid.forEach((interval, index) => add("selected-centroid", bundle.model.selectedDimensions[index] ?? null, interval));
+		period.fullCentroid.forEach((interval, index) => add("full-centroid", bundle.model.fullRotationDimensions[index] ?? null, interval));
+		add("selected-step-distance", null, period.selectedStepDistance);
+		add("full-step-distance", null, period.fullStepDistance);
+		add("selected-cumulative-distance", null, period.selectedCumulativeDistance);
+		add("full-cumulative-distance", null, period.fullCumulativeDistance);
+		add("selected-speed", null, entry.speedIntervals[period.index]?.selected ?? null);
+		add("full-speed", null, entry.speedIntervals[period.index]?.full ?? null);
+	}
+	return csv("trajectory-bootstrap.csv", {
+		columns: [
+			"group_key_v1",
+			"period_index",
+			"time_key_v1",
+			"metric",
+			"dimension",
+			"estimate",
+			"lower",
+			"upper",
+			"finite_replicates",
+			"required_finite_replicates",
+			"total_replicates",
+			"confidence_level",
+			"seed",
+			"plan_hash",
+			"resampling_unit",
+			"stratified",
+			"status",
+			"not_estimable_reason",
+			"requested_resampling_design",
+			"resolved_resampling_design"
+		],
+		rows
+	});
+}
+function longitudinalParticipantEntry(bundle) {
+	return csv("trajectory-participants.csv", {
+		columns: [
+			"group_key_v1",
+			"participant_key_v1",
+			"participant_display",
+			"time_key_v1",
+			"time_display",
+			"included",
+			"source_row_count",
+			...bundle.model.selectedDimensions.map((dimension) => `selected:${dimension}`),
+			...bundle.model.fullRotationDimensions.map((dimension) => `full:${dimension}`),
+			"participant_weight"
+		],
+		rows: bundle.paths.flatMap((path) => path.dynamics.participantPeriods.map((row) => [
+			path.group.canonical,
+			row.participant.canonical,
+			row.participant.display,
+			row.time.canonical,
+			row.time.display,
+			row.includedInCohort,
+			row.sourceRowIndexes.length,
+			...row.selectedCoordinates,
+			...row.fullCoordinates,
+			row.participantWeight
+		]))
+	});
+}
+async function createLongitudinalExportBundleV2(bundle, options) {
+	if (!options || typeof options !== "object" || Array.isArray(options)) reject$3("INVALID_EXPORT_OPTIONS", "options", "must be an object");
+	await verifyLongitudinalAnalysisBundleV2(bundle);
+	if (!options.plotlySpec || options.plotlySpec.schemaVersion !== "3dena.trajectory-plotly-spec.v2") reject$3("INVALID_TRAJECTORY_PLOTLY_SPEC", "options.plotlySpec", "must be a compiled V2 trajectory Plotly spec");
+	if (options.plotlySpec.resultHash !== bundle.identity.resultHash) reject$3("PLOTLY_RESULT_BINDING_MISMATCH", "options.plotlySpec.resultHash", "does not match the exported longitudinal result");
+	if (options.includeParticipantLevel !== void 0 && typeof options.includeParticipantLevel !== "boolean") reject$3("INVALID_PARTICIPANT_EXPORT_OPTION", "options.includeParticipantLevel", "must be boolean");
+	const participantLevelIncluded = options.includeParticipantLevel === true;
+	const pending = [
+		json("analysis.json", aggregateTrajectoryEnvelope(bundle)),
+		longitudinalPathEntry(bundle),
+		longitudinalMetadataEntry(bundle),
+		longitudinalInferenceEntry(bundle),
+		longitudinalBootstrapEntry(bundle),
+		json("plotly-spec.json", options.plotlySpec)
+	];
+	if (participantLevelIncluded) pending.push(longitudinalParticipantEntry(bundle));
+	const sorted = [...pending].sort((left, right) => left.path.localeCompare(right.path, "en"));
+	const members = [];
+	for (const entry of sorted) members.push({
+		path: entry.path,
+		mediaType: entry.mediaType,
+		byteLength: entry.data.byteLength,
+		sha256: await sha256Bytes(entry.data)
+	});
+	const manifest = {
+		schemaVersion: "3dena.longitudinal-provenance-manifest.v2",
+		datasetHash: bundle.identity.datasetHash,
+		specHash: bundle.identity.specHash,
+		sourceResultHash: bundle.identity.sourceResultHash,
+		resultHash: bundle.identity.resultHash,
+		runId: bundle.identity.runId,
+		jenaBuildId: bundle.identity.jenaBuildId,
+		jena: {
+			version: bundle.execution.jenaVersion,
+			commit: bundle.execution.jenaCommit,
+			tarballIntegrity: bundle.execution.jenaTarballIntegrity
+		},
+		sdk: {
+			version: bundle.execution.sdkVersion,
+			buildId: bundle.execution.buildId
+		},
+		executionTarget: bundle.execution.target,
+		seed: bundle.execution.seed,
+		permutationPlanHashes: [...bundle.execution.permutationPlanHashes],
+		resamplingPlanHashes: [...bundle.execution.resamplingPlanHashes],
+		evidenceStatus: bundle.execution.evidenceStatus,
+		selectedDimensions: [...bundle.model.selectedDimensions],
+		fullRotationDimensions: [...bundle.model.fullRotationDimensions],
+		participantLevelIncluded,
+		privacyWarning: participantLevelIncluded ? "Participant-level histories can increase privacy and re-identification risk; handle this opt-in file under the applicable data-governance controls." : null,
+		members,
+		contentSetHash: await hashAnalysisValueV1(members)
+	};
+	const manifestEntry = json("provenance-manifest.json", manifest);
+	const manifestReceipt = {
+		path: manifestEntry.path,
+		mediaType: manifestEntry.mediaType,
+		byteLength: manifestEntry.data.byteLength,
+		sha256: await sha256Bytes(manifestEntry.data)
+	};
+	const bytes = createDeterministicZip([...sorted, manifestEntry].map((entry) => ({
+		path: entry.path,
+		data: entry.data
+	})), options.zipLimits);
+	return Object.freeze({
+		schemaVersion: "3dena.longitudinal-export-bundle.v2",
+		fileName: bundleName(options.fileName ?? "3dena-longitudinal-analysis.zip"),
+		bytes,
+		sha256: await sha256Bytes(bytes),
+		byteLength: bytes.byteLength,
+		entries: Object.freeze([...members, manifestReceipt]),
+		manifest: Object.freeze(manifest)
+	});
+}
 async function createExportBundle(result, options) {
-	if (!options || typeof options !== "object" || Array.isArray(options)) reject$2("INVALID_EXPORT_OPTIONS", "options", "must be an object");
-	assertProvenanceManifestV1(options.provenance, "options.provenance");
-	if (await hashAnalysisValueV1(result) !== options.provenance.resultHash) reject$2("RESULT_HASH_MISMATCH", "options.provenance.resultHash", "does not match the exported result or portfolio");
+	if (result.schemaVersion === "3dena.longitudinal-analysis-bundle.v2") return createLongitudinalExportBundleV2(result, options);
+	if (!options || typeof options !== "object" || Array.isArray(options)) reject$3("INVALID_EXPORT_OPTIONS", "options", "must be an object");
+	const legacyOptions = options;
+	assertProvenanceManifestV1(legacyOptions.provenance, "options.provenance");
+	if (await hashAnalysisValueV1(result) !== legacyOptions.provenance.resultHash) reject$3("RESULT_HASH_MISMATCH", "options.provenance.resultHash", "does not match the exported result or portfolio");
 	const portfolio = validatePortfolio(result);
-	if (portfolio.analysis.schemaVersion === "3dena.prepared-space-result.v1" !== (options.provenance.sourceKind === "prepared-exchange")) reject$2("PROVENANCE_SOURCE_MISMATCH", "options.provenance.sourceKind", "does not match the exported analysis source");
+	if (portfolio.analysis.schemaVersion === "3dena.prepared-space-result.v1" !== (legacyOptions.provenance.sourceKind === "prepared-exchange")) reject$3("PROVENANCE_SOURCE_MISMATCH", "options.provenance.sourceKind", "does not match the exported analysis source");
 	const pending = portfolio.analysis.schemaVersion === "3dena.prepared-space-result.v1" ? preparedEntries(portfolio.analysis) : rawEntries(portfolio.analysis);
 	if (portfolio.comparison) pending.push(comparisonEntry(portfolio.comparison));
 	if (portfolio.change) pending.push(changeEntry(portfolio.change));
@@ -40732,7 +43422,7 @@ async function createExportBundle(result, options) {
 		formalScientificExport: true,
 		displayFilteringApplied: false,
 		sourceResultSchema: result.schemaVersion,
-		provenance: structuredClone(options.provenance),
+		provenance: structuredClone(legacyOptions.provenance),
 		scientificEntries,
 		contentSetHash
 	};
@@ -40746,10 +43436,10 @@ async function createExportBundle(result, options) {
 	const bytes = createDeterministicZip([...sorted, manifestEntry].map((entry) => ({
 		path: entry.path,
 		data: entry.data
-	})), options.zipLimits);
+	})), legacyOptions.zipLimits);
 	return Object.freeze({
 		schemaVersion: "3dena.export-bundle.v1",
-		fileName: bundleName(options.fileName),
+		fileName: bundleName(legacyOptions.fileName),
 		bytes,
 		sha256: await sha256Bytes(bytes),
 		byteLength: bytes.byteLength,
@@ -40760,7 +43450,7 @@ async function createExportBundle(result, options) {
 //#endregion
 //#region src/display.ts
 init_types();
-function reject$1(code, path, message) {
+function reject$2(code, path, message) {
 	throw new AnalysisValidationError([{
 		code,
 		path,
@@ -40769,11 +43459,11 @@ function reject$1(code, path, message) {
 }
 function selectDimensions(result, requested) {
 	const names = requested ?? [...result.axes];
-	if (!Array.isArray(names) || names.length !== 3 || names.some((name) => typeof name !== "string" || name.trim() === "")) reject$1("INVALID_DISPLAY_DIMENSIONS", "filter.dimensions", "must contain exactly three non-empty dimension names");
-	if (new Set(names).size !== 3) reject$1("DUPLICATE_DISPLAY_DIMENSION", "filter.dimensions", "must contain three distinct dimension names");
+	if (!Array.isArray(names) || names.length !== 3 || names.some((name) => typeof name !== "string" || name.trim() === "")) reject$2("INVALID_DISPLAY_DIMENSIONS", "filter.dimensions", "must contain exactly three non-empty dimension names");
+	if (new Set(names).size !== 3) reject$2("DUPLICATE_DISPLAY_DIMENSION", "filter.dimensions", "must contain three distinct dimension names");
 	const indexes = names.map((name) => result.dimensions.indexOf(name));
 	const missing = indexes.findIndex((index) => index < 0);
-	if (missing >= 0) reject$1("UNKNOWN_DISPLAY_DIMENSION", `filter.dimensions[${missing}]`, `${JSON.stringify(names[missing])} is not present in result.dimensions`);
+	if (missing >= 0) reject$2("UNKNOWN_DISPLAY_DIMENSION", `filter.dimensions[${missing}]`, `${JSON.stringify(names[missing])} is not present in result.dimensions`);
 	return {
 		names: [...names],
 		indexes
@@ -40781,7 +43471,7 @@ function selectDimensions(result, requested) {
 }
 function project(values, indexes, path) {
 	const selected = indexes.map((index) => values[index]);
-	if (selected.some((value) => !Number.isFinite(value))) reject$1("INVALID_DISPLAY_COORDINATE", path, "selected full-space coordinates must be finite");
+	if (selected.some((value) => !Number.isFinite(value))) reject$2("INVALID_DISPLAY_COORDINATE", path, "selected full-space coordinates must be finite");
 	return selected;
 }
 /**
@@ -40792,10 +43482,10 @@ function selectAnalysisDisplay(result, filter = {}) {
 	const dimensions = selectDimensions(result, filter.dimensions);
 	const knownGroups = new Set(result.trajectory?.groupOrder.map((group) => group.canonical) ?? []);
 	const requestedGroups = filter.groups ?? [...knownGroups];
-	if (!Array.isArray(requestedGroups) || requestedGroups.some((group) => typeof group !== "string" || group.length === 0)) reject$1("INVALID_DISPLAY_GROUP", "filter.groups", "must be an array of canonical group keys");
-	if (new Set(requestedGroups).size !== requestedGroups.length) reject$1("DUPLICATE_DISPLAY_GROUP", "filter.groups", "must not contain duplicate canonical group keys");
+	if (!Array.isArray(requestedGroups) || requestedGroups.some((group) => typeof group !== "string" || group.length === 0)) reject$2("INVALID_DISPLAY_GROUP", "filter.groups", "must be an array of canonical group keys");
+	if (new Set(requestedGroups).size !== requestedGroups.length) reject$2("DUPLICATE_DISPLAY_GROUP", "filter.groups", "must not contain duplicate canonical group keys");
 	const unknownGroup = requestedGroups.find((group) => !knownGroups.has(group));
-	if (unknownGroup !== void 0) reject$1("UNKNOWN_DISPLAY_GROUP", "filter.groups", `unknown canonical group key ${JSON.stringify(unknownGroup)}`);
+	if (unknownGroup !== void 0) reject$2("UNKNOWN_DISPLAY_GROUP", "filter.groups", `unknown canonical group key ${JSON.stringify(unknownGroup)}`);
 	const selectedGroups = new Set(requestedGroups);
 	const includesPoint = (group) => filter.groups === void 0 || group !== void 0 && selectedGroups.has(group);
 	const points = result.points.filter((point) => includesPoint(point.group?.canonical)).map((point) => ({
@@ -40864,7 +43554,7 @@ var AXIS_COLORS = [
 	"#1d4ed8",
 	"#15803d"
 ];
-function reject(code, path, message) {
+function reject$1(code, path, message) {
 	throw new PlotlySpecCompilationError(code, path, message);
 }
 function hashString(value) {
@@ -40975,7 +43665,7 @@ function preparedDisplay(result, displaySpec) {
 function normalize(result, displaySpec) {
 	if (result?.schemaVersion === "3dena.analysis-result.v1") return rawDisplay(result, displaySpec);
 	if (result?.schemaVersion === "3dena.prepared-space-result.v1") return preparedDisplay(result, displaySpec);
-	reject("UNSUPPORTED_PLOT_RESULT", "result.schemaVersion", "must be a raw jENA or prepared-space result");
+	reject$1("UNSUPPORTED_PLOT_RESULT", "result.schemaVersion", "must be a raw jENA or prepared-space result");
 }
 function coordinateFields(points, dimension) {
 	return {
@@ -41035,7 +43725,7 @@ function edgeTraces(display, spec) {
 	return display.edges.filter((edge) => Math.abs(edge.meanWeight) >= spec.style.edgeThreshold).map((edge) => {
 		const source = nodes.get(edge.sourceIndex);
 		const target = nodes.get(edge.targetIndex);
-		if (!source || !target) reject("MISSING_EDGE_NODE", `edges.${edge.id}`, "references a node absent from the selected coordinate space");
+		if (!source || !target) reject$1("MISSING_EDGE_NODE", `edges.${edge.id}`, "references a node absent from the selected coordinate space");
 		return trace(spec.plotDimension, {
 			mode: "lines",
 			name: edge.id,
@@ -41252,6 +43942,305 @@ function compilePlotlySpec(result, displaySpec) {
 	});
 }
 //#endregion
-export { assertAnalysisExecutionDatasetV2, assertAnalysisResultEnvelopeV1, compilePlotlySpec, createAnalysisClient, createExportBundle, executeAnalysisTask, inspectDataset };
+//#region src/fitted-jena-adapter-v2.ts
+init_build_identity();
+init_trajectory();
+init_validation();
+function reject(path, message) {
+	throw new TypeError(`${path}: ${message}`);
+}
+function rawScalar(value, path) {
+	if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+	if (typeof value !== "number" || !Number.isFinite(value)) reject(path, "must be a string, finite number, boolean, or null");
+	if (Number.isInteger(value) && !Number.isSafeInteger(value)) reject(path, "unsafe integer identities must be supplied as strings");
+	return value;
+}
+function finite(value, path) {
+	if (typeof value !== "number" || !Number.isFinite(value)) reject(path, "must be finite");
+	return value;
+}
+function exactStringColumns(value, path, allowEmpty = false) {
+	if (!Array.isArray(value) || !allowEmpty && value.length === 0) reject(path, allowEmpty ? "must be a string array" : "must be a non-empty string array");
+	const result = value.map((entry, index) => {
+		if (typeof entry !== "string" || entry.length === 0) reject(`${path}[${index}]`, "must be non-empty");
+		return entry;
+	});
+	if (new Set(result).size !== result.length) reject(path, "must not contain duplicate columns");
+	return result;
+}
+function sameStrings(left, right) {
+	return left.length === right.length && left.every((entry, index) => entry === right[index]);
+}
+function mergeColumns(row, columns) {
+	return columns.map((column) => {
+		const value = rawScalar(row[column], `row.${column}`);
+		return value === null ? "" : String(value);
+	}).join("::");
+}
+function entityKey(columns, values) {
+	return {
+		canonical: canonicalScalars(values),
+		display: values.map(displayScalar).join(" · "),
+		columns: [...columns],
+		values: [...values]
+	};
+}
+function valuesFor(row, columns, path) {
+	return columns.map((column) => rawScalar(row[column], `${path}.${column}`));
+}
+function combinedKey(unit, step) {
+	return entityKey([...unit.columns, ...step.columns], [...unit.values, ...step.values]);
+}
+function sameScalarRecord(left, right) {
+	const leftKeys = Object.keys(left);
+	return sameStrings(leftKeys, Object.keys(right)) && leftKeys.every((key) => Object.is(left[key], right[key]));
+}
+function stableUnique(values, key) {
+	const seen = /* @__PURE__ */ new Set();
+	return values.filter((value) => {
+		const identity = key(value);
+		if (seen.has(identity)) return false;
+		seen.add(identity);
+		return true;
+	});
+}
+function sourceStepContexts(rows, mapping) {
+	const byDisplayStep = /* @__PURE__ */ new Map();
+	const unitIdentityByDisplay = /* @__PURE__ */ new Map();
+	const conversationIdentityByDisplay = /* @__PURE__ */ new Map();
+	const stepOnlyColumns = mapping.conversationColumns.filter((column) => !mapping.unitColumns.includes(column));
+	if (!stepOnlyColumns.includes(mapping.timeColumn)) reject("mapping.timeColumn", "must identify a conversation field outside the analytic-unit tuple");
+	const scientificUnitColumns = mapping.groupColumn && !mapping.unitColumns.includes(mapping.groupColumn) ? [...mapping.unitColumns, mapping.groupColumn] : [...mapping.unitColumns];
+	rows.forEach((row, rowIndex) => {
+		const unitValues = valuesFor(row, mapping.unitColumns, `sourceRows[${rowIndex}]`);
+		const conversationValues = valuesFor(row, mapping.conversationColumns, `sourceRows[${rowIndex}]`);
+		const unitDisplay = mergeColumns(row, mapping.unitColumns);
+		const conversationDisplay = mergeColumns(row, mapping.conversationColumns);
+		const typedUnit = canonicalScalars(unitValues);
+		const typedConversation = canonicalScalars(conversationValues);
+		const priorTypedUnit = unitIdentityByDisplay.get(unitDisplay);
+		if (priorTypedUnit !== void 0 && priorTypedUnit !== typedUnit) reject(`sourceRows[${rowIndex}]`, "contains a typed analytic-unit collision in the standard jENA display identity");
+		unitIdentityByDisplay.set(unitDisplay, typedUnit);
+		const priorTypedConversation = conversationIdentityByDisplay.get(conversationDisplay);
+		if (priorTypedConversation !== void 0 && priorTypedConversation !== typedConversation) reject(`sourceRows[${rowIndex}]`, "contains a typed conversation collision in the standard jENA display identity");
+		conversationIdentityByDisplay.set(conversationDisplay, typedConversation);
+		const displayStep = JSON.stringify([unitDisplay, conversationDisplay]);
+		const participantValues = valuesFor(row, mapping.participantColumns, `sourceRows[${rowIndex}]`);
+		if (participantValues.some((value) => value === null || typeof value === "string" && value.length === 0)) reject(`sourceRows[${rowIndex}]`, "contains an empty participant identity component");
+		const groupValue = mapping.groupColumn ? rawScalar(row[mapping.groupColumn], `sourceRows[${rowIndex}].${mapping.groupColumn}`) : "All units";
+		if (groupValue === null || typeof groupValue === "string" && groupValue.length === 0) reject(`sourceRows[${rowIndex}]`, "contains an empty group identity");
+		const timeValue = rawScalar(row[mapping.timeColumn], `sourceRows[${rowIndex}].${mapping.timeColumn}`);
+		if (timeValue === null || typeof timeValue === "string" && timeValue.length === 0) reject(`sourceRows[${rowIndex}]`, "contains an empty time identity");
+		const metadata = Object.fromEntries(mapping.metadataColumns.map((column) => [column, rawScalar(row[column], `sourceRows[${rowIndex}].${column}`)]));
+		const scientificUnitValues = scientificUnitColumns.map((column) => mapping.groupColumn === column ? groupValue : rawScalar(row[column], `sourceRows[${rowIndex}].${column}`));
+		const stepValues = valuesFor(row, stepOnlyColumns, `sourceRows[${rowIndex}]`);
+		const context = {
+			typedStepCanonical: canonicalScalars([...unitValues, ...conversationValues]),
+			unit: entityKey(scientificUnitColumns, scientificUnitValues),
+			participantLabel: entityKey(mapping.participantColumns, participantValues),
+			step: entityKey(stepOnlyColumns, stepValues),
+			group: typedValue(groupValue),
+			time: typedValue(timeValue),
+			metadata
+		};
+		const prior = byDisplayStep.get(displayStep);
+		if (prior) {
+			if (prior.typedStepCanonical !== context.typedStepCanonical || prior.participantLabel.canonical !== context.participantLabel.canonical || prior.group.canonical !== context.group.canonical || prior.time.canonical !== context.time.canonical || !sameScalarRecord(prior.metadata, context.metadata)) reject(`sourceRows[${rowIndex}]`, "changes identity, group, time, or selected metadata within one fitted jENA step");
+			return;
+		}
+		byDisplayStep.set(displayStep, context);
+	});
+	return byDisplayStep;
+}
+function validateInput(input) {
+	if (!input || typeof input !== "object") reject("input", "must be an object");
+	const { set, sourceRows, mapping, configuration, inputColumns } = input;
+	if (!set || typeof set !== "object") reject("input.set", "must be a fitted jENA set");
+	if (!Array.isArray(sourceRows) || sourceRows.length === 0) reject("input.sourceRows", "must be non-empty");
+	exactStringColumns(inputColumns, "input.inputColumns");
+	const unitColumns = exactStringColumns(mapping?.unitColumns, "input.mapping.unitColumns");
+	const conversationColumns = exactStringColumns(mapping?.conversationColumns, "input.mapping.conversationColumns");
+	const participantColumns = exactStringColumns(mapping?.participantColumns, "input.mapping.participantColumns");
+	const metadataColumns = exactStringColumns(mapping?.metadataColumns, "input.mapping.metadataColumns", true);
+	const declared = new Set(inputColumns);
+	for (const column of [
+		...unitColumns,
+		...conversationColumns,
+		...participantColumns,
+		...metadataColumns
+	]) if (!declared.has(column)) reject("input.mapping", `column ${JSON.stringify(column)} is absent from inputColumns`);
+	if (typeof mapping.timeColumn !== "string" || !conversationColumns.includes(mapping.timeColumn)) reject("input.mapping.timeColumn", "must be one declared conversation column");
+	if (mapping.groupColumn !== null && (typeof mapping.groupColumn !== "string" || !declared.has(mapping.groupColumn))) reject("input.mapping.groupColumn", "must be null or one declared input column");
+	if (!sameStrings(set.units, unitColumns) || !sameStrings(set.conversation, conversationColumns)) reject("input.set", "unit/conversation mappings do not match the successful jENA fit");
+	if (set.modelType !== configuration.model || set.functionParams.model !== configuration.model) reject("input.configuration.model", "does not match the successful jENA fit");
+	if (set.functionParams.window !== configuration.window || set.functionParams.weightBy !== configuration.weightBy || set.functionParams.windowSizeBack !== configuration.windowSizeBack || set.functionParams.windowSizeForward !== configuration.windowSizeForward) reject("input.configuration", "window/weight settings do not match the successful jENA fit");
+	if (!Array.isArray(set.trajectories) || set.trajectories.length !== set.points.length || set.points.length === 0) reject("input.set.trajectories", "must align one-to-one with non-empty fitted points");
+	if (set.connectionCounts.length !== set.points.length || set.lineWeights.length !== set.points.length) reject("input.set", "model counts, line weights, and fitted points must align");
+	if (!Array.isArray(set.rotation.rotationColumns) || set.rotation.rotationColumns.length < 3) reject("input.set.rotation.rotationColumns", "must retain at least three fitted dimensions");
+}
+function pointRows(set, fullProjection, contexts, mapping, dimensions) {
+	const stepOnlyColumns = mapping.conversationColumns.filter((column) => !mapping.unitColumns.includes(column));
+	return set.trajectories.map((trajectoryRow, index) => {
+		const unitDisplay = mergeColumns(trajectoryRow, mapping.unitColumns);
+		const conversationDisplay = mergeColumns(trajectoryRow, mapping.conversationColumns);
+		const context = contexts.get(JSON.stringify([unitDisplay, conversationDisplay]));
+		if (!context) reject(`input.set.trajectories[${index}]`, "has no unique typed source-step binding");
+		const fittedPoint = fullProjection.points[index];
+		const fittedNodeWeights = set.lineWeights[index];
+		if (!fittedPoint || !fittedNodeWeights) reject(`input.set.points[${index}]`, "is not aligned to the fixed projection");
+		if (entityKey(stepOnlyColumns, valuesFor(trajectoryRow, stepOnlyColumns, `input.set.trajectories[${index}]`)).canonical !== context.step.canonical) reject(`input.set.trajectories[${index}]`, "does not preserve the typed source-step tuple");
+		return {
+			index,
+			id: combinedKey(context.unit, context.step),
+			unit: structuredClone(context.unit),
+			participantLabel: structuredClone(context.participantLabel),
+			step: structuredClone(context.step),
+			group: structuredClone(context.group),
+			time: structuredClone(context.time),
+			coordinates: dimensions.slice(0, 3).map((dimension) => finite(fittedPoint[dimension], `fixedProjection.points[${index}].${dimension}`)),
+			fullCoordinates: dimensions.map((dimension) => finite(fittedPoint[dimension], `fixedProjection.points[${index}].${dimension}`)),
+			lineWeights: set.codeColumns.map((column) => finite(fittedNodeWeights[column], `input.set.lineWeights[${index}].${column}`)),
+			metadata: { ...context.metadata }
+		};
+	});
+}
+function nodeRows(fullProjection, dimensions) {
+	const nodes = fullProjection.rotation.nodes;
+	if (!nodes || nodes.length !== fullProjection.codes.length) reject("fixedProjection.rotation.nodes", "must provide one node for every fitted code");
+	return nodes.map((node, index) => ({
+		index,
+		code: String(node.code ?? fullProjection.codes[index] ?? ""),
+		coordinates: dimensions.slice(0, 3).map((dimension) => finite(node[dimension], `fixedProjection.rotation.nodes[${index}].${dimension}`)),
+		fullCoordinates: dimensions.map((dimension) => finite(node[dimension], `fixedProjection.rotation.nodes[${index}].${dimension}`))
+	}));
+}
+function edgeRows(set, points) {
+	return set.adjacencyKey.map((entry, index) => {
+		const weights = points.map((point) => point.lineWeights[index] ?? 0);
+		return {
+			index,
+			id: `edge:${entry.sourceIndex}:${entry.targetIndex}`,
+			column: entry.name,
+			source: entry.source,
+			target: entry.target,
+			sourceIndex: entry.sourceIndex,
+			targetIndex: entry.targetIndex,
+			meanWeight: weights.reduce((sum, value) => sum + value, 0) / weights.length
+		};
+	});
+}
+/** Return the package-build identity injected into the exact consumed artifact. */
+function getAnalysisBuildIdentityV2() {
+	return structuredClone(ANALYSIS_BUILD_IDENTITY);
+}
+/**
+* Convert one already-fitted jENA trajectory set into the versioned analysis
+* DTO. Full coordinates and nodes are obtained by jENA `projectIn` against a
+* node-free copy of the same rotation set, so no accumulation or rotation fit
+* is repeated and the caller's fitted set remains immutable.
+*/
+function adaptFittedJenaTrajectoryResultV2(input) {
+	validateInput(input);
+	const { set, sourceRows, mapping, configuration, inputColumns } = input;
+	const contexts = sourceStepContexts(sourceRows, mapping);
+	const { nodes: _displayNodes, ...fixedRotation } = set.rotation;
+	const dimensions = [...fixedRotation.rotationColumns];
+	const fullProjection = projectIn(set, fixedRotation, {
+		dimensions: dimensions.length,
+		centerAlignToOrigin: configuration.centerAlignToOrigin
+	});
+	const points = pointRows(set, fullProjection, contexts, mapping, dimensions);
+	if (new Set(points.map((point) => point.id.canonical)).size !== points.length) reject("input.set.points", "contains duplicate typed unit-step identities");
+	const boundDisplaySteps = new Set(set.trajectories.map((trajectoryRow) => JSON.stringify([mergeColumns(trajectoryRow, mapping.unitColumns), mergeColumns(trajectoryRow, mapping.conversationColumns)])));
+	if (boundDisplaySteps.size !== contexts.size || [...contexts.keys()].some((key) => !boundDisplaySteps.has(key))) reject("input.sourceRows", "does not bind exactly to the fitted jENA trajectory steps");
+	const nodes = nodeRows(fullProjection, dimensions);
+	const edges = edgeRows(set, points);
+	const trajectory = buildSharedSpaceTrajectories(points, {
+		participant: [...mapping.participantColumns],
+		group: mapping.groupColumn ?? "@3dena/all-units",
+		time: mapping.timeColumn,
+		timeOrder: stableUnique(points.map((point) => point.time.value), (value) => typedValue(value).canonical),
+		cohortPolicy: "available"
+	}, dimensions);
+	const diagnostics = [{
+		code: "FITTED_JENA_FIXED_ROTATION_ADAPTER_V2",
+		severity: "info",
+		message: "Full-space coordinates were projected by jENA against the immutable successful-fit rotation; no ENA accumulation or rotation fit was repeated.",
+		path: "provenance.resultSemantics"
+	}];
+	return {
+		schemaVersion: "3dena.analysis-result.v1",
+		dimensions,
+		axes: dimensions.slice(0, 3),
+		points,
+		nodes,
+		edges,
+		accumulation: {
+			modelCounts: {
+				rowKeys: points.map((point) => structuredClone(point.id)),
+				columns: [...set.codeColumns],
+				values: set.connectionCounts.map((row, rowIndex) => set.codeColumns.map((column) => finite(row[column], `input.set.connectionCounts[${rowIndex}].${column}`)))
+			},
+			rowCounts: {
+				rowKeys: [],
+				columns: [...set.codeColumns],
+				values: []
+			}
+		},
+		variance: dimensions.map((axis, index) => ({
+			axis,
+			proportion: finite(fullProjection.variance[axis], `fixedProjection.variance.${axis}`),
+			eigenvalue: finite(fixedRotation.eigenvalues[index], `input.set.rotation.eigenvalues[${index}]`),
+			displayed: index < 3
+		})),
+		rotation: {
+			method: configuration.rotationMethod,
+			columns: dimensions,
+			matrix: fixedRotation.rotationMatrix.map((row, rowIndex) => row.map((value, columnIndex) => finite(value, `input.set.rotation.rotationMatrix[${rowIndex}][${columnIndex}]`))),
+			eigenvalues: fixedRotation.eigenvalues.map((value, index) => finite(value, `input.set.rotation.eigenvalues[${index}]`)),
+			centerVector: fixedRotation.centerVector.map((value, index) => finite(value, `input.set.rotation.centerVector[${index}]`))
+		},
+		trajectory,
+		summary: {
+			inputRows: sourceRows.length,
+			inputColumns: inputColumns.length,
+			units: new Set(points.map((point) => point.unit.canonical)).size,
+			points: points.length,
+			nodes: nodes.length,
+			edges: edges.length,
+			modelCountRows: points.length,
+			rowCountRows: 0,
+			groups: trajectory.groupOrder.length,
+			timePoints: trajectory.timeOrder.length,
+			participantPeriods: trajectory.participantPeriods.length,
+			trajectoryCentroids: trajectory.centroids.length,
+			dimensions: dimensions.length
+		},
+		diagnostics,
+		provenance: {
+			adapter: "@3dena/analysis",
+			adapterVersion: ANALYSIS_BUILD_IDENTITY.sdkVersion,
+			jenaPackage: "jena-js",
+			jenaVersion: ANALYSIS_BUILD_IDENTITY.jenaVersion,
+			jenaCommit: ANALYSIS_BUILD_IDENTITY.jenaCommit,
+			coreGoldenContract: "jena-package-golden-v1",
+			legacyGoldenContract: "legacy-application-golden-v1",
+			legacyGoldenStatus: "not-assessed",
+			parityContract: "3dena.parity-contract.v1",
+			resultSemantics: "one immutable fitted jENA rotation; fixed projectIn full-space recovery; participant-period reduction before group-time centroids",
+			resolvedConfig: {
+				model: configuration.model,
+				window: configuration.window,
+				weightBy: configuration.weightBy,
+				windowSizeBack: Number.isFinite(configuration.windowSizeBack) ? configuration.windowSizeBack : "Infinity",
+				windowSizeForward: configuration.windowSizeForward,
+				centerAlignToOrigin: configuration.centerAlignToOrigin
+			},
+			resolvedLimits: { ...DEFAULT_ANALYSIS_LIMITS }
+		}
+	};
+}
+//#endregion
+export { adaptFittedJenaTrajectoryResultV2, assertAnalysisExecutionDatasetV2, assertAnalysisResultEnvelopeV1, assertLongitudinalAnalysisBundleV2, assertTrajectoryRunSpecV2, compilePlotlySpec, compileTrajectoryPlotlySpec, createAnalysisClient, createExportBundle, executeAnalysisTask, executeLongitudinalAnalysisV2, getAnalysisBuildIdentityV2, hashAnalysisValueV1, inspectDataset, verifyLongitudinalAnalysisBundleV2 };
 
 //# sourceMappingURL=index.js.map

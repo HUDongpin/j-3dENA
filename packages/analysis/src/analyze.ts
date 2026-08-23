@@ -1,4 +1,5 @@
 import { ena, type ENASet, type Row } from "jena-js";
+import { ANALYSIS_BUILD_IDENTITY } from "./build-identity";
 
 import { buildSharedSpaceTrajectories } from "./trajectory";
 import {
@@ -307,16 +308,21 @@ export function analyzeRows(input: import("./types").AnalyzeRowsInput): Analysis
     diagnostics,
     provenance: {
       adapter: "@3dena/analysis",
-      adapterVersion: "0.1.0",
+      adapterVersion: ANALYSIS_BUILD_IDENTITY.sdkVersion,
       jenaPackage: "jena-js",
-      jenaVersion: "0.6.3",
-      jenaCommit: "57b7794ec3873c251c33086454523e5a3949836f",
+      jenaVersion: ANALYSIS_BUILD_IDENTITY.jenaVersion,
+      jenaCommit: ANALYSIS_BUILD_IDENTITY.jenaCommit,
       coreGoldenContract: "jena-package-golden-v1",
       legacyGoldenContract: "legacy-application-golden-v1",
       legacyGoldenStatus: "not-assessed",
       parityContract: "3dena.parity-contract.v1",
       resultSemantics: "one shared SVD rotation; participant-period reduction before group-time centroids",
-      resolvedConfig: { ...prepared.config },
+      resolvedConfig: {
+        ...prepared.config,
+        windowSizeBack: Number.isFinite(prepared.config.windowSizeBack)
+          ? prepared.config.windowSizeBack
+          : "Infinity"
+      },
       resolvedLimits: { ...prepared.limits }
     }
   };

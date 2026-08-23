@@ -1,0 +1,1 @@
+{"version":3,"file":"build-identity.d.ts","sourceRoot":"","sources":["../../../../../src/build-identity.ts"],"names":[],"mappings":"AAeA,MAAM,WAAW,qBAAqB;IACpC,WAAW,EAAE,MAAM,CAAC;IACpB,UAAU,EAAE,MAAM,CAAC;IACnB,oBAAoB,EAAE,MAAM,CAAC;IAC7B,UAAU,EAAE,MAAM,CAAC;IACnB,OAAO,EAAE,MAAM,CAAC;IAChB,KAAK,EAAE,OAAO,CAAC;CAChB;AAED,eAAO,MAAM,uBAAuB,EAAE,QAAQ,CAAC,qBAAqB,CA2BlE,CAAC"}

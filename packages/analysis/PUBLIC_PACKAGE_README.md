@@ -14,7 +14,8 @@ rENA, Shiny, and R subprocesses are not runtime dependencies.
 import { executeAnalysisTask, inspectDataset } from "j-3dena";
 ```
 
-The package is self-contained and has zero runtime npm dependencies. Its
+The package has zero bundled runtime dependencies and one exact peer:
+`jena-js@0.7.0-ona.0`. The host must install that single engine instance. Its
 internal scientific adapter identity remains `@3dena/analysis` for compatibility
 with the versioned result contracts; consumers install and import `j-3dena`.
 
@@ -33,9 +34,15 @@ The supported runtime root exports are exactly:
 - `executeAnalysisTask(dataset, task)`
 - `assertAnalysisExecutionDatasetV2(value)`
 - `assertAnalysisResultEnvelopeV1(value)`
+- `assertTrajectoryRunSpecV2(value)`
+- `assertLongitudinalAnalysisBundleV2(value)`
+- `verifyLongitudinalAnalysisBundleV2(value)`
 - `createAnalysisClient(config)`
 - `compilePlotlySpec(result, displaySpec)`
+- `compileTrajectoryPlotlySpec(bundle, displaySpec)`
 - `createExportBundle(result, options)`
+- `executeLongitudinalAnalysisV2(input)`
+- `hashAnalysisValueV1(value)`
 
 No `@3dena/*` internal subpath is a public compatibility promise. Versioned
 contract and result types remain type-only root exports. The two runtime

@@ -205,3 +205,46 @@ export interface TrajectoryDynamicsResultV1 {
   };
   resolvedLimits: TrajectoryDynamicsLimitsV1;
 }
+
+export interface TrajectoryPathSetGroupInputV2 {
+  group: TrajectoryIdentityV1;
+  namespace: string;
+  points: TrajectoryDynamicsPointV1[];
+}
+
+export interface TrajectoryPathSetInputV2 {
+  schemaVersion: "3dena.trajectory-path-set-input.v2";
+  dimensions: string[];
+  selectedDimensions: [string, string, string];
+  periods: TrajectoryPeriodDefinitionV1[];
+  cohortPolicy: TrajectoryCohortPolicyV1;
+  estimand: TrajectoryEstimandV1;
+  groups: TrajectoryPathSetGroupInputV2[];
+  limits?: Partial<TrajectoryDynamicsLimitsV1>;
+}
+
+export interface TrajectoryPathSetGroupResultV2 {
+  group: TrajectoryKeyV1;
+  dynamics: TrajectoryDynamicsResultV1;
+}
+
+export interface TrajectoryPathSetResultV2 {
+  schemaVersion: "3dena.trajectory-path-set.v2";
+  dimensions: string[];
+  selectedDimensions: [string, string, string];
+  cohortPolicy: TrajectoryCohortPolicyV1;
+  estimand: TrajectoryEstimandV1;
+  groups: TrajectoryPathSetGroupResultV2[];
+  summary: {
+    groups: number;
+    participants: number;
+    participantPeriods: number;
+    duplicateRows: number;
+    missingGroupPeriods: number;
+  };
+  evidence: {
+    status: "IMPLEMENTED_UNVERIFIED";
+    scientificAuthority: "jena-js-and-versioned-3dena-contract";
+    rEnaOracle: false;
+  };
+}

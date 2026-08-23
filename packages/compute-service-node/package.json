@@ -23,7 +23,7 @@
     "diff-check": "node ./scripts/diff-check.mjs"
   },
   "dependencies": {
-    "@3dena/analysis": "0.1.0",
+    "@3dena/analysis": "0.2.0",
     "@3dena/compute-service-core": "0.1.0"
   },
   "devDependencies": {

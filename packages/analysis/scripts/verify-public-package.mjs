@@ -60,8 +60,11 @@ export async function verifyPublicPackage(packageDirectory) {
     fail("repository provenance does not point to the owner repository");
   }
   if (Object.keys(manifest.exports ?? {}).join(",") !== ".") fail("only the root export is public");
-  if (manifest.dependencies !== undefined || manifest.optionalDependencies !== undefined || manifest.peerDependencies !== undefined) {
-    fail("public facade must not publish runtime dependency edges");
+  if (manifest.dependencies !== undefined || manifest.optionalDependencies !== undefined) {
+    fail("public facade must not publish bundled runtime dependency edges");
+  }
+  if (JSON.stringify(manifest.peerDependencies) !== JSON.stringify({ "jena-js": "0.7.0-ona.0" })) {
+    fail("public facade must expose the exact single-instance jENA peer contract");
   }
   if (JSON.stringify(manifest.files) !== JSON.stringify(expectedManifestFiles)) {
     fail("public facade package inventory changed");
@@ -86,6 +89,9 @@ export async function verifyPublicPackage(packageDirectory) {
   const expectedSchemaNames = [
     "typedScalar", "typedKey", "taskOwner", "datasetReceipt", "analysisSpec", "displaySpec",
     "analysisExecutionDatasetV2", "analysisTask", "evidenceStamp", "provenanceManifest", "resultEnvelope",
+    "trajectoryRunSpecV2", "trajectoryPathTaskV2", "trajectoryInferenceTaskV2",
+    "trajectoryBootstrapTaskV2", "trajectoryNetworkOverlayTaskV2", "trajectoryDisplaySpecV2",
+    "longitudinalAnalysisBundleV2",
   ];
   if (schemaIndex.schemaVersion !== "3dena.schema-index.v1" || JSON.stringify(Object.keys(schemaIndex.schemas).sort()) !== JSON.stringify(expectedSchemaNames.sort())) {
     fail("versioned JSON Schema index is incomplete");
@@ -109,12 +115,12 @@ export async function verifyPublicPackage(packageDirectory) {
   const javascript = await readFile(resolve(directory, "index.js"), "utf8");
   const declarationFiles = files.filter((file) => file.endsWith(".d.ts"));
   const declarations = (await Promise.all(declarationFiles.map((file) => readFile(resolve(directory, file), "utf8")))).join("\n");
-  const forbiddenBareImport = /(?:from\s*|import\s*\()\s*["'](?:@3dena\/|jena-js(?:\/|["'])|xlsx(?:\/|["']))/u;
+  const forbiddenBareImport = /(?:from\s*|import\s*\()\s*["'](?:@3dena\/|xlsx(?:\/|["']))/u;
   if (forbiddenBareImport.test(javascript) || forbiddenBareImport.test(declarations)) {
     fail("staged output still imports an internal or bundled runtime package");
   }
-  if (/from\s*["']jena-js(?:\/[^"']*)?["']/u.test(javascript) || /import\s*\(\s*["']jena-js(?:\/[^"']*)?["']/u.test(javascript)) {
-    fail("jena-js was not bundled into the single public artifact");
+  if (!/from\s*["']jena-js["']/u.test(javascript)) {
+    fail("public runtime does not retain the required jENA peer edge");
   }
   if (/from\s*["']xlsx(?:\/[^"']*)?["']/u.test(javascript) || /import\s*\(\s*["']xlsx(?:\/[^"']*)?["']/u.test(javascript)) {
     fail("SheetJS was not bundled into the single public artifact");
@@ -144,7 +150,14 @@ export async function verifyPublicPackage(packageDirectory) {
   if (provenance.runtimeBoundary?.r !== false || provenance.runtimeBoundary?.rena !== false || provenance.runtimeBoundary?.rWebFramework !== false) {
     fail("runtime boundary is not explicit");
   }
-  if (provenance.dependencies?.jenaJs?.version !== "0.6.3") fail("jENA version drifted");
+  if (
+    provenance.dependencies?.jenaJs?.version !== "0.7.0-ona.0"
+    || provenance.dependencies?.jenaJs?.tarballIntegrity !== "sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ=="
+    || provenance.dependencies?.jenaJs?.auditedCommit !== "90790856f00bdef63dbd27fc3a5b502e8cffe65f"
+  ) fail("jENA receipt identity drifted");
+  if (provenance.runtimeBoundary?.runtimeNpmDependencies !== 0 || provenance.runtimeBoundary?.runtimeNpmPeers !== 1) {
+    fail("jENA single-peer runtime boundary drifted");
+  }
   if (provenance.dependencies?.sheetJs?.sha256 !== "8dc73fc3b00203e72d176e85b50938627c7b086e607c682e8d3c22c02bb99fe8") {
     fail("SheetJS custody hash drifted");
   }
@@ -155,7 +168,15 @@ export async function verifyPublicPackage(packageDirectory) {
   if (provenance.artifacts?.schemaIndexSha256 !== schemaIndexDigest) fail("schema index digest does not match provenance");
 
   const loaded = await import(`${pathToFileURL(resolve(directory, "index.js")).href}?verify=${digest}`);
-  const publicNames = ["assertAnalysisExecutionDatasetV2", "assertAnalysisResultEnvelopeV1", "compilePlotlySpec", "createAnalysisClient", "createExportBundle", "executeAnalysisTask", "inspectDataset"];
+  const publicNames = [
+    "adaptFittedJenaTrajectoryResultV2",
+    "assertAnalysisExecutionDatasetV2", "assertAnalysisResultEnvelopeV1",
+    "assertLongitudinalAnalysisBundleV2", "assertTrajectoryRunSpecV2",
+    "compilePlotlySpec", "compileTrajectoryPlotlySpec", "createAnalysisClient",
+    "createExportBundle", "executeAnalysisTask", "executeLongitudinalAnalysisV2",
+    "getAnalysisBuildIdentityV2", "hashAnalysisValueV1", "inspectDataset",
+    "verifyLongitudinalAnalysisBundleV2"
+  ];
   if (JSON.stringify(Object.keys(loaded).sort()) !== JSON.stringify(publicNames)) {
     fail(`runtime root exports must be exactly ${publicNames.join(", ")}`);
   }

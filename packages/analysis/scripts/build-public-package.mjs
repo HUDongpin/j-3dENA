@@ -33,6 +33,10 @@ function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+function sri512(bytes) {
+  return `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
+}
+
 function assertSafeDistributionPath() {
   if (dirname(distributionDirectory) !== analysisDirectory || distributionDirectory.split(sep).at(-1) !== "dist") {
     fail("refusing to clean an unexpected distribution path");
@@ -145,6 +149,22 @@ const jenaSuccessor = inspectJenaSuccessor({ root: repositoryRoot, requireInstal
 if (!jenaSuccessor.ok) {
   fail(`reviewed public jENA successor contract failed: ${jenaSuccessor.findings.map(({ rule }) => rule).join(", ")}`);
 }
+const jenaReceipt = JSON.parse(await readFile(resolve(repositoryRoot, "vendor/jena-js/RECEIPT.json"), "utf8"));
+const jenaArchive = await readFile(resolve(repositoryRoot, "vendor/jena-js", jenaReceipt.tarball));
+if (
+  jenaReceipt.schemaVersion !== "3dena.jena-artifact-receipt.v1"
+  || jenaReceipt.package !== "jena-js"
+  || jenaReceipt.version !== sourceManifest.peerDependencies?.["jena-js"]
+  || !/^[0-9a-f]{40}$/u.test(jenaReceipt.officialCommit)
+  || jenaReceipt.rEnaNumericalOracle !== false
+) {
+  fail("vendored jENA receipt does not match the package peer contract");
+}
+if (sha256(jenaArchive) !== jenaReceipt.tarballSha256 || sri512(jenaArchive) !== jenaReceipt.tarballIntegrity) {
+  fail("vendored jENA tarball digest does not match its receipt");
+}
+const packageBuildId = process.env.THREEDENA_PACKAGE_BUILD_ID
+  ?? `${sourceIdentity.repositoryHead}${sourceIdentity.dirtyWorktree ? "-dirty" : ""}`;
 
 const sheetArchivePath = resolve(repositoryRoot, "vendor/sheetjs/xlsx-0.20.3.tgz");
 const sheetArchive = await readFile(sheetArchivePath);
@@ -166,6 +186,13 @@ await build({
       "@3dena/trajectory": resolve(repositoryRoot, "packages/trajectory/src/index.ts")
     }
   },
+  define: {
+    __THREEDENA_JENA_VERSION__: JSON.stringify(jenaReceipt.version),
+    __THREEDENA_JENA_COMMIT__: JSON.stringify(jenaReceipt.officialCommit),
+    __THREEDENA_JENA_TARBALL_INTEGRITY__: JSON.stringify(jenaReceipt.tarballIntegrity),
+    __THREEDENA_SDK_VERSION__: JSON.stringify(sourceManifest.version),
+    __THREEDENA_BUILD_ID__: JSON.stringify(packageBuildId)
+  },
   build: {
     target: "es2022",
     outDir: packageDirectory,
@@ -178,10 +205,9 @@ await build({
       fileName: () => "index.js"
     },
     rollupOptions: {
-      external: [],
-      // The published facade is deliberately one self-contained runtime
-      // artifact. Source-level lazy imports may keep jENA out of derived-only
-      // consumers, but they must not create an unlisted package chunk.
+      external: ["jena-js"],
+      // Workspace packages remain bundled into one public runtime artifact;
+      // the exact jENA engine is deliberately supplied once by the consumer.
       output: {
         codeSplitting: false
       }
@@ -255,6 +281,9 @@ const publicManifest = {
   type: "module",
   license: "GPL-3.0-only",
   sideEffects: false,
+  peerDependencies: {
+    "jena-js": jenaReceipt.version
+  },
   engines: { node: ">=20.9.0" },
   exports: {
     ".": {
@@ -291,7 +320,7 @@ const provenance = {
   package: {
     name: publicManifest.name,
     version: publicManifest.version,
-    buildId: process.env.THREEDENA_PACKAGE_BUILD_ID ?? "local-unpublished"
+    buildId: packageBuildId
   },
   source: sourceIdentity,
   contracts: {
@@ -302,10 +331,14 @@ const provenance = {
   },
   dependencies: {
     jenaJs: {
-      version: "0.6.3",
-      auditedCommit: "57b7794ec3873c251c33086454523e5a3949836f",
+      version: jenaReceipt.version,
+      auditedCommit: jenaReceipt.officialCommit,
+      tarballSha256: jenaReceipt.tarballSha256,
+      tarballIntegrity: jenaReceipt.tarballIntegrity,
+      numericsSha256: jenaReceipt.numericsSha256,
+      provenanceSha256: jenaReceipt.provenanceSha256,
       license: "GPL-3.0-only",
-      packagingDisposition: "bundled-from-public-successor-zero-runtime-dependencies"
+      packagingDisposition: "exact-single-instance-peer-from-reviewed-tarball"
     },
     sheetJs: {
       package: "xlsx",
@@ -320,7 +353,8 @@ const provenance = {
     r: false,
     rena: false,
     rWebFramework: false,
-    runtimeNpmDependencies: 0
+    runtimeNpmDependencies: 0,
+    runtimeNpmPeers: 1
   },
   artifacts: {
     indexJsSha256: sha256(indexBytes),

@@ -1,10 +1,13 @@
 {
-  "name": "@3dena/analysis",
-  "version": "0.1.0-implemented-unverified.0",
+  "name": "j-3dena",
+  "version": "0.2.0-implemented-unverified.0",
   "description": "Public TypeScript analysis facade for the j-3dENA successor",
   "type": "module",
   "license": "GPL-3.0-only",
   "sideEffects": false,
+  "peerDependencies": {
+    "jena-js": "0.7.0-ona.0"
+  },
   "engines": {
     "node": ">=20.9.0"
   },
@@ -32,6 +35,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/3dENA/j-3dENA.git"
+    "url": "git+https://github.com/HUDongpin/j-3dENA.git"
   }
 }

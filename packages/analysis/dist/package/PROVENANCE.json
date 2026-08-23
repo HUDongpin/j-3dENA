@@ -2,14 +2,14 @@
   "schemaVersion": "3dena.public-package-provenance.v1",
   "productStatus": "IMPLEMENTED_UNVERIFIED",
   "package": {
-    "name": "@3dena/analysis",
-    "version": "0.1.0-implemented-unverified.0",
-    "buildId": "local-unpublished"
+    "name": "j-3dena",
+    "version": "0.2.0-implemented-unverified.0",
+    "buildId": "47e05006ff5308b6cb857111c2114e47e7bdfc6d-dirty"
   },
   "source": {
-    "repositoryHead": "f923c6eceb9999a91f5ef208637d795a9e15fc63",
+    "repositoryHead": "47e05006ff5308b6cb857111c2114e47e7bdfc6d",
     "dirtyWorktree": true,
-    "generatedAt": "2026-08-21T12:37:51.000Z"
+    "generatedAt": "2026-08-22T02:11:40.000Z"
   },
   "contracts": {
     "analysis": "3dena.analysis-task.v1",
@@ -19,10 +19,14 @@
   },
   "dependencies": {
     "jenaJs": {
-      "version": "0.6.2",
-      "auditedCommit": "2f63db4c6ccf5684afc8437ae81ed1a3ccd0c1a3",
+      "version": "0.7.0-ona.0",
+      "auditedCommit": "90790856f00bdef63dbd27fc3a5b502e8cffe65f",
+      "tarballSha256": "1e071eaa4085688bbbd5f9d7122513a4bf82a0eaf955d399ab21706204fc8afe",
+      "tarballIntegrity": "sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==",
+      "numericsSha256": "3a4567fba2d89bc7c2dd8b3a849d16f578d6a426155b6fd5ed59aab49f6002f1",
+      "provenanceSha256": "f7d0a7c545036beb53f480bd33393d2a1ad20b7763e7863fcb8e115fe32a12dd",
       "license": "GPL-3.0-only",
-      "packagingDisposition": "bundled-once-self-dependency-removed"
+      "packagingDisposition": "exact-single-instance-peer-from-reviewed-tarball"
     },
     "sheetJs": {
       "package": "xlsx",
@@ -37,11 +41,12 @@
     "r": false,
     "rena": false,
     "rWebFramework": false,
-    "runtimeNpmDependencies": 0
+    "runtimeNpmDependencies": 0,
+    "runtimeNpmPeers": 1
   },
   "artifacts": {
-    "indexJsSha256": "913121c9c01af4bb67c0354748018952b28fcda1b732824fe38a784179242f61",
-    "indexJsMapSha256": "9259c06218df1da5634d505a1e89f59269cd8c40ae097019ea296202d4168395",
-    "schemaIndexSha256": "d4bd8b7257002d3138a97bdda6a08dcef4af285d574ca3106a67051c9d1daa10"
+    "indexJsSha256": "907743557b041305b1bcd7cb1ee332be87a5482b26dcd45712460b74ac45e22d",
+    "indexJsMapSha256": "ab10f8a343820ea38a16c2f324599926a5c276b5ad27b34f53c576e74184ff87",
+    "schemaIndexSha256": "2f5550cf0fc076654a3086039d54342b42cc55ac2380e1418ddf2ed6b88f499a"
   }
 }

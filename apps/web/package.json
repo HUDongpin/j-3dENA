@@ -16,7 +16,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@3dena/analysis": "0.1.0",
+    "@3dena/analysis": "0.2.0",
     "@3dena/compute-service-http": "0.1.0",
     "@3dena/dataset-workflow": "0.1.0",
     "@3dena/export": "0.1.0",

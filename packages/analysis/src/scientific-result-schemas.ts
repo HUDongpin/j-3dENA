@@ -185,7 +185,7 @@ const ANALYSIS_PROVENANCE_SCHEMA = exactObject(
   ["adapter", "adapterVersion", "jenaPackage", "jenaVersion", "jenaCommit", "coreGoldenContract", "legacyGoldenContract", "legacyGoldenStatus", "parityContract", "resultSemantics", "resolvedConfig", "resolvedLimits"],
   {
     adapter: { const: "@3dena/analysis" },
-    adapterVersion: { const: "0.1.0" },
+    adapterVersion: NON_EMPTY_STRING_SCHEMA,
     jenaPackage: { const: "jena-js" },
     jenaVersion: NON_EMPTY_STRING_SCHEMA,
     jenaCommit: NON_EMPTY_STRING_SCHEMA,
@@ -200,7 +200,7 @@ const ANALYSIS_PROVENANCE_SCHEMA = exactObject(
         model: { enum: ["EndPoint", "AccumulatedTrajectory", "SeparateTrajectory"] },
         window: { enum: ["MovingStanzaWindow", "Conversation"] },
         weightBy: { enum: ["binary", "sum"] },
-        windowSizeBack: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+        windowSizeBack: { anyOf: [SAFE_NON_NEGATIVE_INTEGER_SCHEMA, { const: "Infinity" }] },
         windowSizeForward: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
         centerAlignToOrigin: { type: "boolean" },
       },
@@ -215,7 +215,7 @@ export const ENA_MODEL_RESULT_SCHEMA_V1: JsonSchema = {
     {
       schemaVersion: { const: "3dena.analysis-result.v1" },
       dimensions: arrayOf(NON_EMPTY_STRING_SCHEMA, { minItems: 3, uniqueItems: true }),
-      axes: { type: "array", prefixItems: [{ const: "SVD1" }, { const: "SVD2" }, { const: "SVD3" }], minItems: 3, maxItems: 3 },
+      axes: { type: "array", items: NON_EMPTY_STRING_SCHEMA, minItems: 3, maxItems: 3, uniqueItems: true },
       points: arrayOf(ANALYSIS_POINT_SCHEMA, { minItems: 1 }),
       nodes: arrayOf(ANALYSIS_NODE_SCHEMA, { minItems: 3 }),
       edges: arrayOf(ANALYSIS_EDGE_SCHEMA, { minItems: 1 }),
@@ -230,7 +230,7 @@ export const ENA_MODEL_RESULT_SCHEMA_V1: JsonSchema = {
       rotation: exactObject(
         ["method", "columns", "matrix", "eigenvalues", "centerVector"],
         {
-          method: { const: "svd" },
+          method: { enum: ["svd", "mean", "reference"] },
           columns: arrayOf(NON_EMPTY_STRING_SCHEMA, { minItems: 3, uniqueItems: true }),
           matrix: arrayOf(vector(), { minItems: 1 }),
           eigenvalues: vector(),
@@ -543,15 +543,16 @@ const TRAJECTORY_PATH_PERIOD_SCHEMA = exactObject(
 );
 
 const TRAJECTORY_PATH_STATISTICS_SCHEMA = exactObject(
-  ["schemaVersion", "namespace", "cohortPolicy", "dimensions", "selectedDimensions", "distanceSemantics", "participantPeriods", "periods", "diagnostics", "summary", "resolvedLimits"],
+  ["schemaVersion", "namespace", "cohortPolicy", "estimand", "dimensions", "selectedDimensions", "distanceSemantics", "participantPeriods", "periods", "diagnostics", "summary", "resolvedLimits"],
   {
     schemaVersion: { const: "3dena.trajectory-path-statistics.v1" },
     namespace: NON_EMPTY_STRING_SCHEMA,
     cohortPolicy: { enum: ["available", "complete"] },
+    estimand: { enum: ["equal-participant", "weighted-participant"] },
     dimensions: arrayOf(NON_EMPTY_STRING_SCHEMA, { minItems: 1, uniqueItems: true }),
     selectedDimensions: arrayOf(NON_EMPTY_STRING_SCHEMA, { minItems: 3, maxItems: 3, uniqueItems: true }),
     distanceSemantics: constObject({ selected3d: "euclidean-selected-three-dimensions", fullSpace: "euclidean-all-declared-dimensions" }),
-    participantPeriods: arrayOf(trajectoryParticipantPeriodSchema(false)),
+    participantPeriods: arrayOf(trajectoryParticipantPeriodSchema(true)),
     periods: arrayOf(TRAJECTORY_PATH_PERIOD_SCHEMA),
     diagnostics: DIAGNOSTICS_SCHEMA,
     summary: countObject(["inputRows", "participants", "participantPeriods", "periods", "duplicateRows"]),
@@ -764,7 +765,7 @@ const BOOTSTRAP_RESULT_SCHEMA = exactObject(
           { key: TRAJECTORY_KEY_SCHEMA, unitCount: SAFE_POSITIVE_INTEGER_SCHEMA },
         ), { minItems: 1 }),
         replicateCount: SAFE_POSITIVE_INTEGER_SCHEMA,
-        planKind: { const: "participant-history-resample-indices-v1" },
+        planKind: { enum: ["participant-history-resample-indices-v1", "global-participant-history-resample-indices-v2"] },
         generation: BOOTSTRAP_GENERATION_SCHEMA,
         rngParityClaim: { const: false },
       },

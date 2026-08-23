@@ -61,7 +61,7 @@ interface RawEvidenceResult {
       model: string;
       window: string;
       weightBy: string;
-      windowSizeBack: number;
+      windowSizeBack: number | "Infinity";
       windowSizeForward: number;
       centerAlignToOrigin: boolean;
     };

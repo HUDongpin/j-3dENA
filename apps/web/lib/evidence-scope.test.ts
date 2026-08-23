@@ -121,6 +121,30 @@ describe("raw scientific evidence scope", () => {
     expect(assessment.mismatches).toContain("resolved-analysis");
   });
 
+  it("accepts the JSON-safe Conversation infinity marker but keeps it outside the frozen small-raw scope", () => {
+    const assessment = assessRawEvidenceScope(
+      {
+        ...governedResult,
+        provenance: {
+          ...governedResult.provenance,
+          resolvedConfig: {
+            ...governedResult.provenance.resolvedConfig,
+            window: "Conversation",
+            windowSizeBack: "Infinity" as const,
+          },
+        },
+      },
+      {
+        datasetHash: SMALL_RAW_PARITY_BINDING.datasetSha256,
+        specHash: SMALL_RAW_PARITY_BINDING.specificationSha256,
+      },
+      GOVERNED_BUILD_ID,
+    );
+
+    expect(assessment.evidenceStatus).toBe(PRODUCT_STATUS);
+    expect(assessment.mismatches).toContain("resolved-analysis");
+  });
+
   it.each([undefined, null, "", " local-build ", "local-development"])(
     "withholds candidate evidence when the build identity is not explicit: %s",
     (buildId) => {

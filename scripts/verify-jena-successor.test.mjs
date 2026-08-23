@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
@@ -9,30 +10,36 @@ import {
   JENA_SUCCESSOR_CONTRACT,
 } from "./verify-jena-successor.mjs";
 
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
 function fixture(metadataOverrides = {}, installedOverrides = {}) {
   const root = mkdtempSync(join(tmpdir(), "3dena-jena-successor-"));
   const installedDirectory = join(root, "node_modules", "jena-js");
   const analysisDirectory = join(root, "packages", "analysis");
+  const vendorDirectory = join(root, "vendor", "jena-js");
   mkdirSync(installedDirectory, { recursive: true });
   mkdirSync(analysisDirectory, { recursive: true });
+  mkdirSync(vendorDirectory, { recursive: true });
+  copyFileSync(join(repositoryRoot, "vendor/jena-js/RECEIPT.json"), join(vendorDirectory, "RECEIPT.json"));
+  copyFileSync(join(repositoryRoot, "vendor/jena-js/jena-js-0.7.0-ona.0.tgz"), join(vendorDirectory, "jena-js-0.7.0-ona.0.tgz"));
   const metadata = {
     version: JENA_SUCCESSOR_CONTRACT.version,
-    resolved: JENA_SUCCESSOR_CONTRACT.registryTarball,
+    resolved: JENA_SUCCESSOR_CONTRACT.localTarball,
     integrity: JENA_SUCCESSOR_CONTRACT.integrity,
     license: JENA_SUCCESSOR_CONTRACT.license,
     ...metadataOverrides,
   };
   writeFileSync(
     join(root, "package-lock.json"),
-    `${JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "packages/analysis": { dependencies: { "jena-js": "0.6.3" } }, "node_modules/jena-js": metadata } }, null, 2)}\n`,
+    `${JSON.stringify({ lockfileVersion: 3, packages: { "": { devDependencies: { "jena-js": JENA_SUCCESSOR_CONTRACT.localTarball } }, "packages/analysis": { peerDependencies: { "jena-js": JENA_SUCCESSOR_CONTRACT.version } }, "node_modules/jena-js": metadata } }, null, 2)}\n`,
   );
   writeFileSync(
     join(analysisDirectory, "package.json"),
-    `${JSON.stringify({ name: "@3dena/analysis", dependencies: { "jena-js": "0.6.3" } }, null, 2)}\n`,
+    `${JSON.stringify({ name: "@3dena/analysis", dependencies: {}, peerDependencies: { "jena-js": JENA_SUCCESSOR_CONTRACT.version } }, null, 2)}\n`,
   );
   writeFileSync(
     join(installedDirectory, "package.json"),
-    `${JSON.stringify({ name: "jena-js", version: "0.6.3", license: "GPL-3.0-only", ...installedOverrides }, null, 2)}\n`,
+    `${JSON.stringify({ name: "jena-js", version: JENA_SUCCESSOR_CONTRACT.version, license: "GPL-3.0-only", ...installedOverrides }, null, 2)}\n`,
   );
   return root;
 }
@@ -44,17 +51,17 @@ function mutateLock(root, mutator) {
   writeFileSync(pathname, `${JSON.stringify(lock, null, 2)}\n`);
 }
 
-test("accepts exactly one public-registry 0.6.3 successor with no runtime dependencies", () => {
+test("accepts exactly one reviewed 0.7.0-ona.0 peer with a verified custody receipt", () => {
   const result = inspectJenaSuccessor({ root: fixture() });
   assert.equal(result.ok, true, JSON.stringify(result.findings, null, 2));
   assert.equal(result.evidence.lockInstances, 1);
 });
 
-test("rejects the 0.6.2 self-dependency declaration", () => {
+test("rejects an older self-dependent jENA substitution", () => {
   const root = fixture(
     {
       version: "0.6.2",
-      resolved: "https://registry.npmjs.org/jena-js/-/jena-js-0.6.2.tgz",
+      resolved: "file:vendor/jena-js/jena-js-0.6.2.tgz",
       dependencies: { "jena-js": "^0.6.0" },
     },
     { version: "0.6.2", dependencies: { "jena-js": "^0.6.0" } },
@@ -68,28 +75,28 @@ test("rejects the 0.6.2 self-dependency declaration", () => {
   assert.ok(rules.has("installed-successor-mismatch"));
 });
 
-test("rejects a registry integrity value that does not match the reviewed tarball", () => {
+test("rejects an integrity value that does not match the reviewed tarball", () => {
   const result = inspectJenaSuccessor({ root: fixture({ integrity: "sha512-unreviewed" }) });
   assert.equal(result.ok, false);
-  assert.ok(result.findings.some(({ rule }) => rule === "registry-integrity-mismatch"));
+  assert.ok(result.findings.some(({ rule }) => rule === "tarball-integrity-mismatch"));
 });
 
-test("rejects duplicate and local-tarball successor substitutions", () => {
-  const root = fixture({ resolved: "file:jena-js-0.6.3.tgz" });
+test("rejects duplicate and unreviewed-tarball successor substitutions", () => {
+  const root = fixture({ resolved: "file:jena-js-unreviewed.tgz" });
   const lock = {
     lockfileVersion: 3,
     packages: {
-      "": {},
-      "packages/analysis": { dependencies: { "jena-js": "0.6.3" } },
+      "": { devDependencies: { "jena-js": JENA_SUCCESSOR_CONTRACT.localTarball } },
+      "packages/analysis": { peerDependencies: { "jena-js": JENA_SUCCESSOR_CONTRACT.version } },
       "node_modules/jena-js": {
-        version: "0.6.3",
-        resolved: "file:jena-js-0.6.3.tgz",
+        version: JENA_SUCCESSOR_CONTRACT.version,
+        resolved: "file:jena-js-unreviewed.tgz",
         integrity: JENA_SUCCESSOR_CONTRACT.integrity,
         license: "GPL-3.0-only",
       },
       "node_modules/example/node_modules/jena-js": {
-        version: "0.6.3",
-        resolved: JENA_SUCCESSOR_CONTRACT.registryTarball,
+        version: JENA_SUCCESSOR_CONTRACT.version,
+        resolved: JENA_SUCCESSOR_CONTRACT.localTarball,
         integrity: JENA_SUCCESSOR_CONTRACT.integrity,
         license: "GPL-3.0-only",
       },
@@ -100,7 +107,7 @@ test("rejects duplicate and local-tarball successor substitutions", () => {
   assert.equal(result.ok, false);
   const rules = new Set(result.findings.map(({ rule }) => rule));
   assert.ok(rules.has("jena-instance-count"));
-  assert.ok(rules.has("non-registry-successor"));
+  assert.ok(rules.has("unreviewed-tarball-source"));
 });
 
 test("rejects malformed lock and dependency shapes fail-closed", async (t) => {
@@ -109,8 +116,8 @@ test("rejects malformed lock and dependency shapes fail-closed", async (t) => {
     ["packages null", (root) => mutateLock(root, (lock) => { lock.packages = null; })],
     ["root missing", (root) => mutateLock(root, (lock) => { delete lock.packages[""]; })],
     ["analysis lock missing", (root) => mutateLock(root, (lock) => { delete lock.packages["packages/analysis"]; })],
-    ["analysis lock dependencies null", (root) => mutateLock(root, (lock) => { lock.packages["packages/analysis"].dependencies = null; })],
-    ["analysis lock successor drift", (root) => mutateLock(root, (lock) => { lock.packages["packages/analysis"].dependencies["jena-js"] = "0.6.2"; })],
+    ["analysis lock peer dependencies null", (root) => mutateLock(root, (lock) => { lock.packages["packages/analysis"].peerDependencies = null; })],
+    ["analysis lock successor drift", (root) => mutateLock(root, (lock) => { lock.packages["packages/analysis"].peerDependencies["jena-js"] = "0.6.2"; })],
     ["jena lock entry null", (root) => mutateLock(root, (lock) => { lock.packages["node_modules/jena-js"] = null; })],
     ["jena dependencies null", (root) => mutateLock(root, (lock) => { lock.packages["node_modules/jena-js"].dependencies = null; })],
     ["installed dependencies array", (root) => {
@@ -119,10 +126,10 @@ test("rejects malformed lock and dependency shapes fail-closed", async (t) => {
       manifest.dependencies = [];
       writeFileSync(pathname, `${JSON.stringify(manifest, null, 2)}\n`);
     }],
-    ["source dependencies null", (root) => {
+    ["source peer dependencies null", (root) => {
       const pathname = join(root, "packages", "analysis", "package.json");
       const manifest = JSON.parse(readFileSync(pathname, "utf8"));
-      manifest.dependencies = null;
+      manifest.peerDependencies = null;
       writeFileSync(pathname, `${JSON.stringify(manifest, null, 2)}\n`);
     }],
   ];

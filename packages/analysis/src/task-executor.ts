@@ -26,6 +26,7 @@ import {
   type DatasetReceiptV1,
   type TrajectoryTaskV1,
 } from "./contracts";
+import { ANALYSIS_BUILD_IDENTITY } from "./build-identity";
 import { analyzeChangeNetwork, compareGroupNetworks, type ChangeNetworkResultV1, type NetworkComparisonResultV1 } from "./network-analysis";
 import {
   analyzePreparedChangeNetwork,
@@ -816,14 +817,14 @@ export async function executeAnalysisTask(
       datasetHash: task.owner.datasetHash,
       specHash: task.owner.specHash,
       resultHash,
-      adapterVersion: "0.1.0",
+      adapterVersion: ANALYSIS_BUILD_IDENTITY.sdkVersion,
       jenaPackage: "jena-js",
-      jenaVersion: "0.6.3",
-      jenaCommit: "57b7794ec3873c251c33086454523e5a3949836f",
+      jenaVersion: ANALYSIS_BUILD_IDENTITY.jenaVersion,
+      jenaCommit: ANALYSIS_BUILD_IDENTITY.jenaCommit,
       sourceKind,
       jenaExecuted: sourceKind === "raw-jena",
       sdkPackage: "@3dena/analysis",
-      sdkVersion: "0.1.0",
+      sdkVersion: ANALYSIS_BUILD_IDENTITY.sdkVersion,
       appVersion: "sdk-local",
       contractVersion: ANALYSIS_CONTRACT_VERSION_V1,
       buildId: dataset.buildId,

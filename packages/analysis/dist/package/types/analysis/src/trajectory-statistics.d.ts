@@ -23,6 +23,8 @@ export interface TrajectoryStatisticsPoint {
     stratum?: TrajectoryIdentity;
     /** Coordinates in the exact order declared by the containing series. */
     coordinates: number[];
+    /** Required, finite, and strictly positive for the weighted-participant estimand. */
+    weight?: number;
 }
 export interface TrajectoryStatisticsLimits {
     maxPoints: number;
@@ -41,6 +43,8 @@ export interface TrajectorySeriesInput {
     selectedDimensions: [string, string, string];
     timeOrder: TrajectoryIdentity[];
     cohortPolicy: TrajectoryCohortPolicy;
+    /** Defaults to equal-participant for V1 readers. */
+    estimand?: "equal-participant" | "weighted-participant";
     limits?: Partial<TrajectoryStatisticsLimits>;
 }
 export interface TrajectoryParticipantPeriod {
@@ -50,6 +54,7 @@ export interface TrajectoryParticipantPeriod {
     selectedCoordinates: [number, number, number];
     fullCoordinates: number[];
     sourceRowIndexes: number[];
+    participantWeight: number;
     includedInCohort: boolean;
 }
 export interface TrajectoryDistanceMetrics {
@@ -81,6 +86,7 @@ export interface TrajectoryPathStatistics {
     schemaVersion: "3dena.trajectory-path-statistics.v1";
     namespace: string;
     cohortPolicy: TrajectoryCohortPolicy;
+    estimand: "equal-participant" | "weighted-participant";
     dimensions: string[];
     selectedDimensions: [string, string, string];
     distanceSemantics: {
@@ -279,7 +285,7 @@ export interface TrajectoryBootstrapResult {
             unitCount: number;
         }>;
         replicateCount: number;
-        planKind: "participant-history-resample-indices-v1";
+        planKind: "participant-history-resample-indices-v1" | "global-participant-history-resample-indices-v2";
         generation: TrajectoryBootstrapPlan["generation"];
         rngParityClaim: false;
     };

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,11 +10,12 @@ const DEFAULT_ROOT = resolve(dirname(SCRIPT_PATH), "..");
 
 export const JENA_SUCCESSOR_CONTRACT = Object.freeze({
   packageName: "jena-js",
-  version: "0.6.3",
-  registryTarball:
-    "https://registry.npmjs.org/jena-js/-/jena-js-0.6.3.tgz",
+  version: "0.7.0-ona.0",
+  localTarball: "file:vendor/jena-js/jena-js-0.7.0-ona.0.tgz",
+  tarballSha256: "1e071eaa4085688bbbd5f9d7122513a4bf82a0eaf955d399ab21706204fc8afe",
   integrity:
-    "sha512-AT/LTYt0YyQiGbO4Xq0XLES9FZ9rBuzj+J+Oq9s8B3HESy5bClzHFnjfpxThNmRWOM7HuuwM9E6NdOT0vyGNng==",
+    "sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==",
+  officialCommit: "90790856f00bdef63dbd27fc3a5b502e8cffe65f",
   license: "GPL-3.0-only",
 });
 
@@ -84,6 +86,36 @@ export function inspectJenaSuccessor({
         "The lockfile must contain a non-array root package object.",
       ),
     );
+  } else if (
+    !isRecord(lock.packages[""].devDependencies)
+    || lock.packages[""].devDependencies[JENA_SUCCESSOR_CONTRACT.packageName] !== JENA_SUCCESSOR_CONTRACT.localTarball
+  ) {
+    findings.push(finding(
+      "package-lock.json#packages//devDependencies/jena-js",
+      "root-custody-pin",
+      `The root lock entry must bind ${JENA_SUCCESSOR_CONTRACT.localTarball}.`,
+    ));
+  }
+
+  try {
+    const receipt = readJson(join(resolve(root), "vendor", "jena-js", "RECEIPT.json"));
+    const archive = readFileSync(join(resolve(root), "vendor", "jena-js", "jena-js-0.7.0-ona.0.tgz"));
+    const digest = createHash("sha256").update(archive).digest("hex");
+    if (
+      !isRecord(receipt)
+      || receipt.schemaVersion !== "3dena.jena-artifact-receipt.v1"
+      || receipt.package !== JENA_SUCCESSOR_CONTRACT.packageName
+      || receipt.version !== JENA_SUCCESSOR_CONTRACT.version
+      || receipt.officialCommit !== JENA_SUCCESSOR_CONTRACT.officialCommit
+      || receipt.tarballSha256 !== JENA_SUCCESSOR_CONTRACT.tarballSha256
+      || receipt.tarballIntegrity !== JENA_SUCCESSOR_CONTRACT.integrity
+      || receipt.rEnaNumericalOracle !== false
+      || digest !== JENA_SUCCESSOR_CONTRACT.tarballSha256
+    ) {
+      findings.push(finding("vendor/jena-js/RECEIPT.json", "invalid-jena-receipt", "The reviewed jENA source, archive, and numerical-authority receipt must agree."));
+    }
+  } catch {
+    findings.push(finding("vendor/jena-js/RECEIPT.json", "missing-jena-receipt", "The reviewed jENA archive and receipt are required."));
   }
 
   let sourceManifest;
@@ -107,22 +139,24 @@ export function inspectJenaSuccessor({
           "The @3dena/analysis manifest must be a non-array object.",
         ),
       );
-    } else if (!isRecord(sourceManifest.dependencies)) {
+    } else if (!isRecord(sourceManifest.peerDependencies)) {
       findings.push(
         finding(
-          "packages/analysis/package.json#dependencies",
-          "invalid-analysis-dependencies",
-          "The @3dena/analysis runtime dependency map must be a non-array object.",
+          "packages/analysis/package.json#peerDependencies",
+          "invalid-analysis-peer-dependencies",
+          "The @3dena/analysis peer dependency map must be a non-array object.",
         ),
       );
-    } else if (sourceManifest.dependencies[JENA_SUCCESSOR_CONTRACT.packageName] !== JENA_SUCCESSOR_CONTRACT.version) {
+    } else if (sourceManifest.peerDependencies[JENA_SUCCESSOR_CONTRACT.packageName] !== JENA_SUCCESSOR_CONTRACT.version) {
       findings.push(
         finding(
-          "packages/analysis/package.json#dependencies/jena-js",
+          "packages/analysis/package.json#peerDependencies/jena-js",
           "analysis-successor-pin",
-          `@3dena/analysis must pin exactly ${JENA_SUCCESSOR_CONTRACT.packageName}@${JENA_SUCCESSOR_CONTRACT.version}.`,
+          `@3dena/analysis must declare exactly one ${JENA_SUCCESSOR_CONTRACT.packageName}@${JENA_SUCCESSOR_CONTRACT.version} peer.`,
         ),
       );
+    } else if (isRecord(sourceManifest.dependencies) && Object.hasOwn(sourceManifest.dependencies, JENA_SUCCESSOR_CONTRACT.packageName)) {
+      findings.push(finding("packages/analysis/package.json#dependencies/jena-js", "duplicate-jena-runtime-edge", "jENA must not also be a bundled runtime dependency."));
     }
   }
 
@@ -135,18 +169,18 @@ export function inspectJenaSuccessor({
         "The lockfile must contain a non-array @3dena/analysis workspace entry.",
       ),
     );
-  } else if (!isRecord(analysisLock.dependencies)) {
+  } else if (!isRecord(analysisLock.peerDependencies)) {
     findings.push(
       finding(
-        "package-lock.json#packages/packages/analysis/dependencies",
-        "invalid-analysis-lock-dependencies",
-        "The analysis workspace lock dependency map must be a non-array object.",
+        "package-lock.json#packages/packages/analysis/peerDependencies",
+        "invalid-analysis-lock-peer-dependencies",
+        "The analysis workspace lock peer dependency map must be a non-array object.",
       ),
     );
-  } else if (analysisLock.dependencies[JENA_SUCCESSOR_CONTRACT.packageName] !== JENA_SUCCESSOR_CONTRACT.version) {
+  } else if (analysisLock.peerDependencies[JENA_SUCCESSOR_CONTRACT.packageName] !== JENA_SUCCESSOR_CONTRACT.version) {
     findings.push(
       finding(
-        "package-lock.json#packages/packages/analysis/dependencies/jena-js",
+        "package-lock.json#packages/packages/analysis/peerDependencies/jena-js",
         "analysis-lock-successor-pin",
         `The workspace lock entry must pin exactly ${JENA_SUCCESSOR_CONTRACT.version}.`,
       ),
@@ -188,12 +222,12 @@ export function inspectJenaSuccessor({
         ),
       );
     }
-    if (metadata?.resolved !== JENA_SUCCESSOR_CONTRACT.registryTarball) {
+    if (metadata?.resolved !== JENA_SUCCESSOR_CONTRACT.localTarball) {
       findings.push(
         finding(
           path,
-          "non-registry-successor",
-          "The successor must resolve to the exact public npm registry tarball; file, workspace, and private tarball substitutions are rejected.",
+          "unreviewed-tarball-source",
+          "The successor must resolve to the repository's exact reviewed custody tarball.",
         ),
       );
     }
@@ -201,8 +235,8 @@ export function inspectJenaSuccessor({
       findings.push(
         finding(
           path,
-          "registry-integrity-mismatch",
-          "The registry lock entry must bind the exact independently reviewed npm tarball SRI.",
+          "tarball-integrity-mismatch",
+          "The lock entry must bind the exact reviewed jENA tarball SRI.",
         ),
       );
     }
@@ -231,7 +265,7 @@ export function inspectJenaSuccessor({
         finding(
           path,
           "unexpected-jena-runtime-dependency",
-          "The reviewed 0.6.3 successor contract has zero runtime dependencies.",
+          "The reviewed jENA artifact has zero runtime dependencies.",
         ),
       );
     }

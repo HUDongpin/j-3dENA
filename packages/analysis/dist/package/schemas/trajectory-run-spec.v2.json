@@ -1,0 +1,366 @@
+{
+  "$id": "https://3dena.com/schemas/trajectory-run-spec.v2.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "sourceResultHash",
+    "participantColumns",
+    "timeColumn",
+    "groupColumn",
+    "orderedPeriods",
+    "selectedDimensions",
+    "cohortPolicy",
+    "missingValuePolicy",
+    "estimand"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "3dena.trajectory-run-spec.v2"
+    },
+    "sourceResultHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "participantColumns": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "timeColumn": {
+      "type": "string",
+      "minLength": 1
+    },
+    "groupColumn": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "minLength": 1
+        }
+      ]
+    },
+    "orderedPeriods": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "identity",
+          "sourceTimeCanonical",
+          "displayLabel",
+          "expected",
+          "value"
+        ],
+        "properties": {
+          "identity": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "components"
+            ],
+            "properties": {
+              "components": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "name",
+                        "type",
+                        "value"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "type": {
+                          "const": "string"
+                        },
+                        "value": {
+                          "type": "string"
+                        },
+                        "declaredType": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "name",
+                        "type",
+                        "value"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "type": {
+                          "const": "number"
+                        },
+                        "value": {
+                          "type": "number"
+                        },
+                        "declaredType": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "name",
+                        "type",
+                        "value"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "type": {
+                          "const": "boolean"
+                        },
+                        "value": {
+                          "type": "boolean"
+                        },
+                        "declaredType": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "sourceTimeCanonical": {
+            "type": "string",
+            "minLength": 1
+          },
+          "displayLabel": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expected": {
+            "type": "boolean"
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "type",
+                  "index"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "ordered-index-v2"
+                  },
+                  "index": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "type",
+                  "value",
+                  "unit"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "numeric-v1"
+                  },
+                  "value": {
+                    "type": "number"
+                  },
+                  "unit": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "type",
+                  "value"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "date-v1"
+                  },
+                  "value": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "type",
+                  "epochMilliseconds",
+                  "timeZone",
+                  "offsetMinutes",
+                  "fold",
+                  "elapsedUnit"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "instant-v1"
+                  },
+                  "epochMilliseconds": {
+                    "type": "string",
+                    "pattern": "^-?(?:0|[1-9][0-9]*)$"
+                  },
+                  "timeZone": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "offsetMinutes": {
+                    "type": "integer",
+                    "minimum": -1440,
+                    "maximum": 1440
+                  },
+                  "fold": {
+                    "enum": [
+                      0,
+                      1
+                    ]
+                  },
+                  "elapsedUnit": {
+                    "enum": [
+                      "milliseconds",
+                      "seconds",
+                      "minutes",
+                      "hours",
+                      "days",
+                      "weeks"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "type",
+                  "value",
+                  "unit",
+                  "elapsedUnit"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "difftime-v1"
+                  },
+                  "value": {
+                    "type": "number"
+                  },
+                  "unit": {
+                    "enum": [
+                      "milliseconds",
+                      "seconds",
+                      "minutes",
+                      "hours",
+                      "days",
+                      "weeks"
+                    ]
+                  },
+                  "elapsedUnit": {
+                    "enum": [
+                      "milliseconds",
+                      "seconds",
+                      "minutes",
+                      "hours",
+                      "days",
+                      "weeks"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "selectedDimensions": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "cohortPolicy": {
+      "enum": [
+        "available",
+        "complete"
+      ]
+    },
+    "missingValuePolicy": {
+      "const": "complete-analytical-rows"
+    },
+    "estimand": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "const": "equal-participant"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "metadataField"
+          ],
+          "properties": {
+            "kind": {
+              "const": "weighted-participant"
+            },
+            "metadataField": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    }
+  }
+}

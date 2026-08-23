@@ -1,6 +1,6 @@
 {
   "name": "@3dena/analysis",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "license": "GPL-3.0-only",
@@ -25,10 +25,12 @@
   "dependencies": {
     "@3dena/export": "0.1.0",
     "@3dena/io": "0.1.0",
-    "@3dena/stats": "0.1.0",
+    "@3dena/stats": "0.2.0",
     "@3dena/tabular-import": "0.1.0",
-    "@3dena/trajectory": "0.1.0",
-    "jena-js": "0.6.3"
+    "@3dena/trajectory": "0.2.0"
+  },
+  "peerDependencies": {
+    "jena-js": "0.7.0-ona.0"
   },
   "devDependencies": {
     "ajv": "8.20.0",

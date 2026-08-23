@@ -28,6 +28,8 @@ export interface TrajectoryStatisticsPoint {
   stratum?: TrajectoryIdentity;
   /** Coordinates in the exact order declared by the containing series. */
   coordinates: number[];
+  /** Required, finite, and strictly positive for the weighted-participant estimand. */
+  weight?: number;
 }
 
 export interface TrajectoryStatisticsLimits {
@@ -48,6 +50,8 @@ export interface TrajectorySeriesInput {
   selectedDimensions: [string, string, string];
   timeOrder: TrajectoryIdentity[];
   cohortPolicy: TrajectoryCohortPolicy;
+  /** Defaults to equal-participant for V1 readers. */
+  estimand?: "equal-participant" | "weighted-participant";
   limits?: Partial<TrajectoryStatisticsLimits>;
 }
 
@@ -58,6 +62,7 @@ export interface TrajectoryParticipantPeriod {
   selectedCoordinates: [number, number, number];
   fullCoordinates: number[];
   sourceRowIndexes: number[];
+  participantWeight: number;
   includedInCohort: boolean;
 }
 
@@ -93,6 +98,7 @@ export interface TrajectoryPathStatistics {
   schemaVersion: "3dena.trajectory-path-statistics.v1";
   namespace: string;
   cohortPolicy: TrajectoryCohortPolicy;
+  estimand: "equal-participant" | "weighted-participant";
   dimensions: string[];
   selectedDimensions: [string, string, string];
   distanceSemantics: {
@@ -312,7 +318,7 @@ export interface TrajectoryBootstrapResult {
     stratified: boolean;
     strata: Array<{ key: TrajectoryKey; unitCount: number }>;
     replicateCount: number;
-    planKind: "participant-history-resample-indices-v1";
+    planKind: "participant-history-resample-indices-v1" | "global-participant-history-resample-indices-v2";
     generation: TrajectoryBootstrapPlan["generation"];
     rngParityClaim: false;
   };
@@ -429,7 +435,8 @@ interface NormalizedSeries {
   selectedDimensions: [string, string, string];
   selectedIndexes: [number, number, number];
   timeOrder: TrajectoryKey[];
-  points: Array<{ participant: TrajectoryKey; time: TrajectoryKey; stratum?: TrajectoryKey; coordinates: number[]; rowIndex: number }>;
+  estimand: "equal-participant" | "weighted-participant";
+  points: Array<{ participant: TrajectoryKey; time: TrajectoryKey; stratum?: TrajectoryKey; coordinates: number[]; weight: number; rowIndex: number }>;
   limits: TrajectoryStatisticsLimits;
 }
 
@@ -456,6 +463,8 @@ function normalizeSeries(input: TrajectorySeriesInput): NormalizedSeries {
   const timeOrder = input.timeOrder.map((time, index) => normalizeIdentity(time, `input.timeOrder[${index}]`));
   if (new Set(timeOrder.map((time) => time.canonical)).size !== timeOrder.length) reject("DUPLICATE_TRAJECTORY_TIME", "input.timeOrder", "contains duplicate typed periods");
   if (input.cohortPolicy !== "available" && input.cohortPolicy !== "complete") reject("INVALID_TRAJECTORY_COHORT", "input.cohortPolicy", "must be available or complete");
+  const estimand = input.estimand ?? "equal-participant";
+  if (estimand !== "equal-participant" && estimand !== "weighted-participant") reject("INVALID_TRAJECTORY_ESTIMAND", "input.estimand", "must be equal-participant or weighted-participant");
   const timeKeys = new Set(timeOrder.map((time) => time.canonical));
   const cells = input.points.length * input.dimensions.length;
   if (!Number.isSafeInteger(cells) || cells > limits.maxCells) reject("TRAJECTORY_CELL_LIMIT", "input.points", `exceeds maxCells=${limits.maxCells}`);
@@ -469,7 +478,13 @@ function normalizeSeries(input: TrajectorySeriesInput): NormalizedSeries {
       if (typeof value !== "number" || !Number.isFinite(value)) reject("NON_FINITE_TRAJECTORY_COORDINATE", `input.points[${rowIndex}].coordinates[${dimensionIndex}]`, "must be finite");
       return value;
     });
-    return { participant, time, ...(stratum ? { stratum } : {}), coordinates, rowIndex };
+    if (estimand === "weighted-participant" && (typeof point.weight !== "number" || !Number.isFinite(point.weight) || point.weight <= 0)) {
+      reject("INVALID_PARTICIPANT_WEIGHT", `input.points[${rowIndex}].weight`, "must be finite and strictly positive for weighted-participant");
+    }
+    if (estimand === "equal-participant" && point.weight !== undefined) {
+      reject("UNEXPECTED_PARTICIPANT_WEIGHT", `input.points[${rowIndex}].weight`, "must be omitted for equal-participant");
+    }
+    return { participant, time, ...(stratum ? { stratum } : {}), coordinates, weight: point.weight ?? 1, rowIndex };
   });
   if (new Set(points.map((point) => point.participant.canonical)).size > limits.maxParticipants) {
     reject("TRAJECTORY_PARTICIPANT_LIMIT", "input.points", `exceeds maxParticipants=${limits.maxParticipants}`);
@@ -480,6 +495,7 @@ function normalizeSeries(input: TrajectorySeriesInput): NormalizedSeries {
     dimensions: [...input.dimensions],
     selectedDimensions: [...input.selectedDimensions],
     selectedIndexes,
+    estimand,
     timeOrder,
     points,
     limits
@@ -534,6 +550,44 @@ function mean(rows: number[][], dimensions: number): number[] | null {
   });
 }
 
+function weightedMean(rows: number[][], weights: number[], dimensions: number): number[] | null {
+  if (rows.length === 0) return null;
+  if (rows.length !== weights.length) reject("TRAJECTORY_WEIGHT_SHAPE", "trajectory.computation.weightedMean", "rows and weights must align");
+  const weightSum = weights.reduce((sum, weight, index) => {
+    if (!Number.isFinite(weight) || weight <= 0) reject("INVALID_PARTICIPANT_WEIGHT", `trajectory.computation.weights[${index}]`, "must be finite and strictly positive");
+    const next = sum + weight;
+    if (!Number.isFinite(next)) reject("TRAJECTORY_NUMERIC_OVERFLOW", "trajectory.computation.weightSum", "is outside the finite numeric range");
+    return next;
+  }, 0);
+  return Array.from({ length: dimensions }, (_, index) => {
+    let sum = 0;
+    let correction = 0;
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+      const scaled = rows[rowIndex]![index]! * (weights[rowIndex]! / weightSum);
+      const next = sum + scaled;
+      if (!Number.isFinite(next)) reject("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.weightedMean[${index}]`, "centroid accumulation is outside the finite numeric range");
+      correction += Math.abs(sum) >= Math.abs(scaled) ? (sum - next) + scaled : (scaled - next) + sum;
+      if (!Number.isFinite(correction)) reject("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.weightedMean[${index}]`, "centroid correction is outside the finite numeric range");
+      sum = next;
+    }
+    const result = sum + correction;
+    if (!Number.isFinite(result)) reject("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.weightedMean[${index}]`, "centroid is outside the finite numeric range");
+    return result;
+  });
+}
+
+function participantCentroid(
+  rows: TrajectoryParticipantPeriod[],
+  coordinates: (row: TrajectoryParticipantPeriod) => number[],
+  dimensions: number,
+  estimand: NormalizedSeries["estimand"],
+): number[] | null {
+  const values = rows.map(coordinates);
+  return estimand === "weighted-participant"
+    ? weightedMean(values, rows.map((row) => row.participantWeight), dimensions)
+    : mean(values, dimensions);
+}
+
 function reduceParticipantPeriods(series: NormalizedSeries): TrajectoryParticipantPeriod[] {
   const grouped = new Map<string, { participant: TrajectoryKey; time: TrajectoryKey; rows: typeof series.points }>();
   for (const point of series.points) {
@@ -554,6 +608,10 @@ function reduceParticipantPeriods(series: NormalizedSeries): TrajectoryParticipa
   return [...grouped.values()]
     .sort((left, right) => compareCanonical(left.participant.canonical, right.participant.canonical) || timeIndex.get(left.time.canonical)! - timeIndex.get(right.time.canonical)!)
     .map((group, index) => {
+      const distinctWeights = new Set(group.rows.map((row) => row.weight));
+      if (distinctWeights.size !== 1) {
+        reject("UNSTABLE_PARTICIPANT_PERIOD_WEIGHT", `input.participantPeriods[${index}].weight`, "must remain constant within a participant-period");
+      }
       const fullCoordinates = mean(group.rows.map((row) => row.coordinates), series.dimensions.length)!;
       return {
         index,
@@ -562,6 +620,7 @@ function reduceParticipantPeriods(series: NormalizedSeries): TrajectoryParticipa
         selectedCoordinates: series.selectedIndexes.map((selected) => fullCoordinates[selected]!) as [number, number, number],
         fullCoordinates,
         sourceRowIndexes: group.rows.map((row) => row.rowIndex).sort((a, b) => a - b),
+        participantWeight: group.rows[0]!.weight,
         includedInCohort: series.input.cohortPolicy === "available" || complete.has(group.participant.canonical)
       };
     });
@@ -601,7 +660,7 @@ function analyzeNormalizedSeries(series: NormalizedSeries): TrajectoryPathStatis
     const rawRows = series.points.filter((point) => point.time.canonical === time.canonical);
     const allParticipantPeriods = participantPeriods.filter((point) => point.time.canonical === time.canonical);
     const used = allParticipantPeriods.filter((point) => point.includedInCohort);
-    const fullCentroid = mean(used.map((point) => point.fullCoordinates), series.dimensions.length);
+    const fullCentroid = participantCentroid(used, (point) => point.fullCoordinates, series.dimensions.length, series.estimand);
     const selectedCentroid = fullCentroid === null ? null : series.selectedIndexes.map((selected) => fullCentroid[selected]!) as [number, number, number];
     return {
       index,
@@ -635,6 +694,7 @@ function analyzeNormalizedSeries(series: NormalizedSeries): TrajectoryPathStatis
     schemaVersion: "3dena.trajectory-path-statistics.v1",
     namespace: series.namespace,
     cohortPolicy: series.input.cohortPolicy,
+    estimand: series.estimand,
     dimensions: [...series.dimensions],
     selectedDimensions: [...series.selectedDimensions],
     distanceSemantics: {
@@ -664,6 +724,7 @@ function assertComparable(left: NormalizedSeries, right: NormalizedSeries): void
   if (JSON.stringify(left.selectedDimensions) !== JSON.stringify(right.selectedDimensions)) reject("INCOMPATIBLE_SELECTED_DIMENSIONS", "input.sideB.series.selectedDimensions", "must exactly match side A");
   if (JSON.stringify(left.timeOrder.map((time) => time.canonical)) !== JSON.stringify(right.timeOrder.map((time) => time.canonical))) reject("INCOMPATIBLE_TRAJECTORY_TIME", "input.sideB.series.timeOrder", "must exactly match side A typed order");
   if (left.input.cohortPolicy !== right.input.cohortPolicy) reject("INCOMPATIBLE_COHORT_POLICY", "input.sideB.series.cohortPolicy", "must match side A");
+  if (left.estimand !== right.estimand) reject("INCOMPATIBLE_TRAJECTORY_ESTIMAND", "input.sideB.series.estimand", "must match side A");
 }
 
 function pairedIdNames(pairedId: string | string[], path: string): string[] {
@@ -792,10 +853,10 @@ function baseCentroidRows(data: ComparisonData, design: "paired" | "independent"
       const accepted = entries.filter(([a, b]) => a.includedInCohort && b.includedInCohort);
       return {
         time,
-        selectedA: mean(accepted.map(([a]) => a.selectedCoordinates), 3),
-        selectedB: mean(accepted.map(([, b]) => b.selectedCoordinates), 3),
-        fullA: mean(accepted.map(([a]) => a.fullCoordinates), data.left.dimensions.length),
-        fullB: mean(accepted.map(([, b]) => b.fullCoordinates), data.left.dimensions.length),
+        selectedA: participantCentroid(accepted.map(([a]) => a), (row) => row.selectedCoordinates, 3, data.left.estimand),
+        selectedB: participantCentroid(accepted.map(([, b]) => b), (row) => row.selectedCoordinates, 3, data.right.estimand),
+        fullA: participantCentroid(accepted.map(([a]) => a), (row) => row.fullCoordinates, data.left.dimensions.length, data.left.estimand),
+        fullB: participantCentroid(accepted.map(([, b]) => b), (row) => row.fullCoordinates, data.left.dimensions.length, data.right.estimand),
         nA: accepted.length,
         nB: accepted.length,
         nMatched: accepted.length
@@ -807,10 +868,10 @@ function baseCentroidRows(data: ComparisonData, design: "paired" | "independent"
     const b = data.pathB.participantPeriods.filter((row) => row.includedInCohort && row.time.canonical === time.canonical);
     return {
       time,
-      selectedA: mean(a.map((row) => row.selectedCoordinates), 3),
-      selectedB: mean(b.map((row) => row.selectedCoordinates), 3),
-      fullA: mean(a.map((row) => row.fullCoordinates), data.left.dimensions.length),
-      fullB: mean(b.map((row) => row.fullCoordinates), data.left.dimensions.length),
+      selectedA: participantCentroid(a, (row) => row.selectedCoordinates, 3, data.left.estimand),
+      selectedB: participantCentroid(b, (row) => row.selectedCoordinates, 3, data.right.estimand),
+      fullA: participantCentroid(a, (row) => row.fullCoordinates, data.left.dimensions.length, data.left.estimand),
+      fullB: participantCentroid(b, (row) => row.fullCoordinates, data.left.dimensions.length, data.right.estimand),
       nA: a.length,
       nB: b.length,
       nMatched: null
@@ -913,18 +974,23 @@ function permutedCentroidRows(data: ComparisonData, input: TrajectoryComparisonI
     const swaps = new Set(replicate);
     return data.left.timeOrder.map((time, timeIndex) => {
       const entries = [...data.pairedMaps![timeIndex]!.entries()].filter(([, [a, b]]) => a.includedInCohort && b.includedInCohort);
-      const aSelected: number[][] = [];
-      const bSelected: number[][] = [];
-      const aFull: number[][] = [];
-      const bFull: number[][] = [];
+      const aRows: TrajectoryParticipantPeriod[] = [];
+      const bRows: TrajectoryParticipantPeriod[] = [];
       for (const [pair, [a, b]] of entries) {
         const swap = swaps.has(data.unitOrder.indexOf(pair));
-        aSelected.push(swap ? b.selectedCoordinates : a.selectedCoordinates);
-        bSelected.push(swap ? a.selectedCoordinates : b.selectedCoordinates);
-        aFull.push(swap ? b.fullCoordinates : a.fullCoordinates);
-        bFull.push(swap ? a.fullCoordinates : b.fullCoordinates);
+        aRows.push(swap ? b : a);
+        bRows.push(swap ? a : b);
       }
-      return { time, selectedA: mean(aSelected, 3), selectedB: mean(bSelected, 3), fullA: mean(aFull, data.left.dimensions.length), fullB: mean(bFull, data.left.dimensions.length), nA: entries.length, nB: entries.length, nMatched: entries.length };
+      return {
+        time,
+        selectedA: participantCentroid(aRows, (row) => row.selectedCoordinates, 3, data.left.estimand),
+        selectedB: participantCentroid(bRows, (row) => row.selectedCoordinates, 3, data.right.estimand),
+        fullA: participantCentroid(aRows, (row) => row.fullCoordinates, data.left.dimensions.length, data.left.estimand),
+        fullB: participantCentroid(bRows, (row) => row.fullCoordinates, data.left.dimensions.length, data.right.estimand),
+        nA: entries.length,
+        nB: entries.length,
+        nMatched: entries.length,
+      };
     });
   }
   const aIndexes = new Set(replicate.slice(0, data.sideACount!));
@@ -933,7 +999,16 @@ function permutedCentroidRows(data: ComparisonData, input: TrajectoryComparisonI
   return data.left.timeOrder.map((time) => {
     const a = sideA.filter((row) => row.time.canonical === time.canonical);
     const b = sideB.filter((row) => row.time.canonical === time.canonical);
-    return { time, selectedA: mean(a.map((row) => row.selectedCoordinates), 3), selectedB: mean(b.map((row) => row.selectedCoordinates), 3), fullA: mean(a.map((row) => row.fullCoordinates), data.left.dimensions.length), fullB: mean(b.map((row) => row.fullCoordinates), data.left.dimensions.length), nA: a.length, nB: b.length, nMatched: null };
+    return {
+      time,
+      selectedA: participantCentroid(a, (row) => row.selectedCoordinates, 3, data.left.estimand),
+      selectedB: participantCentroid(b, (row) => row.selectedCoordinates, 3, data.right.estimand),
+      fullA: participantCentroid(a, (row) => row.fullCoordinates, data.left.dimensions.length, data.left.estimand),
+      fullB: participantCentroid(b, (row) => row.fullCoordinates, data.left.dimensions.length, data.right.estimand),
+      nA: a.length,
+      nB: b.length,
+      nMatched: null,
+    };
   });
 }
 
@@ -1276,7 +1351,8 @@ function cloneBootstrapSeries(
         points.push({
           participant: clonedParticipant,
           time: { components: point.time.components.map((component) => ({ ...component })) },
-          coordinates: [...point.coordinates]
+          coordinates: [...point.coordinates],
+          ...(context.series.estimand === "weighted-participant" ? { weight: point.weight } : {}),
         });
       }
     }
@@ -1289,6 +1365,7 @@ function cloneBootstrapSeries(
     selectedDimensions: [...context.series.selectedDimensions],
     timeOrder: context.series.timeOrder.map((time) => ({ components: time.components.map((component) => ({ ...component })) })),
     cohortPolicy: context.series.input.cohortPolicy,
+    estimand: context.series.estimand,
     limits: { ...context.series.input.limits }
   };
 }
@@ -1335,7 +1412,10 @@ export function bootstrapTrajectoryPath(input: TrajectoryBootstrapInput): Trajec
   }
   if (computationalCells > context.series.limits.maxCells) reject("BOOTSTRAP_CELL_LIMIT", "input.plan", `resampled coordinates exceed maxCells=${context.series.limits.maxCells}`);
   const replicatePaths = Array.from({ length: repetitions }, (_, replicate) => analyzeTrajectoryPath(cloneBootstrapSeries(context, input.plan, replicate)));
-  const requiredFinite = Math.max(Math.ceil(0.8 * repetitions), Math.ceil(10 / (1 - input.confidenceLevel)));
+  const requiredFinite = Math.max(
+    Math.ceil(0.8 * repetitions),
+    Math.ceil(10 / (1 - input.confidenceLevel) - 1e-12),
+  );
   let insufficientClusters = false;
   let insufficientReplicates = false;
   let anyCentroidVariation = false;

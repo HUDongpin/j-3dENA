@@ -20,6 +20,11 @@ import type {
   TrajectoryPathStatistics,
 } from "./trajectory-statistics";
 import type { AnalysisDiagnostic, AnalysisResult, RawScalar } from "./types";
+import {
+  verifyLongitudinalAnalysisBundleV2,
+  type LongitudinalAnalysisBundleV2,
+  type TrajectoryPlotlySpecV2,
+} from "./longitudinal-v2";
 
 export interface AnalysisExportPortfolioV1 {
   schemaVersion: "3dena.analysis-export-portfolio.v1";
@@ -65,6 +70,52 @@ export interface ExportBundleV1 {
   byteLength: number;
   entries: ExportEntryReceiptV1[];
   manifest: ExportManifestV1;
+}
+
+export interface CreateLongitudinalExportBundleOptionsV2 {
+  /** Exact presenter spec shown to the researcher; it remains separate from the scientific envelope. */
+  plotlySpec: TrajectoryPlotlySpecV2;
+  /** Participant identifiers and histories are omitted unless the researcher explicitly opts in. */
+  includeParticipantLevel?: boolean;
+  fileName?: string;
+  zipLimits?: Partial<DeterministicZipLimits>;
+}
+
+export interface LongitudinalProvenanceManifestV2 {
+  schemaVersion: "3dena.longitudinal-provenance-manifest.v2";
+  datasetHash: string;
+  specHash: string;
+  sourceResultHash: string;
+  resultHash: string;
+  runId: string;
+  jenaBuildId: string;
+  jena: {
+    version: string;
+    commit: string;
+    tarballIntegrity: string;
+  };
+  sdk: { version: string; buildId: string };
+  executionTarget: LongitudinalAnalysisBundleV2["execution"]["target"];
+  seed: number;
+  permutationPlanHashes: string[];
+  resamplingPlanHashes: string[];
+  evidenceStatus: LongitudinalAnalysisBundleV2["execution"]["evidenceStatus"];
+  selectedDimensions: [string, string, string];
+  fullRotationDimensions: string[];
+  participantLevelIncluded: boolean;
+  privacyWarning: string | null;
+  members: ExportEntryReceiptV1[];
+  contentSetHash: string;
+}
+
+export interface LongitudinalExportBundleV2 {
+  schemaVersion: "3dena.longitudinal-export-bundle.v2";
+  fileName: string;
+  bytes: Uint8Array<ArrayBuffer>;
+  sha256: string;
+  byteLength: number;
+  entries: ExportEntryReceiptV1[];
+  manifest: LongitudinalProvenanceManifestV2;
 }
 
 export class ExportBundleError extends Error {
@@ -406,18 +457,271 @@ function bundleName(value: string | undefined): string {
   return name;
 }
 
+function aggregateTrajectoryEnvelope(bundle: LongitudinalAnalysisBundleV2) {
+  const redactPath = <T extends { participantPeriods: unknown[] }>(path: T) => ({ ...path, participantPeriods: [] });
+  return {
+    schemaVersion: "3dena.longitudinal-aggregate-export.v2",
+    sourceEnvelopeSchemaVersion: bundle.schemaVersion,
+    identity: structuredClone(bundle.identity),
+    runSpec: structuredClone(bundle.runSpec),
+    model: structuredClone(bundle.model),
+    paths: bundle.paths.map((path) => ({
+      group: structuredClone(path.group),
+      dynamics: redactPath(structuredClone(path.dynamics)),
+    })),
+    inference: structuredClone(bundle.inference),
+    pathComparisons: bundle.pathComparisons.map((comparison) => ({
+      ...structuredClone(comparison),
+      result: {
+        ...structuredClone(comparison.result),
+        sideA: redactPath(structuredClone(comparison.result.sideA)),
+        sideB: redactPath(structuredClone(comparison.result.sideB)),
+        permutation: { ...structuredClone(comparison.result.permutation), unitOrder: [] },
+      },
+    })),
+    bootstrap: bundle.bootstrap.map((entry) => ({
+      ...structuredClone(entry),
+      result: { ...structuredClone(entry.result), base: redactPath(structuredClone(entry.result.base)) },
+    })),
+    networkOverlays: structuredClone(bundle.networkOverlays),
+    diagnostics: structuredClone(bundle.diagnostics),
+    execution: structuredClone(bundle.execution),
+    privacy: {
+      participantLevelIncluded: false,
+      omittedFields: [
+        "paths[].dynamics.participantPeriods",
+        "pathComparisons[].result.sideA.participantPeriods",
+        "pathComparisons[].result.sideB.participantPeriods",
+        "pathComparisons[].result.permutation.unitOrder",
+        "bootstrap[].result.base.participantPeriods",
+      ],
+    },
+  };
+}
+
+function contributorSet(bundle: LongitudinalAnalysisBundleV2, groupIndex: number, periodCanonical: string): Set<string> {
+  const dynamics = bundle.paths[groupIndex]!.dynamics;
+  return new Set(dynamics.participantPeriods
+    .filter((row) => row.includedInCohort && row.time.canonical === periodCanonical)
+    .map((row) => row.participant.canonical));
+}
+
+function completeParticipantCount(bundle: LongitudinalAnalysisBundleV2, groupIndex: number): number {
+  const dynamics = bundle.paths[groupIndex]!.dynamics;
+  const observed = new Map<string, Set<string>>();
+  for (const row of dynamics.participantPeriods) {
+    const periods = observed.get(row.participant.canonical) ?? new Set<string>();
+    periods.add(row.time.canonical);
+    observed.set(row.participant.canonical, periods);
+  }
+  const expected = new Set(dynamics.periods.map((period) => period.time.canonical));
+  return [...observed.values()].filter((periods) => [...expected].every((period) => periods.has(period))).length;
+}
+
+function longitudinalPathEntry(bundle: LongitudinalAnalysisBundleV2): PendingEntry {
+  const fullColumns = bundle.model.fullRotationDimensions.map((dimension) => `full:${dimension}`);
+  return csv("trajectory-path.csv", {
+    columns: [
+      "group_key_v1", "group_display", "period_index", "time_key_v1", "time_display", "time_value_v1",
+      "rows", "participant_periods", "available", "complete", "included", "excluded", "duplicate_rows",
+      "contributor_overlap_previous", ...bundle.model.selectedDimensions.map((dimension) => `selected:${dimension}`),
+      ...bundle.model.selectedDimensions.map((dimension) => `delta:${dimension}`), ...fullColumns,
+      "selected_step_distance", "selected_cumulative_distance", "selected_elapsed", "selected_speed",
+      "full_step_distance", "full_cumulative_distance", "full_elapsed", "full_speed", "weight_sum", "effective_participant_n",
+    ],
+    rows: bundle.paths.flatMap((path, groupIndex) => {
+      const complete = completeParticipantCount(bundle, groupIndex);
+      return path.dynamics.periods.map((period, periodIndex) => {
+        const current = contributorSet(bundle, groupIndex, period.time.canonical);
+        const overlap = periodIndex === 0
+          ? null
+          : [...current].filter((participant) => contributorSet(bundle, groupIndex, path.dynamics.periods[periodIndex - 1]!.time.canonical).has(participant)).length;
+        return [
+          path.group.canonical, path.group.display, period.index, period.time.canonical, period.time.display,
+          stableJson(period.timeValue), period.nRows, period.nParticipantPeriods, period.nParticipantPeriods, complete,
+          period.nUsed, period.nCohortExcluded, period.nDuplicateRows, overlap,
+          ...(period.selectedCentroid ?? [null, null, null]), ...(period.selected3d.delta ?? [null, null, null]),
+          ...(period.fullCentroid ?? bundle.model.fullRotationDimensions.map(() => null)),
+          period.selected3d.stepDistance, period.selected3d.cumulativeDistance, period.elapsedFromPrevious, period.selected3d.speed,
+          period.fullSpace.stepDistance, period.fullSpace.cumulativeDistance, period.elapsedFromPrevious, period.fullSpace.speed,
+          period.weightSum, period.effectiveParticipantN,
+        ];
+      });
+    }),
+  });
+}
+
+function longitudinalMetadataEntry(bundle: LongitudinalAnalysisBundleV2): PendingEntry {
+  const rows: CsvCell[][] = [
+    ["mapping", "participant_columns", stableJson(bundle.runSpec.participantColumns)],
+    ["mapping", "time_column", bundle.runSpec.timeColumn],
+    ["mapping", "group_column", bundle.runSpec.groupColumn],
+    ["cohort", "policy", bundle.runSpec.cohortPolicy],
+    ["missing", "policy", bundle.runSpec.missingValuePolicy],
+    ["estimand", "contract", stableJson(bundle.runSpec.estimand)],
+    ["dimensions", "selected", stableJson(bundle.model.selectedDimensions)],
+    ["dimensions", "full_rotation", stableJson(bundle.model.fullRotationDimensions)],
+    ["time", "ordered_periods", stableJson(bundle.runSpec.orderedPeriods)],
+    ["execution", "target", bundle.execution.target],
+    ["execution", "evidence_status", bundle.execution.evidenceStatus],
+  ];
+  for (const [groupIndex, path] of bundle.paths.entries()) {
+    rows.push(["time-contract", path.group.canonical, stableJson(path.dynamics.timeContract)]);
+    rows.push(["cohort-complete-count", path.group.canonical, completeParticipantCount(bundle, groupIndex)]);
+  }
+  for (const diagnostic of bundle.diagnostics) rows.push([`diagnostic:${diagnostic.severity}`, diagnostic.code, stableJson(diagnostic)]);
+  return csv("trajectory-metadata.csv", { columns: ["section", "key", "value"], rows });
+}
+
+function longitudinalInferenceEntry(bundle: LongitudinalAnalysisBundleV2): PendingEntry {
+  const rows: CsvCell[][] = [];
+  for (const inference of bundle.inference) {
+    if (inference.rows.length === 0) {
+      rows.push([inference.request.kind, inference.status, inference.reason, inference.familyId, inference.familySize, null, null, null, null, null, null, null, null, null, stableJson(inference.request)]);
+      continue;
+    }
+    for (const row of inference.rows) rows.push([
+      inference.request.kind, inference.status, inference.reason, String(row.familyId ?? inference.familyId), Number(row.familySize ?? inference.familySize),
+      String(row.memberId ?? ""), String(row.test ?? ""), String(row.design ?? ""), String(row.estimand ?? ""),
+      typeof row.n === "number" ? row.n : typeof row.nPrimary === "number" && typeof row.nSecondary === "number" ? `${row.nPrimary}/${row.nSecondary}` : null,
+      typeof row.effect === "number" ? row.effect : null, typeof row.statistic === "number" ? row.statistic : null,
+      typeof row.pRaw === "number" ? row.pRaw : null, typeof row.pHolm === "number" ? row.pHolm : null, stableJson(row),
+    ]);
+  }
+  for (const comparison of bundle.pathComparisons) {
+    for (const test of comparison.result.tests) rows.push([
+      "path-comparison", "available", null, `path-comparison:${comparison.groups.join(":")}`, comparison.result.tests.length,
+      test.id, "permutation", comparison.design, bundle.runSpec.estimand.kind, null, test.observed, test.observed,
+      test.pValue, test.holmAdjustedPValue, stableJson({ groups: comparison.groups, seed: comparison.seed, planHash: comparison.planHash, test }),
+    ]);
+  }
+  return csv("trajectory-inference.csv", {
+    columns: ["request_kind", "status", "reason", "family_id", "family_size", "member_id", "test", "design", "estimand", "n", "effect", "statistic", "p_raw", "p_holm", "audit_json"],
+    rows,
+  });
+}
+
+function longitudinalBootstrapEntry(bundle: LongitudinalAnalysisBundleV2): PendingEntry {
+  const rows: CsvCell[][] = [];
+  for (const entry of bundle.bootstrap) {
+    for (const period of entry.result.periods) {
+      const add = (metric: string, dimension: string | null, interval: TrajectoryBootstrapInterval | null) => rows.push([
+        entry.groupCanonical, period.index, period.time.canonical, metric, dimension, interval?.estimate ?? null,
+        interval?.lower ?? null, interval?.upper ?? null, interval?.finiteReplicates ?? 0,
+        interval?.requiredFiniteReplicates ?? null, entry.totalReplicates, entry.result.confidenceLevel,
+        entry.seed, entry.planHash, entry.result.resampling.unit, entry.result.resampling.stratified,
+        entry.status, entry.notEstimableReason, entry.requestedResamplingDesign, entry.resolvedResamplingDesign,
+      ]);
+      period.selectedCentroid.forEach((interval, index) => add("selected-centroid", bundle.model.selectedDimensions[index] ?? null, interval));
+      period.fullCentroid.forEach((interval, index) => add("full-centroid", bundle.model.fullRotationDimensions[index] ?? null, interval));
+      add("selected-step-distance", null, period.selectedStepDistance);
+      add("full-step-distance", null, period.fullStepDistance);
+      add("selected-cumulative-distance", null, period.selectedCumulativeDistance);
+      add("full-cumulative-distance", null, period.fullCumulativeDistance);
+      add("selected-speed", null, entry.speedIntervals[period.index]?.selected ?? null);
+      add("full-speed", null, entry.speedIntervals[period.index]?.full ?? null);
+    }
+  }
+  return csv("trajectory-bootstrap.csv", {
+    columns: ["group_key_v1", "period_index", "time_key_v1", "metric", "dimension", "estimate", "lower", "upper", "finite_replicates", "required_finite_replicates", "total_replicates", "confidence_level", "seed", "plan_hash", "resampling_unit", "stratified", "status", "not_estimable_reason", "requested_resampling_design", "resolved_resampling_design"],
+    rows,
+  });
+}
+
+function longitudinalParticipantEntry(bundle: LongitudinalAnalysisBundleV2): PendingEntry {
+  return csv("trajectory-participants.csv", {
+    columns: ["group_key_v1", "participant_key_v1", "participant_display", "time_key_v1", "time_display", "included", "source_row_count", ...bundle.model.selectedDimensions.map((dimension) => `selected:${dimension}`), ...bundle.model.fullRotationDimensions.map((dimension) => `full:${dimension}`), "participant_weight"],
+    rows: bundle.paths.flatMap((path) => path.dynamics.participantPeriods.map((row) => [
+      path.group.canonical, row.participant.canonical, row.participant.display, row.time.canonical, row.time.display,
+      row.includedInCohort, row.sourceRowIndexes.length, ...row.selectedCoordinates, ...row.fullCoordinates, row.participantWeight,
+    ])),
+  });
+}
+
+async function createLongitudinalExportBundleV2(
+  bundle: LongitudinalAnalysisBundleV2,
+  options: CreateLongitudinalExportBundleOptionsV2,
+): Promise<LongitudinalExportBundleV2> {
+  if (!options || typeof options !== "object" || Array.isArray(options)) reject("INVALID_EXPORT_OPTIONS", "options", "must be an object");
+  await verifyLongitudinalAnalysisBundleV2(bundle);
+  if (!options.plotlySpec || options.plotlySpec.schemaVersion !== "3dena.trajectory-plotly-spec.v2") reject("INVALID_TRAJECTORY_PLOTLY_SPEC", "options.plotlySpec", "must be a compiled V2 trajectory Plotly spec");
+  if (options.plotlySpec.resultHash !== bundle.identity.resultHash) reject("PLOTLY_RESULT_BINDING_MISMATCH", "options.plotlySpec.resultHash", "does not match the exported longitudinal result");
+  if (options.includeParticipantLevel !== undefined && typeof options.includeParticipantLevel !== "boolean") reject("INVALID_PARTICIPANT_EXPORT_OPTION", "options.includeParticipantLevel", "must be boolean");
+  const participantLevelIncluded = options.includeParticipantLevel === true;
+  const pending: PendingEntry[] = [
+    json("analysis.json", aggregateTrajectoryEnvelope(bundle)),
+    longitudinalPathEntry(bundle),
+    longitudinalMetadataEntry(bundle),
+    longitudinalInferenceEntry(bundle),
+    longitudinalBootstrapEntry(bundle),
+    json("plotly-spec.json", options.plotlySpec),
+  ];
+  if (participantLevelIncluded) pending.push(longitudinalParticipantEntry(bundle));
+  const sorted = [...pending].sort((left, right) => left.path.localeCompare(right.path, "en"));
+  const members: ExportEntryReceiptV1[] = [];
+  for (const entry of sorted) members.push({ path: entry.path, mediaType: entry.mediaType, byteLength: entry.data.byteLength, sha256: await sha256Bytes(entry.data) });
+  const manifest: LongitudinalProvenanceManifestV2 = {
+    schemaVersion: "3dena.longitudinal-provenance-manifest.v2",
+    datasetHash: bundle.identity.datasetHash,
+    specHash: bundle.identity.specHash,
+    sourceResultHash: bundle.identity.sourceResultHash,
+    resultHash: bundle.identity.resultHash,
+    runId: bundle.identity.runId,
+    jenaBuildId: bundle.identity.jenaBuildId,
+    jena: { version: bundle.execution.jenaVersion, commit: bundle.execution.jenaCommit, tarballIntegrity: bundle.execution.jenaTarballIntegrity },
+    sdk: { version: bundle.execution.sdkVersion, buildId: bundle.execution.buildId },
+    executionTarget: bundle.execution.target,
+    seed: bundle.execution.seed,
+    permutationPlanHashes: [...bundle.execution.permutationPlanHashes],
+    resamplingPlanHashes: [...bundle.execution.resamplingPlanHashes],
+    evidenceStatus: bundle.execution.evidenceStatus,
+    selectedDimensions: [...bundle.model.selectedDimensions],
+    fullRotationDimensions: [...bundle.model.fullRotationDimensions],
+    participantLevelIncluded,
+    privacyWarning: participantLevelIncluded
+      ? "Participant-level histories can increase privacy and re-identification risk; handle this opt-in file under the applicable data-governance controls."
+      : null,
+    members,
+    contentSetHash: await hashAnalysisValueV1(members),
+  };
+  const manifestEntry = json("provenance-manifest.json", manifest);
+  const manifestReceipt: ExportEntryReceiptV1 = { path: manifestEntry.path, mediaType: manifestEntry.mediaType, byteLength: manifestEntry.data.byteLength, sha256: await sha256Bytes(manifestEntry.data) };
+  const bytes = createDeterministicZip([...sorted, manifestEntry].map((entry) => ({ path: entry.path, data: entry.data })), options.zipLimits);
+  return Object.freeze({
+    schemaVersion: "3dena.longitudinal-export-bundle.v2",
+    fileName: bundleName(options.fileName ?? "3dena-longitudinal-analysis.zip"),
+    bytes,
+    sha256: await sha256Bytes(bytes),
+    byteLength: bytes.byteLength,
+    entries: Object.freeze([...members, manifestReceipt]),
+    manifest: Object.freeze(manifest),
+  }) as LongitudinalExportBundleV2;
+}
+
 /** Creates a deterministic formal scientific CSV/ZIP bundle for raw or prepared results. */
-export async function createExportBundle(
+export function createExportBundle(
+  result: LongitudinalAnalysisBundleV2,
+  options: CreateLongitudinalExportBundleOptionsV2,
+): Promise<LongitudinalExportBundleV2>;
+export function createExportBundle(
   result: AnalysisExportInputV1,
   options: CreateExportBundleOptionsV1,
-): Promise<ExportBundleV1> {
+): Promise<ExportBundleV1>;
+export async function createExportBundle(
+  result: AnalysisExportInputV1 | LongitudinalAnalysisBundleV2,
+  options: CreateExportBundleOptionsV1 | CreateLongitudinalExportBundleOptionsV2,
+): Promise<ExportBundleV1 | LongitudinalExportBundleV2> {
+  if (result.schemaVersion === "3dena.longitudinal-analysis-bundle.v2") {
+    return createLongitudinalExportBundleV2(result, options as CreateLongitudinalExportBundleOptionsV2);
+  }
   if (!options || typeof options !== "object" || Array.isArray(options)) reject("INVALID_EXPORT_OPTIONS", "options", "must be an object");
-  assertProvenanceManifestV1(options.provenance, "options.provenance");
+  const legacyOptions = options as CreateExportBundleOptionsV1;
+  assertProvenanceManifestV1(legacyOptions.provenance, "options.provenance");
   const actualResultHash = await hashAnalysisValueV1(result);
-  if (actualResultHash !== options.provenance.resultHash) reject("RESULT_HASH_MISMATCH", "options.provenance.resultHash", "does not match the exported result or portfolio");
+  if (actualResultHash !== legacyOptions.provenance.resultHash) reject("RESULT_HASH_MISMATCH", "options.provenance.resultHash", "does not match the exported result or portfolio");
   const portfolio = validatePortfolio(result);
   const prepared = portfolio.analysis.schemaVersion === "3dena.prepared-space-result.v1";
-  if (prepared !== (options.provenance.sourceKind === "prepared-exchange")) reject("PROVENANCE_SOURCE_MISMATCH", "options.provenance.sourceKind", "does not match the exported analysis source");
+  if (prepared !== (legacyOptions.provenance.sourceKind === "prepared-exchange")) reject("PROVENANCE_SOURCE_MISMATCH", "options.provenance.sourceKind", "does not match the exported analysis source");
   const pending = portfolio.analysis.schemaVersion === "3dena.prepared-space-result.v1"
     ? preparedEntries(portfolio.analysis)
     : rawEntries(portfolio.analysis);
@@ -441,7 +745,7 @@ export async function createExportBundle(
     formalScientificExport: true,
     displayFilteringApplied: false,
     sourceResultSchema: result.schemaVersion,
-    provenance: structuredClone(options.provenance),
+    provenance: structuredClone(legacyOptions.provenance),
     scientificEntries,
     contentSetHash,
   };
@@ -452,10 +756,10 @@ export async function createExportBundle(
     byteLength: manifestEntry.data.byteLength,
     sha256: await sha256Bytes(manifestEntry.data),
   };
-  const bytes = createDeterministicZip([...sorted, manifestEntry].map((entry) => ({ path: entry.path, data: entry.data })), options.zipLimits);
+  const bytes = createDeterministicZip([...sorted, manifestEntry].map((entry) => ({ path: entry.path, data: entry.data })), legacyOptions.zipLimits);
   return Object.freeze({
     schemaVersion: "3dena.export-bundle.v1",
-    fileName: bundleName(options.fileName),
+    fileName: bundleName(legacyOptions.fileName),
     bytes,
     sha256: await sha256Bytes(bytes),
     byteLength: bytes.byteLength,

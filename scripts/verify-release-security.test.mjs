@@ -4,6 +4,7 @@ import {
   chmodSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -125,6 +126,7 @@ function publicPackageFixture() {
     exports: {
       ".": { types: "./index.d.ts", import: "./index.js" },
     },
+    peerDependencies: { "jena-js": "0.7.0-ona.0" },
     publishConfig: { access: "public", provenance: true },
   });
   writeJson(join(directory, "PROVENANCE.json"), {
@@ -261,6 +263,34 @@ test("public layout accepts only a root-export, provenance-bound facade", () => 
   const { root, directory } = publicPackageFixture();
   const result = inspectPublicPackageLayout({ root, packageDirectory: directory });
   assert.equal(result.ok, true, JSON.stringify(result.findings, null, 2));
+});
+
+test("public layout requires one exact non-optional jENA peer", () => {
+  for (const patch of [
+    { peerDependencies: { "jena-js": "^0.7.0-ona.0" } },
+    { peerDependencies: { "jena-js": "0.7.0-ona.0", extra: "1.0.0" } },
+    {
+      peerDependencies: { "jena-js": "0.7.0-ona.0" },
+      peerDependenciesMeta: { "jena-js": { optional: true } },
+    },
+    { peerDependencies: undefined },
+  ]) {
+    const { root, directory } = publicPackageFixture();
+    const manifestPath = join(directory, "package.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    if (patch.peerDependencies === undefined) {
+      delete manifest.peerDependencies;
+    } else {
+      manifest.peerDependencies = patch.peerDependencies;
+    }
+    if (patch.peerDependenciesMeta !== undefined) {
+      manifest.peerDependenciesMeta = patch.peerDependenciesMeta;
+    }
+    writeJson(manifestPath, manifest);
+    const result = inspectPublicPackageLayout({ root, packageDirectory: directory });
+    assert.equal(result.ok, false);
+    assert.ok(result.findings.some(({ rule }) => rule === "public-runtime-edge"));
+  }
 });
 
 test("public layout rejects local dependencies, extra exports, and private trees", () => {

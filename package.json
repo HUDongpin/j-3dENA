@@ -53,6 +53,7 @@
     "@types/node": "24.10.1",
     "eslint": "9.39.5",
     "eslint-config-next": "16.3.1",
+    "jena-js": "file:vendor/jena-js/jena-js-0.7.0-ona.0.tgz",
     "typescript": "6.0.3",
     "vitest": "4.1.11"
   },

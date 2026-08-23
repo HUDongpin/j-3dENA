@@ -93,11 +93,11 @@ const FORBIDDEN_PUBLIC_SEGMENTS = new Set([
 const DEPENDENCY_FIELDS = [
   "dependencies",
   "optionalDependencies",
-  "peerDependencies",
   "devDependencies",
   "bundleDependencies",
   "bundledDependencies",
 ];
+const REQUIRED_PUBLIC_PEER = Object.freeze({ name: "jena-js", version: "0.7.0-ona.0" });
 
 function toPosix(pathname) {
   return pathname.split(sep).join("/");
@@ -942,6 +942,21 @@ export function inspectPublicPackageLayout({
         "The bundled public facade may not publish dependency edges.",
       );
     }
+  }
+  const peerDependencies = manifest.peerDependencies;
+  if (
+    !isRecord(peerDependencies)
+    || Object.keys(peerDependencies).join(",") !== REQUIRED_PUBLIC_PEER.name
+    || peerDependencies[REQUIRED_PUBLIC_PEER.name] !== REQUIRED_PUBLIC_PEER.version
+    || manifest.peerDependenciesMeta !== undefined
+  ) {
+    addFinding(
+      findings,
+      "public-package",
+      `${manifestDisplayPath}#peerDependencies`,
+      "public-runtime-edge",
+      "The public facade must publish exactly one non-optional peer: jena-js@0.7.0-ona.0.",
+    );
   }
   if (localProtocolInManifest(manifest)) {
     addFinding(

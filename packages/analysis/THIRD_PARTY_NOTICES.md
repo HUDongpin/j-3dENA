@@ -1,25 +1,24 @@
 # Third-party notices
 
-This candidate distribution bundles reviewed runtime bytes from the following
-third-party packages. The exact versions and source-integrity records are also
+This candidate distribution binds or bundles reviewed runtime bytes from the
+following third-party packages. Exact versions and source-integrity records are
 captured in `PROVENANCE.json`.
 
-## jena-js 0.6.3
+## jena-js 0.7.0-ona.0
 
 - Project: <https://github.com/HUDongpin/jENA>
-- Audited source commit: `57b7794ec3873c251c33086454523e5a3949836f`
-- Public npm tarball SHA-256:
-  `0387c7958718e1d8a70a29f056da1ffe78e94ceb14ac957a3a360b586ac23121`
+- Audited source commit: `90790856f00bdef63dbd27fc3a5b502e8cffe65f`
+- Reviewed tarball SHA-256:
+  `1e071eaa4085688bbbd5f9d7122513a4bf82a0eaf955d399ab21706204fc8afe`
 - License: GPL-3.0-only
 - Purpose: ENA model, accumulation, rotation, and node-position computation
 
-The independently reviewed 0.6.3 successor removes the erroneous 0.6.2
-self-dependency and declares zero runtime dependencies. Its `dist/` tree is
-byte-identical to the frozen 0.6.2 numerical baseline. The public `j-3dena`
-build bundles that reviewed implementation exactly once and
-publishes no runtime dependency on jena-js. This packaging correction does not
-authorize numerical changes. The upstream license and provenance files are
-reproduced under `THIRD_PARTY/`.
+The public `j-3dena` package declares this exact prerelease as its sole jENA
+peer. It does not bundle a second engine instance. The reviewed artifact is
+generated from the pinned official source commit and its transport integrity is
+bound in `PROVENANCE.json`. rENA remains attribution and historical comparison
+context; it is not the numerical oracle for this trajectory contract. The
+upstream license and provenance files are reproduced under `THIRD_PARTY/`.
 
 ## SheetJS Community Edition (xlsx) 0.20.3
 

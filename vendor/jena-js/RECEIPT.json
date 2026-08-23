@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "3dena.jena-artifact-receipt.v1",
+  "package": "jena-js",
+  "version": "0.7.0-ona.0",
+  "officialRepository": "https://github.com/HUDongpin/jENA",
+  "officialCommit": "90790856f00bdef63dbd27fc3a5b502e8cffe65f",
+  "sourceTreeComparedToOpenEnaSnapshot": true,
+  "sourceComparisonExceptions": [
+    "Open ENA integration marks the workspace copy private",
+    "Open ENA carries an integration-only ENA-SNAPSHOT.md"
+  ],
+  "tarball": "jena-js-0.7.0-ona.0.tgz",
+  "tarballSha256": "1e071eaa4085688bbbd5f9d7122513a4bf82a0eaf955d399ab21706204fc8afe",
+  "tarballIntegrity": "sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==",
+  "numericsSha256": "3a4567fba2d89bc7c2dd8b3a849d16f578d6a426155b6fd5ed59aab49f6002f1",
+  "provenanceSha256": "f7d0a7c545036beb53f480bd33393d2a1ad20b7763e7863fcb8e115fe32a12dd",
+  "evidenceStatus": "IMPLEMENTED_UNVERIFIED",
+  "rEnaNumericalOracle": false
+}

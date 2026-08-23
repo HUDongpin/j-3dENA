@@ -997,8 +997,8 @@ function assertAnalysisResult(value: unknown, path: string): void {
   const dimensions = stringList(result.dimensions, `${path}.dimensions`, 3);
   if (new Set(dimensions).size !== dimensions.length) contractError(`${path}.dimensions`, "must not contain duplicates");
   const axes = stringList(result.axes, `${path}.axes`, 3);
-  if (axes.length !== 3 || axes.some((axis, index) => axis !== (["SVD1", "SVD2", "SVD3"] as const)[index])) {
-    contractError(`${path}.axes`, "must be the ordered SVD1, SVD2, SVD3 display axes");
+  if (axes.length !== 3 || axes.some((axis, index) => axis !== dimensions[index])) {
+    contractError(`${path}.axes`, "must be the first three fitted rotation dimensions in order");
   }
   if (!Array.isArray(result.edges) || result.edges.length === 0) contractError(`${path}.edges`, "must be a non-empty array");
   const edgeColumns: string[] = [];
@@ -1084,7 +1084,9 @@ function assertAnalysisResult(value: unknown, path: string): void {
   });
   const rotation = objectAt(result.rotation, `${path}.rotation`);
   exactFields(rotation, ["method", "columns", "matrix", "eigenvalues", "centerVector"], `${path}.rotation`);
-  if (rotation.method !== "svd") contractError(`${path}.rotation.method`, "must be svd");
+  if (rotation.method !== "svd" && rotation.method !== "mean" && rotation.method !== "reference") {
+    contractError(`${path}.rotation.method`, "must be svd, mean, or reference");
+  }
   sameOrderedStrings(stringList(rotation.columns, `${path}.rotation.columns`), dimensions, `${path}.rotation.columns`);
   if (!Array.isArray(rotation.matrix) || rotation.matrix.length !== edgeColumns.length) contractError(`${path}.rotation.matrix`, "must contain one row per edge column");
   rotation.matrix.forEach((row, index) => finiteVector(row, `${path}.rotation.matrix[${index}]`, dimensions.length));
@@ -1166,7 +1168,8 @@ function assertSharedTrajectory(value: unknown, dimensions: string[], points: un
 function assertAnalysisProvenance(value: unknown, path: string): void {
   const provenance = objectAt(value, path);
   exactFields(provenance, ["adapter", "adapterVersion", "jenaPackage", "jenaVersion", "jenaCommit", "coreGoldenContract", "legacyGoldenContract", "legacyGoldenStatus", "parityContract", "resultSemantics", "resolvedConfig", "resolvedLimits"], path);
-  if (provenance.adapter !== "@3dena/analysis" || provenance.adapterVersion !== "0.1.0" || provenance.jenaPackage !== "jena-js") contractError(path, "contains an unsupported analysis adapter identity");
+  if (provenance.adapter !== "@3dena/analysis" || provenance.jenaPackage !== "jena-js") contractError(path, "contains an unsupported analysis adapter identity");
+  nonEmptyString(provenance.adapterVersion, `${path}.adapterVersion`);
   for (const field of ["jenaVersion", "jenaCommit", "coreGoldenContract", "legacyGoldenContract", "parityContract", "resultSemantics"] as const) nonEmptyString(provenance[field], `${path}.${field}`);
   if (provenance.legacyGoldenStatus !== "not-assessed") contractError(`${path}.legacyGoldenStatus`, "must remain not-assessed in the scientific DTO");
   const config = objectAt(provenance.resolvedConfig, `${path}.resolvedConfig`);
@@ -1174,7 +1177,11 @@ function assertAnalysisProvenance(value: unknown, path: string): void {
   if (!(config.model === "EndPoint" || config.model === "AccumulatedTrajectory" || config.model === "SeparateTrajectory")) contractError(`${path}.resolvedConfig.model`, "is unsupported");
   if (!(config.window === "MovingStanzaWindow" || config.window === "Conversation")) contractError(`${path}.resolvedConfig.window`, "is unsupported");
   if (config.weightBy !== "binary" && config.weightBy !== "sum") contractError(`${path}.resolvedConfig.weightBy`, "is unsupported");
-  nonNegativeInteger(config.windowSizeBack, `${path}.resolvedConfig.windowSizeBack`);
+  if (config.windowSizeBack === "Infinity") {
+    if (config.window !== "Conversation") contractError(`${path}.resolvedConfig.windowSizeBack`, "may be Infinity only for Conversation windows");
+  } else {
+    nonNegativeInteger(config.windowSizeBack, `${path}.resolvedConfig.windowSizeBack`);
+  }
   nonNegativeInteger(config.windowSizeForward, `${path}.resolvedConfig.windowSizeForward`);
   if (typeof config.centerAlignToOrigin !== "boolean") contractError(`${path}.resolvedConfig.centerAlignToOrigin`, "must be boolean");
   const limits = objectAt(provenance.resolvedLimits, `${path}.resolvedLimits`);
@@ -1403,17 +1410,18 @@ function assertDistanceMetrics(value: unknown, dimensions: string[], path: strin
 
 function assertTrajectoryPathStatistics(value: unknown, path: string): void {
   const result = objectAt(value, path);
-  exactFields(result, ["schemaVersion", "namespace", "cohortPolicy", "dimensions", "selectedDimensions", "distanceSemantics", "participantPeriods", "periods", "diagnostics", "summary", "resolvedLimits"], path);
+  exactFields(result, ["schemaVersion", "namespace", "cohortPolicy", "estimand", "dimensions", "selectedDimensions", "distanceSemantics", "participantPeriods", "periods", "diagnostics", "summary", "resolvedLimits"], path);
   if (result.schemaVersion !== "3dena.trajectory-path-statistics.v1") contractError(`${path}.schemaVersion`, "must be 3dena.trajectory-path-statistics.v1");
   nonEmptyString(result.namespace, `${path}.namespace`);
   if (result.cohortPolicy !== "available" && result.cohortPolicy !== "complete") contractError(`${path}.cohortPolicy`, "is unsupported");
+  if (result.estimand !== "equal-participant" && result.estimand !== "weighted-participant") contractError(`${path}.estimand`, "is unsupported");
   const dimensions = stringList(result.dimensions, `${path}.dimensions`);
   const selected = stringList(result.selectedDimensions, `${path}.selectedDimensions`, 3);
   if (selected.length !== 3 || selected.some((entry) => !dimensions.includes(entry))) contractError(`${path}.selectedDimensions`, "must contain three declared dimensions");
   const semantics = objectAt(result.distanceSemantics, `${path}.distanceSemantics`);
   exactFields(semantics, ["selected3d", "fullSpace"], `${path}.distanceSemantics`);
   if (semantics.selected3d !== "euclidean-selected-three-dimensions" || semantics.fullSpace !== "euclidean-all-declared-dimensions") contractError(`${path}.distanceSemantics`, "is unsupported");
-  assertTrajectoryParticipantPeriods(result.participantPeriods, dimensions, `${path}.participantPeriods`, false);
+  assertTrajectoryParticipantPeriods(result.participantPeriods, dimensions, `${path}.participantPeriods`, true);
   if (!Array.isArray(result.periods)) contractError(`${path}.periods`, "must be an array");
   result.periods.forEach((candidate, index) => {
     const period = objectAt(candidate, `${path}.periods[${index}]`);
@@ -1541,7 +1549,7 @@ function assertBootstrap(value: unknown, path: string): void {
   const base = result.base as { dimensions: string[]; periods: unknown[] }; if (!Array.isArray(result.periods) || result.periods.length !== base.periods.length) contractError(`${path}.periods`, "must align one-to-one with the base path");
   result.periods.forEach((candidate, index) => { const period = objectAt(candidate, `${path}.periods[${index}]`); exactFields(period, ["index", "time", "selectedCentroid", "fullCentroid", "selectedStepDistance", "fullStepDistance", "selectedCumulativeDistance", "fullCumulativeDistance"], `${path}.periods[${index}]`); if (nonNegativeInteger(period.index, `${path}.periods[${index}].index`) !== index) contractError(`${path}.periods[${index}].index`, "must equal its array position"); assertTrajectoryIdentity(period.time, `${path}.periods[${index}].time`, true); for (const [field, length] of [["selectedCentroid", 3], ["fullCentroid", base.dimensions.length]] as const) { if (!Array.isArray(period[field]) || period[field].length !== length) contractError(`${path}.periods[${index}].${field}`, `must contain ${length} interval slots`); period[field].forEach((entry, itemIndex) => { if (entry !== null) assertBootstrapInterval(entry, `${path}.periods[${index}].${field}[${itemIndex}]`); }); } for (const field of ["selectedStepDistance", "fullStepDistance", "selectedCumulativeDistance", "fullCumulativeDistance"] as const) if (period[field] !== null) assertBootstrapInterval(period[field], `${path}.periods[${index}].${field}`); });
   const quantile = objectAt(result.quantileRule, `${path}.quantileRule`); const expectedQuantile = { id: "linear-type7-v1", sort: "ascending-numeric", position: "(n-1)*p", interpolation: "linear-between-floor-and-ceiling", endpoints: "p=0-min-p=1-max" } as const; exactFields(quantile, Object.keys(expectedQuantile), `${path}.quantileRule`); for (const [field, expected] of Object.entries(expectedQuantile)) if (quantile[field] !== expected) contractError(`${path}.quantileRule.${field}`, `must be ${expected}`);
-  const resampling = objectAt(result.resampling, `${path}.resampling`); exactFields(resampling, ["unit", "stratified", "strata", "replicateCount", "planKind", "generation", "rngParityClaim"], `${path}.resampling`); if (resampling.unit !== "participant-complete-history" || resampling.planKind !== "participant-history-resample-indices-v1" || resampling.rngParityClaim !== false) contractError(`${path}.resampling`, "contains unsupported or unapproved resampling semantics"); if (typeof resampling.stratified !== "boolean") contractError(`${path}.resampling.stratified`, "must be boolean"); const replicateCount = positiveInteger(resampling.replicateCount, `${path}.resampling.replicateCount`); if (!Array.isArray(resampling.strata) || resampling.strata.length === 0) contractError(`${path}.resampling.strata`, "must be non-empty"); resampling.strata.forEach((candidate, index) => { const stratum = objectAt(candidate, `${path}.resampling.strata[${index}]`); exactFields(stratum, ["key", "unitCount"], `${path}.resampling.strata[${index}]`); assertTrajectoryIdentity(stratum.key, `${path}.resampling.strata[${index}].key`, true); positiveInteger(stratum.unitCount, `${path}.resampling.strata[${index}].unitCount`); }); const generation = objectAt(resampling.generation, `${path}.resampling.generation`); if (generation.kind === "caller-provided") exactFields(generation, ["kind"], `${path}.resampling.generation`); else { exactFields(generation, ["kind", "algorithm", "seed", "unitSort", "randomEndpoint"], `${path}.resampling.generation`); if (generation.kind !== "seeded" || generation.algorithm !== "mulberry32-uint32-v1" || generation.unitSort !== "utf16-code-unit-ascending" || generation.randomEndpoint !== "zero-inclusive-one-exclusive") contractError(`${path}.resampling.generation`, "contains unsupported seeded-generation semantics"); const seed = nonNegativeInteger(generation.seed, `${path}.resampling.generation.seed`); if (seed > 0xffff_ffff) contractError(`${path}.resampling.generation.seed`, "must fit uint32"); }
+  const resampling = objectAt(result.resampling, `${path}.resampling`); exactFields(resampling, ["unit", "stratified", "strata", "replicateCount", "planKind", "generation", "rngParityClaim"], `${path}.resampling`); if (resampling.unit !== "participant-complete-history" || !["participant-history-resample-indices-v1", "global-participant-history-resample-indices-v2"].includes(String(resampling.planKind)) || resampling.rngParityClaim !== false) contractError(`${path}.resampling`, "contains unsupported or unapproved resampling semantics"); if (typeof resampling.stratified !== "boolean") contractError(`${path}.resampling.stratified`, "must be boolean"); const replicateCount = positiveInteger(resampling.replicateCount, `${path}.resampling.replicateCount`); if (!Array.isArray(resampling.strata) || resampling.strata.length === 0) contractError(`${path}.resampling.strata`, "must be non-empty"); resampling.strata.forEach((candidate, index) => { const stratum = objectAt(candidate, `${path}.resampling.strata[${index}]`); exactFields(stratum, ["key", "unitCount"], `${path}.resampling.strata[${index}]`); assertTrajectoryIdentity(stratum.key, `${path}.resampling.strata[${index}].key`, true); positiveInteger(stratum.unitCount, `${path}.resampling.strata[${index}].unitCount`); }); const generation = objectAt(resampling.generation, `${path}.resampling.generation`); if (generation.kind === "caller-provided") exactFields(generation, ["kind"], `${path}.resampling.generation`); else { exactFields(generation, ["kind", "algorithm", "seed", "unitSort", "randomEndpoint"], `${path}.resampling.generation`); if (generation.kind !== "seeded" || generation.algorithm !== "mulberry32-uint32-v1" || generation.unitSort !== "utf16-code-unit-ascending" || generation.randomEndpoint !== "zero-inclusive-one-exclusive") contractError(`${path}.resampling.generation`, "contains unsupported seeded-generation semantics"); const seed = nonNegativeInteger(generation.seed, `${path}.resampling.generation.seed`); if (seed > 0xffff_ffff) contractError(`${path}.resampling.generation.seed`, "must fit uint32"); }
   result.periods.forEach((period) => { const candidate = period as Record<string, unknown>; for (const field of ["selectedStepDistance", "fullStepDistance", "selectedCumulativeDistance", "fullCumulativeDistance"] as const) { const interval = candidate[field] as Record<string, unknown> | null; if (interval && interval.totalReplicates !== replicateCount) contractError(`${path}.periods.${field}`, "must bind the declared replicate count"); } });
   assertDiagnostics(result.diagnostics, `${path}.diagnostics`);
 }
@@ -1600,6 +1608,55 @@ const RAW_SCALAR_SCHEMA = {
 const SAFE_NON_NEGATIVE_INTEGER_SCHEMA = { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER } as const;
 const SAFE_POSITIVE_INTEGER_SCHEMA = { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER } as const;
 const TASK_OWNER_SCHEMA_REF = { $ref: "https://3dena.com/schemas/task-owner.v1.json" } as const;
+const TRAJECTORY_V2_IDENTITY_COMPONENT_SCHEMA = {
+  oneOf: [
+    { type: "object", additionalProperties: false, required: ["name", "type", "value"], properties: { name: NON_EMPTY_STRING_SCHEMA, type: { const: "string" }, value: { type: "string" }, declaredType: NON_EMPTY_STRING_SCHEMA } },
+    { type: "object", additionalProperties: false, required: ["name", "type", "value"], properties: { name: NON_EMPTY_STRING_SCHEMA, type: { const: "number" }, value: { type: "number" }, declaredType: NON_EMPTY_STRING_SCHEMA } },
+    { type: "object", additionalProperties: false, required: ["name", "type", "value"], properties: { name: NON_EMPTY_STRING_SCHEMA, type: { const: "boolean" }, value: { type: "boolean" }, declaredType: NON_EMPTY_STRING_SCHEMA } },
+  ],
+} as const;
+const TRAJECTORY_V2_IDENTITY_SCHEMA = {
+  type: "object", additionalProperties: false, required: ["components"],
+  properties: { components: { type: "array", minItems: 1, items: TRAJECTORY_V2_IDENTITY_COMPONENT_SCHEMA } },
+} as const;
+const TRAJECTORY_V2_TIME_VALUE_SCHEMA = {
+  oneOf: [
+    { type: "object", additionalProperties: false, required: ["type", "index"], properties: { type: { const: "ordered-index-v2" }, index: SAFE_NON_NEGATIVE_INTEGER_SCHEMA } },
+    { type: "object", additionalProperties: false, required: ["type", "value", "unit"], properties: { type: { const: "numeric-v1" }, value: { type: "number" }, unit: NON_EMPTY_STRING_SCHEMA } },
+    { type: "object", additionalProperties: false, required: ["type", "value"], properties: { type: { const: "date-v1" }, value: { type: "string", pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" } } },
+    { type: "object", additionalProperties: false, required: ["type", "epochMilliseconds", "timeZone", "offsetMinutes", "fold", "elapsedUnit"], properties: { type: { const: "instant-v1" }, epochMilliseconds: { type: "string", pattern: "^-?(?:0|[1-9][0-9]*)$" }, timeZone: NON_EMPTY_STRING_SCHEMA, offsetMinutes: { type: "integer", minimum: -1440, maximum: 1440 }, fold: { enum: [0, 1] }, elapsedUnit: { enum: [...TRAJECTORY_DURATION_UNITS] } } },
+    { type: "object", additionalProperties: false, required: ["type", "value", "unit", "elapsedUnit"], properties: { type: { const: "difftime-v1" }, value: { type: "number" }, unit: { enum: [...TRAJECTORY_DURATION_UNITS] }, elapsedUnit: { enum: [...TRAJECTORY_DURATION_UNITS] } } },
+  ],
+} as const;
+const TRAJECTORY_RUN_SPEC_V2_SCHEMA = {
+  $id: "https://3dena.com/schemas/trajectory-run-spec.v2.json",
+  type: "object", additionalProperties: false,
+  required: ["schemaVersion", "sourceResultHash", "participantColumns", "timeColumn", "groupColumn", "orderedPeriods", "selectedDimensions", "cohortPolicy", "missingValuePolicy", "estimand"],
+  properties: {
+    schemaVersion: { const: "3dena.trajectory-run-spec.v2" }, sourceResultHash: HASH_SCHEMA,
+    participantColumns: { type: "array", minItems: 1, uniqueItems: true, items: NON_EMPTY_STRING_SCHEMA },
+    timeColumn: NON_EMPTY_STRING_SCHEMA, groupColumn: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+    orderedPeriods: {
+      type: "array", minItems: 1,
+      items: {
+        type: "object", additionalProperties: false,
+        required: ["identity", "sourceTimeCanonical", "displayLabel", "expected", "value"],
+        properties: { identity: TRAJECTORY_V2_IDENTITY_SCHEMA, sourceTimeCanonical: NON_EMPTY_STRING_SCHEMA, displayLabel: NON_EMPTY_STRING_SCHEMA, expected: { type: "boolean" }, value: TRAJECTORY_V2_TIME_VALUE_SCHEMA },
+      },
+    },
+    selectedDimensions: { type: "array", minItems: 3, maxItems: 3, uniqueItems: true, items: NON_EMPTY_STRING_SCHEMA },
+    cohortPolicy: { enum: ["available", "complete"] }, missingValuePolicy: { const: "complete-analytical-rows" },
+    estimand: {
+      oneOf: [
+        { type: "object", additionalProperties: false, required: ["kind"], properties: { kind: { const: "equal-participant" } } },
+        { type: "object", additionalProperties: false, required: ["kind", "metadataField"], properties: { kind: { const: "weighted-participant" }, metadataField: NON_EMPTY_STRING_SCHEMA } },
+      ],
+    },
+  },
+} as const;
+const TRAJECTORY_V2_TASK_BINDING_PROPERTIES = {
+  datasetHash: HASH_SCHEMA, specHash: HASH_SCHEMA, sourceResultHash: HASH_SCHEMA, runId: NON_EMPTY_STRING_SCHEMA,
+} as const;
 const PREPARED_MAPPING_TASK_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -1751,6 +1808,123 @@ export const CONTRACT_SCHEMAS_V1 = Object.freeze({
     },
   }),
   analysisExecutionDatasetV2: Object.freeze(ANALYSIS_EXECUTION_DATASET_V2_SCHEMA),
+  trajectoryRunSpecV2: Object.freeze(TRAJECTORY_RUN_SPEC_V2_SCHEMA),
+  trajectoryPathTaskV2: Object.freeze({
+    $id: "https://3dena.com/schemas/trajectory-path-task.v2.json",
+    type: "object", additionalProperties: false,
+    required: ["schemaVersion", "kind", "datasetHash", "specHash", "runId", "runSpec"],
+    properties: {
+      schemaVersion: { const: "3dena.trajectory-path-task.v2" }, kind: { const: "trajectory-path-v2" },
+      datasetHash: HASH_SCHEMA, specHash: HASH_SCHEMA, runId: NON_EMPTY_STRING_SCHEMA,
+      runSpec: { $ref: "https://3dena.com/schemas/trajectory-run-spec.v2.json" },
+    },
+  }),
+  trajectoryInferenceTaskV2: Object.freeze({
+    $id: "https://3dena.com/schemas/trajectory-inference-task.v2.json",
+    type: "object", additionalProperties: false,
+    required: ["schemaVersion", "kind", "datasetHash", "specHash", "sourceResultHash", "runId", "requests", "adjustment"],
+    properties: {
+      schemaVersion: { const: "3dena.trajectory-inference-task.v2" }, kind: { const: "trajectory-inference-v2" },
+      ...TRAJECTORY_V2_TASK_BINDING_PROPERTIES, adjustment: { const: "holm" },
+      requests: {
+        type: "array", minItems: 1,
+        items: {
+          oneOf: [
+            { type: "object", additionalProperties: false, required: ["kind", "groups", "periodCanonical"], properties: { kind: { const: "independent-period" }, groups: { type: "array", minItems: 2, maxItems: 2, uniqueItems: true, items: NON_EMPTY_STRING_SCHEMA }, periodCanonical: NON_EMPTY_STRING_SCHEMA } },
+            { type: "object", additionalProperties: false, required: ["kind", "group", "earlierPeriodCanonical", "laterPeriodCanonical", "samePhysicalEntityConfirmed"], properties: { kind: { const: "paired-periods" }, group: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] }, earlierPeriodCanonical: NON_EMPTY_STRING_SCHEMA, laterPeriodCanonical: NON_EMPTY_STRING_SCHEMA, samePhysicalEntityConfirmed: { type: "boolean" } } },
+            { type: "object", additionalProperties: false, required: ["kind", "group", "periodCanonicals", "samePhysicalEntityConfirmed"], properties: { kind: { const: "repeated-periods" }, group: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] }, periodCanonicals: { type: "array", minItems: 3, uniqueItems: true, items: NON_EMPTY_STRING_SCHEMA }, samePhysicalEntityConfirmed: { type: "boolean" } } },
+            { type: "object", additionalProperties: false, required: ["kind", "design", "groups", "repetitions", "seed", "samePhysicalEntityConfirmed"], properties: { kind: { const: "path-comparison" }, design: { enum: ["independent", "paired"] }, groups: { type: "array", minItems: 2, maxItems: 2, uniqueItems: true, items: NON_EMPTY_STRING_SCHEMA }, repetitions: { type: "integer", minimum: 1, maximum: 10_000 }, seed: { type: "integer", minimum: 0, maximum: 4_294_967_295 }, samePhysicalEntityConfirmed: { type: "boolean" } } },
+          ],
+        },
+      },
+    },
+  }),
+  trajectoryBootstrapTaskV2: Object.freeze({
+    $id: "https://3dena.com/schemas/trajectory-bootstrap-task.v2.json",
+    type: "object", additionalProperties: false,
+    required: ["schemaVersion", "kind", "datasetHash", "specHash", "sourceResultHash", "runId", "repetitions", "confidenceLevel", "seed", "resamplingDesign", "explicitStrataField", "interval", "rotationPolicy"],
+    properties: {
+      schemaVersion: { const: "3dena.trajectory-bootstrap-task.v2" }, kind: { const: "trajectory-bootstrap-v2" },
+      ...TRAJECTORY_V2_TASK_BINDING_PROPERTIES,
+      repetitions: { type: "integer", minimum: 1, maximum: 10_000 }, confidenceLevel: { type: "number", exclusiveMinimum: 0, exclusiveMaximum: 1 },
+      seed: { type: "integer", minimum: 0, maximum: 4_294_967_295 }, resamplingDesign: { enum: ["auto", "global-participant", "within-group", "explicit-strata"] },
+      explicitStrataField: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] }, interval: { const: "pointwise-percentile-linear-type7" }, rotationPolicy: { const: "fixed-same-fit-projection" },
+    },
+    allOf: [{ if: { properties: { resamplingDesign: { const: "explicit-strata" } } }, then: { properties: { explicitStrataField: NON_EMPTY_STRING_SCHEMA } }, else: { properties: { explicitStrataField: { type: "null" } } } }],
+  }),
+  trajectoryNetworkOverlayTaskV2: Object.freeze({
+    $id: "https://3dena.com/schemas/trajectory-network-overlay-task.v2.json",
+    type: "object", additionalProperties: false,
+    required: ["schemaVersion", "kind", "datasetHash", "specHash", "sourceResultHash", "runId", "requests"],
+    properties: {
+      schemaVersion: { const: "3dena.trajectory-network-overlay-task.v2" }, kind: { const: "trajectory-network-overlay-v2" },
+      ...TRAJECTORY_V2_TASK_BINDING_PROPERTIES,
+      requests: { type: "array", minItems: 1, items: { type: "object", additionalProperties: false, required: ["periodCanonical", "groupCanonical"], properties: { periodCanonical: NON_EMPTY_STRING_SCHEMA, groupCanonical: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] } } } },
+    },
+  }),
+  trajectoryDisplaySpecV2: Object.freeze({
+    $id: "https://3dena.com/schemas/trajectory-display-spec.v2.json",
+    type: "object", additionalProperties: false,
+    required: ["schemaVersion", "projection", "displayedGroups", "traces", "axisFlips", "camera", "style"],
+    properties: {
+      schemaVersion: { const: "3dena.trajectory-display-spec.v2" }, projection: { enum: ["3d", "xy", "xz", "yz", "yx", "zx", "zy"] },
+      displayedGroups: { type: "array", uniqueItems: true, items: NON_EMPTY_STRING_SCHEMA },
+      traces: { type: "object", additionalProperties: false, required: ["participants", "individualPaths", "centroids", "paths", "directionArrows", "uncertainty", "networkOverlay", "labels"], properties: Object.fromEntries(["participants", "individualPaths", "centroids", "paths", "directionArrows", "uncertainty", "networkOverlay", "labels"].map((field) => [field, { type: "boolean" }])) },
+      axisFlips: { type: "array", minItems: 3, maxItems: 3, items: { type: "boolean" } },
+      camera: { oneOf: [{ type: "null" }, { type: "object", additionalProperties: false, required: ["eye", "center", "up"], properties: Object.fromEntries(["eye", "center", "up"].map((field) => [field, { type: "object", additionalProperties: false, required: ["x", "y", "z"], properties: { x: { type: "number" }, y: { type: "number" }, z: { type: "number" } } }])) }] },
+      style: { type: "object", additionalProperties: false, required: ["participantSize", "participantOpacity", "centroidSize", "pathWidth"], properties: { participantSize: { type: "number", exclusiveMinimum: 0 }, participantOpacity: { type: "number", minimum: 0, maximum: 1 }, centroidSize: { type: "number", exclusiveMinimum: 0 }, pathWidth: { type: "number", exclusiveMinimum: 0 } } },
+    },
+  }),
+  longitudinalAnalysisBundleV2: Object.freeze({
+    $id: "https://3dena.com/schemas/longitudinal-analysis-bundle.v2.json",
+    type: "object", additionalProperties: false,
+    required: ["schemaVersion", "identity", "runSpec", "model", "paths", "inference", "pathComparisons", "bootstrap", "networkOverlays", "diagnostics", "execution"],
+    properties: {
+      schemaVersion: { const: "3dena.longitudinal-analysis-bundle.v2" },
+      identity: { type: "object", additionalProperties: false, required: ["datasetHash", "specHash", "sourceResultHash", "resultHash", "runId", "jenaBuildId"], properties: { datasetHash: HASH_SCHEMA, specHash: HASH_SCHEMA, sourceResultHash: HASH_SCHEMA, resultHash: HASH_SCHEMA, runId: NON_EMPTY_STRING_SCHEMA, jenaBuildId: NON_EMPTY_STRING_SCHEMA } },
+      runSpec: { $ref: "https://3dena.com/schemas/trajectory-run-spec.v2.json" },
+      model: { type: "object", additionalProperties: false, required: ["type", "fullRotationDimensions", "selectedDimensions"], properties: { type: { enum: ["SeparateTrajectory", "AccumulatedTrajectory"] }, fullRotationDimensions: { type: "array", minItems: 3, uniqueItems: true, items: NON_EMPTY_STRING_SCHEMA }, selectedDimensions: { type: "array", minItems: 3, maxItems: 3, uniqueItems: true, items: NON_EMPTY_STRING_SCHEMA } } },
+      paths: { type: "array", minItems: 1, items: { type: "object", additionalProperties: false, required: ["group", "dynamics"], properties: { group: { type: "object", additionalProperties: false, required: ["canonical", "display"], properties: { canonical: NON_EMPTY_STRING_SCHEMA, display: NON_EMPTY_STRING_SCHEMA } }, dynamics: RESULT_VARIANT_SCHEMAS_V1.trajectory } } },
+      inference: { type: "array", items: { type: "object", additionalProperties: false, required: ["request", "status", "familyId", "familySize", "rows", "reason"], properties: { request: { $ref: "https://3dena.com/schemas/trajectory-inference-task.v2.json#/properties/requests/items" }, status: { enum: ["available", "not-estimable", "disabled"] }, familyId: NON_EMPTY_STRING_SCHEMA, familySize: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, rows: { type: "array", items: { type: "object" } }, reason: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] } } } },
+      pathComparisons: { type: "array", items: { type: "object", additionalProperties: false, required: ["groups", "design", "seed", "planHash", "identityOverlapAudit", "result"], properties: { groups: { type: "array", minItems: 2, maxItems: 2, uniqueItems: true, items: NON_EMPTY_STRING_SCHEMA }, design: { enum: ["independent", "paired"] }, seed: { type: "integer", minimum: 0, maximum: 4_294_967_295 }, planHash: HASH_SCHEMA, identityOverlapAudit: { oneOf: [{ type: "null" }, { type: "object", additionalProperties: false, required: ["sideAEntities", "sideBEntities", "overlappingEntities", "pairedCompleteEntities", "sideAOnly", "sideBOnly", "excludedIncompleteOverlap", "samePhysicalEntityConfirmed"], properties: { sideAEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, sideBEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, overlappingEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, pairedCompleteEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, sideAOnly: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, sideBOnly: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, excludedIncompleteOverlap: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, samePhysicalEntityConfirmed: { const: true } } }] }, result: RESULT_VARIANT_SCHEMAS_V1["trajectory-comparison"] } } },
+      bootstrap: { type: "array", items: { type: "object", additionalProperties: false, required: ["groupCanonical", "status", "notEstimableReason", "seed", "planHash", "finiteReplicates", "requiredFiniteReplicates", "totalReplicates", "confidenceLevel", "requestedResamplingDesign", "resolvedResamplingDesign", "resamplingAlgorithm", "intervalContract", "rotationPolicy", "speedIntervals", "result"], properties: { groupCanonical: NON_EMPTY_STRING_SCHEMA, status: { enum: ["available", "not-estimable"] }, notEstimableReason: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] }, seed: { type: "integer", minimum: 0, maximum: 4_294_967_295 }, planHash: HASH_SCHEMA, finiteReplicates: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, requiredFiniteReplicates: SAFE_POSITIVE_INTEGER_SCHEMA, totalReplicates: SAFE_POSITIVE_INTEGER_SCHEMA, confidenceLevel: { type: "number", exclusiveMinimum: 0, exclusiveMaximum: 1 }, requestedResamplingDesign: { enum: ["auto", "global-participant", "within-group", "explicit-strata"] }, resolvedResamplingDesign: { enum: ["global-participant", "within-group", "explicit-strata"] }, resamplingAlgorithm: { enum: ["participant-complete-history-mulberry32-uint32-v1", "global-participant-complete-history-mulberry32-uint32-v2"] }, intervalContract: { const: "pointwise-percentile-linear-type7" }, rotationPolicy: { const: "fixed-same-fit-projection" }, speedIntervals: { type: "array", items: { type: "object", additionalProperties: false, required: ["periodCanonical", "selected", "full"], properties: { periodCanonical: NON_EMPTY_STRING_SCHEMA, selected: { oneOf: [{ type: "null" }, { type: "object" }] }, full: { oneOf: [{ type: "null" }, { type: "object" }] } } } }, result: RESULT_VARIANT_SCHEMAS_V1.bootstrap } } },
+      networkOverlays: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["status", "reason", "groupCanonical", "periodCanonical", "dimensions", "estimand", "sourceRows", "participantPeriods", "effectiveParticipantN", "nodes", "edges"],
+          properties: {
+            status: { enum: ["available", "not-estimable"] },
+            reason: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+            groupCanonical: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+            periodCanonical: NON_EMPTY_STRING_SCHEMA,
+            dimensions: { type: "array", minItems: 3, maxItems: 3, uniqueItems: true, items: NON_EMPTY_STRING_SCHEMA },
+            estimand: { enum: ["equal-participant", "weighted-participant"] },
+            sourceRows: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+            participantPeriods: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+            effectiveParticipantN: { oneOf: [{ type: "null" }, { type: "number", exclusiveMinimum: 0 }] },
+            nodes: {
+              type: "array",
+              items: {
+                type: "object", additionalProperties: false, required: ["code", "coordinates", "weight"],
+                properties: { code: NON_EMPTY_STRING_SCHEMA, coordinates: { type: "array", minItems: 3, maxItems: 3, items: { type: "number" } }, weight: { type: "number", minimum: 0 } },
+              },
+            },
+            edges: {
+              type: "array",
+              items: {
+                type: "object", additionalProperties: false, required: ["id", "sourceIndex", "targetIndex", "weight"],
+                properties: { id: NON_EMPTY_STRING_SCHEMA, sourceIndex: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, targetIndex: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, weight: { type: "number" } },
+              },
+            },
+          },
+        },
+      },
+      diagnostics: { type: "array", items: { type: "object", additionalProperties: false, required: ["code", "severity", "message"], properties: { code: NON_EMPTY_STRING_SCHEMA, severity: { enum: ["error", "warning", "info"] }, message: NON_EMPTY_STRING_SCHEMA, path: NON_EMPTY_STRING_SCHEMA } } },
+      execution: { type: "object", additionalProperties: false, required: ["target", "jenaVersion", "jenaCommit", "jenaTarballIntegrity", "sdkVersion", "buildId", "seed", "permutationPlanHashes", "resamplingPlanHashes", "evidenceStatus"], properties: { target: { enum: ["browser-worker", "persistent-compute-service", "node-service"] }, jenaVersion: NON_EMPTY_STRING_SCHEMA, jenaCommit: NON_EMPTY_STRING_SCHEMA, jenaTarballIntegrity: NON_EMPTY_STRING_SCHEMA, sdkVersion: NON_EMPTY_STRING_SCHEMA, buildId: NON_EMPTY_STRING_SCHEMA, seed: { type: "integer", minimum: 0, maximum: 4_294_967_295 }, permutationPlanHashes: { type: "array", uniqueItems: true, items: HASH_SCHEMA }, resamplingPlanHashes: { type: "array", uniqueItems: true, items: HASH_SCHEMA }, evidenceStatus: { enum: ["IMPLEMENTED_UNVERIFIED", "PARITY_CANDIDATE", "PRODUCTION_CANDIDATE", "PRODUCTION_READY"] } } },
+    },
+  }),
   analysisSpec: Object.freeze({
     $id: "https://3dena.com/schemas/analysis-spec.v1.json",
     type: "object", additionalProperties: false,

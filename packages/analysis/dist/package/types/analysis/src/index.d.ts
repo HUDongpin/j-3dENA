@@ -3,11 +3,14 @@ export { AnalysisClientError, createAnalysisClient } from "./analysis-client.js"
 export * from "./contracts.js";
 export { DatasetInspectionError, inspectDataset } from "./dataset-inspection.js";
 export { selectAnalysisDisplay } from "./display.js";
+export { adaptFittedJenaTrajectoryResultV2, getAnalysisBuildIdentityV2, } from "./fitted-jena-adapter-v2.js";
+export type * from "./fitted-jena-adapter-v2.js";
 export { ExportBundleError, createExportBundle } from "./export-bundle.js";
 export { NetworkAnalysisError, analyzeChangeNetwork, compareGroupNetworks } from "./network-analysis.js";
 export { analyzePreparedSpace, selectPreparedSpaceDisplay } from "./prepared-space.js";
 export { PreparedDerivedAnalysisError, analyzePreparedChangeNetwork, comparePreparedGroupNetworks } from "./prepared-derived.js";
 export { PlotlySpecCompilationError, compilePlotlySpec } from "./plotly-spec.js";
+export * from "./longitudinal-v2.js";
 export { selectTrajectoryDisplay } from "./trajectory.js";
 export * from "./trajectory-statistics.js";
 export { ANALYSIS_EXECUTION_DATASET_VERSION_V2, AnalysisTaskExecutionError, assertAnalysisExecutionDatasetV2, executeAnalysisTask, hashAnalysisValueV1 } from "./task-executor.js";

@@ -78,19 +78,13 @@
                 },
                 "axes": {
                   "type": "array",
-                  "prefixItems": [
-                    {
-                      "const": "SVD1"
-                    },
-                    {
-                      "const": "SVD2"
-                    },
-                    {
-                      "const": "SVD3"
-                    }
-                  ],
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
                   "minItems": 3,
-                  "maxItems": 3
+                  "maxItems": 3,
+                  "uniqueItems": true
                 },
                 "points": {
                   "type": "array",
@@ -797,7 +791,11 @@
                   ],
                   "properties": {
                     "method": {
-                      "const": "svd"
+                      "enum": [
+                        "svd",
+                        "mean",
+                        "reference"
+                      ]
                     },
                     "columns": {
                       "type": "array",
@@ -1616,7 +1614,8 @@
                       "const": "@3dena/analysis"
                     },
                     "adapterVersion": {
-                      "const": "0.1.0"
+                      "type": "string",
+                      "minLength": 1
                     },
                     "jenaPackage": {
                       "const": "jena-js"
@@ -1680,9 +1679,16 @@
                           ]
                         },
                         "windowSizeBack": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 9007199254740991
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "const": "Infinity"
+                            }
+                          ]
                         },
                         "windowSizeForward": {
                           "type": "integer",

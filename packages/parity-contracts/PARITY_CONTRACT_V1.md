@@ -1,5 +1,10 @@
 # 3DENA numerical parity contract v1
 
+> Historical compatibility contract. It remains readable for V1 evidence and
+> old exports, but it is not the numerical oracle, regression truth or release
+> gate for Longitudinal V2. V2 values are governed by the reviewed
+> `jena-js@0.7.0-ona.0` and versioned jENA/3DENA contracts.
+
 Status: `PARITY_CANDIDATE`. A governed generated payload passes the complete
 nine-field package comparison, but it has no independent approval record. The
 presence of this contract and a `candidate-pass` do not establish verified

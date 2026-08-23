@@ -1,5 +1,6 @@
 export { TrajectoryDynamicsError } from "./errors";
 export { analyzeTrajectoryDynamicsV1 } from "./analyze";
+export { analyzeTrajectoryPathSetV2 } from "./analyze-v2";
 export type {
   TrajectoryCohortPolicyV1,
   TrajectoryDistanceAndSpeedV1,
@@ -19,5 +20,9 @@ export type {
   TrajectoryScalar,
   TrajectoryScalarType,
   TrajectoryTimeContractV1,
-  TrajectoryTimeValueV1
+  TrajectoryTimeValueV1,
+  TrajectoryPathSetGroupInputV2,
+  TrajectoryPathSetGroupResultV2,
+  TrajectoryPathSetInputV2,
+  TrajectoryPathSetResultV2
 } from "./types";
