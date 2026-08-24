@@ -102,8 +102,25 @@ function assertObjectKey$1(value) {
 var GIT_COMMIT$1 = /^[a-f0-9]{40}$/u;
 var IMAGE_DIGEST$2 = /^sha256:[a-f0-9]{64}$/u;
 var VERSION$1 = /^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u;
+var REQUIRED_JENA_VERSION = "0.7.0-ona.0";
+var REQUIRED_JENA_COMMIT = "90790856f00bdef63dbd27fc3a5b502e8cffe65f";
+var REQUIRED_JENA_TARBALL_INTEGRITY = "sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==";
+var REQUIRED_CONTRACT_VERSIONS = [
+	"3dena.compute-dataset-http.v1",
+	"3dena.compute-http.v1",
+	"3dena.compute-prepared-import-http.v1",
+	"3dena.compute-source-result-job-http.v1",
+	"3dena.contract.v1",
+	"3dena.longitudinal-compute-submission.v2"
+];
+var REQUIRED_MIGRATION_VERSIONS = [
+	"0001-persistent-compute",
+	"0002-persistent-control-plane",
+	"0003-build-approval-v3"
+];
 var RUNTIME_MANIFEST_FIELDS = [
 	"schemaVersion",
+	"sourceCommit",
 	"migrationManifest",
 	"migrationManifestSha256",
 	"contractVersions",
@@ -140,14 +157,15 @@ function isMigrationManifest(value) {
 	return Array.isArray(value) && value.length > 0 && value.every((entry) => isRecord$3(entry) && hasExactKeys$1(entry, ["sha256", "version"]) && typeof entry.version === "string" && VERSION$1.test(entry.version) && typeof entry.sha256 === "string" && LOWER_SHA256$1.test(entry.sha256)) && new Set(value.map((entry) => entry.version)).size === value.length && [...value].sort((left, right) => left.version.localeCompare(right.version)).every((entry, index) => entry.version === value[index]?.version);
 }
 function assertComputeRuntimeBuildManifestV1(value) {
-	if (!isRecord$3(value) || !hasExactKeys$1(value, RUNTIME_MANIFEST_FIELDS) || value.schemaVersion !== "3dena.compute-runtime-build-manifest.v3" || !isMigrationManifest(value.migrationManifest) || typeof value.migrationManifestSha256 !== "string" || !LOWER_SHA256$1.test(value.migrationManifestSha256) || sha256Text$2(canonicalStringify$2(value.migrationManifest)) !== value.migrationManifestSha256 || typeof value.runtimeBundleSha256 !== "string" || !LOWER_SHA256$1.test(value.runtimeBundleSha256) || typeof value.scientificWorkerBundleSha256 !== "string" || !LOWER_SHA256$1.test(value.scientificWorkerBundleSha256) || !isRecord$3(value.runtimeDependencies) || !hasExactKeys$1(value.runtimeDependencies, ["@vercel/blob", "pg"]) || value.runtimeDependencies["@vercel/blob"] !== "2.8.0" || value.runtimeDependencies.pg !== "8.22.0" || !isRecord$3(value.approvedLongitudinalBuild) || !hasExactKeys$1(value.approvedLongitudinalBuild, [
+	if (!isRecord$3(value) || !hasExactKeys$1(value, RUNTIME_MANIFEST_FIELDS) || value.schemaVersion !== "3dena.compute-runtime-build-manifest.v4" || typeof value.sourceCommit !== "string" || !GIT_COMMIT$1.test(value.sourceCommit) || !isMigrationManifest(value.migrationManifest) || typeof value.migrationManifestSha256 !== "string" || !LOWER_SHA256$1.test(value.migrationManifestSha256) || sha256Text$2(canonicalStringify$2(value.migrationManifest)) !== value.migrationManifestSha256 || typeof value.runtimeBundleSha256 !== "string" || !LOWER_SHA256$1.test(value.runtimeBundleSha256) || typeof value.scientificWorkerBundleSha256 !== "string" || !LOWER_SHA256$1.test(value.scientificWorkerBundleSha256) || !isRecord$3(value.runtimeDependencies) || !hasExactKeys$1(value.runtimeDependencies, ["@vercel/blob", "pg"]) || value.runtimeDependencies["@vercel/blob"] !== "2.8.0" || value.runtimeDependencies.pg !== "8.22.0" || !isRecord$3(value.approvedLongitudinalBuild) || !hasExactKeys$1(value.approvedLongitudinalBuild, [
 		"jenaVersion",
 		"jenaCommit",
 		"jenaTarballIntegrity",
 		"sdkVersion",
 		"buildId"
-	]) || typeof value.approvedLongitudinalBuild.jenaVersion !== "string" || !VERSION$1.test(value.approvedLongitudinalBuild.jenaVersion) || typeof value.approvedLongitudinalBuild.jenaCommit !== "string" || !GIT_COMMIT$1.test(value.approvedLongitudinalBuild.jenaCommit) || typeof value.approvedLongitudinalBuild.jenaTarballIntegrity !== "string" || !/^sha512-[A-Za-z0-9+/]+={0,2}$/u.test(value.approvedLongitudinalBuild.jenaTarballIntegrity) || typeof value.approvedLongitudinalBuild.sdkVersion !== "string" || !VERSION$1.test(value.approvedLongitudinalBuild.sdkVersion) || typeof value.approvedLongitudinalBuild.buildId !== "string" || !OPAQUE_ID$1.test(value.approvedLongitudinalBuild.buildId)) throw new TypeError("Runtime build manifest is invalid.");
+	]) || value.approvedLongitudinalBuild.jenaVersion !== REQUIRED_JENA_VERSION || value.approvedLongitudinalBuild.jenaCommit !== REQUIRED_JENA_COMMIT || value.approvedLongitudinalBuild.jenaTarballIntegrity !== REQUIRED_JENA_TARBALL_INTEGRITY || typeof value.approvedLongitudinalBuild.sdkVersion !== "string" || !VERSION$1.test(value.approvedLongitudinalBuild.sdkVersion) || typeof value.approvedLongitudinalBuild.buildId !== "string" || !OPAQUE_ID$1.test(value.approvedLongitudinalBuild.buildId)) throw new TypeError("Runtime build manifest is invalid.");
 	assertVersions(value.contractVersions, "manifest.contractVersions");
+	if (value.contractVersions.length !== REQUIRED_CONTRACT_VERSIONS.length || value.contractVersions.some((entry, index) => entry !== REQUIRED_CONTRACT_VERSIONS[index]) || value.migrationManifest.length !== REQUIRED_MIGRATION_VERSIONS.length || value.migrationManifest.some((entry, index) => entry.version !== REQUIRED_MIGRATION_VERSIONS[index])) throw new TypeError("Runtime build manifest contract or migration set is not current.");
 }
 async function loadComputeRuntimeConfiguration(role, environment = process.env) {
 	const manifestPath = exactEnvironment(environment, "BUILD_MANIFEST_PATH");
@@ -163,6 +181,7 @@ async function loadComputeRuntimeConfiguration(role, environment = process.env) 
 	const approvalManifestSha256 = exactEnvironment(environment, "BUILD_APPROVAL_MANIFEST_SHA256", LOWER_SHA256$1);
 	const releaseId = exactEnvironment(environment, "RELEASE_ID", OPAQUE_ID$1);
 	const gitCommit = exactEnvironment(environment, "GIT_COMMIT", GIT_COMMIT$1);
+	if (gitCommit !== manifest.sourceCommit) throw new TypeError("Runtime source commit does not match GIT_COMMIT.");
 	const flyImageDigest = exactEnvironment(environment, "FLY_IMAGE_DIGEST", IMAGE_DIGEST$2);
 	const flyBuildId = exactEnvironment(environment, "FLY_BUILD_ID", OPAQUE_ID$1);
 	const expectedBuild = Object.freeze({
@@ -224,8 +243,8 @@ var init_build_identity = __esmMin((() => {
 		jenaVersion: injected("0.7.0-ona.0", "development-unbound"),
 		jenaCommit: injected("90790856f00bdef63dbd27fc3a5b502e8cffe65f", "development-unbound"),
 		jenaTarballIntegrity: injected("sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==", "development-unbound"),
-		sdkVersion: injected("0.2.0-implemented-unverified.5", "development-unbound"),
-		buildId: injected("ee697967df9b7abab020c519d8ae7437edb4f97e", "development-unbound"),
+		sdkVersion: injected("0.2.0-implemented-unverified.6", "development-unbound"),
+		buildId: injected("a2ef75a6fd715c4e935a6f93978c3520b98504a4", "development-unbound"),
 		bound: true
 	});
 })), HARD_ANALYSIS_LIMITS;
