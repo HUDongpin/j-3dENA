@@ -83,14 +83,20 @@ async function scientificBundle(): Promise<LongitudinalAnalysisBundleV2> {
       { participant: identity("Student", "private-P2"), time: identity("Time", "T2"), coordinates: [5, 6, 7, 22] },
     ],
   });
+  const bundleIdentity = {
+    datasetHash: HASH_B,
+    specHash: HASH_C,
+    sourceResultHash: HASH_A,
+    runId: "run-export-v2",
+    jenaBuildId: "jena-js@0.7.0-ona.0+90790856:fixture-build",
+  };
   const core = {
     schemaVersion: "3dena.longitudinal-analysis-bundle.v2" as const,
     identity: {
-      datasetHash: HASH_B,
-      specHash: HASH_C,
-      sourceResultHash: HASH_A,
-      runId: "run-export-v2",
-      jenaBuildId: "jena-js@0.7.0-ona.0+90790856:fixture-build",
+      datasetHash: bundleIdentity.datasetHash,
+      specHash: bundleIdentity.specHash,
+      sourceResultHash: bundleIdentity.sourceResultHash,
+      jenaBuildId: bundleIdentity.jenaBuildId,
     },
     runSpec,
     model: {
@@ -119,7 +125,7 @@ async function scientificBundle(): Promise<LongitudinalAnalysisBundleV2> {
   const resultHash = await hashAnalysisValueV1(core);
   return {
     schemaVersion: core.schemaVersion,
-    identity: { ...core.identity, resultHash },
+    identity: { ...bundleIdentity, resultHash },
     runSpec,
     model: core.model,
     paths: core.paths,
