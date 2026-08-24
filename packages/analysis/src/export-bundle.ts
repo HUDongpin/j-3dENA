@@ -108,6 +108,12 @@ export interface LongitudinalProvenanceManifestV2 {
   contentSetHash: string;
 }
 
+export interface LongitudinalExportFileV2 {
+  path: string;
+  mediaType: "text/csv" | "application/json";
+  bytes: Uint8Array<ArrayBuffer>;
+}
+
 export interface LongitudinalExportBundleV2 {
   schemaVersion: "3dena.longitudinal-export-bundle.v2";
   fileName: string;
@@ -116,6 +122,8 @@ export interface LongitudinalExportBundleV2 {
   byteLength: number;
   entries: ExportEntryReceiptV1[];
   manifest: LongitudinalProvenanceManifestV2;
+  /** Exact package-generated members, including the manifest, for standalone downloads. */
+  files: LongitudinalExportFileV2[];
 }
 
 export class ExportBundleError extends Error {
@@ -686,7 +694,8 @@ async function createLongitudinalExportBundleV2(
   };
   const manifestEntry = json("provenance-manifest.json", manifest);
   const manifestReceipt: ExportEntryReceiptV1 = { path: manifestEntry.path, mediaType: manifestEntry.mediaType, byteLength: manifestEntry.data.byteLength, sha256: await sha256Bytes(manifestEntry.data) };
-  const bytes = createDeterministicZip([...sorted, manifestEntry].map((entry) => ({ path: entry.path, data: entry.data })), options.zipLimits);
+  const fileEntries = [...sorted, manifestEntry];
+  const bytes = createDeterministicZip(fileEntries.map((entry) => ({ path: entry.path, data: entry.data })), options.zipLimits);
   return Object.freeze({
     schemaVersion: "3dena.longitudinal-export-bundle.v2",
     fileName: bundleName(options.fileName ?? "3dena-longitudinal-analysis.zip"),
@@ -695,6 +704,11 @@ async function createLongitudinalExportBundleV2(
     byteLength: bytes.byteLength,
     entries: Object.freeze([...members, manifestReceipt]),
     manifest: Object.freeze(manifest),
+    files: Object.freeze(fileEntries.map((entry) => Object.freeze({
+      path: entry.path,
+      mediaType: entry.mediaType,
+      bytes: entry.data,
+    }))),
   }) as LongitudinalExportBundleV2;
 }
 

@@ -93,10 +93,14 @@ export type {
 export type {
   AnalysisExportInputV1,
   AnalysisExportPortfolioV1,
+  CreateLongitudinalExportBundleOptionsV2,
   CreateExportBundleOptionsV1,
   ExportBundleV1,
   ExportEntryReceiptV1,
-  ExportManifestV1
+  ExportManifestV1,
+  LongitudinalExportBundleV2,
+  LongitudinalExportFileV2,
+  LongitudinalProvenanceManifestV2
 } from "./export-bundle";
 export type {
   PlotlySpecV1,

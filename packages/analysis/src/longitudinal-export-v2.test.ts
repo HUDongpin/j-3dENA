@@ -188,6 +188,23 @@ describe("longitudinal V2 export bundle", () => {
     }
   });
 
+  it("returns the exact package-generated members for standalone presenter downloads", async () => {
+    const bundle = await scientificBundle();
+    const plotlySpec = compileTrajectoryPlotlySpec(bundle, display);
+    const exported = await createExportBundle(bundle, { plotlySpec });
+    const files = (exported as unknown as {
+      files?: ReadonlyArray<{ path: string; mediaType: string; bytes: Uint8Array }>;
+    }).files;
+    const entries = zipEntries(exported.bytes);
+
+    expect(files).toBeDefined();
+    expect(files?.map((file) => file.path).sort()).toEqual([...entries.keys()].sort());
+    for (const file of files ?? []) {
+      expect(file.bytes).toEqual(entries.get(file.path));
+      expect(file.mediaType).toBe(exported.entries.find((entry) => entry.path === file.path)?.mediaType);
+    }
+  });
+
   it("exports participant histories only after explicit opt-in and rejects a plot from another result", async () => {
     const bundle = await scientificBundle();
     const plotlySpec = compileTrajectoryPlotlySpec(bundle, display);
