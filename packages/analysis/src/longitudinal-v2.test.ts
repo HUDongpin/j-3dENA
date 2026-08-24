@@ -269,8 +269,18 @@ describe("dedicated trajectory Plotly compiler", () => {
       [[1.75], [2.75], [3.75]],
       [[3.25], [4.25], [5.25]],
     ]);
-    expect(threeUncertainty).toMatchObject({ type: "scatter3d", error_x: { type: "data", symmetric: false }, error_y: { type: "data", symmetric: false }, error_z: { type: "data", symmetric: false } });
-    expect(threeUncertainty).not.toMatchObject({ marker: { color: "#000000" } });
+    expect(threeUncertainty).toMatchObject({
+      type: "scatter3d",
+      mode: "lines",
+      connectgaps: false,
+      line: { dash: "dash" },
+      opacity: 0.42,
+    });
+    expect(threeUncertainty.error_x).toBeUndefined();
+    expect(threeUncertainty.error_y).toBeUndefined();
+    expect(threeUncertainty.error_z).toBeUndefined();
+    expect(threeUncertainty.marker).toBeUndefined();
+    expect((threeUncertainty.x as Array<number | null>).filter((value) => value === null)).toHaveLength(36);
     expect(three.data.some((trace) => String(trace.meta.role).includes("tube"))).toBe(false);
 
     const two = compileTrajectoryPlotlySpec(scientific, displaySpec("xy"));
