@@ -309,7 +309,11 @@ export interface TrajectoryPlotlySpecV2 {
 export declare function assertTrajectoryRunSpecV2(value: unknown, path?: string): asserts value is TrajectoryRunSpecV2;
 /** Strict structural guard for persisted or remotely returned V2 envelopes. */
 export declare function assertLongitudinalAnalysisBundleV2(value: unknown, path?: string): asserts value is LongitudinalAnalysisBundleV2;
-/** Recomputes the canonical scientific hash; execution target is intentionally display/transport provenance only. */
+/**
+ * Recomputes the canonical scientific hash. Execution target and the
+ * operational run ID remain transport/audit provenance and are intentionally
+ * excluded, so identical science is stable across retries and execution paths.
+ */
 export declare function verifyLongitudinalAnalysisBundleV2(bundle: unknown): Promise<void>;
 /**
  * Pure presenter compiler. It accepts only a completed longitudinal bundle;

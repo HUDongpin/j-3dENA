@@ -36753,7 +36753,7 @@ var init_build_identity = __esmMin((() => {
 		jenaCommit: injected("90790856f00bdef63dbd27fc3a5b502e8cffe65f", "development-unbound"),
 		jenaTarballIntegrity: injected("sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==", "development-unbound"),
 		sdkVersion: injected("0.2.0", "development-unbound"),
-		buildId: injected("8b21d92141ecf610858c998f3f6c7b25bc305eda", "development-unbound"),
+		buildId: injected("d2071c3d92f1847f12b5975456204bc86c37f5e4", "development-unbound"),
 		bound: true
 	});
 }));
@@ -40441,11 +40441,11 @@ function assertLongitudinalAnalysisBundleV2(value, path = "bundle") {
 	if (typed.identity.sourceResultHash !== typed.runSpec.sourceResultHash) contractError(`${path}.identity.sourceResultHash`, "must match runSpec.sourceResultHash");
 }
 function scientificCoreFromBundleV2(bundle) {
-	const { resultHash: _resultHash, ...identity } = bundle.identity;
+	const { resultHash: _resultHash, runId: _runId, ...scientificIdentity } = bundle.identity;
 	const { target: _target, ...scientificExecution } = bundle.execution;
 	return {
 		schemaVersion: bundle.schemaVersion,
-		identity,
+		identity: scientificIdentity,
 		runSpec: bundle.runSpec,
 		model: bundle.model,
 		paths: bundle.paths,
@@ -40457,7 +40457,11 @@ function scientificCoreFromBundleV2(bundle) {
 		scientificExecution
 	};
 }
-/** Recomputes the canonical scientific hash; execution target is intentionally display/transport provenance only. */
+/**
+* Recomputes the canonical scientific hash. Execution target and the
+* operational run ID remain transport/audit provenance and are intentionally
+* excluded, so identical science is stable across retries and execution paths.
+*/
 async function verifyLongitudinalAnalysisBundleV2(bundle) {
 	assertLongitudinalAnalysisBundleV2(bundle);
 	if (await hashAnalysisValueV1(scientificCoreFromBundleV2(bundle)) !== bundle.identity.resultHash) executionReject("LONGITUDINAL_RESULT_HASH_MISMATCH", "bundle.identity.resultHash", "does not match the canonical scientific envelope");
@@ -42218,14 +42222,20 @@ async function executeLongitudinalAnalysisV2(input) {
 	const derivedBootstrap = await runBootstrapV2(input.bootstrapTask, pathTask, contexts);
 	const derivedNetworks = runNetworkOverlaysV2(input.networkOverlayTask, pathTask, source);
 	const jenaBuildId = `jena-js@${input.execution.jenaVersion}+${input.execution.jenaCommit}:${input.execution.buildId}`;
+	const bundleIdentity = {
+		datasetHash: pathTask.datasetHash,
+		specHash: pathTask.specHash,
+		sourceResultHash: source.hash,
+		runId: pathTask.runId,
+		jenaBuildId
+	};
 	const scientificCore = {
 		schemaVersion: LONGITUDINAL_BUNDLE_VERSION_V2,
 		identity: {
-			datasetHash: pathTask.datasetHash,
-			specHash: pathTask.specHash,
-			sourceResultHash: source.hash,
-			runId: pathTask.runId,
-			jenaBuildId
+			datasetHash: bundleIdentity.datasetHash,
+			specHash: bundleIdentity.specHash,
+			sourceResultHash: bundleIdentity.sourceResultHash,
+			jenaBuildId: bundleIdentity.jenaBuildId
 		},
 		runSpec: structuredClone(pathTask.runSpec),
 		model: {
@@ -42258,7 +42268,7 @@ async function executeLongitudinalAnalysisV2(input) {
 	return deepFreeze$1({
 		schemaVersion: LONGITUDINAL_BUNDLE_VERSION_V2,
 		identity: {
-			...scientificCore.identity,
+			...bundleIdentity,
 			resultHash
 		},
 		runSpec: scientificCore.runSpec,
