@@ -20,7 +20,7 @@ export type { AnalysisClientConfig, AnalysisClientV1, AnalysisComputeBuildInfoV1
 export type { AnalysisExecutionDataset, AnalysisExecutionDatasetV1, AnalysisExecutionDatasetV2, AnalysisExecutionSourceResultV2, AnalysisTaskResultV1, PreparedAnalysisExecutionSourceResultV2, RawAnalysisExecutionSourceResultV2, StatisticsDimensionResultV1, StatisticsTaskResultV1 } from "./task-executor.js";
 export type { ChangeNetworkResultV1, ChangeNetworkSelectorV1, NetworkComparisonResultV1, NetworkDifferenceEdgeV1, NetworkMeanEdgeV1, NetworkMeanV1 } from "./network-analysis.js";
 export type { DatasetInspectionV1, ExchangeDatasetInspectionV1, InspectDatasetOptions, TabularDatasetInspectionV1 } from "./dataset-inspection.js";
-export type { AnalysisExportInputV1, AnalysisExportPortfolioV1, CreateExportBundleOptionsV1, ExportBundleV1, ExportEntryReceiptV1, ExportManifestV1 } from "./export-bundle.js";
+export type { AnalysisExportInputV1, AnalysisExportPortfolioV1, CreateLongitudinalExportBundleOptionsV2, CreateExportBundleOptionsV1, ExportBundleV1, ExportEntryReceiptV1, ExportManifestV1, LongitudinalExportBundleV2, LongitudinalExportFileV2, LongitudinalProvenanceManifestV2 } from "./export-bundle.js";
 export type { PlotlySpecV1, PlotlyTraceRoleV1, PlotlyTraceV1 } from "./plotly-spec.js";
 export { DEFAULT_ANALYSIS_LIMITS, HARD_ANALYSIS_LIMITS } from "./validation.js";
 export { AnalysisValidationError } from "./types.js";

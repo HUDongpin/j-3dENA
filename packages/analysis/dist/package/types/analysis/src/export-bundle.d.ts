@@ -84,6 +84,11 @@ export interface LongitudinalProvenanceManifestV2 {
     members: ExportEntryReceiptV1[];
     contentSetHash: string;
 }
+export interface LongitudinalExportFileV2 {
+    path: string;
+    mediaType: "text/csv" | "application/json";
+    bytes: Uint8Array<ArrayBuffer>;
+}
 export interface LongitudinalExportBundleV2 {
     schemaVersion: "3dena.longitudinal-export-bundle.v2";
     fileName: string;
@@ -92,6 +97,8 @@ export interface LongitudinalExportBundleV2 {
     byteLength: number;
     entries: ExportEntryReceiptV1[];
     manifest: LongitudinalProvenanceManifestV2;
+    /** Exact package-generated members, including the manifest, for standalone downloads. */
+    files: LongitudinalExportFileV2[];
 }
 export declare class ExportBundleError extends Error {
     readonly code: string;

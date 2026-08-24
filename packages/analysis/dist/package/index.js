@@ -36753,7 +36753,7 @@ var init_build_identity = __esmMin((() => {
 		jenaCommit: injected("90790856f00bdef63dbd27fc3a5b502e8cffe65f", "development-unbound"),
 		jenaTarballIntegrity: injected("sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==", "development-unbound"),
 		sdkVersion: injected("0.2.0", "development-unbound"),
-		buildId: injected("a6f660351b1ecf48b5cd82a6bb6b18f6000f7318", "development-unbound"),
+		buildId: injected("efc2cc1f96bffaa32fa80000851b99efb3343f1c", "development-unbound"),
 		bound: true
 	});
 }));
@@ -43389,7 +43389,8 @@ async function createLongitudinalExportBundleV2(bundle, options) {
 		byteLength: manifestEntry.data.byteLength,
 		sha256: await sha256Bytes(manifestEntry.data)
 	};
-	const bytes = createDeterministicZip([...sorted, manifestEntry].map((entry) => ({
+	const fileEntries = [...sorted, manifestEntry];
+	const bytes = createDeterministicZip(fileEntries.map((entry) => ({
 		path: entry.path,
 		data: entry.data
 	})), options.zipLimits);
@@ -43400,7 +43401,12 @@ async function createLongitudinalExportBundleV2(bundle, options) {
 		sha256: await sha256Bytes(bytes),
 		byteLength: bytes.byteLength,
 		entries: Object.freeze([...members, manifestReceipt]),
-		manifest: Object.freeze(manifest)
+		manifest: Object.freeze(manifest),
+		files: Object.freeze(fileEntries.map((entry) => Object.freeze({
+			path: entry.path,
+			mediaType: entry.mediaType,
+			bytes: entry.data
+		})))
 	});
 }
 async function createExportBundle(result, options) {
