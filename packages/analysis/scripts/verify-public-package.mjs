@@ -183,10 +183,12 @@ export async function verifyPublicPackage(packageDirectory) {
   const publicNames = [
     "adaptFittedJenaTrajectoryResultV2",
     "assertAnalysisExecutionDatasetV2", "assertAnalysisResultEnvelopeV1",
-    "assertLongitudinalAnalysisBundleV2", "assertTrajectoryRunSpecV2",
+    "assertLongitudinalAnalysisBundleV2", "assertLongitudinalExecutionRequestV2",
+    "assertTrajectoryRunSpecV2",
     "compilePlotlySpec", "compileTrajectoryPlotlySpec", "createAnalysisClient",
     "createExportBundle", "executeAnalysisTask", "executeLongitudinalAnalysisV2",
-    "getAnalysisBuildIdentityV2", "hashAnalysisValueV1", "inspectDataset",
+    "getAnalysisBuildIdentityV2", "hashAnalysisValueV1",
+    "hashLongitudinalExecutionRequestV2", "inspectDataset",
     "verifyLongitudinalAnalysisBundleV2"
   ];
   if (JSON.stringify(Object.keys(loaded).sort()) !== JSON.stringify(publicNames)) {
