@@ -3,6 +3,7 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import { createHash, createHmac, createPublicKey, randomUUID, timingSafeEqual, verify } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { Buffer as Buffer$1 } from "node:buffer";
 import { spawn } from "node:child_process";
 import { realpathSync, statSync } from "node:fs";
 import { constants } from "node:os";
@@ -103,10 +104,11 @@ var IMAGE_DIGEST$2 = /^sha256:[a-f0-9]{64}$/u;
 var VERSION$1 = /^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u;
 var RUNTIME_MANIFEST_FIELDS = [
 	"schemaVersion",
-	"migrationVersion",
-	"migrationSha256",
+	"migrationManifest",
+	"migrationManifestSha256",
 	"contractVersions",
 	"runtimeDependencies",
+	"approvedLongitudinalBuild",
 	"runtimeBundleSha256",
 	"scientificWorkerBundleSha256"
 ];
@@ -115,17 +117,36 @@ function exactEnvironment(environment, name, pattern) {
 	if (value === void 0 || value.length === 0 || pattern !== void 0 && !pattern.test(value)) throw new TypeError(`Required runtime environment ${name} is invalid.`);
 	return value;
 }
-function positiveInteger$1(value, name, maximum) {
+function positiveInteger$2(value, name, maximum) {
 	if (!/^[1-9][0-9]{0,8}$/u.test(value)) throw new TypeError(`${name} is invalid.`);
 	const parsed = Number(value);
 	if (!Number.isSafeInteger(parsed) || parsed > maximum) throw new TypeError(`${name} is invalid.`);
 	return parsed;
 }
+function rootHttpsBaseUrl(value) {
+	let parsed;
+	try {
+		parsed = new URL(value);
+	} catch {
+		throw new TypeError("PUBLIC_COMPUTE_BASE_URL is invalid.");
+	}
+	if (parsed.protocol !== "https:" || parsed.username !== "" || parsed.password !== "" || parsed.pathname !== "/" || parsed.search !== "" || parsed.hash !== "") throw new TypeError("PUBLIC_COMPUTE_BASE_URL must be one root HTTPS origin.");
+	return parsed.origin;
+}
 function assertVersions(value, path) {
 	if (!Array.isArray(value) || value.length < 1 || value.some((entry) => typeof entry !== "string" || !VERSION$1.test(entry)) || new Set(value).size !== value.length || [...value].sort().some((entry, index) => entry !== value[index])) throw new TypeError(`${path} must be a non-empty unique sorted version list.`);
 }
+function isMigrationManifest(value) {
+	return Array.isArray(value) && value.length > 0 && value.every((entry) => isRecord$3(entry) && hasExactKeys$1(entry, ["sha256", "version"]) && typeof entry.version === "string" && VERSION$1.test(entry.version) && typeof entry.sha256 === "string" && LOWER_SHA256$1.test(entry.sha256)) && new Set(value.map((entry) => entry.version)).size === value.length && [...value].sort((left, right) => left.version.localeCompare(right.version)).every((entry, index) => entry.version === value[index]?.version);
+}
 function assertComputeRuntimeBuildManifestV1(value) {
-	if (!isRecord$3(value) || !hasExactKeys$1(value, RUNTIME_MANIFEST_FIELDS) || value.schemaVersion !== "3dena.compute-runtime-build-manifest.v1" || typeof value.migrationVersion !== "string" || !VERSION$1.test(value.migrationVersion) || typeof value.migrationSha256 !== "string" || !LOWER_SHA256$1.test(value.migrationSha256) || typeof value.runtimeBundleSha256 !== "string" || !LOWER_SHA256$1.test(value.runtimeBundleSha256) || typeof value.scientificWorkerBundleSha256 !== "string" || !LOWER_SHA256$1.test(value.scientificWorkerBundleSha256) || !isRecord$3(value.runtimeDependencies) || !hasExactKeys$1(value.runtimeDependencies, ["@vercel/blob", "pg"]) || value.runtimeDependencies["@vercel/blob"] !== "2.8.0" || value.runtimeDependencies.pg !== "8.22.0") throw new TypeError("Runtime build manifest is invalid.");
+	if (!isRecord$3(value) || !hasExactKeys$1(value, RUNTIME_MANIFEST_FIELDS) || value.schemaVersion !== "3dena.compute-runtime-build-manifest.v3" || !isMigrationManifest(value.migrationManifest) || typeof value.migrationManifestSha256 !== "string" || !LOWER_SHA256$1.test(value.migrationManifestSha256) || sha256Text$2(canonicalStringify$2(value.migrationManifest)) !== value.migrationManifestSha256 || typeof value.runtimeBundleSha256 !== "string" || !LOWER_SHA256$1.test(value.runtimeBundleSha256) || typeof value.scientificWorkerBundleSha256 !== "string" || !LOWER_SHA256$1.test(value.scientificWorkerBundleSha256) || !isRecord$3(value.runtimeDependencies) || !hasExactKeys$1(value.runtimeDependencies, ["@vercel/blob", "pg"]) || value.runtimeDependencies["@vercel/blob"] !== "2.8.0" || value.runtimeDependencies.pg !== "8.22.0" || !isRecord$3(value.approvedLongitudinalBuild) || !hasExactKeys$1(value.approvedLongitudinalBuild, [
+		"jenaVersion",
+		"jenaCommit",
+		"jenaTarballIntegrity",
+		"sdkVersion",
+		"buildId"
+	]) || typeof value.approvedLongitudinalBuild.jenaVersion !== "string" || !VERSION$1.test(value.approvedLongitudinalBuild.jenaVersion) || typeof value.approvedLongitudinalBuild.jenaCommit !== "string" || !GIT_COMMIT$1.test(value.approvedLongitudinalBuild.jenaCommit) || typeof value.approvedLongitudinalBuild.jenaTarballIntegrity !== "string" || !/^sha512-[A-Za-z0-9+/]+={0,2}$/u.test(value.approvedLongitudinalBuild.jenaTarballIntegrity) || typeof value.approvedLongitudinalBuild.sdkVersion !== "string" || !VERSION$1.test(value.approvedLongitudinalBuild.sdkVersion) || typeof value.approvedLongitudinalBuild.buildId !== "string" || !OPAQUE_ID$1.test(value.approvedLongitudinalBuild.buildId)) throw new TypeError("Runtime build manifest is invalid.");
 	assertVersions(value.contractVersions, "manifest.contractVersions");
 }
 async function loadComputeRuntimeConfiguration(role, environment = process.env) {
@@ -153,9 +174,9 @@ async function loadComputeRuntimeConfiguration(role, environment = process.env) 
 		vercelBuildId: exactEnvironment(environment, "VERCEL_BUILD_ID", OPAQUE_ID$1),
 		flyImageDigest,
 		flyBuildId,
-		migrationVersion: manifest.migrationVersion,
-		migrationSha256: manifest.migrationSha256,
-		contractVersions: [...manifest.contractVersions]
+		migrationManifestSha256: manifest.migrationManifestSha256,
+		contractVersions: [...manifest.contractVersions],
+		...manifest.approvedLongitudinalBuild
 	});
 	return Object.freeze({
 		role,
@@ -163,15 +184,17 @@ async function loadComputeRuntimeConfiguration(role, environment = process.env) 
 		blobToken: exactEnvironment(environment, "BLOB_READ_WRITE_TOKEN"),
 		blobNamespace: exactEnvironment(environment, "BLOB_NAMESPACE", /^[a-z0-9][a-z0-9-]{0,62}$/u),
 		capabilityHmacSecret: exactEnvironment(environment, "CAPABILITY_HMAC_SECRET"),
-		publicBaseUrl: exactEnvironment(environment, "PUBLIC_COMPUTE_BASE_URL", /^https:\/\//u),
+		longitudinalServiceTokenSha256: exactEnvironment(environment, "LONGITUDINAL_SERVICE_TOKEN_SHA256", LOWER_SHA256$1),
+		publicBaseUrl: rootHttpsBaseUrl(exactEnvironment(environment, "PUBLIC_COMPUTE_BASE_URL", /^https:\/\//u)),
 		allowedOrigins: Object.freeze([...allowedOrigins]),
 		publicKeysPath: exactEnvironment(environment, "BUILD_APPROVAL_PUBLIC_KEYS_PATH"),
 		workerEntryPath: exactEnvironment(environment, "SCIENTIFIC_WORKER_ENTRY_PATH"),
-		port: positiveInteger$1(exactEnvironment(environment, "PORT"), "PORT", 65535),
+		port: positiveInteger$2(exactEnvironment(environment, "PORT"), "PORT", 65535),
 		holderId: exactEnvironment(environment, "FLY_MACHINE_ID", OPAQUE_ID$1),
-		globalCapacity: positiveInteger$1(exactEnvironment(environment, "GLOBAL_COMPUTE_CAPACITY"), "GLOBAL_COMPUTE_CAPACITY", 1e4),
+		globalCapacity: positiveInteger$2(exactEnvironment(environment, "GLOBAL_COMPUTE_CAPACITY"), "GLOBAL_COMPUTE_CAPACITY", 1e4),
 		manifest,
 		expectedBuild,
+		approvedLongitudinalBuild: Object.freeze({ ...manifest.approvedLongitudinalBuild }),
 		publicBuildIdentity: Object.freeze({
 			approvalManifestSha256,
 			releaseId,
@@ -190,36 +213,120 @@ async function verifyComputeRuntimeArtifactHashes(manifest, runtimePath, workerP
 		return false;
 	}
 }
-Object.freeze({
-	maxRows: 1e5,
-	maxColumns: 256,
-	maxCells: 5e6,
-	maxAccumulationCells: 5e6,
-	maxCodes: 64,
-	maxEdges: 2016,
-	maxStringLength: 32768,
-	maxUnits: 5e4,
-	maxGroups: 200,
-	maxTimePoints: 512,
-	maxOutputPoints: 1e5,
-	maxDimensions: 200,
-	maxCoordinateCells: 5e6
-});
-var HARD_ANALYSIS_LIMITS = Object.freeze({
-	maxRows: 5e5,
-	maxColumns: 1024,
-	maxCells: 2e7,
-	maxAccumulationCells: 2e7,
-	maxCodes: 128,
-	maxEdges: 8128,
-	maxStringLength: 1e6,
-	maxUnits: 2e5,
-	maxGroups: 1e3,
-	maxTimePoints: 1e4,
-	maxOutputPoints: 5e5,
-	maxDimensions: 500,
-	maxCoordinateCells: 2e7
-});
+//#endregion
+//#region packages/analysis/src/build-identity.ts
+function injected(value, fallback) {
+	return typeof value === "string" && value.trim() !== "" ? value : fallback;
+}
+var ANALYSIS_BUILD_IDENTITY;
+var init_build_identity = __esmMin((() => {
+	ANALYSIS_BUILD_IDENTITY = Object.freeze({
+		jenaVersion: injected("0.7.0-ona.0", "development-unbound"),
+		jenaCommit: injected("90790856f00bdef63dbd27fc3a5b502e8cffe65f", "development-unbound"),
+		jenaTarballIntegrity: injected("sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==", "development-unbound"),
+		sdkVersion: injected("0.2.0-implemented-unverified.5", "development-unbound"),
+		buildId: injected("ee697967df9b7abab020c519d8ae7437edb4f97e", "development-unbound"),
+		bound: true
+	});
+})), HARD_ANALYSIS_LIMITS;
+var init_validation = __esmMin((() => {
+	Object.freeze({
+		maxRows: 1e5,
+		maxColumns: 256,
+		maxCells: 5e6,
+		maxAccumulationCells: 5e6,
+		maxCodes: 64,
+		maxEdges: 2016,
+		maxStringLength: 32768,
+		maxUnits: 5e4,
+		maxGroups: 200,
+		maxTimePoints: 512,
+		maxOutputPoints: 1e5,
+		maxDimensions: 200,
+		maxCoordinateCells: 5e6
+	});
+	HARD_ANALYSIS_LIMITS = Object.freeze({
+		maxRows: 5e5,
+		maxColumns: 1024,
+		maxCells: 2e7,
+		maxAccumulationCells: 2e7,
+		maxCodes: 128,
+		maxEdges: 8128,
+		maxStringLength: 1e6,
+		maxUnits: 2e5,
+		maxGroups: 1e3,
+		maxTimePoints: 1e4,
+		maxOutputPoints: 5e5,
+		maxDimensions: 500,
+		maxCoordinateCells: 2e7
+	});
+}));
+//#endregion
+//#region packages/analysis/src/trajectory.ts
+var init_trajectory = __esmMin((() => {
+	init_validation();
+}));
+//#endregion
+//#region packages/analysis/src/prepared-derived.ts
+__esmMin((() => {
+	init_build_identity();
+	init_trajectory();
+	init_validation();
+}))();
+var SHA256$4 = /^[a-f0-9]{64}$/u;
+var PreparedDerivedAnalysisError = class extends Error {
+	code;
+	path;
+	constructor(code, path, message) {
+		super(`${path}: ${message}`);
+		this.name = "PreparedDerivedAnalysisError";
+		this.code = code;
+		this.path = path;
+	}
+};
+function reject$2(code, path, message) {
+	throw new PreparedDerivedAnalysisError(code, path, message);
+}
+/**
+* Validates the immutable prepared reduction boundary without claiming that
+* imported coordinates were recomputed from raw rows.
+*/
+function assertPreparedDerivedSource(result) {
+	if (!result || typeof result !== "object" || result.schemaVersion !== "3dena.prepared-space-result.v1") reject$2("INVALID_PREPARED_SOURCE", "result.schemaVersion", "must be 3dena.prepared-space-result.v1");
+	const provenance = result.provenance;
+	if (result.sourceKind !== "prepared-exchange" || result.rawJenaRecompute !== false || !provenance || typeof provenance !== "object" || provenance.jenaExecuted !== false || provenance.coordinateSpace !== "precomputed-import" || provenance.computation !== "reduction-only") reject$2("INVALID_PREPARED_BOUNDARY", "result", "must remain a precomputed prepared exchange with jENA execution disabled");
+	const sourceReceipt = result.sourceReceipt;
+	if (!sourceReceipt || typeof sourceReceipt !== "object" || !SHA256$4.test(sourceReceipt.sha256) || !Number.isSafeInteger(sourceReceipt.byteLength) || sourceReceipt.byteLength < 1) reject$2("INVALID_PREPARED_RECEIPT", "result.sourceReceipt", "must contain an exact SHA-256 and positive byte length");
+	const fullSpace = result.fullSpace;
+	if (!fullSpace || typeof fullSpace !== "object") reject$2("INVALID_PREPARED_FULL_SPACE", "result.fullSpace", "must contain the imported full-space reduction");
+	const { dimensions, points, edges, lineWeights } = fullSpace;
+	if (!Array.isArray(dimensions) || dimensions.length === 0 || dimensions.some((dimension) => typeof dimension !== "string" || dimension.trim() === "")) reject$2("INVALID_PREPARED_DIMENSIONS", "result.fullSpace.dimensions", "must contain non-empty dimension names");
+	if (new Set(dimensions).size !== dimensions.length) reject$2("DUPLICATE_PREPARED_DIMENSION", "result.fullSpace.dimensions", "must not contain duplicates");
+	if (!Array.isArray(points) || points.length === 0) reject$2("EMPTY_PREPARED_POINT_SET", "result.fullSpace.points", "must not be empty");
+	if (!Array.isArray(edges) || edges.length === 0) reject$2("EMPTY_PREPARED_EDGE_SET", "result.fullSpace.edges", "must not be empty");
+	if (!lineWeights || typeof lineWeights !== "object" || !Array.isArray(lineWeights.rowKeys) || !Array.isArray(lineWeights.values) || !Array.isArray(lineWeights.columns) || lineWeights.rowKeys.length !== points.length || lineWeights.values.length !== points.length || lineWeights.columns.length !== edges.length) reject$2("MISALIGNED_PREPARED_LINE_WEIGHTS", "result.fullSpace.lineWeights", "row keys, values, columns, points, and edges must remain exactly aligned");
+	const pointKeys = /* @__PURE__ */ new Set();
+	points.forEach((point, index) => {
+		if (!point || typeof point !== "object") reject$2("INVALID_PREPARED_POINT", `result.fullSpace.points[${index}]`, "must be an object");
+		if (point.index !== index) reject$2("MISALIGNED_PREPARED_POINT_ORDER", `result.fullSpace.points[${index}].index`, "must equal its array position");
+		if (typeof point.id?.canonical !== "string" || point.id.canonical.length === 0 || typeof point.participant?.canonical !== "string" || point.participant.canonical.length === 0 || typeof point.participantLabel?.canonical !== "string" || point.participantLabel.canonical.length === 0 || typeof point.group?.canonical !== "string" || point.group.canonical.length === 0 || typeof point.time?.canonical !== "string" || point.time.canonical.length === 0) reject$2("INVALID_PREPARED_POINT_IDENTITY", `result.fullSpace.points[${index}]`, "must preserve non-empty point, participant, label, group, and time identities");
+		if (pointKeys.has(point.id.canonical)) reject$2("DUPLICATE_PREPARED_POINT_IDENTITY", `result.fullSpace.points[${index}].id`, "duplicates an earlier prepared point identity");
+		pointKeys.add(point.id.canonical);
+		if (!Array.isArray(point.coordinates) || point.coordinates.length !== dimensions.length || point.coordinates.some((value) => !Number.isFinite(value))) reject$2("INVALID_PREPARED_COORDINATES", `result.fullSpace.points[${index}].coordinates`, "must contain one finite value per dimension");
+		if (lineWeights.rowKeys[index]?.canonical !== point.id.canonical) reject$2("MISALIGNED_PREPARED_IDENTITY", `result.fullSpace.lineWeights.rowKeys[${index}]`, "must match the exact point identity and order");
+		const weights = lineWeights.values[index];
+		if (!weights || weights.length !== edges.length || weights.some((value) => !Number.isFinite(value))) reject$2("INVALID_PREPARED_LINE_WEIGHT_ROW", `result.fullSpace.lineWeights.values[${index}]`, "must contain one finite value per edge");
+	});
+	const edgeKeys = /* @__PURE__ */ new Set();
+	edges.forEach((edge, index) => {
+		if (!edge || typeof edge !== "object" || typeof edge.id !== "string" || edge.id.length === 0 || typeof edge.column !== "string" || edge.column.length === 0) reject$2("INVALID_PREPARED_EDGE", `result.fullSpace.edges[${index}]`, "must preserve non-empty edge and column identities");
+		if (edge.index !== index || lineWeights.columns[index] !== edge.column) reject$2("MISALIGNED_PREPARED_EDGE_ORDER", `result.fullSpace.edges[${index}]`, "must preserve imported edge and line-weight column order");
+		const edgeKey = JSON.stringify([edge.id, edge.column]);
+		if (edgeKeys.has(edgeKey)) reject$2("DUPLICATE_PREPARED_EDGE_IDENTITY", `result.fullSpace.edges[${index}]`, "duplicates an earlier prepared edge identity");
+		edgeKeys.add(edgeKey);
+	});
+	if (!result.displaySpace?.trajectory || !Array.isArray(result.displaySpace.trajectory.groupOrder)) reject$2("INVALID_PREPARED_GROUP_ORDER", "result.displaySpace.trajectory.groupOrder", "must preserve the prepared canonical group inventory");
+}
 //#endregion
 //#region packages/analysis/src/scientific-result-schemas.ts
 var MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
@@ -504,7 +611,7 @@ var ANALYSIS_PROVENANCE_SCHEMA = exactObject$1([
 	"resolvedLimits"
 ], {
 	adapter: { const: "@3dena/analysis" },
-	adapterVersion: { const: "0.1.0" },
+	adapterVersion: NON_EMPTY_STRING_SCHEMA$1,
 	jenaPackage: { const: "jena-js" },
 	jenaVersion: NON_EMPTY_STRING_SCHEMA$1,
 	jenaCommit: NON_EMPTY_STRING_SCHEMA$1,
@@ -528,7 +635,7 @@ var ANALYSIS_PROVENANCE_SCHEMA = exactObject$1([
 		] },
 		window: { enum: ["MovingStanzaWindow", "Conversation"] },
 		weightBy: { enum: ["binary", "sum"] },
-		windowSizeBack: SAFE_NON_NEGATIVE_INTEGER_SCHEMA$1,
+		windowSizeBack: { anyOf: [SAFE_NON_NEGATIVE_INTEGER_SCHEMA$1, { const: "Infinity" }] },
 		windowSizeForward: SAFE_NON_NEGATIVE_INTEGER_SCHEMA$1,
 		centerAlignToOrigin: { type: "boolean" }
 	}),
@@ -569,13 +676,10 @@ var ENA_MODEL_RESULT_SCHEMA_V1 = { ...exactObject$1([
 	}),
 	axes: {
 		type: "array",
-		prefixItems: [
-			{ const: "SVD1" },
-			{ const: "SVD2" },
-			{ const: "SVD3" }
-		],
+		items: NON_EMPTY_STRING_SCHEMA$1,
 		minItems: 3,
-		maxItems: 3
+		maxItems: 3,
+		uniqueItems: true
 	},
 	points: arrayOf(ANALYSIS_POINT_SCHEMA, { minItems: 1 }),
 	nodes: arrayOf(ANALYSIS_NODE_SCHEMA, { minItems: 3 }),
@@ -602,7 +706,11 @@ var ENA_MODEL_RESULT_SCHEMA_V1 = { ...exactObject$1([
 		"eigenvalues",
 		"centerVector"
 	], {
-		method: { const: "svd" },
+		method: { enum: [
+			"svd",
+			"mean",
+			"reference"
+		] },
 		columns: arrayOf(NON_EMPTY_STRING_SCHEMA$1, {
 			minItems: 3,
 			uniqueItems: true
@@ -1116,6 +1224,7 @@ var TRAJECTORY_PATH_STATISTICS_SCHEMA = exactObject$1([
 	"schemaVersion",
 	"namespace",
 	"cohortPolicy",
+	"estimand",
 	"dimensions",
 	"selectedDimensions",
 	"distanceSemantics",
@@ -1128,6 +1237,7 @@ var TRAJECTORY_PATH_STATISTICS_SCHEMA = exactObject$1([
 	schemaVersion: { const: "3dena.trajectory-path-statistics.v1" },
 	namespace: NON_EMPTY_STRING_SCHEMA$1,
 	cohortPolicy: { enum: ["available", "complete"] },
+	estimand: { enum: ["equal-participant", "weighted-participant"] },
 	dimensions: arrayOf(NON_EMPTY_STRING_SCHEMA$1, {
 		minItems: 1,
 		uniqueItems: true
@@ -1141,7 +1251,7 @@ var TRAJECTORY_PATH_STATISTICS_SCHEMA = exactObject$1([
 		selected3d: "euclidean-selected-three-dimensions",
 		fullSpace: "euclidean-all-declared-dimensions"
 	}),
-	participantPeriods: arrayOf(trajectoryParticipantPeriodSchema(false)),
+	participantPeriods: arrayOf(trajectoryParticipantPeriodSchema(true)),
 	periods: arrayOf(TRAJECTORY_PATH_PERIOD_SCHEMA),
 	diagnostics: DIAGNOSTICS_SCHEMA,
 	summary: countObject([
@@ -1536,20 +1646,11 @@ var BOOTSTRAP_RESULT_SCHEMA = exactObject$1([
 			unitCount: SAFE_POSITIVE_INTEGER_SCHEMA$1
 		}), { minItems: 1 }),
 		replicateCount: SAFE_POSITIVE_INTEGER_SCHEMA$1,
-		planKind: { const: "participant-history-resample-indices-v1" },
+		planKind: { enum: ["participant-history-resample-indices-v1", "global-participant-history-resample-indices-v2"] },
 		generation: BOOTSTRAP_GENERATION_SCHEMA,
 		rngParityClaim: { const: false }
 	}),
 	diagnostics: DIAGNOSTICS_SCHEMA
-});
-var RESULT_VARIANT_SCHEMAS_V1 = Object.freeze({
-	"ena-model": ENA_MODEL_RESULT_SCHEMA_V1,
-	"network-comparison": NETWORK_COMPARISON_RESULT_SCHEMA,
-	"change-network": CHANGE_NETWORK_RESULT_SCHEMA,
-	statistics: STATISTICS_TASK_RESULT_SCHEMA,
-	trajectory: TRAJECTORY_DYNAMICS_RESULT_SCHEMA,
-	"trajectory-comparison": TRAJECTORY_COMPARISON_RESULT_SCHEMA,
-	bootstrap: BOOTSTRAP_RESULT_SCHEMA
 });
 var PREPARED_ENTITY_KEY_SCHEMA = exactObject$1([
 	"canonical",
@@ -1830,6 +1931,16 @@ var PREPARED_SPACE_RESULT_SCHEMA_V1 = exactObject$1([
 		resolvedMapping: PREPARED_MAPPING_SCHEMA
 	})
 });
+var RESULT_VARIANT_SCHEMAS_V1 = Object.freeze({
+	"ena-model": ENA_MODEL_RESULT_SCHEMA_V1,
+	"prepared-import": PREPARED_SPACE_RESULT_SCHEMA_V1,
+	"network-comparison": NETWORK_COMPARISON_RESULT_SCHEMA,
+	"change-network": CHANGE_NETWORK_RESULT_SCHEMA,
+	statistics: STATISTICS_TASK_RESULT_SCHEMA,
+	trajectory: TRAJECTORY_DYNAMICS_RESULT_SCHEMA,
+	"trajectory-comparison": TRAJECTORY_COMPARISON_RESULT_SCHEMA,
+	bootstrap: BOOTSTRAP_RESULT_SCHEMA
+});
 var ANALYSIS_EXECUTION_DATASET_V2_SCHEMA = {
 	$id: "https://3dena.com/schemas/analysis-execution-dataset.v2.json",
 	...exactObject$1([
@@ -1885,6 +1996,7 @@ var RESULT_ENVELOPE_VERSION_V1 = "3dena.analysis-result-envelope.v1";
 var PROVENANCE_MANIFEST_VERSION_V1 = "3dena.provenance-manifest.v1";
 var RESULT_SCHEMA_VERSION_BY_TASK_KIND_V1 = Object.freeze({
 	"ena-model": "3dena.analysis-result.v1",
+	"prepared-import": "3dena.prepared-space-result.v1",
 	"network-comparison": "3dena.network-comparison.v1",
 	"change-network": "3dena.change-network.v1",
 	statistics: "3dena.statistics-task-result.v1",
@@ -1912,53 +2024,53 @@ var TRAJECTORY_DURATION_UNITS = /* @__PURE__ */ new Set([
 	"days",
 	"weeks"
 ]);
-function contractError(path, message) {
+function contractError$1(path, message) {
 	throw new TypeError(`${path}: ${message}`);
 }
-function objectAt(value, path) {
-	if (!value || typeof value !== "object" || Array.isArray(value)) contractError(path, "must be an object");
+function objectAt$2(value, path) {
+	if (!value || typeof value !== "object" || Array.isArray(value)) contractError$1(path, "must be an object");
 	return value;
 }
-function exactFields$1(value, fields, path) {
+function exactFields$3(value, fields, path) {
 	const allowed = new Set(fields);
 	const unknown = Object.keys(value).filter((field) => !allowed.has(field));
-	if (unknown.length > 0) contractError(path, `contains unknown field ${JSON.stringify(unknown[0])}`);
+	if (unknown.length > 0) contractError$1(path, `contains unknown field ${JSON.stringify(unknown[0])}`);
 	const missing = fields.filter((field) => !Object.hasOwn(value, field));
-	if (missing.length > 0) contractError(path, `is missing required field ${JSON.stringify(missing[0])}`);
+	if (missing.length > 0) contractError$1(path, `is missing required field ${JSON.stringify(missing[0])}`);
 }
 function allowedFields(value, allowedFieldsList, requiredFieldsList, path) {
 	const allowed = new Set(allowedFieldsList);
 	const unknown = Object.keys(value).filter((field) => !allowed.has(field));
-	if (unknown.length > 0) contractError(path, `contains unknown field ${JSON.stringify(unknown[0])}`);
+	if (unknown.length > 0) contractError$1(path, `contains unknown field ${JSON.stringify(unknown[0])}`);
 	const missing = requiredFieldsList.filter((field) => !Object.hasOwn(value, field));
-	if (missing.length > 0) contractError(path, `is missing required field ${JSON.stringify(missing[0])}`);
+	if (missing.length > 0) contractError$1(path, `is missing required field ${JSON.stringify(missing[0])}`);
 }
-function nonEmptyString$1(value, path) {
-	if (typeof value !== "string" || value.trim() === "") contractError(path, "must be a non-empty string");
+function nonEmptyString$2(value, path) {
+	if (typeof value !== "string" || value.trim() === "") contractError$1(path, "must be a non-empty string");
 	return value;
 }
 function validateSignedInteger(value, path) {
-	if (!SIGNED_INTEGER.test(value)) contractError(path, "must be a canonical signed decimal integer");
+	if (!SIGNED_INTEGER.test(value)) contractError$1(path, "must be a canonical signed decimal integer");
 	return BigInt(value);
 }
 function validateInt64(value, path) {
 	const parsed = validateSignedInteger(value, path);
-	if (parsed < -9223372036854775808n || parsed > 9223372036854775807n) contractError(path, "must fit signed int64");
+	if (parsed < -9223372036854775808n || parsed > 9223372036854775807n) contractError$1(path, "must fit signed int64");
 }
 function validateDate(value, path) {
 	const match = ISO_DATE.exec(value);
-	if (!match) contractError(path, "must be an ISO calendar date YYYY-MM-DD");
+	if (!match) contractError$1(path, "must be an ISO calendar date YYYY-MM-DD");
 	const year = Number(match[1]);
 	const month = Number(match[2]);
 	const day = Number(match[3]);
 	const instant = /* @__PURE__ */ new Date(0);
 	instant.setUTCHours(0, 0, 0, 0);
 	instant.setUTCFullYear(year, month - 1, day);
-	if (instant.getUTCFullYear() !== year || instant.getUTCMonth() !== month - 1 || instant.getUTCDate() !== day) contractError(path, "must be a real calendar date");
+	if (instant.getUTCFullYear() !== year || instant.getUTCMonth() !== month - 1 || instant.getUTCDate() !== day) contractError$1(path, "must be a real calendar date");
 }
 /** Encodes the exact IEEE-754 bit pattern, preserving -0 and adjacent doubles. */
 function typedDoubleV1(value) {
-	if (!Number.isFinite(value)) contractError("value", "double identities must be finite");
+	if (!Number.isFinite(value)) contractError$1("value", "double identities must be finite");
 	const buffer = /* @__PURE__ */ new ArrayBuffer(8);
 	new DataView(buffer).setFloat64(0, value, false);
 	return {
@@ -1967,25 +2079,25 @@ function typedDoubleV1(value) {
 	};
 }
 function assertTaskOwnerV1(value, path = "owner") {
-	const owner = objectAt(value, path);
-	exactFields$1(owner, [
+	const owner = objectAt$2(value, path);
+	exactFields$3(owner, [
 		"contractVersion",
 		"datasetHash",
 		"specHash",
 		"runId",
 		"taskId"
 	], path);
-	if (owner.contractVersion !== "3dena.contract.v1") contractError(`${path}.contractVersion`, `must be ${ANALYSIS_CONTRACT_VERSION_V1}`);
+	if (owner.contractVersion !== "3dena.contract.v1") contractError$1(`${path}.contractVersion`, `must be ${ANALYSIS_CONTRACT_VERSION_V1}`);
 	for (const field of ["datasetHash", "specHash"]) {
-		const hash = nonEmptyString$1(owner[field], `${path}.${field}`);
-		if (!SHA256$3.test(hash)) contractError(`${path}.${field}`, "must be a lowercase SHA-256 hex digest");
+		const hash = nonEmptyString$2(owner[field], `${path}.${field}`);
+		if (!SHA256$3.test(hash)) contractError$1(`${path}.${field}`, "must be a lowercase SHA-256 hex digest");
 	}
-	nonEmptyString$1(owner.runId, `${path}.runId`);
-	nonEmptyString$1(owner.taskId, `${path}.taskId`);
+	nonEmptyString$2(owner.runId, `${path}.runId`);
+	nonEmptyString$2(owner.taskId, `${path}.taskId`);
 }
 function assertDatasetReceiptV1(value, path = "receipt") {
-	const receipt = objectAt(value, path);
-	exactFields$1(receipt, [
+	const receipt = objectAt$2(value, path);
+	exactFields$3(receipt, [
 		"schemaVersion",
 		"sha256",
 		"byteLength",
@@ -1998,35 +2110,35 @@ function assertDatasetReceiptV1(value, path = "receipt") {
 		"warnings",
 		"activationIdentity"
 	], path);
-	if (receipt.schemaVersion !== "3dena.dataset-receipt.v1") contractError(`${path}.schemaVersion`, `must be ${DATASET_RECEIPT_VERSION_V1}`);
-	if (typeof receipt.sha256 !== "string" || !SHA256$3.test(receipt.sha256)) contractError(`${path}.sha256`, "must be a lowercase SHA-256 hex digest");
+	if (receipt.schemaVersion !== "3dena.dataset-receipt.v1") contractError$1(`${path}.schemaVersion`, `must be ${DATASET_RECEIPT_VERSION_V1}`);
+	if (typeof receipt.sha256 !== "string" || !SHA256$3.test(receipt.sha256)) contractError$1(`${path}.sha256`, "must be a lowercase SHA-256 hex digest");
 	for (const field of [
 		"byteLength",
 		"rows",
 		"columns"
-	]) if (!Number.isSafeInteger(receipt[field]) || receipt[field] < 1) contractError(`${path}.${field}`, "must be a positive safe integer");
+	]) if (!Number.isSafeInteger(receipt[field]) || receipt[field] < 1) contractError$1(`${path}.${field}`, "must be a positive safe integer");
 	if (![
 		"csv",
 		"xlsx",
 		"xls",
 		"ena3d-json"
-	].includes(receipt.format)) contractError(`${path}.format`, "is unsupported");
+	].includes(receipt.format)) contractError$1(`${path}.format`, "is unsupported");
 	if (receipt.sheet !== null) {
-		const sheet = objectAt(receipt.sheet, `${path}.sheet`);
-		exactFields$1(sheet, ["index", "name"], `${path}.sheet`);
-		if (!Number.isSafeInteger(sheet.index) || sheet.index < 0) contractError(`${path}.sheet.index`, "must be a non-negative safe integer");
-		nonEmptyString$1(sheet.name, `${path}.sheet.name`);
+		const sheet = objectAt$2(receipt.sheet, `${path}.sheet`);
+		exactFields$3(sheet, ["index", "name"], `${path}.sheet`);
+		if (!Number.isSafeInteger(sheet.index) || sheet.index < 0) contractError$1(`${path}.sheet.index`, "must be a non-negative safe integer");
+		nonEmptyString$2(sheet.name, `${path}.sheet.name`);
 	}
-	const schema = objectAt(receipt.schema, `${path}.schema`);
-	exactFields$1(schema, [
+	const schema = objectAt$2(receipt.schema, `${path}.schema`);
+	exactFields$3(schema, [
 		"schemaVersion",
 		"headers",
 		"columns"
 	], `${path}.schema`);
-	if (schema.schemaVersion !== "3dena.dataset-schema.v1") contractError(`${path}.schema.schemaVersion`, "must be 3dena.dataset-schema.v1");
-	const headers = stringList(schema.headers, `${path}.schema.headers`);
-	if (headers.length !== receipt.columns) contractError(`${path}.schema.headers`, "length must equal receipt.columns");
-	if (!Array.isArray(schema.columns) || schema.columns.length !== receipt.columns) contractError(`${path}.schema.columns`, "length must equal receipt.columns");
+	if (schema.schemaVersion !== "3dena.dataset-schema.v1") contractError$1(`${path}.schema.schemaVersion`, "must be 3dena.dataset-schema.v1");
+	const headers = stringList$1(schema.headers, `${path}.schema.headers`);
+	if (headers.length !== receipt.columns) contractError$1(`${path}.schema.headers`, "length must equal receipt.columns");
+	if (!Array.isArray(schema.columns) || schema.columns.length !== receipt.columns) contractError$1(`${path}.schema.columns`, "length must equal receipt.columns");
 	const allowedTypes = /* @__PURE__ */ new Set([
 		"string",
 		"number",
@@ -2044,20 +2156,20 @@ function assertDatasetReceiptV1(value, path = "receipt") {
 		"unmapped"
 	]);
 	schema.columns.forEach((candidate, index) => {
-		const column = objectAt(candidate, `${path}.schema.columns[${index}]`);
-		exactFields$1(column, [
+		const column = objectAt$2(candidate, `${path}.schema.columns[${index}]`);
+		exactFields$3(column, [
 			"name",
 			"inferredType",
 			"roles"
 		], `${path}.schema.columns[${index}]`);
-		if (nonEmptyString$1(column.name, `${path}.schema.columns[${index}].name`) !== headers[index]) contractError(`${path}.schema.columns[${index}].name`, "must match the ordered header at the same index");
-		if (!allowedTypes.has(column.inferredType)) contractError(`${path}.schema.columns[${index}].inferredType`, "is unsupported");
-		if (!Array.isArray(column.roles) || column.roles.length === 0 || column.roles.some((role) => !allowedRoles.has(role))) contractError(`${path}.schema.columns[${index}].roles`, "must be a non-empty array of supported roles");
-		if (new Set(column.roles).size !== column.roles.length) contractError(`${path}.schema.columns[${index}].roles`, "must not contain duplicates");
-		if (column.roles.includes("unmapped") && column.roles.length !== 1) contractError(`${path}.schema.columns[${index}].roles`, "unmapped must stand alone");
+		if (nonEmptyString$2(column.name, `${path}.schema.columns[${index}].name`) !== headers[index]) contractError$1(`${path}.schema.columns[${index}].name`, "must match the ordered header at the same index");
+		if (!allowedTypes.has(column.inferredType)) contractError$1(`${path}.schema.columns[${index}].inferredType`, "is unsupported");
+		if (!Array.isArray(column.roles) || column.roles.length === 0 || column.roles.some((role) => !allowedRoles.has(role))) contractError$1(`${path}.schema.columns[${index}].roles`, "must be a non-empty array of supported roles");
+		if (new Set(column.roles).size !== column.roles.length) contractError$1(`${path}.schema.columns[${index}].roles`, "must not contain duplicates");
+		if (column.roles.includes("unmapped") && column.roles.length !== 1) contractError$1(`${path}.schema.columns[${index}].roles`, "unmapped must stand alone");
 	});
-	const limits = objectAt(receipt.limits, `${path}.limits`);
-	exactFields$1(limits, [
+	const limits = objectAt$2(receipt.limits, `${path}.limits`);
+	exactFields$3(limits, [
 		"schemaVersion",
 		"maxFileBytes",
 		"maxWorksheets",
@@ -2065,26 +2177,26 @@ function assertDatasetReceiptV1(value, path = "receipt") {
 		"maxColumns",
 		"maxCells"
 	], `${path}.limits`);
-	if (limits.schemaVersion !== "3dena.dataset-limits.v1") contractError(`${path}.limits.schemaVersion`, "must be 3dena.dataset-limits.v1");
+	if (limits.schemaVersion !== "3dena.dataset-limits.v1") contractError$1(`${path}.limits.schemaVersion`, "must be 3dena.dataset-limits.v1");
 	for (const field of [
 		"maxFileBytes",
 		"maxWorksheets",
 		"maxRows",
 		"maxColumns",
 		"maxCells"
-	]) if (!Number.isSafeInteger(limits[field]) || limits[field] < 1) contractError(`${path}.limits.${field}`, "must be a positive safe integer");
-	if (receipt.byteLength > limits.maxFileBytes) contractError(`${path}.byteLength`, "exceeds the activated limits contract");
-	if (receipt.rows > limits.maxRows) contractError(`${path}.rows`, "exceeds the activated limits contract");
-	if (receipt.columns > limits.maxColumns) contractError(`${path}.columns`, "exceeds the activated limits contract");
+	]) if (!Number.isSafeInteger(limits[field]) || limits[field] < 1) contractError$1(`${path}.limits.${field}`, "must be a positive safe integer");
+	if (receipt.byteLength > limits.maxFileBytes) contractError$1(`${path}.byteLength`, "exceeds the activated limits contract");
+	if (receipt.rows > limits.maxRows) contractError$1(`${path}.rows`, "exceeds the activated limits contract");
+	if (receipt.columns > limits.maxColumns) contractError$1(`${path}.columns`, "exceeds the activated limits contract");
 	const cells = receipt.rows * receipt.columns;
-	if (!Number.isSafeInteger(cells) || cells > limits.maxCells) contractError(`${path}.rows`, "implies cells above the activated limits contract");
-	if (!Array.isArray(receipt.warnings) || receipt.warnings.some((warning) => typeof warning !== "string")) contractError(`${path}.warnings`, "must be a string array");
-	if (new Set(receipt.warnings).size !== receipt.warnings.length) contractError(`${path}.warnings`, "must not contain duplicates");
-	nonEmptyString$1(receipt.activationIdentity, `${path}.activationIdentity`);
+	if (!Number.isSafeInteger(cells) || cells > limits.maxCells) contractError$1(`${path}.rows`, "implies cells above the activated limits contract");
+	if (!Array.isArray(receipt.warnings) || receipt.warnings.some((warning) => typeof warning !== "string")) contractError$1(`${path}.warnings`, "must be a string array");
+	if (new Set(receipt.warnings).size !== receipt.warnings.length) contractError$1(`${path}.warnings`, "must not contain duplicates");
+	nonEmptyString$2(receipt.activationIdentity, `${path}.activationIdentity`);
 }
 function assertAnalysisSpecV1(value, path = "spec") {
-	const spec = objectAt(value, path);
-	exactFields$1(spec, [
+	const spec = objectAt$2(value, path);
+	exactFields$3(spec, [
 		"schemaVersion",
 		"model",
 		"window",
@@ -2094,58 +2206,80 @@ function assertAnalysisSpecV1(value, path = "spec") {
 		"centerAlignToOrigin",
 		"cohortPolicy"
 	], path);
-	if (spec.schemaVersion !== "3dena.analysis-spec.v1") contractError(`${path}.schemaVersion`, "must be 3dena.analysis-spec.v1");
-	if (!(spec.model === "EndPoint" || spec.model === "AccumulatedTrajectory" || spec.model === "SeparateTrajectory")) contractError(`${path}.model`, "is unsupported");
-	if (!(spec.window === "MovingStanzaWindow" || spec.window === "Conversation")) contractError(`${path}.window`, "is unsupported");
-	if (!(spec.weightBy === "binary" || spec.weightBy === "sum")) contractError(`${path}.weightBy`, "is unsupported");
-	for (const field of ["windowSizeBack", "windowSizeForward"]) if (!Number.isSafeInteger(spec[field]) || spec[field] < 0) contractError(`${path}.${field}`, "must be a non-negative safe integer");
-	if (typeof spec.centerAlignToOrigin !== "boolean") contractError(`${path}.centerAlignToOrigin`, "must be boolean");
-	if (spec.cohortPolicy !== "available" && spec.cohortPolicy !== "complete") contractError(`${path}.cohortPolicy`, "must be available or complete");
+	if (spec.schemaVersion !== "3dena.analysis-spec.v1") contractError$1(`${path}.schemaVersion`, "must be 3dena.analysis-spec.v1");
+	if (!(spec.model === "EndPoint" || spec.model === "AccumulatedTrajectory" || spec.model === "SeparateTrajectory")) contractError$1(`${path}.model`, "is unsupported");
+	if (!(spec.window === "MovingStanzaWindow" || spec.window === "Conversation")) contractError$1(`${path}.window`, "is unsupported");
+	if (!(spec.weightBy === "binary" || spec.weightBy === "sum")) contractError$1(`${path}.weightBy`, "is unsupported");
+	for (const field of ["windowSizeBack", "windowSizeForward"]) if (!Number.isSafeInteger(spec[field]) || spec[field] < 0) contractError$1(`${path}.${field}`, "must be a non-negative safe integer");
+	if (typeof spec.centerAlignToOrigin !== "boolean") contractError$1(`${path}.centerAlignToOrigin`, "must be boolean");
+	if (spec.cohortPolicy !== "available" && spec.cohortPolicy !== "complete") contractError$1(`${path}.cohortPolicy`, "must be available or complete");
 }
 function lowercaseSha256(value, path) {
-	if (typeof value !== "string" || !SHA256$3.test(value)) contractError(path, "must be a lowercase SHA-256 hex digest");
+	if (typeof value !== "string" || !SHA256$3.test(value)) contractError$1(path, "must be a lowercase SHA-256 hex digest");
 	return value;
 }
 function stringPair(value, path) {
-	if (!Array.isArray(value) || value.length !== 2) contractError(path, "must contain exactly two strings");
-	const left = nonEmptyString$1(value[0], `${path}[0]`);
-	const right = nonEmptyString$1(value[1], `${path}[1]`);
-	if (left === right) contractError(path, "must contain two different values");
+	if (!Array.isArray(value) || value.length !== 2) contractError$1(path, "must contain exactly two strings");
+	const left = nonEmptyString$2(value[0], `${path}[0]`);
+	const right = nonEmptyString$2(value[1], `${path}[1]`);
+	if (left === right) contractError$1(path, "must contain two different values");
 	return [left, right];
 }
-function stringList(value, path, minimum = 1) {
-	if (!Array.isArray(value) || value.length < minimum) contractError(path, `must contain at least ${minimum} strings`);
-	const output = value.map((entry, index) => nonEmptyString$1(entry, `${path}[${index}]`));
-	if (new Set(output).size !== output.length) contractError(path, "must not contain duplicates");
+function stringList$1(value, path, minimum = 1) {
+	if (!Array.isArray(value) || value.length < minimum) contractError$1(path, `must contain at least ${minimum} strings`);
+	const output = value.map((entry, index) => nonEmptyString$2(entry, `${path}[${index}]`));
+	if (new Set(output).size !== output.length) contractError$1(path, "must not contain duplicates");
 	return output;
 }
 function rawScalar(value, path) {
 	if (value === null || typeof value === "string" || typeof value === "boolean") return;
-	if (typeof value !== "number" || !Number.isFinite(value)) contractError(path, "must be a finite JSON scalar or null");
-	if (Number.isInteger(value) && !Number.isSafeInteger(value)) contractError(path, "unsafe integer identities must be supplied as strings");
+	if (typeof value !== "number" || !Number.isFinite(value)) contractError$1(path, "must be a finite JSON scalar or null");
+	if (Number.isInteger(value) && !Number.isSafeInteger(value)) contractError$1(path, "unsafe integer identities must be supplied as strings");
+}
+function assertPreparedMapping(value, path) {
+	const mapping = objectAt$2(value, path);
+	exactFields$3(mapping, [
+		"participant",
+		"participantLabel",
+		"group",
+		"time",
+		"timeOrder",
+		"cohortPolicy",
+		"displayDimensions",
+		"missingDisplayCoordinates"
+	], path);
+	stringList$1(mapping.participant, `${path}.participant`);
+	nonEmptyString$2(mapping.participantLabel, `${path}.participantLabel`);
+	nonEmptyString$2(mapping.group, `${path}.group`);
+	nonEmptyString$2(mapping.time, `${path}.time`);
+	if (!Array.isArray(mapping.timeOrder) || mapping.timeOrder.length === 0) contractError$1(`${path}.timeOrder`, "must contain at least one ordered period");
+	mapping.timeOrder.forEach((candidate, index) => rawScalar(candidate, `${path}.timeOrder[${index}]`));
+	if (mapping.cohortPolicy !== "available" && mapping.cohortPolicy !== "complete") contractError$1(`${path}.cohortPolicy`, "must be available or complete");
+	if (stringList$1(mapping.displayDimensions, `${path}.displayDimensions`, 3).length !== 3) contractError$1(`${path}.displayDimensions`, "must contain exactly three dimensions");
+	if (mapping.missingDisplayCoordinates !== "reject") contractError$1(`${path}.missingDisplayCoordinates`, "must be reject");
 }
 function trajectoryDurationUnit(value, path) {
-	if (typeof value !== "string" || !TRAJECTORY_DURATION_UNITS.has(value)) contractError(path, "must be milliseconds, seconds, minutes, hours, days, or weeks");
+	if (typeof value !== "string" || !TRAJECTORY_DURATION_UNITS.has(value)) contractError$1(path, "must be milliseconds, seconds, minutes, hours, days, or weeks");
 }
 function assertTrajectoryTimeValue(value, path) {
-	const time = objectAt(value, path);
-	const type = nonEmptyString$1(time.type, `${path}.type`);
+	const time = objectAt$2(value, path);
+	const type = nonEmptyString$2(time.type, `${path}.type`);
 	switch (type) {
 		case "numeric-v1":
-			exactFields$1(time, [
+			exactFields$3(time, [
 				"type",
 				"value",
 				"unit"
 			], path);
-			if (typeof time.value !== "number" || !Number.isFinite(time.value)) contractError(`${path}.value`, "must be finite");
-			nonEmptyString$1(time.unit, `${path}.unit`);
+			if (typeof time.value !== "number" || !Number.isFinite(time.value)) contractError$1(`${path}.value`, "must be finite");
+			nonEmptyString$2(time.unit, `${path}.unit`);
 			return;
 		case "date-v1":
-			exactFields$1(time, ["type", "value"], path);
-			validateDate(nonEmptyString$1(time.value, `${path}.value`), `${path}.value`);
+			exactFields$3(time, ["type", "value"], path);
+			validateDate(nonEmptyString$2(time.value, `${path}.value`), `${path}.value`);
 			return;
 		case "instant-v1":
-			exactFields$1(time, [
+			exactFields$3(time, [
 				"type",
 				"epochMilliseconds",
 				"timeZone",
@@ -2153,33 +2287,33 @@ function assertTrajectoryTimeValue(value, path) {
 				"fold",
 				"elapsedUnit"
 			], path);
-			validateInt64(nonEmptyString$1(time.epochMilliseconds, `${path}.epochMilliseconds`), `${path}.epochMilliseconds`);
-			nonEmptyString$1(time.timeZone, `${path}.timeZone`);
-			if (!Number.isInteger(time.offsetMinutes) || time.offsetMinutes < -1440 || time.offsetMinutes > 1440) contractError(`${path}.offsetMinutes`, "must be an integer from -1440 through 1440");
-			if (time.fold !== 0 && time.fold !== 1) contractError(`${path}.fold`, "must be 0 or 1");
+			validateInt64(nonEmptyString$2(time.epochMilliseconds, `${path}.epochMilliseconds`), `${path}.epochMilliseconds`);
+			nonEmptyString$2(time.timeZone, `${path}.timeZone`);
+			if (!Number.isInteger(time.offsetMinutes) || time.offsetMinutes < -1440 || time.offsetMinutes > 1440) contractError$1(`${path}.offsetMinutes`, "must be an integer from -1440 through 1440");
+			if (time.fold !== 0 && time.fold !== 1) contractError$1(`${path}.fold`, "must be 0 or 1");
 			trajectoryDurationUnit(time.elapsedUnit, `${path}.elapsedUnit`);
 			return;
 		case "difftime-v1":
-			exactFields$1(time, [
+			exactFields$3(time, [
 				"type",
 				"value",
 				"unit",
 				"elapsedUnit"
 			], path);
-			if (typeof time.value !== "number" || !Number.isFinite(time.value)) contractError(`${path}.value`, "must be finite");
+			if (typeof time.value !== "number" || !Number.isFinite(time.value)) contractError$1(`${path}.value`, "must be finite");
 			trajectoryDurationUnit(time.unit, `${path}.unit`);
 			trajectoryDurationUnit(time.elapsedUnit, `${path}.elapsedUnit`);
 			return;
-		default: contractError(`${path}.type`, `unsupported trajectory time type ${JSON.stringify(type)}`);
+		default: contractError$1(`${path}.type`, `unsupported trajectory time type ${JSON.stringify(type)}`);
 	}
 }
 /** Strict runtime validator shared by SDK, remote client, service, and Worker. */
 function assertAnalysisTaskV1(value, path = "task") {
-	const task = objectAt(value, path);
-	if (task.schemaVersion !== "3dena.analysis-task.v1") contractError(`${path}.schemaVersion`, `must be ${ANALYSIS_TASK_VERSION_V1}`);
+	const task = objectAt$2(value, path);
+	if (task.schemaVersion !== "3dena.analysis-task.v1") contractError$1(`${path}.schemaVersion`, `must be ${ANALYSIS_TASK_VERSION_V1}`);
 	assertTaskOwnerV1(task.owner, `${path}.owner`);
-	if (!Number.isSafeInteger(task.deadlineEpochMilliseconds) || task.deadlineEpochMilliseconds < 0) contractError(`${path}.deadlineEpochMilliseconds`, "must be a non-negative safe integer");
-	const kind = nonEmptyString$1(task.kind, `${path}.kind`);
+	if (!Number.isSafeInteger(task.deadlineEpochMilliseconds) || task.deadlineEpochMilliseconds < 0) contractError$1(`${path}.deadlineEpochMilliseconds`, "must be a non-negative safe integer");
+	const kind = nonEmptyString$2(task.kind, `${path}.kind`);
 	const base = [
 		"schemaVersion",
 		"kind",
@@ -2188,11 +2322,24 @@ function assertAnalysisTaskV1(value, path = "task") {
 	];
 	switch (kind) {
 		case "ena-model":
-			exactFields$1(task, [...base, "input"], path);
-			objectAt(task.input, `${path}.input`);
+			exactFields$3(task, [...base, "input"], path);
+			objectAt$2(task.input, `${path}.input`);
 			return;
+		case "prepared-import": {
+			exactFields$3(task, [...base, "input"], path);
+			const input = objectAt$2(task.input, `${path}.input`);
+			exactFields$3(input, [
+				"sourceName",
+				"exactBytesBase64",
+				"mapping"
+			], `${path}.input`);
+			if (input.sourceName !== "uploaded.ena3d.json") contractError$1(`${path}.input.sourceName`, "must be the non-identifying service source name");
+			if (typeof input.exactBytesBase64 !== "string" || input.exactBytesBase64.length < 4 || input.exactBytesBase64.length > 7e6 || input.exactBytesBase64.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/u.test(input.exactBytesBase64)) contractError$1(`${path}.input.exactBytesBase64`, "must be bounded canonical base64");
+			assertPreparedMapping(input.mapping, `${path}.input.mapping`);
+			return;
+		}
 		case "network-comparison":
-			exactFields$1(task, [
+			exactFields$3(task, [
 				...base,
 				"sourceResultHash",
 				"groups"
@@ -2201,18 +2348,18 @@ function assertAnalysisTaskV1(value, path = "task") {
 			stringPair(task.groups, `${path}.groups`);
 			return;
 		case "change-network":
-			exactFields$1(task, [
+			exactFields$3(task, [
 				...base,
 				"sourceResultHash",
 				"field",
 				"level"
 			], path);
 			lowercaseSha256(task.sourceResultHash, `${path}.sourceResultHash`);
-			nonEmptyString$1(task.field, `${path}.field`);
+			nonEmptyString$2(task.field, `${path}.field`);
 			rawScalar(task.level, `${path}.level`);
 			return;
 		case "statistics":
-			exactFields$1(task, [
+			exactFields$3(task, [
 				...base,
 				"sourceResultHash",
 				"design",
@@ -2223,26 +2370,26 @@ function assertAnalysisTaskV1(value, path = "task") {
 				"samePhysicalEntityConfirmed"
 			], path);
 			lowercaseSha256(task.sourceResultHash, `${path}.sourceResultHash`);
-			if (task.design !== "independent" && task.design !== "paired") contractError(`${path}.design`, "must be independent or paired");
+			if (task.design !== "independent" && task.design !== "paired") contractError$1(`${path}.design`, "must be independent or paired");
 			stringPair(task.groups, `${path}.groups`);
-			stringList(task.dimensions, `${path}.dimensions`);
+			stringList$1(task.dimensions, `${path}.dimensions`);
 			if (![
 				"two-sided",
 				"greater",
 				"less"
-			].includes(task.alternative)) contractError(`${path}.alternative`, "is unsupported");
+			].includes(task.alternative)) contractError$1(`${path}.alternative`, "is unsupported");
 			if (![
 				"none",
 				"holm",
 				"bh",
 				"bonferroni"
-			].includes(task.adjustment)) contractError(`${path}.adjustment`, "is unsupported");
-			if (typeof task.samePhysicalEntityConfirmed !== "boolean") contractError(`${path}.samePhysicalEntityConfirmed`, "must be boolean");
-			if (task.design === "paired" && task.samePhysicalEntityConfirmed !== true) contractError(`${path}.samePhysicalEntityConfirmed`, "must be true for paired statistics");
-			if (task.design === "independent" && task.samePhysicalEntityConfirmed !== false) contractError(`${path}.samePhysicalEntityConfirmed`, "must be false for independent statistics");
+			].includes(task.adjustment)) contractError$1(`${path}.adjustment`, "is unsupported");
+			if (typeof task.samePhysicalEntityConfirmed !== "boolean") contractError$1(`${path}.samePhysicalEntityConfirmed`, "must be boolean");
+			if (task.design === "paired" && task.samePhysicalEntityConfirmed !== true) contractError$1(`${path}.samePhysicalEntityConfirmed`, "must be true for paired statistics");
+			if (task.design === "independent" && task.samePhysicalEntityConfirmed !== false) contractError$1(`${path}.samePhysicalEntityConfirmed`, "must be false for independent statistics");
 			return;
 		case "trajectory":
-			exactFields$1(task, [
+			exactFields$3(task, [
 				...base,
 				"sourceResultHash",
 				"group",
@@ -2252,32 +2399,32 @@ function assertAnalysisTaskV1(value, path = "task") {
 				"estimand"
 			], path);
 			lowercaseSha256(task.sourceResultHash, `${path}.sourceResultHash`);
-			nonEmptyString$1(task.group, `${path}.group`);
-			if (stringList(task.selectedDimensions, `${path}.selectedDimensions`, 3).length !== 3) contractError(`${path}.selectedDimensions`, "must contain exactly three dimensions");
-			if (task.cohortPolicy !== "available" && task.cohortPolicy !== "complete") contractError(`${path}.cohortPolicy`, "must be available or complete");
-			if (!Array.isArray(task.periods) || task.periods.length === 0) contractError(`${path}.periods`, "must contain at least one period");
+			nonEmptyString$2(task.group, `${path}.group`);
+			if (stringList$1(task.selectedDimensions, `${path}.selectedDimensions`, 3).length !== 3) contractError$1(`${path}.selectedDimensions`, "must contain exactly three dimensions");
+			if (task.cohortPolicy !== "available" && task.cohortPolicy !== "complete") contractError$1(`${path}.cohortPolicy`, "must be available or complete");
+			if (!Array.isArray(task.periods) || task.periods.length === 0) contractError$1(`${path}.periods`, "must contain at least one period");
 			{
 				const seen = /* @__PURE__ */ new Set();
 				task.periods.forEach((candidate, index) => {
-					const period = objectAt(candidate, `${path}.periods[${index}]`);
-					exactFields$1(period, ["sourceTimeCanonical", "value"], `${path}.periods[${index}]`);
-					const canonical = nonEmptyString$1(period.sourceTimeCanonical, `${path}.periods[${index}].sourceTimeCanonical`);
-					if (seen.has(canonical)) contractError(`${path}.periods[${index}].sourceTimeCanonical`, "duplicates an earlier source time key");
+					const period = objectAt$2(candidate, `${path}.periods[${index}]`);
+					exactFields$3(period, ["sourceTimeCanonical", "value"], `${path}.periods[${index}]`);
+					const canonical = nonEmptyString$2(period.sourceTimeCanonical, `${path}.periods[${index}].sourceTimeCanonical`);
+					if (seen.has(canonical)) contractError$1(`${path}.periods[${index}].sourceTimeCanonical`, "duplicates an earlier source time key");
 					seen.add(canonical);
 					assertTrajectoryTimeValue(period.value, `${path}.periods[${index}].value`);
 				});
 			}
 			{
-				const estimand = objectAt(task.estimand, `${path}.estimand`);
-				if (estimand.kind === "equal-participant-v1") exactFields$1(estimand, ["kind"], `${path}.estimand`);
+				const estimand = objectAt$2(task.estimand, `${path}.estimand`);
+				if (estimand.kind === "equal-participant-v1") exactFields$3(estimand, ["kind"], `${path}.estimand`);
 				else if (estimand.kind === "weighted-participant-v1") {
-					exactFields$1(estimand, ["kind", "metadataField"], `${path}.estimand`);
-					nonEmptyString$1(estimand.metadataField, `${path}.estimand.metadataField`);
-				} else contractError(`${path}.estimand.kind`, "must be equal-participant-v1 or weighted-participant-v1");
+					exactFields$3(estimand, ["kind", "metadataField"], `${path}.estimand`);
+					nonEmptyString$2(estimand.metadataField, `${path}.estimand.metadataField`);
+				} else contractError$1(`${path}.estimand.kind`, "must be equal-participant-v1 or weighted-participant-v1");
 			}
 			return;
 		case "trajectory-comparison":
-			exactFields$1(task, [
+			exactFields$3(task, [
 				...base,
 				"sourceResultHash",
 				"design",
@@ -2285,13 +2432,13 @@ function assertAnalysisTaskV1(value, path = "task") {
 				"samePhysicalEntityConfirmed"
 			], path);
 			lowercaseSha256(task.sourceResultHash, `${path}.sourceResultHash`);
-			if (task.design !== "independent" && task.design !== "paired") contractError(`${path}.design`, "must be independent or paired");
+			if (task.design !== "independent" && task.design !== "paired") contractError$1(`${path}.design`, "must be independent or paired");
 			stringPair(task.groups, `${path}.groups`);
-			if (typeof task.samePhysicalEntityConfirmed !== "boolean") contractError(`${path}.samePhysicalEntityConfirmed`, "must be boolean");
-			if (task.design === "paired" && task.samePhysicalEntityConfirmed !== true) contractError(`${path}.samePhysicalEntityConfirmed`, "must be true for paired comparison");
+			if (typeof task.samePhysicalEntityConfirmed !== "boolean") contractError$1(`${path}.samePhysicalEntityConfirmed`, "must be boolean");
+			if (task.design === "paired" && task.samePhysicalEntityConfirmed !== true) contractError$1(`${path}.samePhysicalEntityConfirmed`, "must be true for paired comparison");
 			return;
 		case "bootstrap":
-			exactFields$1(task, [
+			exactFields$3(task, [
 				...base,
 				"sourceResultHash",
 				"group",
@@ -2302,18 +2449,18 @@ function assertAnalysisTaskV1(value, path = "task") {
 				"rotationPolicy"
 			], path);
 			lowercaseSha256(task.sourceResultHash, `${path}.sourceResultHash`);
-			nonEmptyString$1(task.group, `${path}.group`);
-			if (!Number.isSafeInteger(task.replicates) || task.replicates < 200 || task.replicates > 500) contractError(`${path}.replicates`, "must be a safe integer from 200 through 500");
-			if (typeof task.confidenceLevel !== "number" || !Number.isFinite(task.confidenceLevel) || task.confidenceLevel <= 0 || task.confidenceLevel >= 1) contractError(`${path}.confidenceLevel`, "must be finite and strictly between 0 and 1");
-			if (!Number.isSafeInteger(task.seed) || task.seed < 0 || task.seed > 4294967295) contractError(`${path}.seed`, "must be an unsigned 32-bit integer");
-			if (task.interval !== "pointwise-percentile-type7") contractError(`${path}.interval`, "is unsupported in task v1");
-			if (task.rotationPolicy !== "fixed-preprojected") contractError(`${path}.rotationPolicy`, "is unsupported in task v1");
+			nonEmptyString$2(task.group, `${path}.group`);
+			if (!Number.isSafeInteger(task.replicates) || task.replicates < 200 || task.replicates > 500) contractError$1(`${path}.replicates`, "must be a safe integer from 200 through 500");
+			if (typeof task.confidenceLevel !== "number" || !Number.isFinite(task.confidenceLevel) || task.confidenceLevel <= 0 || task.confidenceLevel >= 1) contractError$1(`${path}.confidenceLevel`, "must be finite and strictly between 0 and 1");
+			if (!Number.isSafeInteger(task.seed) || task.seed < 0 || task.seed > 4294967295) contractError$1(`${path}.seed`, "must be an unsigned 32-bit integer");
+			if (task.interval !== "pointwise-percentile-type7") contractError$1(`${path}.interval`, "is unsupported in task v1");
+			if (task.rotationPolicy !== "fixed-preprojected") contractError$1(`${path}.rotationPolicy`, "is unsupported in task v1");
 			return;
-		default: contractError(`${path}.kind`, `unsupported analysis task ${JSON.stringify(kind)}`);
+		default: contractError$1(`${path}.kind`, `unsupported analysis task ${JSON.stringify(kind)}`);
 	}
 }
 function assertEvidenceStampV1(value, path = "evidence") {
-	const evidence = objectAt(value, path);
+	const evidence = objectAt$2(value, path);
 	allowedFields(evidence, [
 		"schemaVersion",
 		"scope",
@@ -2329,8 +2476,8 @@ function assertEvidenceStampV1(value, path = "evidence") {
 		"status",
 		"approvedForParity"
 	], path);
-	if (evidence.schemaVersion !== "3dena.evidence-stamp.v1") contractError(`${path}.schemaVersion`, "must be 3dena.evidence-stamp.v1");
-	if (!(evidence.scope === "fixture" || evidence.scope === "feature" || evidence.scope === "build" || evidence.scope === "deployment")) contractError(`${path}.scope`, "is unsupported");
+	if (evidence.schemaVersion !== "3dena.evidence-stamp.v1") contractError$1(`${path}.schemaVersion`, "must be 3dena.evidence-stamp.v1");
+	if (!(evidence.scope === "fixture" || evidence.scope === "feature" || evidence.scope === "build" || evidence.scope === "deployment")) contractError$1(`${path}.scope`, "is unsupported");
 	if (!(/* @__PURE__ */ new Set([
 		"IMPLEMENTED_UNVERIFIED",
 		"PARITY_CANDIDATE",
@@ -2338,27 +2485,27 @@ function assertEvidenceStampV1(value, path = "evidence") {
 		"PRODUCTION_CANDIDATE",
 		"PRODUCTION_READY",
 		"PRECOMPUTED_COMPATIBILITY_CANDIDATE"
-	])).has(evidence.status)) contractError(`${path}.status`, "is unsupported");
-	if (typeof evidence.approvedForParity !== "boolean") contractError(`${path}.approvedForParity`, "must be boolean");
+	])).has(evidence.status)) contractError$1(`${path}.status`, "is unsupported");
+	if (typeof evidence.approvedForParity !== "boolean") contractError$1(`${path}.approvedForParity`, "must be boolean");
 	for (const field of ["datasetHash", "specHash"]) if (evidence[field] !== void 0) lowercaseSha256(evidence[field], `${path}.${field}`);
-	for (const field of ["fixtureId", "buildId"]) if (evidence[field] !== void 0) nonEmptyString$1(evidence[field], `${path}.${field}`);
+	for (const field of ["fixtureId", "buildId"]) if (evidence[field] !== void 0) nonEmptyString$2(evidence[field], `${path}.${field}`);
 	if (evidence.scope === "fixture") {
 		for (const field of [
 			"datasetHash",
 			"specHash",
 			"fixtureId"
-		]) if (evidence[field] === void 0) contractError(`${path}.${field}`, "is required for fixture-scoped evidence");
+		]) if (evidence[field] === void 0) contractError$1(`${path}.${field}`, "is required for fixture-scoped evidence");
 	}
-	if ((evidence.scope === "build" || evidence.scope === "deployment") && evidence.buildId === void 0) contractError(`${path}.buildId`, `is required for ${evidence.scope}-scoped evidence`);
+	if ((evidence.scope === "build" || evidence.scope === "deployment") && evidence.buildId === void 0) contractError$1(`${path}.buildId`, `is required for ${evidence.scope}-scoped evidence`);
 	if (evidence.approvedForParity === true && ![
 		"VERIFIED_PARITY",
 		"PRODUCTION_CANDIDATE",
 		"PRODUCTION_READY"
-	].includes(evidence.status)) contractError(`${path}.approvedForParity`, "cannot be true below VERIFIED_PARITY");
+	].includes(evidence.status)) contractError$1(`${path}.approvedForParity`, "cannot be true below VERIFIED_PARITY");
 }
 function assertAnalysisResultEnvelopeV1(value, path = "envelope") {
-	const envelope = objectAt(value, path);
-	exactFields$1(envelope, [
+	const envelope = objectAt$2(value, path);
+	exactFields$3(envelope, [
 		"schemaVersion",
 		"owner",
 		"taskKind",
@@ -2367,25 +2514,26 @@ function assertAnalysisResultEnvelopeV1(value, path = "envelope") {
 		"evidence",
 		"provenance"
 	], path);
-	if (envelope.schemaVersion !== "3dena.analysis-result-envelope.v1") contractError(`${path}.schemaVersion`, `must be ${RESULT_ENVELOPE_VERSION_V1}`);
+	if (envelope.schemaVersion !== "3dena.analysis-result-envelope.v1") contractError$1(`${path}.schemaVersion`, `must be ${RESULT_ENVELOPE_VERSION_V1}`);
 	assertTaskOwnerV1(envelope.owner, `${path}.owner`);
 	if (![
 		"ena-model",
+		"prepared-import",
 		"network-comparison",
 		"change-network",
 		"statistics",
 		"trajectory",
 		"trajectory-comparison",
 		"bootstrap"
-	].includes(envelope.taskKind)) contractError(`${path}.taskKind`, "is unsupported");
+	].includes(envelope.taskKind)) contractError$1(`${path}.taskKind`, "is unsupported");
 	const taskKind = envelope.taskKind;
 	const expectedResultSchemaVersion = RESULT_SCHEMA_VERSION_BY_TASK_KIND_V1[taskKind];
-	const result = objectAt(envelope.result, `${path}.result`);
-	if (result.schemaVersion !== expectedResultSchemaVersion) contractError(`${path}.result.schemaVersion`, `must be ${expectedResultSchemaVersion} for taskKind ${taskKind}`);
+	const result = objectAt$2(envelope.result, `${path}.result`);
+	if (result.schemaVersion !== expectedResultSchemaVersion) contractError$1(`${path}.result.schemaVersion`, `must be ${expectedResultSchemaVersion} for taskKind ${taskKind}`);
 	assertAnalysisTaskResultV1(result, taskKind, `${path}.result`);
-	if (!Array.isArray(envelope.diagnostics)) contractError(`${path}.diagnostics`, "must be an array");
+	if (!Array.isArray(envelope.diagnostics)) contractError$1(`${path}.diagnostics`, "must be an array");
 	envelope.diagnostics.forEach((candidate, index) => {
-		const diagnostic = objectAt(candidate, `${path}.diagnostics[${index}]`);
+		const diagnostic = objectAt$2(candidate, `${path}.diagnostics[${index}]`);
 		allowedFields(diagnostic, [
 			"code",
 			"severity",
@@ -2397,28 +2545,28 @@ function assertAnalysisResultEnvelopeV1(value, path = "envelope") {
 			"severity",
 			"message"
 		], `${path}.diagnostics[${index}]`);
-		nonEmptyString$1(diagnostic.code, `${path}.diagnostics[${index}].code`);
-		if (diagnostic.severity !== "info" && diagnostic.severity !== "warning") contractError(`${path}.diagnostics[${index}].severity`, "is unsupported");
-		nonEmptyString$1(diagnostic.message, `${path}.diagnostics[${index}].message`);
-		if (diagnostic.path !== void 0) nonEmptyString$1(diagnostic.path, `${path}.diagnostics[${index}].path`);
-		if (diagnostic.count !== void 0 && (!Number.isSafeInteger(diagnostic.count) || diagnostic.count < 0)) contractError(`${path}.diagnostics[${index}].count`, "must be a non-negative safe integer");
+		nonEmptyString$2(diagnostic.code, `${path}.diagnostics[${index}].code`);
+		if (diagnostic.severity !== "info" && diagnostic.severity !== "warning") contractError$1(`${path}.diagnostics[${index}].severity`, "is unsupported");
+		nonEmptyString$2(diagnostic.message, `${path}.diagnostics[${index}].message`);
+		if (diagnostic.path !== void 0) nonEmptyString$2(diagnostic.path, `${path}.diagnostics[${index}].path`);
+		if (diagnostic.count !== void 0 && (!Number.isSafeInteger(diagnostic.count) || diagnostic.count < 0)) contractError$1(`${path}.diagnostics[${index}].count`, "must be a non-negative safe integer");
 	});
 	assertEvidenceStampV1(envelope.evidence, `${path}.evidence`);
 	assertProvenanceManifestV1(envelope.provenance, `${path}.provenance`);
 	const owner = envelope.owner;
 	const provenance = envelope.provenance;
 	const evidence = envelope.evidence;
-	if (owner.datasetHash !== provenance.datasetHash || owner.specHash !== provenance.specHash) contractError(`${path}.provenance`, "dataset/spec ownership does not match envelope.owner");
-	if (evidence.datasetHash !== void 0 && evidence.datasetHash !== owner.datasetHash) contractError(`${path}.evidence.datasetHash`, "does not match envelope.owner");
-	if (evidence.specHash !== void 0 && evidence.specHash !== owner.specHash) contractError(`${path}.evidence.specHash`, "does not match envelope.owner");
+	if (owner.datasetHash !== provenance.datasetHash || owner.specHash !== provenance.specHash) contractError$1(`${path}.provenance`, "dataset/spec ownership does not match envelope.owner");
+	if (evidence.datasetHash !== void 0 && evidence.datasetHash !== owner.datasetHash) contractError$1(`${path}.evidence.datasetHash`, "does not match envelope.owner");
+	if (evidence.specHash !== void 0 && evidence.specHash !== owner.specHash) contractError$1(`${path}.evidence.specHash`, "does not match envelope.owner");
 	for (const requiredSchemaVersion of [
 		ANALYSIS_TASK_VERSION_V1,
 		expectedResultSchemaVersion,
 		RESULT_ENVELOPE_VERSION_V1
-	]) if (!provenance.schemaVersions.includes(requiredSchemaVersion)) contractError(`${path}.provenance.schemaVersions`, `must include ${requiredSchemaVersion}`);
+	]) if (!provenance.schemaVersions.includes(requiredSchemaVersion)) contractError$1(`${path}.provenance.schemaVersions`, `must include ${requiredSchemaVersion}`);
 }
 function finiteNumber(value, path) {
-	if (typeof value !== "number" || !Number.isFinite(value)) contractError(path, "must be a finite number");
+	if (typeof value !== "number" || !Number.isFinite(value)) contractError$1(path, "must be a finite number");
 	return value;
 }
 function finiteOrNull(value, path) {
@@ -2426,16 +2574,16 @@ function finiteOrNull(value, path) {
 	return finiteNumber(value, path);
 }
 function nonNegativeInteger(value, path) {
-	if (!Number.isSafeInteger(value) || value < 0) contractError(path, "must be a non-negative safe integer");
+	if (!Number.isSafeInteger(value) || value < 0) contractError$1(path, "must be a non-negative safe integer");
 	return value;
 }
-function positiveInteger(value, path) {
-	if (!Number.isSafeInteger(value) || value < 1) contractError(path, "must be a positive safe integer");
+function positiveInteger$1(value, path) {
+	if (!Number.isSafeInteger(value) || value < 1) contractError$1(path, "must be a positive safe integer");
 	return value;
 }
 function finiteVector(value, path, length) {
-	if (!Array.isArray(value)) contractError(path, "must be an array");
-	if (length !== void 0 && value.length !== length) contractError(path, `must contain exactly ${length} values`);
+	if (!Array.isArray(value)) contractError$1(path, "must be an array");
+	if (length !== void 0 && value.length !== length) contractError$1(path, `must contain exactly ${length} values`);
 	return value.map((entry, index) => finiteNumber(entry, `${path}[${index}]`));
 }
 function optionalFiniteVector(value, path, length) {
@@ -2443,20 +2591,20 @@ function optionalFiniteVector(value, path, length) {
 	return finiteVector(value, path, length);
 }
 function sameOrderedStrings(actual, expected, path) {
-	if (actual.length !== expected.length || actual.some((entry, index) => entry !== expected[index])) contractError(path, "must preserve the declared order exactly");
+	if (actual.length !== expected.length || actual.some((entry, index) => entry !== expected[index])) contractError$1(path, "must preserve the declared order exactly");
 }
 function assertRawEntityKey(value, path) {
-	const key = objectAt(value, path);
-	exactFields$1(key, [
+	const key = objectAt$2(value, path);
+	exactFields$3(key, [
 		"canonical",
 		"display",
 		"columns",
 		"values"
 	], path);
-	const canonical = nonEmptyString$1(key.canonical, `${path}.canonical`);
-	if (typeof key.display !== "string") contractError(`${path}.display`, "must be a string");
-	const columns = stringList(key.columns, `${path}.columns`);
-	if (!Array.isArray(key.values) || key.values.length !== columns.length) contractError(`${path}.values`, "must align one-to-one with columns");
+	const canonical = nonEmptyString$2(key.canonical, `${path}.canonical`);
+	if (typeof key.display !== "string") contractError$1(`${path}.display`, "must be a string");
+	const columns = stringList$1(key.columns, `${path}.columns`);
+	if (!Array.isArray(key.values) || key.values.length !== columns.length) contractError$1(`${path}.values`, "must align one-to-one with columns");
 	key.values.forEach((entry, index) => rawScalar(entry, `${path}.values[${index}]`));
 	return {
 		canonical,
@@ -2465,19 +2613,19 @@ function assertRawEntityKey(value, path) {
 	};
 }
 function assertRawTypedValue(value, path) {
-	const typed = objectAt(value, path);
-	exactFields$1(typed, [
+	const typed = objectAt$2(value, path);
+	exactFields$3(typed, [
 		"canonical",
 		"display",
 		"value"
 	], path);
-	const canonical = nonEmptyString$1(typed.canonical, `${path}.canonical`);
-	if (typeof typed.display !== "string") contractError(`${path}.display`, "must be a string");
+	const canonical = nonEmptyString$2(typed.canonical, `${path}.canonical`);
+	if (typeof typed.display !== "string") contractError$1(`${path}.display`, "must be a string");
 	rawScalar(typed.value, `${path}.value`);
 	return { canonical };
 }
 function assertDiagnostic(value, path) {
-	const diagnostic = objectAt(value, path);
+	const diagnostic = objectAt$2(value, path);
 	allowedFields(diagnostic, [
 		"code",
 		"severity",
@@ -2489,18 +2637,18 @@ function assertDiagnostic(value, path) {
 		"severity",
 		"message"
 	], path);
-	nonEmptyString$1(diagnostic.code, `${path}.code`);
-	if (diagnostic.severity !== "info" && diagnostic.severity !== "warning") contractError(`${path}.severity`, "must be info or warning");
-	nonEmptyString$1(diagnostic.message, `${path}.message`);
-	if (diagnostic.path !== void 0) nonEmptyString$1(diagnostic.path, `${path}.path`);
+	nonEmptyString$2(diagnostic.code, `${path}.code`);
+	if (diagnostic.severity !== "info" && diagnostic.severity !== "warning") contractError$1(`${path}.severity`, "must be info or warning");
+	nonEmptyString$2(diagnostic.message, `${path}.message`);
+	if (diagnostic.path !== void 0) nonEmptyString$2(diagnostic.path, `${path}.path`);
 	if (diagnostic.count !== void 0) nonNegativeInteger(diagnostic.count, `${path}.count`);
 }
 function assertDiagnostics(value, path) {
-	if (!Array.isArray(value)) contractError(path, "must be an array");
+	if (!Array.isArray(value)) contractError$1(path, "must be an array");
 	value.forEach((entry, index) => assertDiagnostic(entry, `${path}[${index}]`));
 }
 function assertAnalysisResult(value, path) {
-	const result = objectAt(value, path);
+	const result = objectAt$2(value, path);
 	allowedFields(result, [
 		"schemaVersion",
 		"dimensions",
@@ -2529,21 +2677,17 @@ function assertAnalysisResult(value, path) {
 		"diagnostics",
 		"provenance"
 	], path);
-	if (result.schemaVersion !== "3dena.analysis-result.v1") contractError(`${path}.schemaVersion`, "must be 3dena.analysis-result.v1");
-	const dimensions = stringList(result.dimensions, `${path}.dimensions`, 3);
-	if (new Set(dimensions).size !== dimensions.length) contractError(`${path}.dimensions`, "must not contain duplicates");
-	const axes = stringList(result.axes, `${path}.axes`, 3);
-	if (axes.length !== 3 || axes.some((axis, index) => axis !== [
-		"SVD1",
-		"SVD2",
-		"SVD3"
-	][index])) contractError(`${path}.axes`, "must be the ordered SVD1, SVD2, SVD3 display axes");
-	if (!Array.isArray(result.edges) || result.edges.length === 0) contractError(`${path}.edges`, "must be a non-empty array");
+	if (result.schemaVersion !== "3dena.analysis-result.v1") contractError$1(`${path}.schemaVersion`, "must be 3dena.analysis-result.v1");
+	const dimensions = stringList$1(result.dimensions, `${path}.dimensions`, 3);
+	if (new Set(dimensions).size !== dimensions.length) contractError$1(`${path}.dimensions`, "must not contain duplicates");
+	const axes = stringList$1(result.axes, `${path}.axes`, 3);
+	if (axes.length !== 3 || axes.some((axis, index) => axis !== dimensions[index])) contractError$1(`${path}.axes`, "must be the first three fitted rotation dimensions in order");
+	if (!Array.isArray(result.edges) || result.edges.length === 0) contractError$1(`${path}.edges`, "must be a non-empty array");
 	const edgeColumns = [];
 	const edgeIds = /* @__PURE__ */ new Set();
 	result.edges.forEach((candidate, index) => {
-		const edge = objectAt(candidate, `${path}.edges[${index}]`);
-		exactFields$1(edge, [
+		const edge = objectAt$2(candidate, `${path}.edges[${index}]`);
+		exactFields$3(edge, [
 			"index",
 			"id",
 			"column",
@@ -2553,44 +2697,44 @@ function assertAnalysisResult(value, path) {
 			"targetIndex",
 			"meanWeight"
 		], `${path}.edges[${index}]`);
-		if (nonNegativeInteger(edge.index, `${path}.edges[${index}].index`) !== index) contractError(`${path}.edges[${index}].index`, "must equal its array position");
-		const id = nonEmptyString$1(edge.id, `${path}.edges[${index}].id`);
-		if (edgeIds.has(id)) contractError(`${path}.edges[${index}].id`, "duplicates an earlier edge identity");
+		if (nonNegativeInteger(edge.index, `${path}.edges[${index}].index`) !== index) contractError$1(`${path}.edges[${index}].index`, "must equal its array position");
+		const id = nonEmptyString$2(edge.id, `${path}.edges[${index}].id`);
+		if (edgeIds.has(id)) contractError$1(`${path}.edges[${index}].id`, "duplicates an earlier edge identity");
 		edgeIds.add(id);
-		edgeColumns.push(nonEmptyString$1(edge.column, `${path}.edges[${index}].column`));
-		nonEmptyString$1(edge.source, `${path}.edges[${index}].source`);
-		nonEmptyString$1(edge.target, `${path}.edges[${index}].target`);
+		edgeColumns.push(nonEmptyString$2(edge.column, `${path}.edges[${index}].column`));
+		nonEmptyString$2(edge.source, `${path}.edges[${index}].source`);
+		nonEmptyString$2(edge.target, `${path}.edges[${index}].target`);
 		nonNegativeInteger(edge.sourceIndex, `${path}.edges[${index}].sourceIndex`);
 		nonNegativeInteger(edge.targetIndex, `${path}.edges[${index}].targetIndex`);
 		finiteNumber(edge.meanWeight, `${path}.edges[${index}].meanWeight`);
 	});
-	if (new Set(edgeColumns).size !== edgeColumns.length) contractError(`${path}.edges`, "edge columns must be unique");
-	if (!Array.isArray(result.nodes) || result.nodes.length < 3) contractError(`${path}.nodes`, "must contain at least three nodes");
+	if (new Set(edgeColumns).size !== edgeColumns.length) contractError$1(`${path}.edges`, "edge columns must be unique");
+	if (!Array.isArray(result.nodes) || result.nodes.length < 3) contractError$1(`${path}.nodes`, "must contain at least three nodes");
 	const nodeCodes = [];
 	result.nodes.forEach((candidate, index) => {
-		const node = objectAt(candidate, `${path}.nodes[${index}]`);
-		exactFields$1(node, [
+		const node = objectAt$2(candidate, `${path}.nodes[${index}]`);
+		exactFields$3(node, [
 			"index",
 			"code",
 			"coordinates",
 			"fullCoordinates"
 		], `${path}.nodes[${index}]`);
-		if (nonNegativeInteger(node.index, `${path}.nodes[${index}].index`) !== index) contractError(`${path}.nodes[${index}].index`, "must equal its array position");
-		nodeCodes.push(nonEmptyString$1(node.code, `${path}.nodes[${index}].code`));
+		if (nonNegativeInteger(node.index, `${path}.nodes[${index}].index`) !== index) contractError$1(`${path}.nodes[${index}].index`, "must equal its array position");
+		nodeCodes.push(nonEmptyString$2(node.code, `${path}.nodes[${index}].code`));
 		finiteVector(node.coordinates, `${path}.nodes[${index}].coordinates`, 3);
 		finiteVector(node.fullCoordinates, `${path}.nodes[${index}].fullCoordinates`, dimensions.length);
 	});
-	if (new Set(nodeCodes).size !== nodeCodes.length) contractError(`${path}.nodes`, "node codes must be unique");
+	if (new Set(nodeCodes).size !== nodeCodes.length) contractError$1(`${path}.nodes`, "node codes must be unique");
 	result.edges.forEach((candidate, index) => {
 		const edge = candidate;
 		const sourceIndex = edge.sourceIndex;
 		const targetIndex = edge.targetIndex;
-		if (nodeCodes[sourceIndex] !== edge.source || nodeCodes[targetIndex] !== edge.target) contractError(`${path}.edges[${index}]`, "node indexes and code identities must align");
+		if (nodeCodes[sourceIndex] !== edge.source || nodeCodes[targetIndex] !== edge.target) contractError$1(`${path}.edges[${index}]`, "node indexes and code identities must align");
 	});
-	if (!Array.isArray(result.points) || result.points.length === 0) contractError(`${path}.points`, "must be a non-empty array");
+	if (!Array.isArray(result.points) || result.points.length === 0) contractError$1(`${path}.points`, "must be a non-empty array");
 	const pointIds = /* @__PURE__ */ new Set();
 	result.points.forEach((candidate, index) => {
-		const point = objectAt(candidate, `${path}.points[${index}]`);
+		const point = objectAt$2(candidate, `${path}.points[${index}]`);
 		allowedFields(point, [
 			"index",
 			"id",
@@ -2613,9 +2757,9 @@ function assertAnalysisResult(value, path) {
 			"lineWeights",
 			"metadata"
 		], `${path}.points[${index}]`);
-		if (nonNegativeInteger(point.index, `${path}.points[${index}].index`) !== index) contractError(`${path}.points[${index}].index`, "must equal its array position");
+		if (nonNegativeInteger(point.index, `${path}.points[${index}].index`) !== index) contractError$1(`${path}.points[${index}].index`, "must equal its array position");
 		const pointId = assertRawEntityKey(point.id, `${path}.points[${index}].id`).canonical;
-		if (pointIds.has(pointId)) contractError(`${path}.points[${index}].id`, "duplicates an earlier point identity");
+		if (pointIds.has(pointId)) contractError$1(`${path}.points[${index}].id`, "duplicates an earlier point identity");
 		pointIds.add(pointId);
 		assertRawEntityKey(point.unit, `${path}.points[${index}].unit`);
 		assertRawEntityKey(point.participantLabel, `${path}.points[${index}].participantLabel`);
@@ -2625,58 +2769,58 @@ function assertAnalysisResult(value, path) {
 		finiteVector(point.coordinates, `${path}.points[${index}].coordinates`, 3);
 		finiteVector(point.fullCoordinates, `${path}.points[${index}].fullCoordinates`, dimensions.length);
 		finiteVector(point.lineWeights, `${path}.points[${index}].lineWeights`, edgeColumns.length);
-		const metadata = objectAt(point.metadata, `${path}.points[${index}].metadata`);
+		const metadata = objectAt$2(point.metadata, `${path}.points[${index}].metadata`);
 		for (const [field, entry] of Object.entries(metadata)) rawScalar(entry, `${path}.points[${index}].metadata.${field}`);
 	});
-	const accumulation = objectAt(result.accumulation, `${path}.accumulation`);
-	exactFields$1(accumulation, ["modelCounts", "rowCounts"], `${path}.accumulation`);
+	const accumulation = objectAt$2(result.accumulation, `${path}.accumulation`);
+	exactFields$3(accumulation, ["modelCounts", "rowCounts"], `${path}.accumulation`);
 	for (const tableName of ["modelCounts", "rowCounts"]) {
-		const table = objectAt(accumulation[tableName], `${path}.accumulation.${tableName}`);
-		exactFields$1(table, [
+		const table = objectAt$2(accumulation[tableName], `${path}.accumulation.${tableName}`);
+		exactFields$3(table, [
 			"rowKeys",
 			"columns",
 			"values"
 		], `${path}.accumulation.${tableName}`);
-		const columns = stringList(table.columns, `${path}.accumulation.${tableName}.columns`);
+		const columns = stringList$1(table.columns, `${path}.accumulation.${tableName}.columns`);
 		if (tableName === "modelCounts") sameOrderedStrings(columns, edgeColumns, `${path}.accumulation.${tableName}.columns`);
 		else sameOrderedStrings(columns.slice(columns.length - edgeColumns.length), edgeColumns, `${path}.accumulation.${tableName}.columns`);
-		if (!Array.isArray(table.rowKeys) || !Array.isArray(table.values) || table.rowKeys.length !== table.values.length) contractError(`${path}.accumulation.${tableName}`, "rowKeys and values must align");
+		if (!Array.isArray(table.rowKeys) || !Array.isArray(table.values) || table.rowKeys.length !== table.values.length) contractError$1(`${path}.accumulation.${tableName}`, "rowKeys and values must align");
 		table.rowKeys.forEach((entry, index) => {
 			assertRawEntityKey(entry, `${path}.accumulation.${tableName}.rowKeys[${index}]`);
 			finiteVector(table.values[index], `${path}.accumulation.${tableName}.values[${index}]`, columns.length);
 		});
 	}
-	if (!Array.isArray(result.variance) || result.variance.length !== dimensions.length) contractError(`${path}.variance`, "must align one-to-one with dimensions");
+	if (!Array.isArray(result.variance) || result.variance.length !== dimensions.length) contractError$1(`${path}.variance`, "must align one-to-one with dimensions");
 	result.variance.forEach((candidate, index) => {
-		const variance = objectAt(candidate, `${path}.variance[${index}]`);
-		exactFields$1(variance, [
+		const variance = objectAt$2(candidate, `${path}.variance[${index}]`);
+		exactFields$3(variance, [
 			"axis",
 			"proportion",
 			"eigenvalue",
 			"displayed"
 		], `${path}.variance[${index}]`);
-		if (variance.axis !== dimensions[index]) contractError(`${path}.variance[${index}].axis`, "must match the dimension at this index");
+		if (variance.axis !== dimensions[index]) contractError$1(`${path}.variance[${index}].axis`, "must match the dimension at this index");
 		finiteNumber(variance.proportion, `${path}.variance[${index}].proportion`);
 		finiteNumber(variance.eigenvalue, `${path}.variance[${index}].eigenvalue`);
-		if (typeof variance.displayed !== "boolean") contractError(`${path}.variance[${index}].displayed`, "must be boolean");
+		if (typeof variance.displayed !== "boolean") contractError$1(`${path}.variance[${index}].displayed`, "must be boolean");
 	});
-	const rotation = objectAt(result.rotation, `${path}.rotation`);
-	exactFields$1(rotation, [
+	const rotation = objectAt$2(result.rotation, `${path}.rotation`);
+	exactFields$3(rotation, [
 		"method",
 		"columns",
 		"matrix",
 		"eigenvalues",
 		"centerVector"
 	], `${path}.rotation`);
-	if (rotation.method !== "svd") contractError(`${path}.rotation.method`, "must be svd");
-	sameOrderedStrings(stringList(rotation.columns, `${path}.rotation.columns`), dimensions, `${path}.rotation.columns`);
-	if (!Array.isArray(rotation.matrix) || rotation.matrix.length !== edgeColumns.length) contractError(`${path}.rotation.matrix`, "must contain one row per edge column");
+	if (rotation.method !== "svd" && rotation.method !== "mean" && rotation.method !== "reference") contractError$1(`${path}.rotation.method`, "must be svd, mean, or reference");
+	sameOrderedStrings(stringList$1(rotation.columns, `${path}.rotation.columns`), dimensions, `${path}.rotation.columns`);
+	if (!Array.isArray(rotation.matrix) || rotation.matrix.length !== edgeColumns.length) contractError$1(`${path}.rotation.matrix`, "must contain one row per edge column");
 	rotation.matrix.forEach((row, index) => finiteVector(row, `${path}.rotation.matrix[${index}]`, dimensions.length));
 	finiteVector(rotation.eigenvalues, `${path}.rotation.eigenvalues`, dimensions.length);
 	finiteVector(rotation.centerVector, `${path}.rotation.centerVector`, edgeColumns.length);
 	if (result.trajectory !== void 0) assertSharedTrajectory(result.trajectory, dimensions, result.points, `${path}.trajectory`);
-	const summary = objectAt(result.summary, `${path}.summary`);
-	exactFields$1(summary, [
+	const summary = objectAt$2(result.summary, `${path}.summary`);
+	exactFields$3(summary, [
 		"inputRows",
 		"inputColumns",
 		"units",
@@ -2692,16 +2836,16 @@ function assertAnalysisResult(value, path) {
 		"dimensions"
 	], `${path}.summary`);
 	for (const field of Object.keys(summary)) nonNegativeInteger(summary[field], `${path}.summary.${field}`);
-	if (summary.points !== result.points.length || summary.nodes !== result.nodes.length || summary.edges !== result.edges.length || summary.dimensions !== dimensions.length) contractError(`${path}.summary`, "point, node, edge, and dimension counts must match the public tables");
+	if (summary.points !== result.points.length || summary.nodes !== result.nodes.length || summary.edges !== result.edges.length || summary.dimensions !== dimensions.length) contractError$1(`${path}.summary`, "point, node, edge, and dimension counts must match the public tables");
 	const modelCounts = accumulation.modelCounts;
 	const rowCounts = accumulation.rowCounts;
-	if (summary.modelCountRows !== modelCounts.rowKeys.length || summary.rowCountRows !== rowCounts.rowKeys.length) contractError(`${path}.summary`, "accumulation row counts must match the public tables");
+	if (summary.modelCountRows !== modelCounts.rowKeys.length || summary.rowCountRows !== rowCounts.rowKeys.length) contractError$1(`${path}.summary`, "accumulation row counts must match the public tables");
 	assertDiagnostics(result.diagnostics, `${path}.diagnostics`);
 	assertAnalysisProvenance(result.provenance, `${path}.provenance`);
 }
 function assertSharedTrajectory(value, dimensions, points, path) {
-	const trajectory = objectAt(value, path);
-	exactFields$1(trajectory, [
+	const trajectory = objectAt$2(value, path);
+	exactFields$3(trajectory, [
 		"space",
 		"dimensions",
 		"cohortPolicy",
@@ -2711,17 +2855,17 @@ function assertSharedTrajectory(value, dimensions, points, path) {
 		"centroids",
 		"paths"
 	], path);
-	if (trajectory.space !== "analysis-result-rotation") contractError(`${path}.space`, "must be analysis-result-rotation");
-	sameOrderedStrings(stringList(trajectory.dimensions, `${path}.dimensions`), dimensions, `${path}.dimensions`);
-	if (trajectory.cohortPolicy !== "available" && trajectory.cohortPolicy !== "complete") contractError(`${path}.cohortPolicy`, "must be available or complete");
-	if (!Array.isArray(trajectory.groupOrder) || !Array.isArray(trajectory.timeOrder)) contractError(path, "groupOrder and timeOrder must be arrays");
+	if (trajectory.space !== "analysis-result-rotation") contractError$1(`${path}.space`, "must be analysis-result-rotation");
+	sameOrderedStrings(stringList$1(trajectory.dimensions, `${path}.dimensions`), dimensions, `${path}.dimensions`);
+	if (trajectory.cohortPolicy !== "available" && trajectory.cohortPolicy !== "complete") contractError$1(`${path}.cohortPolicy`, "must be available or complete");
+	if (!Array.isArray(trajectory.groupOrder) || !Array.isArray(trajectory.timeOrder)) contractError$1(path, "groupOrder and timeOrder must be arrays");
 	const groups = trajectory.groupOrder.map((entry, index) => assertRawTypedValue(entry, `${path}.groupOrder[${index}]`).canonical);
 	const times = trajectory.timeOrder.map((entry, index) => assertRawTypedValue(entry, `${path}.timeOrder[${index}]`).canonical);
-	if (new Set(groups).size !== groups.length || new Set(times).size !== times.length) contractError(path, "group and time inventories must not contain duplicates");
-	if (!Array.isArray(trajectory.participantPeriods) || !Array.isArray(trajectory.centroids) || !Array.isArray(trajectory.paths)) contractError(path, "trajectory tables must be arrays");
+	if (new Set(groups).size !== groups.length || new Set(times).size !== times.length) contractError$1(path, "group and time inventories must not contain duplicates");
+	if (!Array.isArray(trajectory.participantPeriods) || !Array.isArray(trajectory.centroids) || !Array.isArray(trajectory.paths)) contractError$1(path, "trajectory tables must be arrays");
 	trajectory.participantPeriods.forEach((candidate, index) => {
-		const row = objectAt(candidate, `${path}.participantPeriods[${index}]`);
-		exactFields$1(row, [
+		const row = objectAt$2(candidate, `${path}.participantPeriods[${index}]`);
+		exactFields$3(row, [
 			"index",
 			"participant",
 			"participantLabel",
@@ -2732,22 +2876,22 @@ function assertSharedTrajectory(value, dimensions, points, path) {
 			"sourcePointIndexes",
 			"includedInCohort"
 		], `${path}.participantPeriods[${index}]`);
-		if (nonNegativeInteger(row.index, `${path}.participantPeriods[${index}].index`) !== index) contractError(`${path}.participantPeriods[${index}].index`, "must equal its array position");
+		if (nonNegativeInteger(row.index, `${path}.participantPeriods[${index}].index`) !== index) contractError$1(`${path}.participantPeriods[${index}].index`, "must equal its array position");
 		assertRawEntityKey(row.participant, `${path}.participantPeriods[${index}].participant`);
 		assertRawEntityKey(row.participantLabel, `${path}.participantPeriods[${index}].participantLabel`);
-		if (!groups.includes(assertRawTypedValue(row.group, `${path}.participantPeriods[${index}].group`).canonical)) contractError(`${path}.participantPeriods[${index}].group`, "must occur in groupOrder");
-		if (!times.includes(assertRawTypedValue(row.time, `${path}.participantPeriods[${index}].time`).canonical)) contractError(`${path}.participantPeriods[${index}].time`, "must occur in timeOrder");
+		if (!groups.includes(assertRawTypedValue(row.group, `${path}.participantPeriods[${index}].group`).canonical)) contractError$1(`${path}.participantPeriods[${index}].group`, "must occur in groupOrder");
+		if (!times.includes(assertRawTypedValue(row.time, `${path}.participantPeriods[${index}].time`).canonical)) contractError$1(`${path}.participantPeriods[${index}].time`, "must occur in timeOrder");
 		finiteVector(row.coordinates, `${path}.participantPeriods[${index}].coordinates`, 3);
 		finiteVector(row.fullCoordinates, `${path}.participantPeriods[${index}].fullCoordinates`, dimensions.length);
-		if (!Array.isArray(row.sourcePointIndexes) || row.sourcePointIndexes.length === 0) contractError(`${path}.participantPeriods[${index}].sourcePointIndexes`, "must be non-empty");
+		if (!Array.isArray(row.sourcePointIndexes) || row.sourcePointIndexes.length === 0) contractError$1(`${path}.participantPeriods[${index}].sourcePointIndexes`, "must be non-empty");
 		row.sourcePointIndexes.forEach((entry, itemIndex) => {
-			if (nonNegativeInteger(entry, `${path}.participantPeriods[${index}].sourcePointIndexes[${itemIndex}]`) >= points.length) contractError(`${path}.participantPeriods[${index}].sourcePointIndexes[${itemIndex}]`, "is outside the point table");
+			if (nonNegativeInteger(entry, `${path}.participantPeriods[${index}].sourcePointIndexes[${itemIndex}]`) >= points.length) contractError$1(`${path}.participantPeriods[${index}].sourcePointIndexes[${itemIndex}]`, "is outside the point table");
 		});
-		if (typeof row.includedInCohort !== "boolean") contractError(`${path}.participantPeriods[${index}].includedInCohort`, "must be boolean");
+		if (typeof row.includedInCohort !== "boolean") contractError$1(`${path}.participantPeriods[${index}].includedInCohort`, "must be boolean");
 	});
 	trajectory.centroids.forEach((candidate, index) => {
-		const row = objectAt(candidate, `${path}.centroids[${index}]`);
-		exactFields$1(row, [
+		const row = objectAt$2(candidate, `${path}.centroids[${index}]`);
+		exactFields$3(row, [
 			"index",
 			"group",
 			"time",
@@ -2756,35 +2900,35 @@ function assertSharedTrajectory(value, dimensions, points, path) {
 			"participantCount",
 			"participantPeriodIndexes"
 		], `${path}.centroids[${index}]`);
-		if (nonNegativeInteger(row.index, `${path}.centroids[${index}].index`) !== index) contractError(`${path}.centroids[${index}].index`, "must equal its array position");
-		if (!groups.includes(assertRawTypedValue(row.group, `${path}.centroids[${index}].group`).canonical)) contractError(`${path}.centroids[${index}].group`, "must occur in groupOrder");
-		if (!times.includes(assertRawTypedValue(row.time, `${path}.centroids[${index}].time`).canonical)) contractError(`${path}.centroids[${index}].time`, "must occur in timeOrder");
+		if (nonNegativeInteger(row.index, `${path}.centroids[${index}].index`) !== index) contractError$1(`${path}.centroids[${index}].index`, "must equal its array position");
+		if (!groups.includes(assertRawTypedValue(row.group, `${path}.centroids[${index}].group`).canonical)) contractError$1(`${path}.centroids[${index}].group`, "must occur in groupOrder");
+		if (!times.includes(assertRawTypedValue(row.time, `${path}.centroids[${index}].time`).canonical)) contractError$1(`${path}.centroids[${index}].time`, "must occur in timeOrder");
 		finiteVector(row.coordinates, `${path}.centroids[${index}].coordinates`, 3);
 		finiteVector(row.fullCoordinates, `${path}.centroids[${index}].fullCoordinates`, dimensions.length);
-		positiveInteger(row.participantCount, `${path}.centroids[${index}].participantCount`);
-		if (!Array.isArray(row.participantPeriodIndexes) || row.participantPeriodIndexes.length !== row.participantCount) contractError(`${path}.centroids[${index}].participantPeriodIndexes`, "must align with participantCount");
+		positiveInteger$1(row.participantCount, `${path}.centroids[${index}].participantCount`);
+		if (!Array.isArray(row.participantPeriodIndexes) || row.participantPeriodIndexes.length !== row.participantCount) contractError$1(`${path}.centroids[${index}].participantPeriodIndexes`, "must align with participantCount");
 		row.participantPeriodIndexes.forEach((entry, itemIndex) => {
-			if (nonNegativeInteger(entry, `${path}.centroids[${index}].participantPeriodIndexes[${itemIndex}]`) >= trajectory.participantPeriods.length) contractError(`${path}.centroids[${index}].participantPeriodIndexes[${itemIndex}]`, "is outside the participant-period table");
+			if (nonNegativeInteger(entry, `${path}.centroids[${index}].participantPeriodIndexes[${itemIndex}]`) >= trajectory.participantPeriods.length) contractError$1(`${path}.centroids[${index}].participantPeriodIndexes[${itemIndex}]`, "is outside the participant-period table");
 		});
 	});
 	trajectory.paths.forEach((candidate, index) => {
-		const row = objectAt(candidate, `${path}.paths[${index}]`);
-		exactFields$1(row, ["group", "steps"], `${path}.paths[${index}]`);
-		if (assertRawTypedValue(row.group, `${path}.paths[${index}].group`).canonical !== groups[index]) contractError(`${path}.paths[${index}].group`, "must preserve groupOrder");
-		if (!Array.isArray(row.steps) || row.steps.length !== times.length) contractError(`${path}.paths[${index}].steps`, "must contain every expected time in order");
+		const row = objectAt$2(candidate, `${path}.paths[${index}]`);
+		exactFields$3(row, ["group", "steps"], `${path}.paths[${index}]`);
+		if (assertRawTypedValue(row.group, `${path}.paths[${index}].group`).canonical !== groups[index]) contractError$1(`${path}.paths[${index}].group`, "must preserve groupOrder");
+		if (!Array.isArray(row.steps) || row.steps.length !== times.length) contractError$1(`${path}.paths[${index}].steps`, "must contain every expected time in order");
 		row.steps.forEach((candidateStep, stepIndex) => {
-			const step = objectAt(candidateStep, `${path}.paths[${index}].steps[${stepIndex}]`);
-			exactFields$1(step, ["time", "centroidIndex"], `${path}.paths[${index}].steps[${stepIndex}]`);
-			if (assertRawTypedValue(step.time, `${path}.paths[${index}].steps[${stepIndex}].time`).canonical !== times[stepIndex]) contractError(`${path}.paths[${index}].steps[${stepIndex}].time`, "must preserve timeOrder");
+			const step = objectAt$2(candidateStep, `${path}.paths[${index}].steps[${stepIndex}]`);
+			exactFields$3(step, ["time", "centroidIndex"], `${path}.paths[${index}].steps[${stepIndex}]`);
+			if (assertRawTypedValue(step.time, `${path}.paths[${index}].steps[${stepIndex}].time`).canonical !== times[stepIndex]) contractError$1(`${path}.paths[${index}].steps[${stepIndex}].time`, "must preserve timeOrder");
 			if (step.centroidIndex !== null) {
-				if (nonNegativeInteger(step.centroidIndex, `${path}.paths[${index}].steps[${stepIndex}].centroidIndex`) >= trajectory.centroids.length) contractError(`${path}.paths[${index}].steps[${stepIndex}].centroidIndex`, "is outside the centroid table");
+				if (nonNegativeInteger(step.centroidIndex, `${path}.paths[${index}].steps[${stepIndex}].centroidIndex`) >= trajectory.centroids.length) contractError$1(`${path}.paths[${index}].steps[${stepIndex}].centroidIndex`, "is outside the centroid table");
 			}
 		});
 	});
 }
 function assertAnalysisProvenance(value, path) {
-	const provenance = objectAt(value, path);
-	exactFields$1(provenance, [
+	const provenance = objectAt$2(value, path);
+	exactFields$3(provenance, [
 		"adapter",
 		"adapterVersion",
 		"jenaPackage",
@@ -2798,7 +2942,8 @@ function assertAnalysisProvenance(value, path) {
 		"resolvedConfig",
 		"resolvedLimits"
 	], path);
-	if (provenance.adapter !== "@3dena/analysis" || provenance.adapterVersion !== "0.1.0" || provenance.jenaPackage !== "jena-js") contractError(path, "contains an unsupported analysis adapter identity");
+	if (provenance.adapter !== "@3dena/analysis" || provenance.jenaPackage !== "jena-js") contractError$1(path, "contains an unsupported analysis adapter identity");
+	nonEmptyString$2(provenance.adapterVersion, `${path}.adapterVersion`);
 	for (const field of [
 		"jenaVersion",
 		"jenaCommit",
@@ -2806,10 +2951,10 @@ function assertAnalysisProvenance(value, path) {
 		"legacyGoldenContract",
 		"parityContract",
 		"resultSemantics"
-	]) nonEmptyString$1(provenance[field], `${path}.${field}`);
-	if (provenance.legacyGoldenStatus !== "not-assessed") contractError(`${path}.legacyGoldenStatus`, "must remain not-assessed in the scientific DTO");
-	const config = objectAt(provenance.resolvedConfig, `${path}.resolvedConfig`);
-	exactFields$1(config, [
+	]) nonEmptyString$2(provenance[field], `${path}.${field}`);
+	if (provenance.legacyGoldenStatus !== "not-assessed") contractError$1(`${path}.legacyGoldenStatus`, "must remain not-assessed in the scientific DTO");
+	const config = objectAt$2(provenance.resolvedConfig, `${path}.resolvedConfig`);
+	exactFields$3(config, [
 		"model",
 		"window",
 		"weightBy",
@@ -2817,14 +2962,16 @@ function assertAnalysisProvenance(value, path) {
 		"windowSizeForward",
 		"centerAlignToOrigin"
 	], `${path}.resolvedConfig`);
-	if (!(config.model === "EndPoint" || config.model === "AccumulatedTrajectory" || config.model === "SeparateTrajectory")) contractError(`${path}.resolvedConfig.model`, "is unsupported");
-	if (!(config.window === "MovingStanzaWindow" || config.window === "Conversation")) contractError(`${path}.resolvedConfig.window`, "is unsupported");
-	if (config.weightBy !== "binary" && config.weightBy !== "sum") contractError(`${path}.resolvedConfig.weightBy`, "is unsupported");
-	nonNegativeInteger(config.windowSizeBack, `${path}.resolvedConfig.windowSizeBack`);
+	if (!(config.model === "EndPoint" || config.model === "AccumulatedTrajectory" || config.model === "SeparateTrajectory")) contractError$1(`${path}.resolvedConfig.model`, "is unsupported");
+	if (!(config.window === "MovingStanzaWindow" || config.window === "Conversation")) contractError$1(`${path}.resolvedConfig.window`, "is unsupported");
+	if (config.weightBy !== "binary" && config.weightBy !== "sum") contractError$1(`${path}.resolvedConfig.weightBy`, "is unsupported");
+	if (config.windowSizeBack === "Infinity") {
+		if (config.window !== "Conversation") contractError$1(`${path}.resolvedConfig.windowSizeBack`, "may be Infinity only for Conversation windows");
+	} else nonNegativeInteger(config.windowSizeBack, `${path}.resolvedConfig.windowSizeBack`);
 	nonNegativeInteger(config.windowSizeForward, `${path}.resolvedConfig.windowSizeForward`);
-	if (typeof config.centerAlignToOrigin !== "boolean") contractError(`${path}.resolvedConfig.centerAlignToOrigin`, "must be boolean");
-	const limits = objectAt(provenance.resolvedLimits, `${path}.resolvedLimits`);
-	exactFields$1(limits, [
+	if (typeof config.centerAlignToOrigin !== "boolean") contractError$1(`${path}.resolvedConfig.centerAlignToOrigin`, "must be boolean");
+	const limits = objectAt$2(provenance.resolvedLimits, `${path}.resolvedLimits`);
+	exactFields$3(limits, [
 		"maxRows",
 		"maxColumns",
 		"maxCells",
@@ -2839,25 +2986,25 @@ function assertAnalysisProvenance(value, path) {
 		"maxDimensions",
 		"maxCoordinateCells"
 	], `${path}.resolvedLimits`);
-	for (const field of Object.keys(limits)) positiveInteger(limits[field], `${path}.resolvedLimits.${field}`);
+	for (const field of Object.keys(limits)) positiveInteger$1(limits[field], `${path}.resolvedLimits.${field}`);
 }
 function assertNetworkMean(value, dimensions, path) {
-	const mean = objectAt(value, path);
-	exactFields$1(mean, [
+	const mean = objectAt$2(value, path);
+	exactFields$3(mean, [
 		"pointCount",
 		"pointIndexes",
 		"meanCoordinates",
 		"edges"
 	], path);
-	const pointCount = positiveInteger(mean.pointCount, `${path}.pointCount`);
-	if (!Array.isArray(mean.pointIndexes) || mean.pointIndexes.length !== pointCount) contractError(`${path}.pointIndexes`, "must align with pointCount");
+	const pointCount = positiveInteger$1(mean.pointCount, `${path}.pointCount`);
+	if (!Array.isArray(mean.pointIndexes) || mean.pointIndexes.length !== pointCount) contractError$1(`${path}.pointIndexes`, "must align with pointCount");
 	mean.pointIndexes.forEach((entry, index) => nonNegativeInteger(entry, `${path}.pointIndexes[${index}]`));
 	finiteVector(mean.meanCoordinates, `${path}.meanCoordinates`, dimensions);
-	if (!Array.isArray(mean.edges) || mean.edges.length === 0) contractError(`${path}.edges`, "must be a non-empty array");
+	if (!Array.isArray(mean.edges) || mean.edges.length === 0) contractError$1(`${path}.edges`, "must be a non-empty array");
 	const edgeColumns = [];
 	mean.edges.forEach((candidate, index) => {
-		const edge = objectAt(candidate, `${path}.edges[${index}]`);
-		exactFields$1(edge, [
+		const edge = objectAt$2(candidate, `${path}.edges[${index}]`);
+		exactFields$3(edge, [
 			"index",
 			"id",
 			"column",
@@ -2865,18 +3012,18 @@ function assertNetworkMean(value, dimensions, path) {
 			"target",
 			"meanWeight"
 		], `${path}.edges[${index}]`);
-		if (nonNegativeInteger(edge.index, `${path}.edges[${index}].index`) !== index) contractError(`${path}.edges[${index}].index`, "must equal its array position");
-		nonEmptyString$1(edge.id, `${path}.edges[${index}].id`);
-		edgeColumns.push(nonEmptyString$1(edge.column, `${path}.edges[${index}].column`));
-		nonEmptyString$1(edge.source, `${path}.edges[${index}].source`);
-		nonEmptyString$1(edge.target, `${path}.edges[${index}].target`);
+		if (nonNegativeInteger(edge.index, `${path}.edges[${index}].index`) !== index) contractError$1(`${path}.edges[${index}].index`, "must equal its array position");
+		nonEmptyString$2(edge.id, `${path}.edges[${index}].id`);
+		edgeColumns.push(nonEmptyString$2(edge.column, `${path}.edges[${index}].column`));
+		nonEmptyString$2(edge.source, `${path}.edges[${index}].source`);
+		nonEmptyString$2(edge.target, `${path}.edges[${index}].target`);
 		finiteNumber(edge.meanWeight, `${path}.edges[${index}].meanWeight`);
 	});
 	return { edgeColumns };
 }
 function assertNetworkComparison(value, path) {
-	const result = objectAt(value, path);
-	exactFields$1(result, [
+	const result = objectAt$2(value, path);
+	exactFields$3(result, [
 		"schemaVersion",
 		"direction",
 		"groupA",
@@ -2886,18 +3033,18 @@ function assertNetworkComparison(value, path) {
 		"differenceEdges",
 		"diagnostics"
 	], path);
-	if (result.schemaVersion !== "3dena.network-comparison.v1" || result.direction !== "group-a-minus-group-b") contractError(path, "contains an unsupported network-comparison contract");
-	if (assertRawTypedValue(result.groupA, `${path}.groupA`).canonical === assertRawTypedValue(result.groupB, `${path}.groupB`).canonical) contractError(path, "groupA and groupB must differ");
-	const meanA = objectAt(result.meanA, `${path}.meanA`);
-	if (!Array.isArray(meanA.meanCoordinates)) contractError(`${path}.meanA.meanCoordinates`, "must be an array");
+	if (result.schemaVersion !== "3dena.network-comparison.v1" || result.direction !== "group-a-minus-group-b") contractError$1(path, "contains an unsupported network-comparison contract");
+	if (assertRawTypedValue(result.groupA, `${path}.groupA`).canonical === assertRawTypedValue(result.groupB, `${path}.groupB`).canonical) contractError$1(path, "groupA and groupB must differ");
+	const meanA = objectAt$2(result.meanA, `${path}.meanA`);
+	if (!Array.isArray(meanA.meanCoordinates)) contractError$1(`${path}.meanA.meanCoordinates`, "must be an array");
 	const dimensions = meanA.meanCoordinates.length;
-	if (dimensions < 1) contractError(`${path}.meanA.meanCoordinates`, "must not be empty");
+	if (dimensions < 1) contractError$1(`${path}.meanA.meanCoordinates`, "must not be empty");
 	const a = assertNetworkMean(result.meanA, dimensions, `${path}.meanA`);
 	sameOrderedStrings(assertNetworkMean(result.meanB, dimensions, `${path}.meanB`).edgeColumns, a.edgeColumns, `${path}.meanB.edges`);
-	if (!Array.isArray(result.differenceEdges) || result.differenceEdges.length !== a.edgeColumns.length) contractError(`${path}.differenceEdges`, "must align with the group mean edges");
+	if (!Array.isArray(result.differenceEdges) || result.differenceEdges.length !== a.edgeColumns.length) contractError$1(`${path}.differenceEdges`, "must align with the group mean edges");
 	result.differenceEdges.forEach((candidate, index) => {
-		const edge = objectAt(candidate, `${path}.differenceEdges[${index}]`);
-		exactFields$1(edge, [
+		const edge = objectAt$2(candidate, `${path}.differenceEdges[${index}]`);
+		exactFields$3(edge, [
 			"index",
 			"id",
 			"column",
@@ -2908,44 +3055,44 @@ function assertNetworkComparison(value, path) {
 			"groupBMeanWeight",
 			"semanticOwner"
 		], `${path}.differenceEdges[${index}]`);
-		if (nonNegativeInteger(edge.index, `${path}.differenceEdges[${index}].index`) !== index || edge.column !== a.edgeColumns[index]) contractError(`${path}.differenceEdges[${index}]`, "must preserve edge order");
+		if (nonNegativeInteger(edge.index, `${path}.differenceEdges[${index}].index`) !== index || edge.column !== a.edgeColumns[index]) contractError$1(`${path}.differenceEdges[${index}]`, "must preserve edge order");
 		for (const field of [
 			"id",
 			"column",
 			"source",
 			"target"
-		]) nonEmptyString$1(edge[field], `${path}.differenceEdges[${index}].${field}`);
+		]) nonEmptyString$2(edge[field], `${path}.differenceEdges[${index}].${field}`);
 		const difference = finiteNumber(edge.meanWeight, `${path}.differenceEdges[${index}].meanWeight`);
 		const groupAMean = finiteNumber(edge.groupAMeanWeight, `${path}.differenceEdges[${index}].groupAMeanWeight`);
 		const groupBMean = finiteNumber(edge.groupBMeanWeight, `${path}.differenceEdges[${index}].groupBMeanWeight`);
-		if (Math.abs(difference - (groupAMean - groupBMean)) > Number.EPSILON * Math.max(1, Math.abs(difference), Math.abs(groupAMean), Math.abs(groupBMean)) * 8) contractError(`${path}.differenceEdges[${index}].meanWeight`, "must equal group A mean minus group B mean");
+		if (Math.abs(difference - (groupAMean - groupBMean)) > Number.EPSILON * Math.max(1, Math.abs(difference), Math.abs(groupAMean), Math.abs(groupBMean)) * 8) contractError$1(`${path}.differenceEdges[${index}].meanWeight`, "must equal group A mean minus group B mean");
 		const owner = difference > 0 ? "group-a" : difference < 0 ? "group-b" : "equal";
-		if (edge.semanticOwner !== owner) contractError(`${path}.differenceEdges[${index}].semanticOwner`, "does not match the signed difference");
+		if (edge.semanticOwner !== owner) contractError$1(`${path}.differenceEdges[${index}].semanticOwner`, "does not match the signed difference");
 	});
 	assertDiagnostics(result.diagnostics, `${path}.diagnostics`);
 }
 function assertChangeNetwork(value, path) {
-	const result = objectAt(value, path);
-	exactFields$1(result, [
+	const result = objectAt$2(value, path);
+	exactFields$3(result, [
 		"schemaVersion",
 		"selector",
 		"levelCanonical",
 		"mean",
 		"diagnostics"
 	], path);
-	if (result.schemaVersion !== "3dena.change-network.v1") contractError(`${path}.schemaVersion`, "must be 3dena.change-network.v1");
-	const selector = objectAt(result.selector, `${path}.selector`);
-	exactFields$1(selector, ["field", "level"], `${path}.selector`);
-	nonEmptyString$1(selector.field, `${path}.selector.field`);
+	if (result.schemaVersion !== "3dena.change-network.v1") contractError$1(`${path}.schemaVersion`, "must be 3dena.change-network.v1");
+	const selector = objectAt$2(result.selector, `${path}.selector`);
+	exactFields$3(selector, ["field", "level"], `${path}.selector`);
+	nonEmptyString$2(selector.field, `${path}.selector.field`);
 	rawScalar(selector.level, `${path}.selector.level`);
-	nonEmptyString$1(result.levelCanonical, `${path}.levelCanonical`);
-	const mean = objectAt(result.mean, `${path}.mean`);
-	if (!Array.isArray(mean.meanCoordinates) || mean.meanCoordinates.length < 1) contractError(`${path}.mean.meanCoordinates`, "must be a non-empty array");
+	nonEmptyString$2(result.levelCanonical, `${path}.levelCanonical`);
+	const mean = objectAt$2(result.mean, `${path}.mean`);
+	if (!Array.isArray(mean.meanCoordinates) || mean.meanCoordinates.length < 1) contractError$1(`${path}.mean.meanCoordinates`, "must be a non-empty array");
 	assertNetworkMean(result.mean, mean.meanCoordinates.length, `${path}.mean`);
 	assertDiagnostics(result.diagnostics, `${path}.diagnostics`);
 }
 function assertStatsContract(value, path) {
-	const contract = objectAt(value, path);
+	const contract = objectAt$2(value, path);
 	const expected = {
 		schemaVersion: "3dena.stats.contract.v1",
 		direction: "A-minus-B",
@@ -2959,50 +3106,50 @@ function assertStatsContract(value, path) {
 		meanDifferenceConfidenceInterval: "alternative-aligned-t-interval-95-percent",
 		pValueAdjustmentFamily: "caller-supplied-complete-family"
 	};
-	exactFields$1(contract, Object.keys(expected), path);
-	for (const [field, expectedValue] of Object.entries(expected)) if (contract[field] !== expectedValue) contractError(`${path}.${field}`, `must be ${JSON.stringify(expectedValue)}`);
+	exactFields$3(contract, Object.keys(expected), path);
+	for (const [field, expectedValue] of Object.entries(expected)) if (contract[field] !== expectedValue) contractError$1(`${path}.${field}`, `must be ${JSON.stringify(expectedValue)}`);
 }
 function probability(value, path) {
 	const number = finiteNumber(value, path);
-	if (number < 0 || number > 1) contractError(path, "must be in [0, 1]");
+	if (number < 0 || number > 1) contractError$1(path, "must be in [0, 1]");
 	return number;
 }
 function assertConfidenceBound(value, path) {
-	const bound = objectAt(value, path);
-	const kind = nonEmptyString$1(bound.kind, `${path}.kind`);
+	const bound = objectAt$2(value, path);
+	const kind = nonEmptyString$2(bound.kind, `${path}.kind`);
 	if (kind === "finite") {
-		exactFields$1(bound, ["kind", "value"], path);
+		exactFields$3(bound, ["kind", "value"], path);
 		finiteNumber(bound.value, `${path}.value`);
 	} else if ([
 		"negative-infinity",
 		"positive-infinity",
 		"undefined",
 		"unrepresentable"
-	].includes(kind)) exactFields$1(bound, ["kind"], path);
-	else contractError(`${path}.kind`, "is unsupported");
+	].includes(kind)) exactFields$3(bound, ["kind"], path);
+	else contractError$1(`${path}.kind`, "is unsupported");
 }
 function assertConfidenceInterval(value, path) {
-	const interval = objectAt(value, path);
-	exactFields$1(interval, [
+	const interval = objectAt$2(value, path);
+	exactFields$3(interval, [
 		"method",
 		"confidenceLevel",
 		"alternative",
 		"lower",
 		"upper"
 	], path);
-	if (interval.method !== "welch-t-mean-difference-v1" && interval.method !== "paired-t-mean-difference-v1") contractError(`${path}.method`, "is unsupported");
-	if (interval.confidenceLevel !== .95) contractError(`${path}.confidenceLevel`, "must be 0.95");
+	if (interval.method !== "welch-t-mean-difference-v1" && interval.method !== "paired-t-mean-difference-v1") contractError$1(`${path}.method`, "is unsupported");
+	if (interval.confidenceLevel !== .95) contractError$1(`${path}.confidenceLevel`, "must be 0.95");
 	if (![
 		"two-sided",
 		"greater",
 		"less"
-	].includes(interval.alternative)) contractError(`${path}.alternative`, "is unsupported");
+	].includes(interval.alternative)) contractError$1(`${path}.alternative`, "is unsupported");
 	assertConfidenceBound(interval.lower, `${path}.lower`);
 	assertConfidenceBound(interval.upper, `${path}.upper`);
 }
 function assertAdjustment(value, path) {
-	const adjustment = objectAt(value, path);
-	exactFields$1(adjustment, [
+	const adjustment = objectAt$2(value, path);
+	exactFields$3(adjustment, [
 		"method",
 		"raw",
 		"adjusted"
@@ -3012,15 +3159,15 @@ function assertAdjustment(value, path) {
 		"holm",
 		"bh",
 		"bonferroni"
-	].includes(adjustment.method)) contractError(`${path}.method`, "is unsupported");
-	if (!Array.isArray(adjustment.raw) || !Array.isArray(adjustment.adjusted) || adjustment.raw.length !== adjustment.adjusted.length || adjustment.raw.length === 0) contractError(path, "raw and adjusted p-value families must be non-empty and aligned");
+	].includes(adjustment.method)) contractError$1(`${path}.method`, "is unsupported");
+	if (!Array.isArray(adjustment.raw) || !Array.isArray(adjustment.adjusted) || adjustment.raw.length !== adjustment.adjusted.length || adjustment.raw.length === 0) contractError$1(path, "raw and adjusted p-value families must be non-empty and aligned");
 	adjustment.raw.forEach((entry, index) => probability(entry, `${path}.raw[${index}]`));
 	adjustment.adjusted.forEach((entry, index) => probability(entry, `${path}.adjusted[${index}]`));
 }
 function assertStatsResult(value, expectedDesign, path) {
-	const result = objectAt(value, path);
+	const result = objectAt$2(value, path);
 	if (expectedDesign === "independent") {
-		exactFields$1(result, [
+		exactFields$3(result, [
 			"schemaVersion",
 			"design",
 			"direction",
@@ -3034,23 +3181,23 @@ function assertStatsResult(value, expectedDesign, path) {
 			"adjustment",
 			"diagnostics"
 		], path);
-		if (result.schemaVersion !== "3dena.stats.independent-result.v1" || result.design !== "independent") contractError(path, "must be an independent statistics result");
-		const samples = objectAt(result.samples, `${path}.samples`);
-		exactFields$1(samples, ["sideA", "sideB"], `${path}.samples`);
+		if (result.schemaVersion !== "3dena.stats.independent-result.v1" || result.design !== "independent") contractError$1(path, "must be an independent statistics result");
+		const samples = objectAt$2(result.samples, `${path}.samples`);
+		exactFields$3(samples, ["sideA", "sideB"], `${path}.samples`);
 		for (const side of ["sideA", "sideB"]) {
-			const sample = objectAt(samples[side], `${path}.samples.${side}`);
-			exactFields$1(sample, [
+			const sample = objectAt$2(samples[side], `${path}.samples.${side}`);
+			exactFields$3(sample, [
 				"label",
 				"input",
 				"valid",
 				"droppedMissing"
 			], `${path}.samples.${side}`);
-			nonEmptyString$1(sample.label, `${path}.samples.${side}.label`);
-			const input = positiveInteger(sample.input, `${path}.samples.${side}.input`);
-			if (positiveInteger(sample.valid, `${path}.samples.${side}.valid`) + nonNegativeInteger(sample.droppedMissing, `${path}.samples.${side}.droppedMissing`) !== input) contractError(`${path}.samples.${side}`, "valid plus droppedMissing must equal input");
+			nonEmptyString$2(sample.label, `${path}.samples.${side}.label`);
+			const input = positiveInteger$1(sample.input, `${path}.samples.${side}.input`);
+			if (positiveInteger$1(sample.valid, `${path}.samples.${side}.valid`) + nonNegativeInteger(sample.droppedMissing, `${path}.samples.${side}.droppedMissing`) !== input) contractError$1(`${path}.samples.${side}`, "valid plus droppedMissing must equal input");
 		}
-		const estimates = objectAt(result.estimates, `${path}.estimates`);
-		exactFields$1(estimates, [
+		const estimates = objectAt$2(result.estimates, `${path}.estimates`);
+		exactFields$3(estimates, [
 			"meanA",
 			"meanB",
 			"meanDifference",
@@ -3060,20 +3207,20 @@ function assertStatsResult(value, expectedDesign, path) {
 		finiteNumber(estimates.meanB, `${path}.estimates.meanB`);
 		finiteOrNull(estimates.meanDifference, `${path}.estimates.meanDifference`);
 		assertConfidenceInterval(estimates.confidenceInterval, `${path}.estimates.confidenceInterval`);
-		const welch = objectAt(result.welch, `${path}.welch`);
-		exactFields$1(welch, [
+		const welch = objectAt$2(result.welch, `${path}.welch`);
+		exactFields$3(welch, [
 			"method",
 			"alternative",
 			"statistic",
 			"degreesOfFreedom",
 			"pValue"
 		], `${path}.welch`);
-		if (welch.method !== "welch-t-v1") contractError(`${path}.welch.method`, "must be welch-t-v1");
+		if (welch.method !== "welch-t-v1") contractError$1(`${path}.welch.method`, "must be welch-t-v1");
 		finiteOrNull(welch.statistic, `${path}.welch.statistic`);
 		finiteOrNull(welch.degreesOfFreedom, `${path}.welch.degreesOfFreedom`);
 		probability(welch.pValue, `${path}.welch.pValue`);
-		const mann = objectAt(result.mannWhitney, `${path}.mannWhitney`);
-		exactFields$1(mann, [
+		const mann = objectAt$2(result.mannWhitney, `${path}.mannWhitney`);
+		exactFields$3(mann, [
 			"method",
 			"alternative",
 			"tiePolicy",
@@ -3085,7 +3232,7 @@ function assertStatsResult(value, expectedDesign, path) {
 			"tieGroups",
 			"tiedObservations"
 		], `${path}.mannWhitney`);
-		if (mann.method !== "mann-whitney-asymptotic-v1" || mann.tiePolicy !== "exact-value-midrank" || mann.continuityCorrection !== true) contractError(`${path}.mannWhitney`, "contains unsupported rank-test semantics");
+		if (mann.method !== "mann-whitney-asymptotic-v1" || mann.tiePolicy !== "exact-value-midrank" || mann.continuityCorrection !== true) contractError$1(`${path}.mannWhitney`, "contains unsupported rank-test semantics");
 		for (const field of [
 			"uA",
 			"uB",
@@ -3095,7 +3242,7 @@ function assertStatsResult(value, expectedDesign, path) {
 		nonNegativeInteger(mann.tieGroups, `${path}.mannWhitney.tieGroups`);
 		nonNegativeInteger(mann.tiedObservations, `${path}.mannWhitney.tiedObservations`);
 	} else {
-		exactFields$1(result, [
+		exactFields$3(result, [
 			"schemaVersion",
 			"design",
 			"direction",
@@ -3108,9 +3255,9 @@ function assertStatsResult(value, expectedDesign, path) {
 			"adjustment",
 			"diagnostics"
 		], path);
-		if (result.schemaVersion !== "3dena.stats.paired-result.v1" || result.design !== "paired") contractError(path, "must be a paired statistics result");
-		const matching = objectAt(result.matching, `${path}.matching`);
-		exactFields$1(matching, [
+		if (result.schemaVersion !== "3dena.stats.paired-result.v1" || result.design !== "paired") contractError$1(path, "must be a paired statistics result");
+		const matching = objectAt$2(result.matching, `${path}.matching`);
+		exactFields$3(matching, [
 			"sideAInput",
 			"sideBInput",
 			"matched",
@@ -3122,13 +3269,13 @@ function assertStatsResult(value, expectedDesign, path) {
 			"rankedPairs"
 		], `${path}.matching`);
 		for (const field of Object.keys(matching)) nonNegativeInteger(matching[field], `${path}.matching.${field}`);
-		if (matching.matched !== matching.validPairs + matching.droppedMissingPairs || matching.rankedPairs !== matching.validPairs - matching.zeroDifferences) contractError(`${path}.matching`, "pair counts are inconsistent");
-		const estimates = objectAt(result.estimates, `${path}.estimates`);
-		exactFields$1(estimates, ["meanDifference", "confidenceInterval"], `${path}.estimates`);
+		if (matching.matched !== matching.validPairs + matching.droppedMissingPairs || matching.rankedPairs !== matching.validPairs - matching.zeroDifferences) contractError$1(`${path}.matching`, "pair counts are inconsistent");
+		const estimates = objectAt$2(result.estimates, `${path}.estimates`);
+		exactFields$3(estimates, ["meanDifference", "confidenceInterval"], `${path}.estimates`);
 		finiteOrNull(estimates.meanDifference, `${path}.estimates.meanDifference`);
 		assertConfidenceInterval(estimates.confidenceInterval, `${path}.estimates.confidenceInterval`);
-		const signed = objectAt(result.wilcoxonSignedRank, `${path}.wilcoxonSignedRank`);
-		exactFields$1(signed, [
+		const signed = objectAt$2(result.wilcoxonSignedRank, `${path}.wilcoxonSignedRank`);
+		exactFields$3(signed, [
 			"method",
 			"alternative",
 			"tiePolicy",
@@ -3142,7 +3289,7 @@ function assertStatsResult(value, expectedDesign, path) {
 			"tieGroups",
 			"tiedObservations"
 		], `${path}.wilcoxonSignedRank`);
-		if (signed.method !== "wilcoxon-signed-rank-asymptotic-v1" || signed.tiePolicy !== "exact-absolute-difference-midrank" || signed.zeroPolicy !== "drop-exact-zero" || signed.continuityCorrection !== true) contractError(`${path}.wilcoxonSignedRank`, "contains unsupported signed-rank semantics");
+		if (signed.method !== "wilcoxon-signed-rank-asymptotic-v1" || signed.tiePolicy !== "exact-absolute-difference-midrank" || signed.zeroPolicy !== "drop-exact-zero" || signed.continuityCorrection !== true) contractError$1(`${path}.wilcoxonSignedRank`, "contains unsupported signed-rank semantics");
 		for (const field of [
 			"statistic",
 			"wPositive",
@@ -3153,46 +3300,46 @@ function assertStatsResult(value, expectedDesign, path) {
 		nonNegativeInteger(signed.tieGroups, `${path}.wilcoxonSignedRank.tieGroups`);
 		nonNegativeInteger(signed.tiedObservations, `${path}.wilcoxonSignedRank.tiedObservations`);
 	}
-	if (result.direction !== "A-minus-B") contractError(`${path}.direction`, "must be A-minus-B");
+	if (result.direction !== "A-minus-B") contractError$1(`${path}.direction`, "must be A-minus-B");
 	if (![
 		"two-sided",
 		"greater",
 		"less"
-	].includes(result.alternative)) contractError(`${path}.alternative`, "is unsupported");
+	].includes(result.alternative)) contractError$1(`${path}.alternative`, "is unsupported");
 	assertStatsContract(result.contract, `${path}.contract`);
-	const effects = objectAt(result.effects, `${path}.effects`);
-	exactFields$1(effects, ["cohensD", "rankBiserial"], `${path}.effects`);
+	const effects = objectAt$2(result.effects, `${path}.effects`);
+	exactFields$3(effects, ["cohensD", "rankBiserial"], `${path}.effects`);
 	finiteOrNull(effects.cohensD, `${path}.effects.cohensD`);
 	finiteNumber(effects.rankBiserial, `${path}.effects.rankBiserial`);
 	assertAdjustment(result.adjustment, `${path}.adjustment`);
 	assertDiagnostics(result.diagnostics, `${path}.diagnostics`);
 }
 function assertStatisticsTaskResult(value, path) {
-	const result = objectAt(value, path);
-	exactFields$1(result, [
+	const result = objectAt$2(value, path);
+	exactFields$3(result, [
 		"schemaVersion",
 		"design",
 		"direction",
 		"groups",
 		"dimensions"
 	], path);
-	if (result.schemaVersion !== "3dena.statistics-task-result.v1") contractError(`${path}.schemaVersion`, "must be 3dena.statistics-task-result.v1");
-	if (result.design !== "independent" && result.design !== "paired") contractError(`${path}.design`, "must be independent or paired");
-	if (result.direction !== "group-a-minus-group-b") contractError(`${path}.direction`, "must be group-a-minus-group-b");
+	if (result.schemaVersion !== "3dena.statistics-task-result.v1") contractError$1(`${path}.schemaVersion`, "must be 3dena.statistics-task-result.v1");
+	if (result.design !== "independent" && result.design !== "paired") contractError$1(`${path}.design`, "must be independent or paired");
+	if (result.direction !== "group-a-minus-group-b") contractError$1(`${path}.direction`, "must be group-a-minus-group-b");
 	stringPair(result.groups, `${path}.groups`);
-	if (!Array.isArray(result.dimensions) || result.dimensions.length === 0) contractError(`${path}.dimensions`, "must be non-empty");
+	if (!Array.isArray(result.dimensions) || result.dimensions.length === 0) contractError$1(`${path}.dimensions`, "must be non-empty");
 	const seen = /* @__PURE__ */ new Set();
 	result.dimensions.forEach((candidate, index) => {
-		const dimension = objectAt(candidate, `${path}.dimensions[${index}]`);
-		exactFields$1(dimension, ["dimension", "result"], `${path}.dimensions[${index}]`);
-		const name = nonEmptyString$1(dimension.dimension, `${path}.dimensions[${index}].dimension`);
-		if (seen.has(name)) contractError(`${path}.dimensions[${index}].dimension`, "duplicates an earlier dimension");
+		const dimension = objectAt$2(candidate, `${path}.dimensions[${index}]`);
+		exactFields$3(dimension, ["dimension", "result"], `${path}.dimensions[${index}]`);
+		const name = nonEmptyString$2(dimension.dimension, `${path}.dimensions[${index}].dimension`);
+		if (seen.has(name)) contractError$1(`${path}.dimensions[${index}].dimension`, "duplicates an earlier dimension");
 		seen.add(name);
 		assertStatsResult(dimension.result, result.design, `${path}.dimensions[${index}].result`);
 	});
 }
 function assertTrajectoryIdentity(value, path, key) {
-	const identity = objectAt(value, path);
+	const identity = objectAt$2(value, path);
 	allowedFields(identity, key ? [
 		"components",
 		"canonical",
@@ -3202,10 +3349,10 @@ function assertTrajectoryIdentity(value, path, key) {
 		"canonical",
 		"display"
 	] : ["components"], path);
-	if (!Array.isArray(identity.components) || identity.components.length === 0) contractError(`${path}.components`, "must be non-empty");
+	if (!Array.isArray(identity.components) || identity.components.length === 0) contractError$1(`${path}.components`, "must be non-empty");
 	const names = /* @__PURE__ */ new Set();
 	identity.components.forEach((candidate, index) => {
-		const component = objectAt(candidate, `${path}.components[${index}]`);
+		const component = objectAt$2(candidate, `${path}.components[${index}]`);
 		allowedFields(component, [
 			"name",
 			"type",
@@ -3216,26 +3363,26 @@ function assertTrajectoryIdentity(value, path, key) {
 			"type",
 			"value"
 		], `${path}.components[${index}]`);
-		const name = nonEmptyString$1(component.name, `${path}.components[${index}].name`);
-		if (names.has(name)) contractError(`${path}.components[${index}].name`, "duplicates an earlier component");
+		const name = nonEmptyString$2(component.name, `${path}.components[${index}].name`);
+		if (names.has(name)) contractError$1(`${path}.components[${index}].name`, "duplicates an earlier component");
 		names.add(name);
 		if (![
 			"string",
 			"number",
 			"boolean"
-		].includes(component.type)) contractError(`${path}.components[${index}].type`, "is unsupported");
-		if (component.type === "string" && (typeof component.value !== "string" || component.value.length === 0)) contractError(`${path}.components[${index}].value`, "must be a non-empty string");
-		if (component.type === "boolean" && typeof component.value !== "boolean") contractError(`${path}.components[${index}].value`, "must be boolean");
+		].includes(component.type)) contractError$1(`${path}.components[${index}].type`, "is unsupported");
+		if (component.type === "string" && (typeof component.value !== "string" || component.value.length === 0)) contractError$1(`${path}.components[${index}].value`, "must be a non-empty string");
+		if (component.type === "boolean" && typeof component.value !== "boolean") contractError$1(`${path}.components[${index}].value`, "must be boolean");
 		if (component.type === "number") rawScalar(component.value, `${path}.components[${index}].value`);
-		if (component.declaredType !== void 0) nonEmptyString$1(component.declaredType, `${path}.components[${index}].declaredType`);
+		if (component.declaredType !== void 0) nonEmptyString$2(component.declaredType, `${path}.components[${index}].declaredType`);
 	});
 	if (!key) return null;
-	nonEmptyString$1(identity.display, `${path}.display`);
-	return nonEmptyString$1(identity.canonical, `${path}.canonical`);
+	nonEmptyString$2(identity.display, `${path}.display`);
+	return nonEmptyString$2(identity.canonical, `${path}.canonical`);
 }
 function assertDistanceMetrics(value, dimensions, path, includeSpeed) {
-	const metrics = objectAt(value, path);
-	exactFields$1(metrics, includeSpeed ? [
+	const metrics = objectAt$2(value, path);
+	exactFields$3(metrics, includeSpeed ? [
 		"dimensions",
 		"delta",
 		"stepDistance",
@@ -3247,18 +3394,19 @@ function assertDistanceMetrics(value, dimensions, path, includeSpeed) {
 		"stepDistance",
 		"cumulativeDistance"
 	], path);
-	sameOrderedStrings(stringList(metrics.dimensions, `${path}.dimensions`), dimensions, `${path}.dimensions`);
+	sameOrderedStrings(stringList$1(metrics.dimensions, `${path}.dimensions`), dimensions, `${path}.dimensions`);
 	if (metrics.delta !== null) finiteVector(metrics.delta, `${path}.delta`, dimensions.length);
 	finiteOrNull(metrics.stepDistance, `${path}.stepDistance`);
 	finiteOrNull(metrics.cumulativeDistance, `${path}.cumulativeDistance`);
 	if (includeSpeed) finiteOrNull(metrics.speed, `${path}.speed`);
 }
 function assertTrajectoryPathStatistics(value, path) {
-	const result = objectAt(value, path);
-	exactFields$1(result, [
+	const result = objectAt$2(value, path);
+	exactFields$3(result, [
 		"schemaVersion",
 		"namespace",
 		"cohortPolicy",
+		"estimand",
 		"dimensions",
 		"selectedDimensions",
 		"distanceSemantics",
@@ -3268,20 +3416,21 @@ function assertTrajectoryPathStatistics(value, path) {
 		"summary",
 		"resolvedLimits"
 	], path);
-	if (result.schemaVersion !== "3dena.trajectory-path-statistics.v1") contractError(`${path}.schemaVersion`, "must be 3dena.trajectory-path-statistics.v1");
-	nonEmptyString$1(result.namespace, `${path}.namespace`);
-	if (result.cohortPolicy !== "available" && result.cohortPolicy !== "complete") contractError(`${path}.cohortPolicy`, "is unsupported");
-	const dimensions = stringList(result.dimensions, `${path}.dimensions`);
-	const selected = stringList(result.selectedDimensions, `${path}.selectedDimensions`, 3);
-	if (selected.length !== 3 || selected.some((entry) => !dimensions.includes(entry))) contractError(`${path}.selectedDimensions`, "must contain three declared dimensions");
-	const semantics = objectAt(result.distanceSemantics, `${path}.distanceSemantics`);
-	exactFields$1(semantics, ["selected3d", "fullSpace"], `${path}.distanceSemantics`);
-	if (semantics.selected3d !== "euclidean-selected-three-dimensions" || semantics.fullSpace !== "euclidean-all-declared-dimensions") contractError(`${path}.distanceSemantics`, "is unsupported");
-	assertTrajectoryParticipantPeriods(result.participantPeriods, dimensions, `${path}.participantPeriods`, false);
-	if (!Array.isArray(result.periods)) contractError(`${path}.periods`, "must be an array");
+	if (result.schemaVersion !== "3dena.trajectory-path-statistics.v1") contractError$1(`${path}.schemaVersion`, "must be 3dena.trajectory-path-statistics.v1");
+	nonEmptyString$2(result.namespace, `${path}.namespace`);
+	if (result.cohortPolicy !== "available" && result.cohortPolicy !== "complete") contractError$1(`${path}.cohortPolicy`, "is unsupported");
+	if (result.estimand !== "equal-participant" && result.estimand !== "weighted-participant") contractError$1(`${path}.estimand`, "is unsupported");
+	const dimensions = stringList$1(result.dimensions, `${path}.dimensions`);
+	const selected = stringList$1(result.selectedDimensions, `${path}.selectedDimensions`, 3);
+	if (selected.length !== 3 || selected.some((entry) => !dimensions.includes(entry))) contractError$1(`${path}.selectedDimensions`, "must contain three declared dimensions");
+	const semantics = objectAt$2(result.distanceSemantics, `${path}.distanceSemantics`);
+	exactFields$3(semantics, ["selected3d", "fullSpace"], `${path}.distanceSemantics`);
+	if (semantics.selected3d !== "euclidean-selected-three-dimensions" || semantics.fullSpace !== "euclidean-all-declared-dimensions") contractError$1(`${path}.distanceSemantics`, "is unsupported");
+	assertTrajectoryParticipantPeriods(result.participantPeriods, dimensions, `${path}.participantPeriods`, true);
+	if (!Array.isArray(result.periods)) contractError$1(`${path}.periods`, "must be an array");
 	result.periods.forEach((candidate, index) => {
-		const period = objectAt(candidate, `${path}.periods[${index}]`);
-		exactFields$1(period, [
+		const period = objectAt$2(candidate, `${path}.periods[${index}]`);
+		exactFields$3(period, [
 			"index",
 			"time",
 			"selectedCentroid",
@@ -3294,7 +3443,7 @@ function assertTrajectoryPathStatistics(value, path) {
 			"nDuplicateRows",
 			"nCohortExcluded"
 		], `${path}.periods[${index}]`);
-		if (nonNegativeInteger(period.index, `${path}.periods[${index}].index`) !== index) contractError(`${path}.periods[${index}].index`, "must equal its array position");
+		if (nonNegativeInteger(period.index, `${path}.periods[${index}].index`) !== index) contractError$1(`${path}.periods[${index}].index`, "must equal its array position");
 		assertTrajectoryIdentity(period.time, `${path}.periods[${index}].time`, true);
 		optionalFiniteVector(period.selectedCentroid, `${path}.periods[${index}].selectedCentroid`, 3);
 		optionalFiniteVector(period.fullCentroid, `${path}.periods[${index}].fullCentroid`, dimensions.length);
@@ -3321,10 +3470,10 @@ function assertTrajectoryPathStatistics(value, path) {
 	], `${path}.resolvedLimits`);
 }
 function assertTrajectoryParticipantPeriods(value, dimensions, path, weighted) {
-	if (!Array.isArray(value)) contractError(path, "must be an array");
+	if (!Array.isArray(value)) contractError$1(path, "must be an array");
 	value.forEach((candidate, index) => {
-		const row = objectAt(candidate, `${path}[${index}]`);
-		exactFields$1(row, weighted ? [
+		const row = objectAt$2(candidate, `${path}[${index}]`);
+		exactFields$3(row, weighted ? [
 			"index",
 			"participant",
 			"time",
@@ -3342,19 +3491,19 @@ function assertTrajectoryParticipantPeriods(value, dimensions, path, weighted) {
 			"sourceRowIndexes",
 			"includedInCohort"
 		], `${path}[${index}]`);
-		if (nonNegativeInteger(row.index, `${path}[${index}].index`) !== index) contractError(`${path}[${index}].index`, "must equal its array position");
+		if (nonNegativeInteger(row.index, `${path}[${index}].index`) !== index) contractError$1(`${path}[${index}].index`, "must equal its array position");
 		assertTrajectoryIdentity(row.participant, `${path}[${index}].participant`, true);
 		assertTrajectoryIdentity(row.time, `${path}[${index}].time`, true);
 		finiteVector(row.selectedCoordinates, `${path}[${index}].selectedCoordinates`, 3);
 		finiteVector(row.fullCoordinates, `${path}[${index}].fullCoordinates`, dimensions.length);
-		if (!Array.isArray(row.sourceRowIndexes) || row.sourceRowIndexes.length === 0) contractError(`${path}[${index}].sourceRowIndexes`, "must be non-empty");
+		if (!Array.isArray(row.sourceRowIndexes) || row.sourceRowIndexes.length === 0) contractError$1(`${path}[${index}].sourceRowIndexes`, "must be non-empty");
 		row.sourceRowIndexes.forEach((entry, itemIndex) => nonNegativeInteger(entry, `${path}[${index}].sourceRowIndexes[${itemIndex}]`));
-		if (weighted && finiteNumber(row.participantWeight, `${path}[${index}].participantWeight`) <= 0) contractError(`${path}[${index}].participantWeight`, "must be positive");
-		if (typeof row.includedInCohort !== "boolean") contractError(`${path}[${index}].includedInCohort`, "must be boolean");
+		if (weighted && finiteNumber(row.participantWeight, `${path}[${index}].participantWeight`) <= 0) contractError$1(`${path}[${index}].participantWeight`, "must be positive");
+		if (typeof row.includedInCohort !== "boolean") contractError$1(`${path}[${index}].includedInCohort`, "must be boolean");
 	});
 }
 function assertTrajectorySummary(value, path, dynamics) {
-	const summary = objectAt(value, path);
+	const summary = objectAt$2(value, path);
 	const fields = dynamics ? [
 		"inputRows",
 		"participants",
@@ -3371,18 +3520,18 @@ function assertTrajectorySummary(value, path, dynamics) {
 		"periods",
 		"duplicateRows"
 	];
-	exactFields$1(summary, fields, path);
+	exactFields$3(summary, fields, path);
 	for (const field of fields) nonNegativeInteger(summary[field], `${path}.${field}`);
-	if (dynamics && summary.periods !== summary.observedPeriods + summary.missingPeriods) contractError(path, "observed and missing period counts must sum to periods");
+	if (dynamics && summary.periods !== summary.observedPeriods + summary.missingPeriods) contractError$1(path, "observed and missing period counts must sum to periods");
 }
 function assertLimits(value, fields, path) {
-	const limits = objectAt(value, path);
-	exactFields$1(limits, fields, path);
-	for (const field of fields) positiveInteger(limits[field], `${path}.${field}`);
+	const limits = objectAt$2(value, path);
+	exactFields$3(limits, fields, path);
+	for (const field of fields) positiveInteger$1(limits[field], `${path}.${field}`);
 }
 function assertTrajectoryDynamics(value, path) {
-	const result = objectAt(value, path);
-	exactFields$1(result, [
+	const result = objectAt$2(value, path);
+	exactFields$3(result, [
 		"schemaVersion",
 		"namespace",
 		"cohortPolicy",
@@ -3399,17 +3548,17 @@ function assertTrajectoryDynamics(value, path) {
 		"evidence",
 		"resolvedLimits"
 	], path);
-	if (result.schemaVersion !== "3dena.trajectory-dynamics.v1") contractError(`${path}.schemaVersion`, "must be 3dena.trajectory-dynamics.v1");
-	nonEmptyString$1(result.namespace, `${path}.namespace`);
-	if (result.cohortPolicy !== "available" && result.cohortPolicy !== "complete") contractError(`${path}.cohortPolicy`, "is unsupported");
-	const estimand = objectAt(result.estimand, `${path}.estimand`);
-	exactFields$1(estimand, ["kind"], `${path}.estimand`);
-	if (estimand.kind !== "equal-participant-v1" && estimand.kind !== "weighted-participant-v1") contractError(`${path}.estimand.kind`, "is unsupported");
-	const dimensions = stringList(result.dimensions, `${path}.dimensions`);
-	const selected = stringList(result.selectedDimensions, `${path}.selectedDimensions`, 3);
-	if (selected.length !== 3 || selected.some((entry) => !dimensions.includes(entry))) contractError(`${path}.selectedDimensions`, "must contain three declared dimensions");
+	if (result.schemaVersion !== "3dena.trajectory-dynamics.v1") contractError$1(`${path}.schemaVersion`, "must be 3dena.trajectory-dynamics.v1");
+	nonEmptyString$2(result.namespace, `${path}.namespace`);
+	if (result.cohortPolicy !== "available" && result.cohortPolicy !== "complete") contractError$1(`${path}.cohortPolicy`, "is unsupported");
+	const estimand = objectAt$2(result.estimand, `${path}.estimand`);
+	exactFields$3(estimand, ["kind"], `${path}.estimand`);
+	if (estimand.kind !== "equal-participant-v1" && estimand.kind !== "weighted-participant-v1") contractError$1(`${path}.estimand.kind`, "is unsupported");
+	const dimensions = stringList$1(result.dimensions, `${path}.dimensions`);
+	const selected = stringList$1(result.selectedDimensions, `${path}.selectedDimensions`, 3);
+	if (selected.length !== 3 || selected.some((entry) => !dimensions.includes(entry))) contractError$1(`${path}.selectedDimensions`, "must contain three declared dimensions");
 	assertTimeContract(result.timeContract, `${path}.timeContract`);
-	const contracts = objectAt(result.contracts, `${path}.contracts`);
+	const contracts = objectAt$2(result.contracts, `${path}.contracts`);
 	const expectedContracts = {
 		duplicateReduction: "equal-row-coordinate-mean-before-centroid-v1",
 		weightResolution: "constant-within-participant-period-v1",
@@ -3418,13 +3567,13 @@ function assertTrajectoryDynamics(value, path) {
 		gap: "expected-period-no-bridge-v1",
 		speed: "step-distance-divided-by-positive-adjacent-elapsed-v1"
 	};
-	exactFields$1(contracts, Object.keys(expectedContracts), `${path}.contracts`);
-	for (const [field, expected] of Object.entries(expectedContracts)) if (contracts[field] !== expected) contractError(`${path}.contracts.${field}`, `must be ${expected}`);
+	exactFields$3(contracts, Object.keys(expectedContracts), `${path}.contracts`);
+	for (const [field, expected] of Object.entries(expectedContracts)) if (contracts[field] !== expected) contractError$1(`${path}.contracts.${field}`, `must be ${expected}`);
 	assertTrajectoryParticipantPeriods(result.participantPeriods, dimensions, `${path}.participantPeriods`, true);
-	if (!Array.isArray(result.periods)) contractError(`${path}.periods`, "must be an array");
+	if (!Array.isArray(result.periods)) contractError$1(`${path}.periods`, "must be an array");
 	result.periods.forEach((candidate, index) => {
-		const period = objectAt(candidate, `${path}.periods[${index}]`);
-		exactFields$1(period, [
+		const period = objectAt$2(candidate, `${path}.periods[${index}]`);
+		exactFields$3(period, [
 			"index",
 			"time",
 			"timeValue",
@@ -3442,7 +3591,7 @@ function assertTrajectoryDynamics(value, path) {
 			"weightSum",
 			"effectiveParticipantN"
 		], `${path}.periods[${index}]`);
-		if (nonNegativeInteger(period.index, `${path}.periods[${index}].index`) !== index) contractError(`${path}.periods[${index}].index`, "must equal its array position");
+		if (nonNegativeInteger(period.index, `${path}.periods[${index}].index`) !== index) contractError$1(`${path}.periods[${index}].index`, "must equal its array position");
 		assertTrajectoryIdentity(period.time, `${path}.periods[${index}].time`, true);
 		assertTrajectoryTimeValue(period.timeValue, `${path}.periods[${index}].timeValue`);
 		finiteOrNull(period.elapsedFromPrevious, `${path}.periods[${index}].elapsedFromPrevious`);
@@ -3462,23 +3611,23 @@ function assertTrajectoryDynamics(value, path) {
 		finiteOrNull(period.effectiveParticipantN, `${path}.periods[${index}].effectiveParticipantN`);
 	});
 	assertDiagnostics(result.diagnostics, `${path}.diagnostics`);
-	const diagnosticSummary = objectAt(result.diagnosticSummary, `${path}.diagnosticSummary`);
-	exactFields$1(diagnosticSummary, [
+	const diagnosticSummary = objectAt$2(result.diagnosticSummary, `${path}.diagnosticSummary`);
+	exactFields$3(diagnosticSummary, [
 		"info",
 		"warning",
 		"codes"
 	], `${path}.diagnosticSummary`);
 	nonNegativeInteger(diagnosticSummary.info, `${path}.diagnosticSummary.info`);
 	nonNegativeInteger(diagnosticSummary.warning, `${path}.diagnosticSummary.warning`);
-	stringList(diagnosticSummary.codes, `${path}.diagnosticSummary.codes`, 0);
+	stringList$1(diagnosticSummary.codes, `${path}.diagnosticSummary.codes`, 0);
 	assertTrajectorySummary(result.summary, `${path}.summary`, true);
-	const evidence = objectAt(result.evidence, `${path}.evidence`);
-	exactFields$1(evidence, [
+	const evidence = objectAt$2(result.evidence, `${path}.evidence`);
+	exactFields$3(evidence, [
 		"status",
 		"oracleParityClaim",
 		"scientificAuthority"
 	], `${path}.evidence`);
-	if (evidence.status !== "IMPLEMENTED_UNVERIFIED" || evidence.oracleParityClaim !== false || evidence.scientificAuthority !== "successor-definition-pending-review") contractError(`${path}.evidence`, "must not claim unapproved scientific authority");
+	if (evidence.status !== "IMPLEMENTED_UNVERIFIED" || evidence.oracleParityClaim !== false || evidence.scientificAuthority !== "successor-definition-pending-review") contractError$1(`${path}.evidence`, "must not claim unapproved scientific authority");
 	assertLimits(result.resolvedLimits, [
 		"maxPoints",
 		"maxDimensions",
@@ -3488,26 +3637,26 @@ function assertTrajectoryDynamics(value, path) {
 	], `${path}.resolvedLimits`);
 }
 function assertTimeContract(value, path) {
-	const contract = objectAt(value, path);
-	const kind = nonEmptyString$1(contract.kind, `${path}.kind`);
+	const contract = objectAt$2(value, path);
+	const kind = nonEmptyString$2(contract.kind, `${path}.kind`);
 	if (kind === "numeric-v1") {
-		exactFields$1(contract, [
+		exactFields$3(contract, [
 			"kind",
 			"elapsedUnit",
 			"chronology"
 		], path);
-		nonEmptyString$1(contract.elapsedUnit, `${path}.elapsedUnit`);
-		if (contract.chronology !== "strictly-increasing-finite-number-v1") contractError(`${path}.chronology`, "is unsupported");
+		nonEmptyString$2(contract.elapsedUnit, `${path}.elapsedUnit`);
+		if (contract.chronology !== "strictly-increasing-finite-number-v1") contractError$1(`${path}.chronology`, "is unsupported");
 	} else if (kind === "date-v1") {
-		exactFields$1(contract, [
+		exactFields$3(contract, [
 			"kind",
 			"elapsedUnit",
 			"calendar",
 			"chronology"
 		], path);
-		if (contract.elapsedUnit !== "days" || contract.calendar !== "proleptic-gregorian-v1" || contract.chronology !== "strictly-increasing-civil-day-v1") contractError(path, "contains unsupported civil-date semantics");
+		if (contract.elapsedUnit !== "days" || contract.calendar !== "proleptic-gregorian-v1" || contract.chronology !== "strictly-increasing-civil-day-v1") contractError$1(path, "contains unsupported civil-date semantics");
 	} else if (kind === "instant-v1") {
-		exactFields$1(contract, [
+		exactFields$3(contract, [
 			"kind",
 			"elapsedUnit",
 			"epoch",
@@ -3515,21 +3664,21 @@ function assertTimeContract(value, path) {
 			"zoneRole"
 		], path);
 		trajectoryDurationUnit(contract.elapsedUnit, `${path}.elapsedUnit`);
-		if (contract.epoch !== "unix-epoch-milliseconds-int64-v1" || contract.chronology !== "strictly-increasing-exact-epoch-v1" || contract.zoneRole !== "presentation-provenance-only") contractError(path, "contains unsupported instant semantics");
+		if (contract.epoch !== "unix-epoch-milliseconds-int64-v1" || contract.chronology !== "strictly-increasing-exact-epoch-v1" || contract.zoneRole !== "presentation-provenance-only") contractError$1(path, "contains unsupported instant semantics");
 	} else if (kind === "difftime-v1") {
-		exactFields$1(contract, [
+		exactFields$3(contract, [
 			"kind",
 			"elapsedUnit",
 			"conversion",
 			"chronology"
 		], path);
 		trajectoryDurationUnit(contract.elapsedUnit, `${path}.elapsedUnit`);
-		if (contract.conversion !== "fixed-duration-unit-ratios-v1" || contract.chronology !== "strictly-increasing-normalized-duration-v1") contractError(path, "contains unsupported duration semantics");
-	} else contractError(`${path}.kind`, "is unsupported");
+		if (contract.conversion !== "fixed-duration-unit-ratios-v1" || contract.chronology !== "strictly-increasing-normalized-duration-v1") contractError$1(path, "contains unsupported duration semantics");
+	} else contractError$1(`${path}.kind`, "is unsupported");
 }
 function assertTrajectoryComparison(value, path) {
-	const result = objectAt(value, path);
-	exactFields$1(result, [
+	const result = objectAt$2(value, path);
+	exactFields$3(result, [
 		"schemaVersion",
 		"design",
 		"direction",
@@ -3541,22 +3690,22 @@ function assertTrajectoryComparison(value, path) {
 		"permutation",
 		"diagnostics"
 	], path);
-	if (result.schemaVersion !== "3dena.trajectory-comparison.v1" || result.design !== "paired" && result.design !== "independent" || result.direction !== "B-minus-A") contractError(path, "contains an unsupported trajectory-comparison contract");
+	if (result.schemaVersion !== "3dena.trajectory-comparison.v1" || result.design !== "paired" && result.design !== "independent" || result.direction !== "B-minus-A") contractError$1(path, "contains an unsupported trajectory-comparison contract");
 	if (result.design === "paired") {
-		if (typeof result.pairedId !== "string" && (!Array.isArray(result.pairedId) || result.pairedId.length === 0)) contractError(`${path}.pairedId`, "must declare the exact paired identity");
-	} else if (result.pairedId !== null) contractError(`${path}.pairedId`, "must be null for independent comparison");
+		if (typeof result.pairedId !== "string" && (!Array.isArray(result.pairedId) || result.pairedId.length === 0)) contractError$1(`${path}.pairedId`, "must declare the exact paired identity");
+	} else if (result.pairedId !== null) contractError$1(`${path}.pairedId`, "must be null for independent comparison");
 	assertTrajectoryPathStatistics(result.sideA, `${path}.sideA`);
 	assertTrajectoryPathStatistics(result.sideB, `${path}.sideB`);
 	const sideA = result.sideA;
 	const sideB = result.sideB;
 	sameOrderedStrings(sideB.dimensions, sideA.dimensions, `${path}.sideB.dimensions`);
-	if (!Array.isArray(result.periods) || result.periods.length !== sideA.periods.length || result.periods.length !== sideB.periods.length) contractError(`${path}.periods`, "must align one-to-one with both paths");
+	if (!Array.isArray(result.periods) || result.periods.length !== sideA.periods.length || result.periods.length !== sideB.periods.length) contractError$1(`${path}.periods`, "must align one-to-one with both paths");
 	const periods = result.periods;
 	periods.forEach((candidate, index) => assertTrajectoryComparisonPeriod(candidate, sideA.dimensions.length, index, `${path}.periods[${index}]`));
-	if (!Array.isArray(result.tests)) contractError(`${path}.tests`, "must be an array");
+	if (!Array.isArray(result.tests)) contractError$1(`${path}.tests`, "must be an array");
 	result.tests.forEach((candidate, index) => {
-		const test = objectAt(candidate, `${path}.tests[${index}]`);
-		exactFields$1(test, [
+		const test = objectAt$2(candidate, `${path}.tests[${index}]`);
+		exactFields$3(test, [
 			"id",
 			"timeIndex",
 			"metric",
@@ -3567,34 +3716,34 @@ function assertTrajectoryComparison(value, path) {
 			"holmAdjustedPValue",
 			"permutationCount"
 		], `${path}.tests[${index}]`);
-		nonEmptyString$1(test.id, `${path}.tests[${index}].id`);
-		if (nonNegativeInteger(test.timeIndex, `${path}.tests[${index}].timeIndex`) >= periods.length) contractError(`${path}.tests[${index}].timeIndex`, "is outside the period table");
-		nonEmptyString$1(test.metric, `${path}.tests[${index}].metric`);
-		if (test.distanceSpace !== null && test.distanceSpace !== "selected-3d" && test.distanceSpace !== "full-space") contractError(`${path}.tests[${index}].distanceSpace`, "is unsupported");
-		if (test.tail !== "two-sided" && test.tail !== "upper") contractError(`${path}.tests[${index}].tail`, "is unsupported");
+		nonEmptyString$2(test.id, `${path}.tests[${index}].id`);
+		if (nonNegativeInteger(test.timeIndex, `${path}.tests[${index}].timeIndex`) >= periods.length) contractError$1(`${path}.tests[${index}].timeIndex`, "is outside the period table");
+		nonEmptyString$2(test.metric, `${path}.tests[${index}].metric`);
+		if (test.distanceSpace !== null && test.distanceSpace !== "selected-3d" && test.distanceSpace !== "full-space") contractError$1(`${path}.tests[${index}].distanceSpace`, "is unsupported");
+		if (test.tail !== "two-sided" && test.tail !== "upper") contractError$1(`${path}.tests[${index}].tail`, "is unsupported");
 		finiteNumber(test.observed, `${path}.tests[${index}].observed`);
 		probability(test.pValue, `${path}.tests[${index}].pValue`);
 		probability(test.holmAdjustedPValue, `${path}.tests[${index}].holmAdjustedPValue`);
-		positiveInteger(test.permutationCount, `${path}.tests[${index}].permutationCount`);
+		positiveInteger$1(test.permutationCount, `${path}.tests[${index}].permutationCount`);
 	});
-	const permutation = objectAt(result.permutation, `${path}.permutation`);
-	exactFields$1(permutation, [
+	const permutation = objectAt$2(result.permutation, `${path}.permutation`);
+	exactFields$3(permutation, [
 		"status",
 		"planKind",
 		"unitOrder",
 		"replicateCount",
 		"rngParityClaim"
 	], `${path}.permutation`);
-	if (permutation.status !== "not-requested" && permutation.status !== "complete") contractError(`${path}.permutation.status`, "is unsupported");
-	if (permutation.planKind !== null && permutation.planKind !== "paired-swap-indices-v1" && permutation.planKind !== "independent-pool-indices-v1") contractError(`${path}.permutation.planKind`, "is unsupported");
-	stringList(permutation.unitOrder, `${path}.permutation.unitOrder`, 0);
+	if (permutation.status !== "not-requested" && permutation.status !== "complete") contractError$1(`${path}.permutation.status`, "is unsupported");
+	if (permutation.planKind !== null && permutation.planKind !== "paired-swap-indices-v1" && permutation.planKind !== "independent-pool-indices-v1") contractError$1(`${path}.permutation.planKind`, "is unsupported");
+	stringList$1(permutation.unitOrder, `${path}.permutation.unitOrder`, 0);
 	nonNegativeInteger(permutation.replicateCount, `${path}.permutation.replicateCount`);
-	if (permutation.rngParityClaim !== false) contractError(`${path}.permutation.rngParityClaim`, "must remain false until independently approved");
+	if (permutation.rngParityClaim !== false) contractError$1(`${path}.permutation.rngParityClaim`, "must remain false until independently approved");
 	assertDiagnostics(result.diagnostics, `${path}.diagnostics`);
 }
 function assertTrajectoryComparisonPeriod(value, dimensions, index, path) {
-	const period = objectAt(value, path);
-	exactFields$1(period, [
+	const period = objectAt$2(value, path);
+	exactFields$3(period, [
 		"index",
 		"time",
 		"selectedCentroidA",
@@ -3621,7 +3770,7 @@ function assertTrajectoryComparisonPeriod(value, dimensions, index, path) {
 		"nBUsed",
 		"nMatched"
 	], path);
-	if (nonNegativeInteger(period.index, `${path}.index`) !== index) contractError(`${path}.index`, "must equal its array position");
+	if (nonNegativeInteger(period.index, `${path}.index`) !== index) contractError$1(`${path}.index`, "must equal its array position");
 	assertTrajectoryIdentity(period.time, `${path}.time`, true);
 	for (const field of [
 		"selectedCentroidA",
@@ -3654,8 +3803,8 @@ function assertTrajectoryComparisonPeriod(value, dimensions, index, path) {
 	if (period.nMatched !== null) nonNegativeInteger(period.nMatched, `${path}.nMatched`);
 }
 function assertBootstrapInterval(value, path) {
-	const interval = objectAt(value, path);
-	exactFields$1(interval, [
+	const interval = objectAt$2(value, path);
+	exactFields$3(interval, [
 		"estimate",
 		"lower",
 		"upper",
@@ -3666,15 +3815,15 @@ function assertBootstrapInterval(value, path) {
 	finiteNumber(interval.estimate, `${path}.estimate`);
 	finiteNumber(interval.lower, `${path}.lower`);
 	finiteNumber(interval.upper, `${path}.upper`);
-	if (interval.lower > interval.upper) contractError(path, "lower must not exceed upper");
+	if (interval.lower > interval.upper) contractError$1(path, "lower must not exceed upper");
 	const finite = nonNegativeInteger(interval.finiteReplicates, `${path}.finiteReplicates`);
-	const required = positiveInteger(interval.requiredFiniteReplicates, `${path}.requiredFiniteReplicates`);
-	const total = positiveInteger(interval.totalReplicates, `${path}.totalReplicates`);
-	if (finite > total || required > total) contractError(path, "replicate counts are inconsistent");
+	const required = positiveInteger$1(interval.requiredFiniteReplicates, `${path}.requiredFiniteReplicates`);
+	const total = positiveInteger$1(interval.totalReplicates, `${path}.totalReplicates`);
+	if (finite > total || required > total) contractError$1(path, "replicate counts are inconsistent");
 }
 function assertBootstrap(value, path) {
-	const result = objectAt(value, path);
-	exactFields$1(result, [
+	const result = objectAt$2(value, path);
+	exactFields$3(result, [
 		"schemaVersion",
 		"base",
 		"confidenceLevel",
@@ -3683,14 +3832,14 @@ function assertBootstrap(value, path) {
 		"resampling",
 		"diagnostics"
 	], path);
-	if (result.schemaVersion !== "3dena.trajectory-bootstrap.v1") contractError(`${path}.schemaVersion`, "must be 3dena.trajectory-bootstrap.v1");
+	if (result.schemaVersion !== "3dena.trajectory-bootstrap.v1") contractError$1(`${path}.schemaVersion`, "must be 3dena.trajectory-bootstrap.v1");
 	assertTrajectoryPathStatistics(result.base, `${path}.base`);
 	probability(result.confidenceLevel, `${path}.confidenceLevel`);
 	const base = result.base;
-	if (!Array.isArray(result.periods) || result.periods.length !== base.periods.length) contractError(`${path}.periods`, "must align one-to-one with the base path");
+	if (!Array.isArray(result.periods) || result.periods.length !== base.periods.length) contractError$1(`${path}.periods`, "must align one-to-one with the base path");
 	result.periods.forEach((candidate, index) => {
-		const period = objectAt(candidate, `${path}.periods[${index}]`);
-		exactFields$1(period, [
+		const period = objectAt$2(candidate, `${path}.periods[${index}]`);
+		exactFields$3(period, [
 			"index",
 			"time",
 			"selectedCentroid",
@@ -3700,10 +3849,10 @@ function assertBootstrap(value, path) {
 			"selectedCumulativeDistance",
 			"fullCumulativeDistance"
 		], `${path}.periods[${index}]`);
-		if (nonNegativeInteger(period.index, `${path}.periods[${index}].index`) !== index) contractError(`${path}.periods[${index}].index`, "must equal its array position");
+		if (nonNegativeInteger(period.index, `${path}.periods[${index}].index`) !== index) contractError$1(`${path}.periods[${index}].index`, "must equal its array position");
 		assertTrajectoryIdentity(period.time, `${path}.periods[${index}].time`, true);
 		for (const [field, length] of [["selectedCentroid", 3], ["fullCentroid", base.dimensions.length]]) {
-			if (!Array.isArray(period[field]) || period[field].length !== length) contractError(`${path}.periods[${index}].${field}`, `must contain ${length} interval slots`);
+			if (!Array.isArray(period[field]) || period[field].length !== length) contractError$1(`${path}.periods[${index}].${field}`, `must contain ${length} interval slots`);
 			period[field].forEach((entry, itemIndex) => {
 				if (entry !== null) assertBootstrapInterval(entry, `${path}.periods[${index}].${field}[${itemIndex}]`);
 			});
@@ -3715,7 +3864,7 @@ function assertBootstrap(value, path) {
 			"fullCumulativeDistance"
 		]) if (period[field] !== null) assertBootstrapInterval(period[field], `${path}.periods[${index}].${field}`);
 	});
-	const quantile = objectAt(result.quantileRule, `${path}.quantileRule`);
+	const quantile = objectAt$2(result.quantileRule, `${path}.quantileRule`);
 	const expectedQuantile = {
 		id: "linear-type7-v1",
 		sort: "ascending-numeric",
@@ -3723,10 +3872,10 @@ function assertBootstrap(value, path) {
 		interpolation: "linear-between-floor-and-ceiling",
 		endpoints: "p=0-min-p=1-max"
 	};
-	exactFields$1(quantile, Object.keys(expectedQuantile), `${path}.quantileRule`);
-	for (const [field, expected] of Object.entries(expectedQuantile)) if (quantile[field] !== expected) contractError(`${path}.quantileRule.${field}`, `must be ${expected}`);
-	const resampling = objectAt(result.resampling, `${path}.resampling`);
-	exactFields$1(resampling, [
+	exactFields$3(quantile, Object.keys(expectedQuantile), `${path}.quantileRule`);
+	for (const [field, expected] of Object.entries(expectedQuantile)) if (quantile[field] !== expected) contractError$1(`${path}.quantileRule.${field}`, `must be ${expected}`);
+	const resampling = objectAt$2(result.resampling, `${path}.resampling`);
+	exactFields$3(resampling, [
 		"unit",
 		"stratified",
 		"strata",
@@ -3735,28 +3884,28 @@ function assertBootstrap(value, path) {
 		"generation",
 		"rngParityClaim"
 	], `${path}.resampling`);
-	if (resampling.unit !== "participant-complete-history" || resampling.planKind !== "participant-history-resample-indices-v1" || resampling.rngParityClaim !== false) contractError(`${path}.resampling`, "contains unsupported or unapproved resampling semantics");
-	if (typeof resampling.stratified !== "boolean") contractError(`${path}.resampling.stratified`, "must be boolean");
-	const replicateCount = positiveInteger(resampling.replicateCount, `${path}.resampling.replicateCount`);
-	if (!Array.isArray(resampling.strata) || resampling.strata.length === 0) contractError(`${path}.resampling.strata`, "must be non-empty");
+	if (resampling.unit !== "participant-complete-history" || !["participant-history-resample-indices-v1", "global-participant-history-resample-indices-v2"].includes(String(resampling.planKind)) || resampling.rngParityClaim !== false) contractError$1(`${path}.resampling`, "contains unsupported or unapproved resampling semantics");
+	if (typeof resampling.stratified !== "boolean") contractError$1(`${path}.resampling.stratified`, "must be boolean");
+	const replicateCount = positiveInteger$1(resampling.replicateCount, `${path}.resampling.replicateCount`);
+	if (!Array.isArray(resampling.strata) || resampling.strata.length === 0) contractError$1(`${path}.resampling.strata`, "must be non-empty");
 	resampling.strata.forEach((candidate, index) => {
-		const stratum = objectAt(candidate, `${path}.resampling.strata[${index}]`);
-		exactFields$1(stratum, ["key", "unitCount"], `${path}.resampling.strata[${index}]`);
+		const stratum = objectAt$2(candidate, `${path}.resampling.strata[${index}]`);
+		exactFields$3(stratum, ["key", "unitCount"], `${path}.resampling.strata[${index}]`);
 		assertTrajectoryIdentity(stratum.key, `${path}.resampling.strata[${index}].key`, true);
-		positiveInteger(stratum.unitCount, `${path}.resampling.strata[${index}].unitCount`);
+		positiveInteger$1(stratum.unitCount, `${path}.resampling.strata[${index}].unitCount`);
 	});
-	const generation = objectAt(resampling.generation, `${path}.resampling.generation`);
-	if (generation.kind === "caller-provided") exactFields$1(generation, ["kind"], `${path}.resampling.generation`);
+	const generation = objectAt$2(resampling.generation, `${path}.resampling.generation`);
+	if (generation.kind === "caller-provided") exactFields$3(generation, ["kind"], `${path}.resampling.generation`);
 	else {
-		exactFields$1(generation, [
+		exactFields$3(generation, [
 			"kind",
 			"algorithm",
 			"seed",
 			"unitSort",
 			"randomEndpoint"
 		], `${path}.resampling.generation`);
-		if (generation.kind !== "seeded" || generation.algorithm !== "mulberry32-uint32-v1" || generation.unitSort !== "utf16-code-unit-ascending" || generation.randomEndpoint !== "zero-inclusive-one-exclusive") contractError(`${path}.resampling.generation`, "contains unsupported seeded-generation semantics");
-		if (nonNegativeInteger(generation.seed, `${path}.resampling.generation.seed`) > 4294967295) contractError(`${path}.resampling.generation.seed`, "must fit uint32");
+		if (generation.kind !== "seeded" || generation.algorithm !== "mulberry32-uint32-v1" || generation.unitSort !== "utf16-code-unit-ascending" || generation.randomEndpoint !== "zero-inclusive-one-exclusive") contractError$1(`${path}.resampling.generation`, "contains unsupported seeded-generation semantics");
+		if (nonNegativeInteger(generation.seed, `${path}.resampling.generation.seed`) > 4294967295) contractError$1(`${path}.resampling.generation.seed`, "must fit uint32");
 	}
 	result.periods.forEach((period) => {
 		const candidate = period;
@@ -3767,7 +3916,7 @@ function assertBootstrap(value, path) {
 			"fullCumulativeDistance"
 		]) {
 			const interval = candidate[field];
-			if (interval && interval.totalReplicates !== replicateCount) contractError(`${path}.periods.${field}`, "must bind the declared replicate count");
+			if (interval && interval.totalReplicates !== replicateCount) contractError$1(`${path}.periods.${field}`, "must bind the declared replicate count");
 		}
 	});
 	assertDiagnostics(result.diagnostics, `${path}.diagnostics`);
@@ -3777,6 +3926,9 @@ function assertAnalysisTaskResultV1(value, taskKind, path = "result") {
 	switch (taskKind) {
 		case "ena-model":
 			assertAnalysisResult(value, path);
+			return;
+		case "prepared-import":
+			assertPreparedDerivedSource(value);
 			return;
 		case "network-comparison":
 			assertNetworkComparison(value, path);
@@ -3796,12 +3948,12 @@ function assertAnalysisTaskResultV1(value, taskKind, path = "result") {
 		case "bootstrap":
 			assertBootstrap(value, path);
 			return;
-		default: contractError("taskKind", "is unsupported");
+		default: contractError$1("taskKind", "is unsupported");
 	}
 }
 function assertProvenanceManifestV1(value, path = "provenance") {
-	const manifest = objectAt(value, path);
-	exactFields$1(manifest, [
+	const manifest = objectAt$2(value, path);
+	exactFields$3(manifest, [
 		"schemaVersion",
 		"datasetHash",
 		"specHash",
@@ -3822,7 +3974,7 @@ function assertProvenanceManifestV1(value, path = "provenance") {
 		"schemaVersions",
 		"generatedAt"
 	], path);
-	if (manifest.schemaVersion !== "3dena.provenance-manifest.v1") contractError(`${path}.schemaVersion`, `must be ${PROVENANCE_MANIFEST_VERSION_V1}`);
+	if (manifest.schemaVersion !== "3dena.provenance-manifest.v1") contractError$1(`${path}.schemaVersion`, `must be ${PROVENANCE_MANIFEST_VERSION_V1}`);
 	lowercaseSha256(manifest.datasetHash, `${path}.datasetHash`);
 	lowercaseSha256(manifest.specHash, `${path}.specHash`);
 	lowercaseSha256(manifest.resultHash, `${path}.resultHash`);
@@ -3833,19 +3985,19 @@ function assertProvenanceManifestV1(value, path = "provenance") {
 		"sdkVersion",
 		"appVersion",
 		"buildId"
-	]) nonEmptyString$1(manifest[field], `${path}.${field}`);
-	if (manifest.jenaPackage !== "jena-js") contractError(`${path}.jenaPackage`, "must be jena-js");
-	if (manifest.sourceKind !== "raw-jena" && manifest.sourceKind !== "prepared-exchange") contractError(`${path}.sourceKind`, "must be raw-jena or prepared-exchange");
-	if (typeof manifest.jenaExecuted !== "boolean") contractError(`${path}.jenaExecuted`, "must be boolean");
-	if (manifest.sourceKind === "raw-jena" && manifest.jenaExecuted !== true) contractError(`${path}.jenaExecuted`, "must be true for raw-jena");
-	if (manifest.sourceKind === "prepared-exchange" && manifest.jenaExecuted !== false) contractError(`${path}.jenaExecuted`, "must be false for prepared-exchange");
-	if (manifest.sdkPackage !== "@3dena/analysis") contractError(`${path}.sdkPackage`, "must be @3dena/analysis");
-	if (manifest.contractVersion !== "3dena.contract.v1") contractError(`${path}.contractVersion`, `must be ${ANALYSIS_CONTRACT_VERSION_V1}`);
-	if (manifest.seed !== null && (!Number.isSafeInteger(manifest.seed) || manifest.seed < 0 || manifest.seed > 4294967295)) contractError(`${path}.seed`, "must be null or an unsigned 32-bit integer");
-	if (manifest.toleranceContract !== null && (typeof manifest.toleranceContract !== "string" || manifest.toleranceContract.trim() === "")) contractError(`${path}.toleranceContract`, "must be null or non-empty");
-	stringList(manifest.schemaVersions, `${path}.schemaVersions`);
-	const generatedAt = nonEmptyString$1(manifest.generatedAt, `${path}.generatedAt`);
-	if (Number.isNaN(Date.parse(generatedAt))) contractError(`${path}.generatedAt`, "must be an ISO timestamp");
+	]) nonEmptyString$2(manifest[field], `${path}.${field}`);
+	if (manifest.jenaPackage !== "jena-js") contractError$1(`${path}.jenaPackage`, "must be jena-js");
+	if (manifest.sourceKind !== "raw-jena" && manifest.sourceKind !== "prepared-exchange") contractError$1(`${path}.sourceKind`, "must be raw-jena or prepared-exchange");
+	if (typeof manifest.jenaExecuted !== "boolean") contractError$1(`${path}.jenaExecuted`, "must be boolean");
+	if (manifest.sourceKind === "raw-jena" && manifest.jenaExecuted !== true) contractError$1(`${path}.jenaExecuted`, "must be true for raw-jena");
+	if (manifest.sourceKind === "prepared-exchange" && manifest.jenaExecuted !== false) contractError$1(`${path}.jenaExecuted`, "must be false for prepared-exchange");
+	if (manifest.sdkPackage !== "@3dena/analysis") contractError$1(`${path}.sdkPackage`, "must be @3dena/analysis");
+	if (manifest.contractVersion !== "3dena.contract.v1") contractError$1(`${path}.contractVersion`, `must be ${ANALYSIS_CONTRACT_VERSION_V1}`);
+	if (manifest.seed !== null && (!Number.isSafeInteger(manifest.seed) || manifest.seed < 0 || manifest.seed > 4294967295)) contractError$1(`${path}.seed`, "must be null or an unsigned 32-bit integer");
+	if (manifest.toleranceContract !== null && (typeof manifest.toleranceContract !== "string" || manifest.toleranceContract.trim() === "")) contractError$1(`${path}.toleranceContract`, "must be null or non-empty");
+	stringList$1(manifest.schemaVersions, `${path}.schemaVersions`);
+	const generatedAt = nonEmptyString$2(manifest.generatedAt, `${path}.generatedAt`);
+	if (Number.isNaN(Date.parse(generatedAt))) contractError$1(`${path}.generatedAt`, "must be an ISO timestamp");
 }
 var HASH_SCHEMA = {
 	type: "string",
@@ -3872,6 +4024,515 @@ var SAFE_POSITIVE_INTEGER_SCHEMA = {
 	maximum: Number.MAX_SAFE_INTEGER
 };
 var TASK_OWNER_SCHEMA_REF = { $ref: "https://3dena.com/schemas/task-owner.v1.json" };
+var TRAJECTORY_V2_IDENTITY_SCHEMA = {
+	type: "object",
+	additionalProperties: false,
+	required: ["components"],
+	properties: { components: {
+		type: "array",
+		minItems: 1,
+		items: { oneOf: [
+			{
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"name",
+					"type",
+					"value"
+				],
+				properties: {
+					name: NON_EMPTY_STRING_SCHEMA,
+					type: { const: "string" },
+					value: { type: "string" },
+					declaredType: NON_EMPTY_STRING_SCHEMA
+				}
+			},
+			{
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"name",
+					"type",
+					"value"
+				],
+				properties: {
+					name: NON_EMPTY_STRING_SCHEMA,
+					type: { const: "number" },
+					value: { type: "number" },
+					declaredType: NON_EMPTY_STRING_SCHEMA
+				}
+			},
+			{
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"name",
+					"type",
+					"value"
+				],
+				properties: {
+					name: NON_EMPTY_STRING_SCHEMA,
+					type: { const: "boolean" },
+					value: { type: "boolean" },
+					declaredType: NON_EMPTY_STRING_SCHEMA
+				}
+			}
+		] }
+	} }
+};
+var TRAJECTORY_V2_TIME_VALUE_SCHEMA = { oneOf: [
+	{
+		type: "object",
+		additionalProperties: false,
+		required: ["type", "index"],
+		properties: {
+			type: { const: "ordered-index-v2" },
+			index: SAFE_NON_NEGATIVE_INTEGER_SCHEMA
+		}
+	},
+	{
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"type",
+			"value",
+			"unit"
+		],
+		properties: {
+			type: { const: "numeric-v1" },
+			value: { type: "number" },
+			unit: NON_EMPTY_STRING_SCHEMA
+		}
+	},
+	{
+		type: "object",
+		additionalProperties: false,
+		required: ["type", "value"],
+		properties: {
+			type: { const: "date-v1" },
+			value: {
+				type: "string",
+				pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+			}
+		}
+	},
+	{
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"type",
+			"epochMilliseconds",
+			"timeZone",
+			"offsetMinutes",
+			"fold",
+			"elapsedUnit"
+		],
+		properties: {
+			type: { const: "instant-v1" },
+			epochMilliseconds: {
+				type: "string",
+				pattern: "^-?(?:0|[1-9][0-9]*)$"
+			},
+			timeZone: NON_EMPTY_STRING_SCHEMA,
+			offsetMinutes: {
+				type: "integer",
+				minimum: -1440,
+				maximum: 1440
+			},
+			fold: { enum: [0, 1] },
+			elapsedUnit: { enum: [...TRAJECTORY_DURATION_UNITS] }
+		}
+	},
+	{
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"type",
+			"value",
+			"unit",
+			"elapsedUnit"
+		],
+		properties: {
+			type: { const: "difftime-v1" },
+			value: { type: "number" },
+			unit: { enum: [...TRAJECTORY_DURATION_UNITS] },
+			elapsedUnit: { enum: [...TRAJECTORY_DURATION_UNITS] }
+		}
+	}
+] };
+var TRAJECTORY_RUN_SPEC_V2_SCHEMA = {
+	$id: "https://3dena.com/schemas/trajectory-run-spec.v2.json",
+	type: "object",
+	additionalProperties: false,
+	required: [
+		"schemaVersion",
+		"sourceResultHash",
+		"participantColumns",
+		"timeColumn",
+		"groupColumn",
+		"orderedPeriods",
+		"selectedDimensions",
+		"cohortPolicy",
+		"missingValuePolicy",
+		"estimand"
+	],
+	properties: {
+		schemaVersion: { const: "3dena.trajectory-run-spec.v2" },
+		sourceResultHash: HASH_SCHEMA,
+		participantColumns: {
+			type: "array",
+			minItems: 1,
+			uniqueItems: true,
+			items: NON_EMPTY_STRING_SCHEMA
+		},
+		timeColumn: NON_EMPTY_STRING_SCHEMA,
+		groupColumn: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+		orderedPeriods: {
+			type: "array",
+			minItems: 1,
+			items: {
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"identity",
+					"sourceTimeCanonical",
+					"displayLabel",
+					"expected",
+					"value"
+				],
+				properties: {
+					identity: TRAJECTORY_V2_IDENTITY_SCHEMA,
+					sourceTimeCanonical: NON_EMPTY_STRING_SCHEMA,
+					displayLabel: NON_EMPTY_STRING_SCHEMA,
+					expected: { type: "boolean" },
+					value: TRAJECTORY_V2_TIME_VALUE_SCHEMA
+				}
+			}
+		},
+		selectedDimensions: {
+			type: "array",
+			minItems: 3,
+			maxItems: 3,
+			uniqueItems: true,
+			items: NON_EMPTY_STRING_SCHEMA
+		},
+		cohortPolicy: { enum: ["available", "complete"] },
+		missingValuePolicy: { const: "complete-analytical-rows" },
+		estimand: { oneOf: [{
+			type: "object",
+			additionalProperties: false,
+			required: ["kind"],
+			properties: { kind: { const: "equal-participant" } }
+		}, {
+			type: "object",
+			additionalProperties: false,
+			required: ["kind", "metadataField"],
+			properties: {
+				kind: { const: "weighted-participant" },
+				metadataField: NON_EMPTY_STRING_SCHEMA
+			}
+		}] }
+	}
+};
+var TRAJECTORY_V2_TASK_BINDING_PROPERTIES = {
+	datasetHash: HASH_SCHEMA,
+	specHash: HASH_SCHEMA,
+	sourceResultHash: HASH_SCHEMA,
+	runId: NON_EMPTY_STRING_SCHEMA
+};
+var LONGITUDINAL_NULLABLE_NUMBER_SCHEMA = { oneOf: [{ type: "null" }, { type: "number" }] };
+var LONGITUDINAL_NULLABLE_PROBABILITY_SCHEMA = { oneOf: [{ type: "null" }, {
+	type: "number",
+	minimum: 0,
+	maximum: 1
+}] };
+var LONGITUDINAL_NULLABLE_POSITIVE_INTEGER_SCHEMA = { oneOf: [{ type: "null" }, SAFE_POSITIVE_INTEGER_SCHEMA] };
+var LONGITUDINAL_RANK_TIES_SCHEMA = {
+	type: "object",
+	additionalProperties: false,
+	required: [
+		"groups",
+		"observations",
+		"correctionSum"
+	],
+	properties: {
+		groups: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+		observations: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+		correctionSum: {
+			type: "number",
+			minimum: 0
+		}
+	}
+};
+var LONGITUDINAL_RANK_EXACT_TAIL_SCHEMA = { oneOf: [{ type: "null" }, {
+	type: "object",
+	additionalProperties: false,
+	required: [
+		"extremeAssignmentCount",
+		"totalAssignmentCount",
+		"inclusive",
+		"midP"
+	],
+	properties: {
+		extremeAssignmentCount: {
+			type: "string",
+			pattern: "^(?:0|[1-9][0-9]*)$"
+		},
+		totalAssignmentCount: {
+			type: "string",
+			pattern: "^(?:0|[1-9][0-9]*)$"
+		},
+		inclusive: { const: true },
+		midP: { const: false }
+	}
+}] };
+var LONGITUDINAL_PAIRED_IDENTITY_AUDIT_SCHEMA = {
+	type: "object",
+	additionalProperties: false,
+	required: [
+		"earlier",
+		"later",
+		"overlap",
+		"earlierOnly",
+		"laterOnly",
+		"samePhysicalEntityConfirmed"
+	],
+	properties: {
+		earlier: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+		later: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+		overlap: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+		earlierOnly: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+		laterOnly: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+		samePhysicalEntityConfirmed: { const: true }
+	}
+};
+var LONGITUDINAL_REPEATED_IDENTITY_AUDIT_SCHEMA = {
+	type: "object",
+	additionalProperties: false,
+	required: [
+		"totalEntities",
+		"completeBlocks",
+		"excludedIncomplete",
+		"samePhysicalEntityConfirmed"
+	],
+	properties: {
+		totalEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+		completeBlocks: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+		excludedIncomplete: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+		samePhysicalEntityConfirmed: { const: true }
+	}
+};
+var LONGITUDINAL_RANK_ROW_COMMON_REQUIRED = [
+	"memberId",
+	"test",
+	"design",
+	"estimand",
+	"axis",
+	"axisIndex",
+	"status",
+	"reason",
+	"effect",
+	"statistic",
+	"pRaw",
+	"method",
+	"ties",
+	"zeros",
+	"exactTail",
+	"familyId",
+	"familySize",
+	"pHolm",
+	"holmRank",
+	"holmMultiplier"
+];
+var LONGITUDINAL_RANK_ROW_COMMON_PROPERTIES = {
+	memberId: NON_EMPTY_STRING_SCHEMA,
+	estimand: NON_EMPTY_STRING_SCHEMA,
+	axis: NON_EMPTY_STRING_SCHEMA,
+	axisIndex: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+	status: { enum: ["available", "not-estimable"] },
+	reason: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+	effect: LONGITUDINAL_NULLABLE_NUMBER_SCHEMA,
+	statistic: LONGITUDINAL_NULLABLE_NUMBER_SCHEMA,
+	pRaw: LONGITUDINAL_NULLABLE_PROBABILITY_SCHEMA,
+	method: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+	ties: LONGITUDINAL_RANK_TIES_SCHEMA,
+	zeros: { oneOf: [{ type: "null" }, SAFE_NON_NEGATIVE_INTEGER_SCHEMA] },
+	exactTail: LONGITUDINAL_RANK_EXACT_TAIL_SCHEMA,
+	familyId: NON_EMPTY_STRING_SCHEMA,
+	familySize: SAFE_POSITIVE_INTEGER_SCHEMA,
+	pHolm: LONGITUDINAL_NULLABLE_PROBABILITY_SCHEMA,
+	holmRank: LONGITUDINAL_NULLABLE_POSITIVE_INTEGER_SCHEMA,
+	holmMultiplier: LONGITUDINAL_NULLABLE_POSITIVE_INTEGER_SCHEMA
+};
+var LONGITUDINAL_INFERENCE_ROW_SCHEMA = { oneOf: [
+	{
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"memberId",
+			"sideAEntities",
+			"sideBEntities",
+			"overlappingEntities",
+			"pairedCompleteEntities",
+			"sideAOnly",
+			"sideBOnly",
+			"excludedIncompleteOverlap",
+			"samePhysicalEntityConfirmed"
+		],
+		properties: {
+			memberId: { const: "identity-overlap-audit" },
+			sideAEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+			sideBEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+			overlappingEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+			pairedCompleteEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+			sideAOnly: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+			sideBOnly: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+			excludedIncompleteOverlap: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+			samePhysicalEntityConfirmed: { const: true }
+		}
+	},
+	{
+		type: "object",
+		additionalProperties: false,
+		required: [
+			...LONGITUDINAL_RANK_ROW_COMMON_REQUIRED,
+			"periodCanonical",
+			"nPrimary",
+			"nSecondary"
+		],
+		properties: {
+			...LONGITUDINAL_RANK_ROW_COMMON_PROPERTIES,
+			test: { const: "mann-whitney" },
+			design: { const: "independent" },
+			periodCanonical: NON_EMPTY_STRING_SCHEMA,
+			nPrimary: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+			nSecondary: SAFE_NON_NEGATIVE_INTEGER_SCHEMA
+		}
+	},
+	{
+		type: "object",
+		additionalProperties: false,
+		required: [
+			...LONGITUDINAL_RANK_ROW_COMMON_REQUIRED,
+			"earlierPeriodCanonical",
+			"laterPeriodCanonical",
+			"n",
+			"identityOverlapAudit"
+		],
+		properties: {
+			...LONGITUDINAL_RANK_ROW_COMMON_PROPERTIES,
+			test: { const: "wilcoxon-signed-rank" },
+			design: { const: "paired" },
+			earlierPeriodCanonical: NON_EMPTY_STRING_SCHEMA,
+			laterPeriodCanonical: NON_EMPTY_STRING_SCHEMA,
+			n: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+			identityOverlapAudit: LONGITUDINAL_PAIRED_IDENTITY_AUDIT_SCHEMA
+		}
+	},
+	{
+		type: "object",
+		additionalProperties: false,
+		required: [
+			...LONGITUDINAL_RANK_ROW_COMMON_REQUIRED,
+			"selectedPeriodCanonicals",
+			"n",
+			"identityOverlapAudit"
+		],
+		properties: {
+			...LONGITUDINAL_RANK_ROW_COMMON_PROPERTIES,
+			test: { const: "friedman" },
+			design: { const: "repeated" },
+			selectedPeriodCanonicals: {
+				type: "array",
+				minItems: 3,
+				uniqueItems: true,
+				items: NON_EMPTY_STRING_SCHEMA
+			},
+			n: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+			identityOverlapAudit: LONGITUDINAL_REPEATED_IDENTITY_AUDIT_SCHEMA
+		}
+	},
+	{
+		type: "object",
+		additionalProperties: false,
+		required: [
+			...LONGITUDINAL_RANK_ROW_COMMON_REQUIRED,
+			"earlierPeriodCanonical",
+			"laterPeriodCanonical",
+			"n",
+			"identityOverlapAudit"
+		],
+		properties: {
+			...LONGITUDINAL_RANK_ROW_COMMON_PROPERTIES,
+			test: { const: "wilcoxon-signed-rank" },
+			design: { const: "repeated-posthoc" },
+			earlierPeriodCanonical: NON_EMPTY_STRING_SCHEMA,
+			laterPeriodCanonical: NON_EMPTY_STRING_SCHEMA,
+			n: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+			identityOverlapAudit: LONGITUDINAL_REPEATED_IDENTITY_AUDIT_SCHEMA
+		}
+	}
+] };
+var LONGITUDINAL_BOOTSTRAP_INTERVAL_SCHEMA = {
+	type: "object",
+	additionalProperties: false,
+	required: [
+		"estimate",
+		"lower",
+		"upper",
+		"finiteReplicates",
+		"requiredFiniteReplicates",
+		"totalReplicates"
+	],
+	properties: {
+		estimate: { type: "number" },
+		lower: { type: "number" },
+		upper: { type: "number" },
+		finiteReplicates: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+		requiredFiniteReplicates: SAFE_POSITIVE_INTEGER_SCHEMA,
+		totalReplicates: SAFE_POSITIVE_INTEGER_SCHEMA
+	}
+};
+var PREPARED_MAPPING_TASK_SCHEMA = {
+	type: "object",
+	additionalProperties: false,
+	required: [
+		"participant",
+		"participantLabel",
+		"group",
+		"time",
+		"timeOrder",
+		"cohortPolicy",
+		"displayDimensions",
+		"missingDisplayCoordinates"
+	],
+	properties: {
+		participant: {
+			type: "array",
+			minItems: 1,
+			uniqueItems: true,
+			items: NON_EMPTY_STRING_SCHEMA
+		},
+		participantLabel: NON_EMPTY_STRING_SCHEMA,
+		group: NON_EMPTY_STRING_SCHEMA,
+		time: NON_EMPTY_STRING_SCHEMA,
+		timeOrder: {
+			type: "array",
+			minItems: 1,
+			uniqueItems: true,
+			items: RAW_SCALAR_SCHEMA
+		},
+		cohortPolicy: { enum: ["available", "complete"] },
+		displayDimensions: {
+			type: "array",
+			minItems: 3,
+			maxItems: 3,
+			uniqueItems: true,
+			items: NON_EMPTY_STRING_SCHEMA
+		},
+		missingDisplayCoordinates: { const: "reject" }
+	}
+};
 function analysisTaskSchema(kind, required, properties) {
 	return {
 		type: "object",
@@ -4188,6 +4849,782 @@ Object.freeze({
 		}
 	}),
 	analysisExecutionDatasetV2: Object.freeze(ANALYSIS_EXECUTION_DATASET_V2_SCHEMA),
+	trajectoryRunSpecV2: Object.freeze(TRAJECTORY_RUN_SPEC_V2_SCHEMA),
+	trajectoryPathTaskV2: Object.freeze({
+		$id: "https://3dena.com/schemas/trajectory-path-task.v2.json",
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"schemaVersion",
+			"kind",
+			"datasetHash",
+			"specHash",
+			"runId",
+			"runSpec"
+		],
+		properties: {
+			schemaVersion: { const: "3dena.trajectory-path-task.v2" },
+			kind: { const: "trajectory-path-v2" },
+			datasetHash: HASH_SCHEMA,
+			specHash: HASH_SCHEMA,
+			runId: NON_EMPTY_STRING_SCHEMA,
+			runSpec: { $ref: "https://3dena.com/schemas/trajectory-run-spec.v2.json" }
+		}
+	}),
+	trajectoryInferenceTaskV2: Object.freeze({
+		$id: "https://3dena.com/schemas/trajectory-inference-task.v2.json",
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"schemaVersion",
+			"kind",
+			"datasetHash",
+			"specHash",
+			"sourceResultHash",
+			"runId",
+			"requests",
+			"adjustment"
+		],
+		properties: {
+			schemaVersion: { const: "3dena.trajectory-inference-task.v2" },
+			kind: { const: "trajectory-inference-v2" },
+			...TRAJECTORY_V2_TASK_BINDING_PROPERTIES,
+			adjustment: { const: "holm" },
+			requests: {
+				type: "array",
+				minItems: 1,
+				items: { oneOf: [
+					{
+						type: "object",
+						additionalProperties: false,
+						required: [
+							"kind",
+							"groups",
+							"periodCanonical"
+						],
+						properties: {
+							kind: { const: "independent-period" },
+							groups: {
+								type: "array",
+								minItems: 2,
+								maxItems: 2,
+								uniqueItems: true,
+								items: NON_EMPTY_STRING_SCHEMA
+							},
+							periodCanonical: NON_EMPTY_STRING_SCHEMA
+						}
+					},
+					{
+						type: "object",
+						additionalProperties: false,
+						required: [
+							"kind",
+							"group",
+							"earlierPeriodCanonical",
+							"laterPeriodCanonical",
+							"samePhysicalEntityConfirmed"
+						],
+						properties: {
+							kind: { const: "paired-periods" },
+							group: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+							earlierPeriodCanonical: NON_EMPTY_STRING_SCHEMA,
+							laterPeriodCanonical: NON_EMPTY_STRING_SCHEMA,
+							samePhysicalEntityConfirmed: { type: "boolean" }
+						}
+					},
+					{
+						type: "object",
+						additionalProperties: false,
+						required: [
+							"kind",
+							"group",
+							"periodCanonicals",
+							"samePhysicalEntityConfirmed"
+						],
+						properties: {
+							kind: { const: "repeated-periods" },
+							group: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+							periodCanonicals: {
+								type: "array",
+								minItems: 3,
+								uniqueItems: true,
+								items: NON_EMPTY_STRING_SCHEMA
+							},
+							samePhysicalEntityConfirmed: { type: "boolean" }
+						}
+					},
+					{
+						type: "object",
+						additionalProperties: false,
+						required: [
+							"kind",
+							"design",
+							"groups",
+							"repetitions",
+							"seed",
+							"samePhysicalEntityConfirmed"
+						],
+						properties: {
+							kind: { const: "path-comparison" },
+							design: { enum: ["independent", "paired"] },
+							groups: {
+								type: "array",
+								minItems: 2,
+								maxItems: 2,
+								uniqueItems: true,
+								items: NON_EMPTY_STRING_SCHEMA
+							},
+							repetitions: {
+								type: "integer",
+								minimum: 1,
+								maximum: 1e4
+							},
+							seed: {
+								type: "integer",
+								minimum: 0,
+								maximum: 4294967295
+							},
+							samePhysicalEntityConfirmed: { type: "boolean" }
+						}
+					}
+				] }
+			}
+		}
+	}),
+	trajectoryBootstrapTaskV2: Object.freeze({
+		$id: "https://3dena.com/schemas/trajectory-bootstrap-task.v2.json",
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"schemaVersion",
+			"kind",
+			"datasetHash",
+			"specHash",
+			"sourceResultHash",
+			"runId",
+			"repetitions",
+			"confidenceLevel",
+			"seed",
+			"resamplingDesign",
+			"explicitStrataField",
+			"interval",
+			"rotationPolicy"
+		],
+		properties: {
+			schemaVersion: { const: "3dena.trajectory-bootstrap-task.v2" },
+			kind: { const: "trajectory-bootstrap-v2" },
+			...TRAJECTORY_V2_TASK_BINDING_PROPERTIES,
+			repetitions: {
+				type: "integer",
+				minimum: 1,
+				maximum: 1e4
+			},
+			confidenceLevel: {
+				type: "number",
+				exclusiveMinimum: 0,
+				exclusiveMaximum: 1
+			},
+			seed: {
+				type: "integer",
+				minimum: 0,
+				maximum: 4294967295
+			},
+			resamplingDesign: { enum: [
+				"auto",
+				"global-participant",
+				"within-group",
+				"explicit-strata"
+			] },
+			explicitStrataField: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+			interval: { const: "pointwise-percentile-linear-type7" },
+			rotationPolicy: { const: "fixed-same-fit-projection" }
+		},
+		allOf: [{
+			if: { properties: { resamplingDesign: { const: "explicit-strata" } } },
+			then: { properties: { explicitStrataField: NON_EMPTY_STRING_SCHEMA } },
+			else: { properties: { explicitStrataField: { type: "null" } } }
+		}]
+	}),
+	trajectoryNetworkOverlayTaskV2: Object.freeze({
+		$id: "https://3dena.com/schemas/trajectory-network-overlay-task.v2.json",
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"schemaVersion",
+			"kind",
+			"datasetHash",
+			"specHash",
+			"sourceResultHash",
+			"runId",
+			"requests"
+		],
+		properties: {
+			schemaVersion: { const: "3dena.trajectory-network-overlay-task.v2" },
+			kind: { const: "trajectory-network-overlay-v2" },
+			...TRAJECTORY_V2_TASK_BINDING_PROPERTIES,
+			requests: {
+				type: "array",
+				minItems: 1,
+				items: {
+					type: "object",
+					additionalProperties: false,
+					required: ["periodCanonical", "groupCanonical"],
+					properties: {
+						periodCanonical: NON_EMPTY_STRING_SCHEMA,
+						groupCanonical: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] }
+					}
+				}
+			}
+		}
+	}),
+	trajectoryDisplaySpecV2: Object.freeze({
+		$id: "https://3dena.com/schemas/trajectory-display-spec.v2.json",
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"schemaVersion",
+			"projection",
+			"displayedGroups",
+			"traces",
+			"axisFlips",
+			"camera",
+			"style"
+		],
+		properties: {
+			schemaVersion: { const: "3dena.trajectory-display-spec.v2" },
+			projection: { enum: [
+				"3d",
+				"xy",
+				"xz",
+				"yz",
+				"yx",
+				"zx",
+				"zy"
+			] },
+			displayedGroups: {
+				type: "array",
+				uniqueItems: true,
+				items: NON_EMPTY_STRING_SCHEMA
+			},
+			traces: {
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"participants",
+					"individualPaths",
+					"centroids",
+					"paths",
+					"directionArrows",
+					"uncertainty",
+					"networkOverlay",
+					"labels"
+				],
+				properties: Object.fromEntries([
+					"participants",
+					"individualPaths",
+					"centroids",
+					"paths",
+					"directionArrows",
+					"uncertainty",
+					"networkOverlay",
+					"codeNodes",
+					"labels"
+				].map((field) => [field, { type: "boolean" }]))
+			},
+			axisFlips: {
+				type: "array",
+				minItems: 3,
+				maxItems: 3,
+				items: { type: "boolean" }
+			},
+			camera: { oneOf: [{ type: "null" }, {
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"eye",
+					"center",
+					"up"
+				],
+				properties: {
+					...Object.fromEntries([
+						"eye",
+						"center",
+						"up"
+					].map((field) => [field, {
+						type: "object",
+						additionalProperties: false,
+						required: [
+							"x",
+							"y",
+							"z"
+						],
+						properties: {
+							x: { type: "number" },
+							y: { type: "number" },
+							z: { type: "number" }
+						}
+					}])),
+					projection: {
+						type: "object",
+						additionalProperties: false,
+						required: ["type"],
+						properties: { type: { enum: ["perspective", "orthographic"] } }
+					}
+				}
+			}] },
+			style: {
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"participantSize",
+					"participantOpacity",
+					"centroidSize",
+					"pathWidth"
+				],
+				properties: {
+					participantSize: {
+						type: "number",
+						exclusiveMinimum: 0
+					},
+					participantOpacity: {
+						type: "number",
+						minimum: 0,
+						maximum: 1
+					},
+					centroidSize: {
+						type: "number",
+						exclusiveMinimum: 0
+					},
+					pathWidth: {
+						type: "number",
+						exclusiveMinimum: 0
+					}
+				}
+			}
+		}
+	}),
+	longitudinalAnalysisBundleV2: Object.freeze({
+		$id: "https://3dena.com/schemas/longitudinal-analysis-bundle.v2.json",
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"schemaVersion",
+			"identity",
+			"runSpec",
+			"model",
+			"paths",
+			"inference",
+			"pathComparisons",
+			"bootstrap",
+			"codeGeometry",
+			"networkOverlays",
+			"diagnostics",
+			"execution"
+		],
+		properties: {
+			schemaVersion: { const: "3dena.longitudinal-analysis-bundle.v2" },
+			identity: {
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"datasetHash",
+					"specHash",
+					"sourceResultHash",
+					"requestHash",
+					"resultHash",
+					"runId",
+					"jenaBuildId"
+				],
+				properties: {
+					datasetHash: HASH_SCHEMA,
+					specHash: HASH_SCHEMA,
+					sourceResultHash: HASH_SCHEMA,
+					requestHash: HASH_SCHEMA,
+					resultHash: HASH_SCHEMA,
+					runId: NON_EMPTY_STRING_SCHEMA,
+					jenaBuildId: NON_EMPTY_STRING_SCHEMA
+				}
+			},
+			runSpec: { $ref: "https://3dena.com/schemas/trajectory-run-spec.v2.json" },
+			model: {
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"type",
+					"fullRotationDimensions",
+					"selectedDimensions"
+				],
+				properties: {
+					type: { enum: ["SeparateTrajectory", "AccumulatedTrajectory"] },
+					fullRotationDimensions: {
+						type: "array",
+						minItems: 3,
+						uniqueItems: true,
+						items: NON_EMPTY_STRING_SCHEMA
+					},
+					selectedDimensions: {
+						type: "array",
+						minItems: 3,
+						maxItems: 3,
+						uniqueItems: true,
+						items: NON_EMPTY_STRING_SCHEMA
+					}
+				}
+			},
+			paths: {
+				type: "array",
+				minItems: 1,
+				items: {
+					type: "object",
+					additionalProperties: false,
+					required: ["group", "dynamics"],
+					properties: {
+						group: {
+							type: "object",
+							additionalProperties: false,
+							required: ["canonical", "display"],
+							properties: {
+								canonical: NON_EMPTY_STRING_SCHEMA,
+								display: NON_EMPTY_STRING_SCHEMA
+							}
+						},
+						dynamics: RESULT_VARIANT_SCHEMAS_V1.trajectory
+					}
+				}
+			},
+			inference: {
+				type: "array",
+				items: {
+					type: "object",
+					additionalProperties: false,
+					required: [
+						"request",
+						"status",
+						"familyId",
+						"familySize",
+						"rows",
+						"reason"
+					],
+					properties: {
+						request: { $ref: "https://3dena.com/schemas/trajectory-inference-task.v2.json#/properties/requests/items" },
+						status: { enum: [
+							"available",
+							"not-estimable",
+							"disabled"
+						] },
+						familyId: NON_EMPTY_STRING_SCHEMA,
+						familySize: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+						rows: {
+							type: "array",
+							items: LONGITUDINAL_INFERENCE_ROW_SCHEMA
+						},
+						reason: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] }
+					}
+				}
+			},
+			pathComparisons: {
+				type: "array",
+				items: {
+					type: "object",
+					additionalProperties: false,
+					required: [
+						"groups",
+						"design",
+						"seed",
+						"planHash",
+						"identityOverlapAudit",
+						"result"
+					],
+					properties: {
+						groups: {
+							type: "array",
+							minItems: 2,
+							maxItems: 2,
+							uniqueItems: true,
+							items: NON_EMPTY_STRING_SCHEMA
+						},
+						design: { enum: ["independent", "paired"] },
+						seed: {
+							type: "integer",
+							minimum: 0,
+							maximum: 4294967295
+						},
+						planHash: HASH_SCHEMA,
+						identityOverlapAudit: { oneOf: [{ type: "null" }, {
+							type: "object",
+							additionalProperties: false,
+							required: [
+								"sideAEntities",
+								"sideBEntities",
+								"overlappingEntities",
+								"pairedCompleteEntities",
+								"sideAOnly",
+								"sideBOnly",
+								"excludedIncompleteOverlap",
+								"samePhysicalEntityConfirmed"
+							],
+							properties: {
+								sideAEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+								sideBEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+								overlappingEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+								pairedCompleteEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+								sideAOnly: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+								sideBOnly: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+								excludedIncompleteOverlap: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+								samePhysicalEntityConfirmed: { const: true }
+							}
+						}] },
+						result: RESULT_VARIANT_SCHEMAS_V1["trajectory-comparison"]
+					}
+				}
+			},
+			bootstrap: {
+				type: "array",
+				items: {
+					type: "object",
+					additionalProperties: false,
+					required: [
+						"groupCanonical",
+						"status",
+						"notEstimableReason",
+						"seed",
+						"planHash",
+						"finiteReplicates",
+						"requiredFiniteReplicates",
+						"totalReplicates",
+						"confidenceLevel",
+						"requestedResamplingDesign",
+						"resolvedResamplingDesign",
+						"resamplingAlgorithm",
+						"intervalContract",
+						"rotationPolicy",
+						"speedIntervals",
+						"result"
+					],
+					properties: {
+						groupCanonical: NON_EMPTY_STRING_SCHEMA,
+						status: { enum: ["available", "not-estimable"] },
+						notEstimableReason: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+						seed: {
+							type: "integer",
+							minimum: 0,
+							maximum: 4294967295
+						},
+						planHash: HASH_SCHEMA,
+						finiteReplicates: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+						requiredFiniteReplicates: SAFE_POSITIVE_INTEGER_SCHEMA,
+						totalReplicates: SAFE_POSITIVE_INTEGER_SCHEMA,
+						confidenceLevel: {
+							type: "number",
+							exclusiveMinimum: 0,
+							exclusiveMaximum: 1
+						},
+						requestedResamplingDesign: { enum: [
+							"auto",
+							"global-participant",
+							"within-group",
+							"explicit-strata"
+						] },
+						resolvedResamplingDesign: { enum: [
+							"global-participant",
+							"within-group",
+							"explicit-strata"
+						] },
+						resamplingAlgorithm: { enum: ["participant-complete-history-mulberry32-uint32-v1", "global-participant-complete-history-mulberry32-uint32-v2"] },
+						intervalContract: { const: "pointwise-percentile-linear-type7" },
+						rotationPolicy: { const: "fixed-same-fit-projection" },
+						speedIntervals: {
+							type: "array",
+							items: {
+								type: "object",
+								additionalProperties: false,
+								required: [
+									"periodCanonical",
+									"selected",
+									"full"
+								],
+								properties: {
+									periodCanonical: NON_EMPTY_STRING_SCHEMA,
+									selected: { oneOf: [{ type: "null" }, LONGITUDINAL_BOOTSTRAP_INTERVAL_SCHEMA] },
+									full: { oneOf: [{ type: "null" }, LONGITUDINAL_BOOTSTRAP_INTERVAL_SCHEMA] }
+								}
+							}
+						},
+						result: RESULT_VARIANT_SCHEMAS_V1.bootstrap
+					}
+				}
+			},
+			codeGeometry: {
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"schemaVersion",
+					"dimensions",
+					"nodes"
+				],
+				properties: {
+					schemaVersion: { const: "3dena.longitudinal-code-geometry.v2" },
+					dimensions: {
+						type: "array",
+						minItems: 3,
+						maxItems: 3,
+						uniqueItems: true,
+						items: NON_EMPTY_STRING_SCHEMA
+					},
+					nodes: {
+						type: "array",
+						minItems: 1,
+						items: {
+							type: "object",
+							additionalProperties: false,
+							required: [
+								"index",
+								"code",
+								"coordinates"
+							],
+							properties: {
+								index: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+								code: NON_EMPTY_STRING_SCHEMA,
+								coordinates: {
+									type: "array",
+									minItems: 3,
+									maxItems: 3,
+									items: { type: "number" }
+								}
+							}
+						}
+					}
+				}
+			},
+			networkOverlays: {
+				type: "array",
+				items: {
+					type: "object",
+					additionalProperties: false,
+					required: [
+						"status",
+						"reason",
+						"groupCanonical",
+						"periodCanonical",
+						"dimensions",
+						"estimand",
+						"sourceRows",
+						"participantPeriods",
+						"effectiveParticipantN",
+						"edges"
+					],
+					properties: {
+						status: { enum: ["available", "not-estimable"] },
+						reason: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+						groupCanonical: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+						periodCanonical: NON_EMPTY_STRING_SCHEMA,
+						dimensions: {
+							type: "array",
+							minItems: 3,
+							maxItems: 3,
+							uniqueItems: true,
+							items: NON_EMPTY_STRING_SCHEMA
+						},
+						estimand: { enum: ["equal-participant", "weighted-participant"] },
+						sourceRows: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+						participantPeriods: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+						effectiveParticipantN: { oneOf: [{ type: "null" }, {
+							type: "number",
+							exclusiveMinimum: 0
+						}] },
+						edges: {
+							type: "array",
+							items: {
+								type: "object",
+								additionalProperties: false,
+								required: [
+									"id",
+									"sourceIndex",
+									"targetIndex",
+									"weight"
+								],
+								properties: {
+									id: NON_EMPTY_STRING_SCHEMA,
+									sourceIndex: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+									targetIndex: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+									weight: { type: "number" }
+								}
+							}
+						}
+					}
+				}
+			},
+			diagnostics: {
+				type: "array",
+				items: {
+					type: "object",
+					additionalProperties: false,
+					required: [
+						"code",
+						"severity",
+						"message"
+					],
+					properties: {
+						code: NON_EMPTY_STRING_SCHEMA,
+						severity: { enum: [
+							"error",
+							"warning",
+							"info"
+						] },
+						message: NON_EMPTY_STRING_SCHEMA,
+						path: NON_EMPTY_STRING_SCHEMA
+					}
+				}
+			},
+			execution: {
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"target",
+					"jenaVersion",
+					"jenaCommit",
+					"jenaTarballIntegrity",
+					"sdkVersion",
+					"buildId",
+					"seed",
+					"permutationPlanHashes",
+					"resamplingPlanHashes",
+					"evidenceStatus"
+				],
+				properties: {
+					target: { enum: [
+						"browser-worker",
+						"persistent-compute-service",
+						"node-service"
+					] },
+					jenaVersion: NON_EMPTY_STRING_SCHEMA,
+					jenaCommit: NON_EMPTY_STRING_SCHEMA,
+					jenaTarballIntegrity: NON_EMPTY_STRING_SCHEMA,
+					sdkVersion: NON_EMPTY_STRING_SCHEMA,
+					buildId: NON_EMPTY_STRING_SCHEMA,
+					seed: {
+						type: "integer",
+						minimum: 0,
+						maximum: 4294967295
+					},
+					permutationPlanHashes: {
+						type: "array",
+						items: HASH_SCHEMA
+					},
+					resamplingPlanHashes: {
+						type: "array",
+						items: HASH_SCHEMA
+					},
+					evidenceStatus: { enum: [
+						"IMPLEMENTED_UNVERIFIED",
+						"PARITY_CANDIDATE",
+						"PRODUCTION_CANDIDATE",
+						"PRODUCTION_READY"
+					] }
+				}
+			}
+		}
+	}),
 	analysisSpec: Object.freeze({
 		$id: "https://3dena.com/schemas/analysis-spec.v1.json",
 		type: "object",
@@ -4435,6 +5872,25 @@ Object.freeze({
 		},
 		oneOf: [
 			analysisTaskSchema("ena-model", ["input"], { input: { type: "object" } }),
+			analysisTaskSchema("prepared-import", ["input"], { input: {
+				type: "object",
+				additionalProperties: false,
+				required: [
+					"sourceName",
+					"exactBytesBase64",
+					"mapping"
+				],
+				properties: {
+					sourceName: { const: "uploaded.ena3d.json" },
+					exactBytesBase64: {
+						type: "string",
+						minLength: 4,
+						maxLength: 7e6,
+						pattern: "^[A-Za-z0-9+/]+={0,2}$"
+					},
+					mapping: PREPARED_MAPPING_TASK_SCHEMA
+				}
+			} }),
 			analysisTaskSchema("network-comparison", ["sourceResultHash", "groups"], {
 				sourceResultHash: HASH_SCHEMA,
 				groups: { $ref: "#/$defs/stringPair" }
@@ -4678,6 +6134,7 @@ Object.freeze({
 			owner: TASK_OWNER_SCHEMA_REF,
 			taskKind: { enum: [
 				"ena-model",
+				"prepared-import",
 				"network-comparison",
 				"change-network",
 				"statistics",
@@ -32245,6 +33702,15 @@ async function parseTabularWorksheet(request) {
 	const context = buildWorkbookContext(source);
 	return materializeWorksheet(source, context, selectWorksheet(context.worksheets, request.selection));
 }
+//#endregion
+//#region packages/analysis/src/fitted-jena-adapter-v2.ts
+init_build_identity();
+init_trajectory();
+init_validation();
+/** Return the package-build identity injected into the exact consumed artifact. */
+function getAnalysisBuildIdentityV2() {
+	return structuredClone(ANALYSIS_BUILD_IDENTITY);
+}
 Object.freeze({
 	nullValue: "",
 	nonFiniteNumbers: "reject",
@@ -32297,6 +33763,18 @@ Object.freeze({
 	pValueAdjustmentFamily: "caller-supplied-complete-family"
 });
 Object.freeze({
+	schemaVersion: "3dena.stats.rank-contract.v2",
+	alternative: "two-sided",
+	pValueMethod: "auto-exact-first",
+	zeroMethod: "wilcox-drop-exact-zero",
+	adjustment: "holm-complete-planned-family-v2",
+	rankPrecisionSignificantDigits: 12,
+	exactMaxRankedN: 50,
+	friedmanExactAssignmentLimit: 1e6,
+	continuityCorrection: .5,
+	exactTail: "inclusive-non-mid-p"
+});
+Object.freeze({
 	maxPoints: 1e5,
 	maxDimensions: 200,
 	maxPeriods: 1e3,
@@ -32318,62 +33796,7 @@ Object.freeze({
 	days: 864e5,
 	weeks: 6048e5
 });
-//#endregion
-//#region packages/analysis/src/prepared-derived.ts
-var SHA256$2 = /^[a-f0-9]{64}$/u;
-var PreparedDerivedAnalysisError = class extends Error {
-	code;
-	path;
-	constructor(code, path, message) {
-		super(`${path}: ${message}`);
-		this.name = "PreparedDerivedAnalysisError";
-		this.code = code;
-		this.path = path;
-	}
-};
-function reject$1(code, path, message) {
-	throw new PreparedDerivedAnalysisError(code, path, message);
-}
-/**
-* Validates the immutable prepared reduction boundary without claiming that
-* imported coordinates were recomputed from raw rows.
-*/
-function assertPreparedDerivedSource(result) {
-	if (!result || typeof result !== "object" || result.schemaVersion !== "3dena.prepared-space-result.v1") reject$1("INVALID_PREPARED_SOURCE", "result.schemaVersion", "must be 3dena.prepared-space-result.v1");
-	const provenance = result.provenance;
-	if (result.sourceKind !== "prepared-exchange" || result.rawJenaRecompute !== false || !provenance || typeof provenance !== "object" || provenance.jenaExecuted !== false || provenance.coordinateSpace !== "precomputed-import" || provenance.computation !== "reduction-only") reject$1("INVALID_PREPARED_BOUNDARY", "result", "must remain a precomputed prepared exchange with jENA execution disabled");
-	const sourceReceipt = result.sourceReceipt;
-	if (!sourceReceipt || typeof sourceReceipt !== "object" || !SHA256$2.test(sourceReceipt.sha256) || !Number.isSafeInteger(sourceReceipt.byteLength) || sourceReceipt.byteLength < 1) reject$1("INVALID_PREPARED_RECEIPT", "result.sourceReceipt", "must contain an exact SHA-256 and positive byte length");
-	const fullSpace = result.fullSpace;
-	if (!fullSpace || typeof fullSpace !== "object") reject$1("INVALID_PREPARED_FULL_SPACE", "result.fullSpace", "must contain the imported full-space reduction");
-	const { dimensions, points, edges, lineWeights } = fullSpace;
-	if (!Array.isArray(dimensions) || dimensions.length === 0 || dimensions.some((dimension) => typeof dimension !== "string" || dimension.trim() === "")) reject$1("INVALID_PREPARED_DIMENSIONS", "result.fullSpace.dimensions", "must contain non-empty dimension names");
-	if (new Set(dimensions).size !== dimensions.length) reject$1("DUPLICATE_PREPARED_DIMENSION", "result.fullSpace.dimensions", "must not contain duplicates");
-	if (!Array.isArray(points) || points.length === 0) reject$1("EMPTY_PREPARED_POINT_SET", "result.fullSpace.points", "must not be empty");
-	if (!Array.isArray(edges) || edges.length === 0) reject$1("EMPTY_PREPARED_EDGE_SET", "result.fullSpace.edges", "must not be empty");
-	if (!lineWeights || typeof lineWeights !== "object" || !Array.isArray(lineWeights.rowKeys) || !Array.isArray(lineWeights.values) || !Array.isArray(lineWeights.columns) || lineWeights.rowKeys.length !== points.length || lineWeights.values.length !== points.length || lineWeights.columns.length !== edges.length) reject$1("MISALIGNED_PREPARED_LINE_WEIGHTS", "result.fullSpace.lineWeights", "row keys, values, columns, points, and edges must remain exactly aligned");
-	const pointKeys = /* @__PURE__ */ new Set();
-	points.forEach((point, index) => {
-		if (!point || typeof point !== "object") reject$1("INVALID_PREPARED_POINT", `result.fullSpace.points[${index}]`, "must be an object");
-		if (point.index !== index) reject$1("MISALIGNED_PREPARED_POINT_ORDER", `result.fullSpace.points[${index}].index`, "must equal its array position");
-		if (typeof point.id?.canonical !== "string" || point.id.canonical.length === 0 || typeof point.participant?.canonical !== "string" || point.participant.canonical.length === 0 || typeof point.participantLabel?.canonical !== "string" || point.participantLabel.canonical.length === 0 || typeof point.group?.canonical !== "string" || point.group.canonical.length === 0 || typeof point.time?.canonical !== "string" || point.time.canonical.length === 0) reject$1("INVALID_PREPARED_POINT_IDENTITY", `result.fullSpace.points[${index}]`, "must preserve non-empty point, participant, label, group, and time identities");
-		if (pointKeys.has(point.id.canonical)) reject$1("DUPLICATE_PREPARED_POINT_IDENTITY", `result.fullSpace.points[${index}].id`, "duplicates an earlier prepared point identity");
-		pointKeys.add(point.id.canonical);
-		if (!Array.isArray(point.coordinates) || point.coordinates.length !== dimensions.length || point.coordinates.some((value) => !Number.isFinite(value))) reject$1("INVALID_PREPARED_COORDINATES", `result.fullSpace.points[${index}].coordinates`, "must contain one finite value per dimension");
-		if (lineWeights.rowKeys[index]?.canonical !== point.id.canonical) reject$1("MISALIGNED_PREPARED_IDENTITY", `result.fullSpace.lineWeights.rowKeys[${index}]`, "must match the exact point identity and order");
-		const weights = lineWeights.values[index];
-		if (!weights || weights.length !== edges.length || weights.some((value) => !Number.isFinite(value))) reject$1("INVALID_PREPARED_LINE_WEIGHT_ROW", `result.fullSpace.lineWeights.values[${index}]`, "must contain one finite value per edge");
-	});
-	const edgeKeys = /* @__PURE__ */ new Set();
-	edges.forEach((edge, index) => {
-		if (!edge || typeof edge !== "object" || typeof edge.id !== "string" || edge.id.length === 0 || typeof edge.column !== "string" || edge.column.length === 0) reject$1("INVALID_PREPARED_EDGE", `result.fullSpace.edges[${index}]`, "must preserve non-empty edge and column identities");
-		if (edge.index !== index || lineWeights.columns[index] !== edge.column) reject$1("MISALIGNED_PREPARED_EDGE_ORDER", `result.fullSpace.edges[${index}]`, "must preserve imported edge and line-weight column order");
-		const edgeKey = JSON.stringify([edge.id, edge.column]);
-		if (edgeKeys.has(edgeKey)) reject$1("DUPLICATE_PREPARED_EDGE_IDENTITY", `result.fullSpace.edges[${index}]`, "duplicates an earlier prepared edge identity");
-		edgeKeys.add(edgeKey);
-	});
-	if (!result.displaySpace?.trajectory || !Array.isArray(result.displaySpace.trajectory.groupOrder)) reject$1("INVALID_PREPARED_GROUP_ORDER", "result.displaySpace.trajectory.groupOrder", "must preserve the prepared canonical group inventory");
-}
+new TextEncoder();
 Object.freeze({
 	maxPoints: 1e5,
 	maxDimensions: 200,
@@ -32394,7 +33817,8 @@ Object.freeze({
 });
 //#endregion
 //#region packages/analysis/src/task-executor.ts
-var SHA256$1 = /^[a-f0-9]{64}$/u;
+init_build_identity();
+var SHA256$2 = /^[a-f0-9]{64}$/u;
 var ANALYSIS_EXECUTION_DATASET_VERSION_V2 = "3dena.analysis-execution-dataset.v2";
 var AnalysisTaskExecutionError = class extends Error {
 	code;
@@ -32406,21 +33830,21 @@ var AnalysisTaskExecutionError = class extends Error {
 		this.path = path;
 	}
 };
-function reject(code, path, message) {
+function reject$1(code, path, message) {
 	throw new AnalysisTaskExecutionError(code, path, message);
 }
 function canonicalJson(value, path = "value") {
 	if (value === null) return "null";
 	if (typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
 	if (typeof value === "number") {
-		if (!Number.isFinite(value)) reject("NON_FINITE_HASH_VALUE", path, "cannot be hashed canonically");
+		if (!Number.isFinite(value)) reject$1("NON_FINITE_HASH_VALUE", path, "cannot be hashed canonically");
 		return Object.is(value, -0) ? "-0" : JSON.stringify(value);
 	}
 	if (Array.isArray(value)) return `[${value.map((entry, index) => canonicalJson(entry, `${path}[${index}]`)).join(",")}]`;
-	if (typeof value !== "object" || value === void 0) reject("UNSUPPORTED_HASH_VALUE", path, "contains an unsupported canonical JSON value");
+	if (typeof value !== "object" || value === void 0) reject$1("UNSUPPORTED_HASH_VALUE", path, "contains an unsupported canonical JSON value");
 	const record = value;
 	return `{${Object.keys(record).sort().map((key) => {
-		if (record[key] === void 0) reject("UNSUPPORTED_HASH_VALUE", `${path}.${key}`, "must not be undefined");
+		if (record[key] === void 0) reject$1("UNSUPPORTED_HASH_VALUE", `${path}.${key}`, "must not be undefined");
 		return `${JSON.stringify(key)}:${canonicalJson(record[key], `${path}.${key}`)}`;
 	}).join(",")}}`;
 }
@@ -32430,16 +33854,16 @@ function hex(bytes) {
 /** SHA-256 over the v1 lexicographically-keyed canonical JSON encoding. */
 async function hashAnalysisValueV1(value) {
 	const subtle = globalThis.crypto?.subtle;
-	if (!subtle) reject("CRYPTO_UNAVAILABLE", "crypto.subtle", "WebCrypto SHA-256 is required by Node >=20.9 and supported browsers");
+	if (!subtle) reject$1("CRYPTO_UNAVAILABLE", "crypto.subtle", "WebCrypto SHA-256 is required by Node >=20.9 and supported browsers");
 	const bytes = new TextEncoder().encode(canonicalJson(value));
 	return hex(new Uint8Array(await subtle.digest("SHA-256", bytes)));
 }
-function exactFields(value, allowed, required, path) {
+function exactFields$2(value, allowed, required, path) {
 	const allowedSet = new Set(allowed);
 	const unknown = Object.keys(value).find((field) => !allowedSet.has(field));
-	if (unknown) reject("UNKNOWN_EXECUTION_FIELD", path, `contains unknown field ${JSON.stringify(unknown)}`);
+	if (unknown) reject$1("UNKNOWN_EXECUTION_FIELD", path, `contains unknown field ${JSON.stringify(unknown)}`);
 	const missing = required.find((field) => !Object.hasOwn(value, field));
-	if (missing) reject("MISSING_EXECUTION_FIELD", path, `is missing required field ${JSON.stringify(missing)}`);
+	if (missing) reject$1("MISSING_EXECUTION_FIELD", path, `is missing required field ${JSON.stringify(missing)}`);
 }
 /**
 * Standalone V2 execution-dataset validator shared by local SDK callers,
@@ -32447,9 +33871,9 @@ function exactFields(value, allowed, required, path) {
 * source discriminant and complete raw result fields before any task runs.
 */
 function assertAnalysisExecutionDatasetV2(value, path = "dataset") {
-	if (!value || typeof value !== "object" || Array.isArray(value)) reject("INVALID_EXECUTION_DATASET", path, "must be an object");
+	if (!value || typeof value !== "object" || Array.isArray(value)) reject$1("INVALID_EXECUTION_DATASET", path, "must be an object");
 	const dataset = value;
-	exactFields(dataset, [
+	exactFields$2(dataset, [
 		"schemaVersion",
 		"receipt",
 		"specHash",
@@ -32462,15 +33886,15 @@ function assertAnalysisExecutionDatasetV2(value, path = "dataset") {
 		"specHash",
 		"buildId"
 	], path);
-	if (dataset.schemaVersion !== "3dena.analysis-execution-dataset.v2") reject("INVALID_EXECUTION_DATASET", `${path}.schemaVersion`, `must be ${ANALYSIS_EXECUTION_DATASET_VERSION_V2}`);
+	if (dataset.schemaVersion !== "3dena.analysis-execution-dataset.v2") reject$1("INVALID_EXECUTION_DATASET", `${path}.schemaVersion`, `must be ${ANALYSIS_EXECUTION_DATASET_VERSION_V2}`);
 	assertDatasetReceiptV1(dataset.receipt, `${path}.receipt`);
-	if (typeof dataset.specHash !== "string" || !SHA256$1.test(dataset.specHash)) reject("INVALID_SPEC_HASH", `${path}.specHash`, "must be a lowercase SHA-256 digest");
-	if (typeof dataset.buildId !== "string" || dataset.buildId.trim() === "") reject("INVALID_BUILD_ID", `${path}.buildId`, "must be non-empty");
-	if (dataset.generatedAt !== void 0 && (typeof dataset.generatedAt !== "string" || Number.isNaN(Date.parse(dataset.generatedAt)))) reject("INVALID_GENERATED_AT", `${path}.generatedAt`, "must be an ISO timestamp");
+	if (typeof dataset.specHash !== "string" || !SHA256$2.test(dataset.specHash)) reject$1("INVALID_SPEC_HASH", `${path}.specHash`, "must be a lowercase SHA-256 digest");
+	if (typeof dataset.buildId !== "string" || dataset.buildId.trim() === "") reject$1("INVALID_BUILD_ID", `${path}.buildId`, "must be non-empty");
+	if (dataset.generatedAt !== void 0 && (typeof dataset.generatedAt !== "string" || Number.isNaN(Date.parse(dataset.generatedAt)))) reject$1("INVALID_GENERATED_AT", `${path}.generatedAt`, "must be an ISO timestamp");
 	if (dataset.sourceResult === void 0) return;
-	if (!dataset.sourceResult || typeof dataset.sourceResult !== "object" || Array.isArray(dataset.sourceResult)) reject("INVALID_SOURCE_RESULT", `${path}.sourceResult`, "must be an object");
+	if (!dataset.sourceResult || typeof dataset.sourceResult !== "object" || Array.isArray(dataset.sourceResult)) reject$1("INVALID_SOURCE_RESULT", `${path}.sourceResult`, "must be an object");
 	const source = dataset.sourceResult;
-	exactFields(source, [
+	exactFields$2(source, [
 		"sourceKind",
 		"hash",
 		"result"
@@ -32479,22 +33903,1352 @@ function assertAnalysisExecutionDatasetV2(value, path = "dataset") {
 		"hash",
 		"result"
 	], `${path}.sourceResult`);
-	if (typeof source.hash !== "string" || !SHA256$1.test(source.hash)) reject("INVALID_SOURCE_RESULT_HASH", `${path}.sourceResult.hash`, "must be a lowercase SHA-256 digest");
+	if (typeof source.hash !== "string" || !SHA256$2.test(source.hash)) reject$1("INVALID_SOURCE_RESULT_HASH", `${path}.sourceResult.hash`, "must be a lowercase SHA-256 digest");
 	if (source.sourceKind === "raw-jena") {
-		if (!source.result || typeof source.result !== "object" || source.result.schemaVersion !== "3dena.analysis-result.v1") reject("SOURCE_KIND_RESULT_MISMATCH", `${path}.sourceResult.result`, "raw-jena must contain 3dena.analysis-result.v1");
+		if (!source.result || typeof source.result !== "object" || source.result.schemaVersion !== "3dena.analysis-result.v1") reject$1("SOURCE_KIND_RESULT_MISMATCH", `${path}.sourceResult.result`, "raw-jena must contain 3dena.analysis-result.v1");
 		assertAnalysisTaskResultV1(source.result, "ena-model", `${path}.sourceResult.result`);
 		return;
 	}
-	if (source.sourceKind !== "prepared-exchange") reject("INVALID_SOURCE_KIND", `${path}.sourceResult.sourceKind`, "must be raw-jena or prepared-exchange");
-	if (!source.result || typeof source.result !== "object" || source.result.schemaVersion !== "3dena.prepared-space-result.v1") reject("SOURCE_KIND_RESULT_MISMATCH", `${path}.sourceResult.result`, "prepared-exchange must contain 3dena.prepared-space-result.v1");
+	if (source.sourceKind !== "prepared-exchange") reject$1("INVALID_SOURCE_KIND", `${path}.sourceResult.sourceKind`, "must be raw-jena or prepared-exchange");
+	if (!source.result || typeof source.result !== "object" || source.result.schemaVersion !== "3dena.prepared-space-result.v1") reject$1("SOURCE_KIND_RESULT_MISMATCH", `${path}.sourceResult.result`, "prepared-exchange must contain 3dena.prepared-space-result.v1");
 	assertPreparedDerivedSource(source.result);
 	const prepared = source.result;
 	const receipt = dataset.receipt;
-	if (receipt.format !== "ena3d-json") reject("PREPARED_RECEIPT_FORMAT_MISMATCH", `${path}.receipt.format`, "must be ena3d-json for a prepared-exchange source");
-	if (prepared.sourceReceipt.sha256 !== receipt.sha256 || prepared.sourceReceipt.byteLength !== receipt.byteLength) reject("PREPARED_SOURCE_RECEIPT_MISMATCH", `${path}.sourceResult.result.sourceReceipt`, "does not match the activated exact-byte dataset receipt");
+	if (receipt.format !== "ena3d-json") reject$1("PREPARED_RECEIPT_FORMAT_MISMATCH", `${path}.receipt.format`, "must be ena3d-json for a prepared-exchange source");
+	if (prepared.sourceReceipt.sha256 !== receipt.sha256 || prepared.sourceReceipt.byteLength !== receipt.byteLength) reject$1("PREPARED_SOURCE_RECEIPT_MISMATCH", `${path}.sourceResult.result.sourceReceipt`, "does not match the activated exact-byte dataset receipt");
+}
+//#endregion
+//#region packages/analysis/src/longitudinal-v2.ts
+var SHA256$1 = /^[a-f0-9]{64}$/u;
+var TRAJECTORY_RUN_SPEC_VERSION_V2 = "3dena.trajectory-run-spec.v2";
+var LONGITUDINAL_BUNDLE_VERSION_V2 = "3dena.longitudinal-analysis-bundle.v2";
+var LongitudinalExecutionErrorV2 = class extends Error {
+	code;
+	path;
+	constructor(code, path, message) {
+		super(`${path}: ${message}`);
+		this.name = "LongitudinalExecutionErrorV2";
+		this.code = code;
+		this.path = path;
+	}
+};
+function contractError(path, message) {
+	throw new TypeError(`${path}: ${message}`);
+}
+function objectAt$1(value, path) {
+	if (!value || typeof value !== "object" || Array.isArray(value)) contractError(path, "must be an object");
+	return value;
+}
+function exactFields$1(value, allowed, required, path) {
+	const allowedSet = new Set(allowed);
+	const unknown = Object.keys(value).find((field) => !allowedSet.has(field));
+	if (unknown) contractError(path, `contains unknown field ${JSON.stringify(unknown)}`);
+	const missing = required.find((field) => !Object.hasOwn(value, field));
+	if (missing) contractError(path, `is missing required field ${JSON.stringify(missing)}`);
+}
+function nonEmptyString$1(value, path) {
+	if (typeof value !== "string" || value.trim() === "") contractError(path, "must be a non-empty string");
+	return value;
+}
+function stringList(value, path, exactLength) {
+	if (!Array.isArray(value) || value.length === 0) contractError(path, "must be a non-empty string array");
+	if (exactLength !== void 0 && value.length !== exactLength) contractError(path, `must contain exactly ${exactLength} values`);
+	const output = value.map((entry, index) => nonEmptyString$1(entry, `${path}[${index}]`));
+	if (new Set(output).size !== output.length) contractError(path, "must contain distinct values");
+	return output;
+}
+function finiteNumberV2(value, path) {
+	if (typeof value !== "number" || !Number.isFinite(value)) contractError(path, "must be a finite number");
+	return value;
+}
+function nonNegativeIntegerV2(value, path) {
+	if (!Number.isSafeInteger(value) || value < 0) contractError(path, "must be a non-negative safe integer");
+	return value;
+}
+function positiveIntegerV2(value, path) {
+	const parsed = nonNegativeIntegerV2(value, path);
+	if (parsed < 1) contractError(path, "must be a positive safe integer");
+	return parsed;
+}
+function probabilityOrNullV2(value, path) {
+	if (value === null) return null;
+	const parsed = finiteNumberV2(value, path);
+	if (parsed < 0 || parsed > 1) contractError(path, "must be in [0,1]");
+	return parsed;
+}
+function finiteOrNullV2(value, path) {
+	return value === null ? null : finiteNumberV2(value, path);
+}
+function finiteTripleV2(value, path) {
+	if (!Array.isArray(value) || value.length !== 3) contractError(path, "must contain exactly three coordinates");
+	return value.map((entry, index) => finiteNumberV2(entry, `${path}[${index}]`));
+}
+function assertIdentity(value, path) {
+	const identity = objectAt$1(value, path);
+	exactFields$1(identity, ["components"], ["components"], path);
+	if (!Array.isArray(identity.components) || identity.components.length === 0) contractError(`${path}.components`, "must be a non-empty array");
+	const names = /* @__PURE__ */ new Set();
+	identity.components.forEach((candidate, index) => {
+		const componentPath = `${path}.components[${index}]`;
+		const component = objectAt$1(candidate, componentPath);
+		exactFields$1(component, [
+			"name",
+			"type",
+			"value",
+			"declaredType"
+		], [
+			"name",
+			"type",
+			"value"
+		], componentPath);
+		const name = nonEmptyString$1(component.name, `${componentPath}.name`);
+		if (names.has(name)) contractError(`${componentPath}.name`, "duplicates an earlier component name");
+		names.add(name);
+		if (component.type === "string" && typeof component.value === "string") return;
+		if (component.type === "boolean" && typeof component.value === "boolean") return;
+		if (component.type === "number" && typeof component.value === "number" && Number.isFinite(component.value)) {
+			if (Number.isInteger(component.value) && !Number.isSafeInteger(component.value)) contractError(`${componentPath}.value`, "unsafe integer identities must be supplied as strings");
+			return;
+		}
+		contractError(componentPath, "declared identity type must match its finite value");
+	});
+}
+function assertOrderedPeriodValue(value, path) {
+	const period = objectAt$1(value, path);
+	const type = nonEmptyString$1(period.type, `${path}.type`);
+	if (type === "ordered-index-v2") {
+		exactFields$1(period, ["type", "index"], ["type", "index"], path);
+		if (!Number.isSafeInteger(period.index) || period.index < 0) contractError(`${path}.index`, "must be a non-negative safe integer");
+		return type;
+	}
+	if (type === "numeric-v1") {
+		exactFields$1(period, [
+			"type",
+			"value",
+			"unit"
+		], [
+			"type",
+			"value",
+			"unit"
+		], path);
+		if (typeof period.value !== "number" || !Number.isFinite(period.value)) contractError(`${path}.value`, "must be finite");
+		nonEmptyString$1(period.unit, `${path}.unit`);
+		return type;
+	}
+	if (type === "date-v1") {
+		exactFields$1(period, ["type", "value"], ["type", "value"], path);
+		const date = nonEmptyString$1(period.value, `${path}.value`);
+		if (!/^\d{4}-\d{2}-\d{2}$/u.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) contractError(`${path}.value`, "must be a valid ISO civil date");
+		return type;
+	}
+	if (type === "instant-v1") {
+		exactFields$1(period, [
+			"type",
+			"epochMilliseconds",
+			"timeZone",
+			"offsetMinutes",
+			"fold",
+			"elapsedUnit"
+		], [
+			"type",
+			"epochMilliseconds",
+			"timeZone",
+			"offsetMinutes",
+			"fold",
+			"elapsedUnit"
+		], path);
+		if (typeof period.epochMilliseconds !== "string" || !/^-?(?:0|[1-9]\d*)$/u.test(period.epochMilliseconds)) contractError(`${path}.epochMilliseconds`, "must be a canonical integer string");
+		nonEmptyString$1(period.timeZone, `${path}.timeZone`);
+		if (!Number.isInteger(period.offsetMinutes) || period.offsetMinutes < -840 || period.offsetMinutes > 840) contractError(`${path}.offsetMinutes`, "must be an integer in [-840, 840]");
+		if (period.fold !== 0 && period.fold !== 1) contractError(`${path}.fold`, "must be 0 or 1");
+		nonEmptyString$1(period.elapsedUnit, `${path}.elapsedUnit`);
+		return type;
+	}
+	if (type === "difftime-v1") {
+		exactFields$1(period, [
+			"type",
+			"value",
+			"unit",
+			"elapsedUnit"
+		], [
+			"type",
+			"value",
+			"unit",
+			"elapsedUnit"
+		], path);
+		if (typeof period.value !== "number" || !Number.isFinite(period.value)) contractError(`${path}.value`, "must be finite");
+		nonEmptyString$1(period.unit, `${path}.unit`);
+		nonEmptyString$1(period.elapsedUnit, `${path}.elapsedUnit`);
+		return type;
+	}
+	contractError(`${path}.type`, `unsupported ordered-period value ${JSON.stringify(type)}`);
+}
+function periodCoordinate(value) {
+	if (value.type === "ordered-index-v2") return value.index;
+	if (value.type === "numeric-v1") return value.value;
+	if (value.type === "date-v1") return Date.parse(`${value.value}T00:00:00Z`);
+	if (value.type === "instant-v1") return BigInt(value.epochMilliseconds);
+	const milliseconds = {
+		milliseconds: 1,
+		seconds: 1e3,
+		minutes: 6e4,
+		hours: 36e5,
+		days: 864e5,
+		weeks: 6048e5
+	};
+	return value.value * milliseconds[value.unit] / milliseconds[value.elapsedUnit];
+}
+function assertTrajectoryRunSpecV2(value, path = "runSpec") {
+	const spec = objectAt$1(value, path);
+	exactFields$1(spec, [
+		"schemaVersion",
+		"sourceResultHash",
+		"participantColumns",
+		"timeColumn",
+		"groupColumn",
+		"orderedPeriods",
+		"selectedDimensions",
+		"cohortPolicy",
+		"missingValuePolicy",
+		"estimand"
+	], [
+		"schemaVersion",
+		"sourceResultHash",
+		"participantColumns",
+		"timeColumn",
+		"groupColumn",
+		"orderedPeriods",
+		"selectedDimensions",
+		"cohortPolicy",
+		"missingValuePolicy",
+		"estimand"
+	], path);
+	if (spec.schemaVersion !== "3dena.trajectory-run-spec.v2") contractError(`${path}.schemaVersion`, `must be ${TRAJECTORY_RUN_SPEC_VERSION_V2}`);
+	if (typeof spec.sourceResultHash !== "string" || !SHA256$1.test(spec.sourceResultHash)) contractError(`${path}.sourceResultHash`, "must be a lowercase SHA-256 digest");
+	stringList(spec.participantColumns, `${path}.participantColumns`);
+	nonEmptyString$1(spec.timeColumn, `${path}.timeColumn`);
+	if (spec.groupColumn !== null) nonEmptyString$1(spec.groupColumn, `${path}.groupColumn`);
+	const selected = stringList(spec.selectedDimensions, `${path}.selectedDimensions`, 3);
+	if (new Set(selected).size !== 3) contractError(`${path}.selectedDimensions`, "must contain three distinct dimensions");
+	if (spec.cohortPolicy !== "available" && spec.cohortPolicy !== "complete") contractError(`${path}.cohortPolicy`, "must be available or complete");
+	if (spec.missingValuePolicy !== "complete-analytical-rows") contractError(`${path}.missingValuePolicy`, "must be complete-analytical-rows");
+	const estimand = objectAt$1(spec.estimand, `${path}.estimand`);
+	if (estimand.kind === "equal-participant") exactFields$1(estimand, ["kind"], ["kind"], `${path}.estimand`);
+	else if (estimand.kind === "weighted-participant") {
+		exactFields$1(estimand, ["kind", "metadataField"], ["kind", "metadataField"], `${path}.estimand`);
+		nonEmptyString$1(estimand.metadataField, `${path}.estimand.metadataField`);
+	} else contractError(`${path}.estimand.kind`, "must be equal-participant or weighted-participant");
+	if (!Array.isArray(spec.orderedPeriods) || spec.orderedPeriods.length === 0) contractError(`${path}.orderedPeriods`, "must be a non-empty array");
+	const sourceCanonicals = /* @__PURE__ */ new Set();
+	const identityCanonicals = /* @__PURE__ */ new Set();
+	let valueType = null;
+	let priorCoordinate = null;
+	spec.orderedPeriods.forEach((candidate, index) => {
+		const periodPath = `${path}.orderedPeriods[${index}]`;
+		const period = objectAt$1(candidate, periodPath);
+		exactFields$1(period, [
+			"identity",
+			"sourceTimeCanonical",
+			"displayLabel",
+			"expected",
+			"value"
+		], [
+			"identity",
+			"sourceTimeCanonical",
+			"displayLabel",
+			"expected",
+			"value"
+		], periodPath);
+		assertIdentity(period.identity, `${periodPath}.identity`);
+		const canonicalIdentity = JSON.stringify(period.identity);
+		if (identityCanonicals.has(canonicalIdentity)) contractError(`${periodPath}.identity`, "duplicates an earlier typed identity");
+		identityCanonicals.add(canonicalIdentity);
+		const sourceCanonical = nonEmptyString$1(period.sourceTimeCanonical, `${periodPath}.sourceTimeCanonical`);
+		if (sourceCanonicals.has(sourceCanonical)) contractError(`${periodPath}.sourceTimeCanonical`, "duplicates an earlier source identity");
+		sourceCanonicals.add(sourceCanonical);
+		nonEmptyString$1(period.displayLabel, `${periodPath}.displayLabel`);
+		if (typeof period.expected !== "boolean") contractError(`${periodPath}.expected`, "must be boolean");
+		const currentType = assertOrderedPeriodValue(period.value, `${periodPath}.value`);
+		if (valueType !== null && currentType !== valueType) contractError(`${periodPath}.value.type`, `must use ${valueType} for every ordered period`);
+		valueType = currentType;
+		const coordinate = periodCoordinate(period.value);
+		if (priorCoordinate !== null) {
+			if (!(typeof coordinate === "bigint" && typeof priorCoordinate === "bigint" ? coordinate > priorCoordinate : typeof coordinate === "number" && typeof priorCoordinate === "number" && coordinate > priorCoordinate)) contractError(`${periodPath}.value`, "period values must be strictly increasing");
+		}
+		priorCoordinate = coordinate;
+	});
+}
+function assertInferenceRequestResultV2(value, path) {
+	const request = objectAt$1(value, path);
+	if (request.kind === "independent-period") {
+		exactFields$1(request, [
+			"kind",
+			"groups",
+			"periodCanonical"
+		], [
+			"kind",
+			"groups",
+			"periodCanonical"
+		], path);
+		stringList(request.groups, `${path}.groups`, 2);
+		nonEmptyString$1(request.periodCanonical, `${path}.periodCanonical`);
+		return request.kind;
+	}
+	if (request.kind === "paired-periods") {
+		exactFields$1(request, [
+			"kind",
+			"group",
+			"earlierPeriodCanonical",
+			"laterPeriodCanonical",
+			"samePhysicalEntityConfirmed"
+		], [
+			"kind",
+			"group",
+			"earlierPeriodCanonical",
+			"laterPeriodCanonical",
+			"samePhysicalEntityConfirmed"
+		], path);
+		if (request.group !== null) nonEmptyString$1(request.group, `${path}.group`);
+		if (nonEmptyString$1(request.earlierPeriodCanonical, `${path}.earlierPeriodCanonical`) === nonEmptyString$1(request.laterPeriodCanonical, `${path}.laterPeriodCanonical`)) contractError(path, "paired periods must differ");
+		if (typeof request.samePhysicalEntityConfirmed !== "boolean") contractError(`${path}.samePhysicalEntityConfirmed`, "must be boolean");
+		return request.kind;
+	}
+	if (request.kind === "repeated-periods") {
+		exactFields$1(request, [
+			"kind",
+			"group",
+			"periodCanonicals",
+			"samePhysicalEntityConfirmed"
+		], [
+			"kind",
+			"group",
+			"periodCanonicals",
+			"samePhysicalEntityConfirmed"
+		], path);
+		if (request.group !== null) nonEmptyString$1(request.group, `${path}.group`);
+		if (stringList(request.periodCanonicals, `${path}.periodCanonicals`).length < 3) contractError(`${path}.periodCanonicals`, "must contain at least three periods");
+		if (typeof request.samePhysicalEntityConfirmed !== "boolean") contractError(`${path}.samePhysicalEntityConfirmed`, "must be boolean");
+		return request.kind;
+	}
+	if (request.kind === "path-comparison") {
+		exactFields$1(request, [
+			"kind",
+			"design",
+			"groups",
+			"repetitions",
+			"seed",
+			"samePhysicalEntityConfirmed"
+		], [
+			"kind",
+			"design",
+			"groups",
+			"repetitions",
+			"seed",
+			"samePhysicalEntityConfirmed"
+		], path);
+		if (request.design !== "independent" && request.design !== "paired") contractError(`${path}.design`, "is unsupported");
+		stringList(request.groups, `${path}.groups`, 2);
+		if (positiveIntegerV2(request.repetitions, `${path}.repetitions`) > 1e4) contractError(`${path}.repetitions`, "must not exceed 10000");
+		if (nonNegativeIntegerV2(request.seed, `${path}.seed`) > 4294967295) contractError(`${path}.seed`, "must fit uint32");
+		if (typeof request.samePhysicalEntityConfirmed !== "boolean") contractError(`${path}.samePhysicalEntityConfirmed`, "must be boolean");
+		if (request.design === "independent" && request.samePhysicalEntityConfirmed !== false) contractError(`${path}.samePhysicalEntityConfirmed`, "must be false for independent comparison");
+		return request.kind;
+	}
+	contractError(`${path}.kind`, "is unsupported");
+}
+function assertRankExactTailV2(value, path) {
+	if (value === null) return;
+	const tail = objectAt$1(value, path);
+	exactFields$1(tail, [
+		"extremeAssignmentCount",
+		"totalAssignmentCount",
+		"inclusive",
+		"midP"
+	], [
+		"extremeAssignmentCount",
+		"totalAssignmentCount",
+		"inclusive",
+		"midP"
+	], path);
+	for (const field of ["extremeAssignmentCount", "totalAssignmentCount"]) if (typeof tail[field] !== "string" || !/^(?:0|[1-9]\d*)$/u.test(tail[field])) contractError(`${path}.${field}`, "must be a canonical non-negative integer string");
+	if (tail.inclusive !== true || tail.midP !== false) contractError(path, "must use inclusive non-mid-p exact tails");
+}
+function assertRankTiesV2(value, path) {
+	const ties = objectAt$1(value, path);
+	exactFields$1(ties, [
+		"groups",
+		"observations",
+		"correctionSum"
+	], [
+		"groups",
+		"observations",
+		"correctionSum"
+	], path);
+	nonNegativeIntegerV2(ties.groups, `${path}.groups`);
+	nonNegativeIntegerV2(ties.observations, `${path}.observations`);
+	if (finiteNumberV2(ties.correctionSum, `${path}.correctionSum`) < 0) contractError(`${path}.correctionSum`, "must be non-negative");
+}
+function assertRankIdentityAuditV2(value, path, paired) {
+	const audit = objectAt$1(value, path);
+	const fields = paired ? [
+		"earlier",
+		"later",
+		"overlap",
+		"earlierOnly",
+		"laterOnly",
+		"samePhysicalEntityConfirmed"
+	] : [
+		"totalEntities",
+		"completeBlocks",
+		"excludedIncomplete",
+		"samePhysicalEntityConfirmed"
+	];
+	exactFields$1(audit, fields, fields, path);
+	for (const field of fields.slice(0, -1)) nonNegativeIntegerV2(audit[field], `${path}.${field}`);
+	if (audit.samePhysicalEntityConfirmed !== true) contractError(`${path}.samePhysicalEntityConfirmed`, "must be true");
+	if (paired) {
+		if (audit.overlap > audit.earlier || audit.overlap > audit.later || audit.earlierOnly !== audit.earlier - audit.overlap || audit.laterOnly !== audit.later - audit.overlap) contractError(path, "contains inconsistent paired-period overlap counts");
+	} else if (audit.completeBlocks > audit.totalEntities || audit.excludedIncomplete !== audit.totalEntities - audit.completeBlocks) contractError(path, "contains inconsistent repeated-period block counts");
+}
+function assertInferenceRowV2(value, path, selectedDimensions) {
+	const row = objectAt$1(value, path);
+	if (row.memberId === "identity-overlap-audit") {
+		const fields = [
+			"memberId",
+			"sideAEntities",
+			"sideBEntities",
+			"overlappingEntities",
+			"pairedCompleteEntities",
+			"sideAOnly",
+			"sideBOnly",
+			"excludedIncompleteOverlap",
+			"samePhysicalEntityConfirmed"
+		];
+		exactFields$1(row, fields, fields, path);
+		for (const field of fields.slice(1, -1)) nonNegativeIntegerV2(row[field], `${path}.${field}`);
+		if (row.samePhysicalEntityConfirmed !== true) contractError(`${path}.samePhysicalEntityConfirmed`, "must be true");
+		if (row.overlappingEntities > row.sideAEntities || row.overlappingEntities > row.sideBEntities || row.pairedCompleteEntities > row.overlappingEntities || row.sideAOnly !== row.sideAEntities - row.overlappingEntities || row.sideBOnly !== row.sideBEntities - row.overlappingEntities || row.excludedIncompleteOverlap !== row.overlappingEntities - row.pairedCompleteEntities) contractError(path, "contains inconsistent path identity overlap counts");
+		return;
+	}
+	const common = [
+		"memberId",
+		"test",
+		"design",
+		"estimand",
+		"axis",
+		"axisIndex",
+		"status",
+		"reason",
+		"effect",
+		"statistic",
+		"pRaw",
+		"method",
+		"ties",
+		"zeros",
+		"exactTail",
+		"familyId",
+		"familySize",
+		"pHolm",
+		"holmRank",
+		"holmMultiplier"
+	];
+	const variants = {
+		"mann-whitney": [
+			"periodCanonical",
+			"nPrimary",
+			"nSecondary"
+		],
+		"paired": [
+			"earlierPeriodCanonical",
+			"laterPeriodCanonical",
+			"n",
+			"identityOverlapAudit"
+		],
+		"friedman": [
+			"selectedPeriodCanonicals",
+			"n",
+			"identityOverlapAudit"
+		],
+		"repeated-posthoc": [
+			"earlierPeriodCanonical",
+			"laterPeriodCanonical",
+			"n",
+			"identityOverlapAudit"
+		]
+	};
+	const variant = row.test === "mann-whitney" ? "mann-whitney" : row.test === "friedman" ? "friedman" : row.design === "repeated-posthoc" ? "repeated-posthoc" : row.test === "wilcoxon-signed-rank" ? "paired" : "";
+	if (variant === "") contractError(`${path}.test`, "is unsupported");
+	const fields = [...common, ...variants[variant]];
+	exactFields$1(row, fields, fields, path);
+	nonEmptyString$1(row.memberId, `${path}.memberId`);
+	nonEmptyString$1(row.estimand, `${path}.estimand`);
+	const axis = nonEmptyString$1(row.axis, `${path}.axis`);
+	const axisIndex = nonNegativeIntegerV2(row.axisIndex, `${path}.axisIndex`);
+	if (axisIndex >= selectedDimensions.length || selectedDimensions[axisIndex] !== axis) contractError(`${path}.axisIndex`, "must identify the declared selected axis");
+	if (row.status !== "available" && row.status !== "not-estimable") contractError(`${path}.status`, "is unsupported");
+	if (row.status === "available" ? row.reason !== null : typeof row.reason !== "string" || row.reason.length === 0) contractError(`${path}.reason`, "is inconsistent with status");
+	finiteOrNullV2(row.effect, `${path}.effect`);
+	finiteOrNullV2(row.statistic, `${path}.statistic`);
+	const pRaw = probabilityOrNullV2(row.pRaw, `${path}.pRaw`);
+	const pHolm = probabilityOrNullV2(row.pHolm, `${path}.pHolm`);
+	if (row.status === "available" && (pRaw === null || pHolm === null)) contractError(path, "available inference rows require raw and Holm p-values");
+	if (row.method !== null) nonEmptyString$1(row.method, `${path}.method`);
+	assertRankTiesV2(row.ties, `${path}.ties`);
+	if (row.zeros !== null) nonNegativeIntegerV2(row.zeros, `${path}.zeros`);
+	assertRankExactTailV2(row.exactTail, `${path}.exactTail`);
+	nonEmptyString$1(row.familyId, `${path}.familyId`);
+	positiveIntegerV2(row.familySize, `${path}.familySize`);
+	if (row.holmRank !== null) positiveIntegerV2(row.holmRank, `${path}.holmRank`);
+	if (row.holmMultiplier !== null) positiveIntegerV2(row.holmMultiplier, `${path}.holmMultiplier`);
+	if (variant === "mann-whitney") {
+		if (row.design !== "independent") contractError(`${path}.design`, "must be independent");
+		nonEmptyString$1(row.periodCanonical, `${path}.periodCanonical`);
+		nonNegativeIntegerV2(row.nPrimary, `${path}.nPrimary`);
+		nonNegativeIntegerV2(row.nSecondary, `${path}.nSecondary`);
+	} else {
+		nonNegativeIntegerV2(row.n, `${path}.n`);
+		assertRankIdentityAuditV2(row.identityOverlapAudit, `${path}.identityOverlapAudit`, variant === "paired");
+		if (variant === "friedman") {
+			if (row.design !== "repeated") contractError(`${path}.design`, "must be repeated");
+			if (stringList(row.selectedPeriodCanonicals, `${path}.selectedPeriodCanonicals`).length < 3) contractError(`${path}.selectedPeriodCanonicals`, "must contain at least three periods");
+		} else {
+			if (variant === "paired" && row.design !== "paired") contractError(`${path}.design`, "must be paired");
+			if (variant === "repeated-posthoc" && row.design !== "repeated-posthoc") contractError(`${path}.design`, "must be repeated-posthoc");
+			if (nonEmptyString$1(row.earlierPeriodCanonical, `${path}.earlierPeriodCanonical`) === nonEmptyString$1(row.laterPeriodCanonical, `${path}.laterPeriodCanonical`)) contractError(path, "compared periods must differ");
+		}
+	}
+}
+function assertLongitudinalDiagnosticV2(value, path) {
+	const diagnostic = objectAt$1(value, path);
+	exactFields$1(diagnostic, [
+		"code",
+		"severity",
+		"message",
+		"path"
+	], [
+		"code",
+		"severity",
+		"message"
+	], path);
+	nonEmptyString$1(diagnostic.code, `${path}.code`);
+	nonEmptyString$1(diagnostic.message, `${path}.message`);
+	if (![
+		"error",
+		"warning",
+		"info"
+	].includes(String(diagnostic.severity))) contractError(`${path}.severity`, "is unsupported");
+	if (diagnostic.path !== void 0) nonEmptyString$1(diagnostic.path, `${path}.path`);
+}
+/** Strict structural guard for persisted or remotely returned V2 envelopes. */
+function assertLongitudinalAnalysisBundleV2(value, path = "bundle") {
+	const bundle = objectAt$1(value, path);
+	exactFields$1(bundle, [
+		"schemaVersion",
+		"identity",
+		"runSpec",
+		"model",
+		"paths",
+		"inference",
+		"pathComparisons",
+		"bootstrap",
+		"codeGeometry",
+		"networkOverlays",
+		"diagnostics",
+		"execution"
+	], [
+		"schemaVersion",
+		"identity",
+		"runSpec",
+		"model",
+		"paths",
+		"inference",
+		"pathComparisons",
+		"bootstrap",
+		"codeGeometry",
+		"networkOverlays",
+		"diagnostics",
+		"execution"
+	], path);
+	if (bundle.schemaVersion !== "3dena.longitudinal-analysis-bundle.v2") contractError(`${path}.schemaVersion`, `must be ${LONGITUDINAL_BUNDLE_VERSION_V2}`);
+	const identity = objectAt$1(bundle.identity, `${path}.identity`);
+	exactFields$1(identity, [
+		"datasetHash",
+		"specHash",
+		"sourceResultHash",
+		"requestHash",
+		"resultHash",
+		"runId",
+		"jenaBuildId"
+	], [
+		"datasetHash",
+		"specHash",
+		"sourceResultHash",
+		"requestHash",
+		"resultHash",
+		"runId",
+		"jenaBuildId"
+	], `${path}.identity`);
+	for (const field of [
+		"datasetHash",
+		"specHash",
+		"sourceResultHash",
+		"requestHash",
+		"resultHash"
+	]) if (typeof identity[field] !== "string" || !SHA256$1.test(identity[field])) contractError(`${path}.identity.${field}`, "must be a lowercase SHA-256 digest");
+	nonEmptyString$1(identity.runId, `${path}.identity.runId`);
+	nonEmptyString$1(identity.jenaBuildId, `${path}.identity.jenaBuildId`);
+	assertTrajectoryRunSpecV2(bundle.runSpec, `${path}.runSpec`);
+	const model = objectAt$1(bundle.model, `${path}.model`);
+	exactFields$1(model, [
+		"type",
+		"fullRotationDimensions",
+		"selectedDimensions"
+	], [
+		"type",
+		"fullRotationDimensions",
+		"selectedDimensions"
+	], `${path}.model`);
+	if (model.type !== "SeparateTrajectory" && model.type !== "AccumulatedTrajectory") contractError(`${path}.model.type`, "must be SeparateTrajectory or AccumulatedTrajectory");
+	stringList(model.fullRotationDimensions, `${path}.model.fullRotationDimensions`);
+	stringList(model.selectedDimensions, `${path}.model.selectedDimensions`, 3);
+	if (JSON.stringify(model.selectedDimensions) !== JSON.stringify(bundle.runSpec.selectedDimensions)) contractError(`${path}.model.selectedDimensions`, "must match runSpec.selectedDimensions");
+	for (const field of [
+		"paths",
+		"inference",
+		"pathComparisons",
+		"bootstrap",
+		"networkOverlays",
+		"diagnostics"
+	]) if (!Array.isArray(bundle[field])) contractError(`${path}.${field}`, "must be an array");
+	if (bundle.paths.length === 0) contractError(`${path}.paths`, "must contain at least one computed group path");
+	const fullDimensions = model.fullRotationDimensions;
+	const selectedDimensions = model.selectedDimensions;
+	const groupCanonicals = /* @__PURE__ */ new Set();
+	bundle.paths.forEach((candidate, index) => {
+		const groupPath = objectAt$1(candidate, `${path}.paths[${index}]`);
+		exactFields$1(groupPath, ["group", "dynamics"], ["group", "dynamics"], `${path}.paths[${index}]`);
+		const group = objectAt$1(groupPath.group, `${path}.paths[${index}].group`);
+		exactFields$1(group, ["canonical", "display"], ["canonical", "display"], `${path}.paths[${index}].group`);
+		const groupCanonical = nonEmptyString$1(group.canonical, `${path}.paths[${index}].group.canonical`);
+		if (groupCanonicals.has(groupCanonical)) contractError(`${path}.paths[${index}].group.canonical`, "duplicates an earlier group path");
+		groupCanonicals.add(groupCanonical);
+		nonEmptyString$1(group.display, `${path}.paths[${index}].group.display`);
+		assertAnalysisTaskResultV1(groupPath.dynamics, "trajectory", `${path}.paths[${index}].dynamics`);
+		const dynamics = groupPath.dynamics;
+		if (JSON.stringify(dynamics.dimensions) !== JSON.stringify(fullDimensions)) contractError(`${path}.paths[${index}].dynamics.dimensions`, "must match model.fullRotationDimensions");
+		if (JSON.stringify(dynamics.selectedDimensions) !== JSON.stringify(selectedDimensions)) contractError(`${path}.paths[${index}].dynamics.selectedDimensions`, "must match model.selectedDimensions");
+		if (dynamics.periods.length !== bundle.runSpec.orderedPeriods.length) contractError(`${path}.paths[${index}].dynamics.periods`, "must align with every ordered period");
+		dynamics.periods.forEach((period, periodIndex) => {
+			const expected = bundle.runSpec.orderedPeriods[periodIndex];
+			const actualComponents = period.time.components;
+			const expectedComponents = expected.identity.components;
+			if (!(actualComponents.length === expectedComponents.length && actualComponents.every((actual, componentIndex) => {
+				const expectedComponent = expectedComponents[componentIndex];
+				return actual.type === expectedComponent.type && actual.declaredType === expectedComponent.declaredType && Object.is(actual.value, expectedComponent.value);
+			}))) contractError(`${path}.paths[${index}].dynamics.periods[${periodIndex}].time`, "must preserve ordered-period typed identity");
+		});
+		if (dynamics.cohortPolicy !== bundle.runSpec.cohortPolicy) contractError(`${path}.paths[${index}].dynamics.cohortPolicy`, "must match runSpec.cohortPolicy");
+		const expectedEstimand = bundle.runSpec.estimand.kind === "weighted-participant" ? "weighted-participant-v1" : "equal-participant-v1";
+		if (dynamics.estimand.kind !== expectedEstimand) contractError(`${path}.paths[${index}].dynamics.estimand.kind`, "must match runSpec.estimand");
+	});
+	const codeGeometry = objectAt$1(bundle.codeGeometry, `${path}.codeGeometry`);
+	exactFields$1(codeGeometry, [
+		"schemaVersion",
+		"dimensions",
+		"nodes"
+	], [
+		"schemaVersion",
+		"dimensions",
+		"nodes"
+	], `${path}.codeGeometry`);
+	if (codeGeometry.schemaVersion !== "3dena.longitudinal-code-geometry.v2") contractError(`${path}.codeGeometry.schemaVersion`, "must be 3dena.longitudinal-code-geometry.v2");
+	if (JSON.stringify(stringList(codeGeometry.dimensions, `${path}.codeGeometry.dimensions`, 3)) !== JSON.stringify(selectedDimensions)) contractError(`${path}.codeGeometry.dimensions`, "must match model.selectedDimensions");
+	if (!Array.isArray(codeGeometry.nodes) || codeGeometry.nodes.length === 0) contractError(`${path}.codeGeometry.nodes`, "must contain fitted ENA code geometry");
+	const codeNodes = codeGeometry.nodes;
+	const codeNames = /* @__PURE__ */ new Set();
+	codeNodes.forEach((candidate, index) => {
+		const node = objectAt$1(candidate, `${path}.codeGeometry.nodes[${index}]`);
+		exactFields$1(node, [
+			"index",
+			"code",
+			"coordinates"
+		], [
+			"index",
+			"code",
+			"coordinates"
+		], `${path}.codeGeometry.nodes[${index}]`);
+		if (nonNegativeIntegerV2(node.index, `${path}.codeGeometry.nodes[${index}].index`) !== index) contractError(`${path}.codeGeometry.nodes[${index}].index`, "must equal its array position");
+		const code = nonEmptyString$1(node.code, `${path}.codeGeometry.nodes[${index}].code`);
+		if (codeNames.has(code)) contractError(`${path}.codeGeometry.nodes[${index}].code`, "duplicates an earlier fitted code");
+		codeNames.add(code);
+		finiteTripleV2(node.coordinates, `${path}.codeGeometry.nodes[${index}].coordinates`);
+	});
+	bundle.inference.forEach((candidate, index) => {
+		const inferencePath = `${path}.inference[${index}]`;
+		const inference = objectAt$1(candidate, inferencePath);
+		exactFields$1(inference, [
+			"request",
+			"status",
+			"familyId",
+			"familySize",
+			"rows",
+			"reason"
+		], [
+			"request",
+			"status",
+			"familyId",
+			"familySize",
+			"rows",
+			"reason"
+		], inferencePath);
+		const requestKind = assertInferenceRequestResultV2(inference.request, `${inferencePath}.request`);
+		if (![
+			"available",
+			"not-estimable",
+			"disabled"
+		].includes(String(inference.status))) contractError(`${inferencePath}.status`, "is unsupported");
+		nonEmptyString$1(inference.familyId, `${inferencePath}.familyId`);
+		const familySize = nonNegativeIntegerV2(inference.familySize, `${inferencePath}.familySize`);
+		if (!Array.isArray(inference.rows)) contractError(`${inferencePath}.rows`, "must be an array");
+		inference.rows.forEach((row, rowIndex) => assertInferenceRowV2(row, `${inferencePath}.rows[${rowIndex}]`, selectedDimensions));
+		const auditOnly = requestKind === "path-comparison" && familySize === 0 && inference.rows.length === 1;
+		if (!auditOnly && familySize !== inference.rows.length) contractError(`${inferencePath}.familySize`, "must equal the number of family rows");
+		if (inference.status === "available" ? inference.reason !== null : typeof inference.reason !== "string" || inference.reason.length === 0) contractError(`${inferencePath}.reason`, "is inconsistent with status");
+		if (inference.status === "disabled" && inference.rows.length !== 0) contractError(`${inferencePath}.rows`, "must be empty when inference is disabled");
+		const request = inference.request;
+		const rows = inference.rows;
+		const availableRows = rows.filter((row) => row.status === "available").length;
+		if (inference.status === "available" && availableRows === 0) contractError(`${inferencePath}.status`, "requires at least one available row");
+		if (inference.status === "not-estimable" && availableRows > 0) contractError(`${inferencePath}.status`, "cannot contain available rows");
+		rows.filter((row) => row.memberId !== "identity-overlap-audit").forEach((row, rowIndex) => {
+			if (typeof row.pRaw === "number" && typeof row.pHolm === "number" && row.pHolm < row.pRaw) contractError(`${inferencePath}.rows[${rowIndex}].pHolm`, "must not be smaller than raw p");
+			const holmAudit = [
+				row.pHolm,
+				row.holmRank,
+				row.holmMultiplier
+			];
+			if (holmAudit.some((value) => value === null) && holmAudit.some((value) => value !== null)) contractError(`${inferencePath}.rows[${rowIndex}]`, "must retain an all-null or complete Holm audit");
+		});
+		if (request.kind === "independent-period") {
+			if (request.groups.some((group) => !groupCanonicals.has(group))) contractError(`${inferencePath}.request.groups`, "must reference computed group paths");
+			if (!bundle.runSpec.orderedPeriods.some((period) => period.sourceTimeCanonical === request.periodCanonical)) contractError(`${inferencePath}.request.periodCanonical`, "must reference an ordered period");
+			if (rows.some((row) => row.test !== "mann-whitney" || row.periodCanonical !== request.periodCanonical || row.familyId !== inference.familyId || row.familySize !== familySize)) contractError(`${inferencePath}.rows`, "must be the complete bound independent-period Holm family");
+		} else if (request.kind === "paired-periods") {
+			if (request.group !== null && !groupCanonicals.has(request.group)) contractError(`${inferencePath}.request.group`, "must reference a computed group path");
+			if (![request.earlierPeriodCanonical, request.laterPeriodCanonical].every((canonical) => bundle.runSpec.orderedPeriods.some((period) => period.sourceTimeCanonical === canonical))) contractError(`${inferencePath}.request`, "must reference ordered periods");
+			if (inference.status !== "disabled" && rows.some((row) => row.test !== "wilcoxon-signed-rank" || row.design !== "paired" || row.earlierPeriodCanonical !== request.earlierPeriodCanonical || row.laterPeriodCanonical !== request.laterPeriodCanonical || row.familyId !== inference.familyId || row.familySize !== familySize)) contractError(`${inferencePath}.rows`, "must be the complete bound paired-period Holm family");
+		} else if (request.kind === "repeated-periods") {
+			if (request.group !== null && !groupCanonicals.has(request.group)) contractError(`${inferencePath}.request.group`, "must reference a computed group path");
+			if (!request.periodCanonicals.every((canonical) => bundle.runSpec.orderedPeriods.some((period) => period.sourceTimeCanonical === canonical))) contractError(`${inferencePath}.request.periodCanonicals`, "must reference ordered periods");
+			const omnibus = rows.filter((row) => row.test === "friedman");
+			const posthoc = rows.filter((row) => row.design === "repeated-posthoc");
+			const expectedPosthoc = selectedDimensions.length * request.periodCanonicals.length * (request.periodCanonicals.length - 1) / 2;
+			if (inference.status !== "disabled" && (omnibus.length !== selectedDimensions.length || posthoc.length !== expectedPosthoc || omnibus.length + posthoc.length !== rows.length)) contractError(`${inferencePath}.rows`, "must contain the complete Friedman and period-pair post hoc families");
+			if (omnibus.some((row) => JSON.stringify(row.selectedPeriodCanonicals) !== JSON.stringify(request.periodCanonicals) || row.familySize !== omnibus.length)) contractError(`${inferencePath}.rows`, "contains an incomplete Friedman family");
+			if (posthoc.some((row) => row.familySize !== posthoc.length || !request.periodCanonicals.includes(row.earlierPeriodCanonical) || !request.periodCanonicals.includes(row.laterPeriodCanonical))) contractError(`${inferencePath}.rows`, "contains an incomplete repeated-period post hoc family");
+		} else if (inference.status !== "disabled" && !auditOnly) contractError(inferencePath, "successful path comparisons must be emitted in pathComparisons");
+	});
+	bundle.pathComparisons.forEach((candidate, index) => {
+		const comparisonPath = `${path}.pathComparisons[${index}]`;
+		const comparison = objectAt$1(candidate, comparisonPath);
+		exactFields$1(comparison, [
+			"groups",
+			"design",
+			"seed",
+			"planHash",
+			"identityOverlapAudit",
+			"result"
+		], [
+			"groups",
+			"design",
+			"seed",
+			"planHash",
+			"identityOverlapAudit",
+			"result"
+		], comparisonPath);
+		if (stringList(comparison.groups, `${comparisonPath}.groups`, 2).some((group) => !groupCanonicals.has(group))) contractError(`${comparisonPath}.groups`, "must reference computed group paths");
+		if (comparison.design !== "independent" && comparison.design !== "paired") contractError(`${comparisonPath}.design`, "is unsupported");
+		if (nonNegativeIntegerV2(comparison.seed, `${comparisonPath}.seed`) > 4294967295) contractError(`${comparisonPath}.seed`, "must fit uint32");
+		if (typeof comparison.planHash !== "string" || !SHA256$1.test(comparison.planHash)) contractError(`${comparisonPath}.planHash`, "must be a lowercase SHA-256 digest");
+		if (comparison.design === "independent") {
+			if (comparison.identityOverlapAudit !== null) contractError(`${comparisonPath}.identityOverlapAudit`, "must be null for independent design");
+		} else {
+			const audit = objectAt$1(comparison.identityOverlapAudit, `${comparisonPath}.identityOverlapAudit`);
+			const fields = [
+				"sideAEntities",
+				"sideBEntities",
+				"overlappingEntities",
+				"pairedCompleteEntities",
+				"sideAOnly",
+				"sideBOnly",
+				"excludedIncompleteOverlap",
+				"samePhysicalEntityConfirmed"
+			];
+			exactFields$1(audit, fields, fields, `${comparisonPath}.identityOverlapAudit`);
+			for (const field of fields.slice(0, -1)) nonNegativeIntegerV2(audit[field], `${comparisonPath}.identityOverlapAudit.${field}`);
+			if (audit.samePhysicalEntityConfirmed !== true) contractError(`${comparisonPath}.identityOverlapAudit.samePhysicalEntityConfirmed`, "must be true");
+			if (audit.overlappingEntities > audit.sideAEntities || audit.overlappingEntities > audit.sideBEntities || audit.pairedCompleteEntities > audit.overlappingEntities) contractError(`${comparisonPath}.identityOverlapAudit`, "contains impossible overlap counts");
+			if (audit.sideAOnly !== audit.sideAEntities - audit.overlappingEntities || audit.sideBOnly !== audit.sideBEntities - audit.overlappingEntities || audit.excludedIncompleteOverlap !== audit.overlappingEntities - audit.pairedCompleteEntities) contractError(`${comparisonPath}.identityOverlapAudit`, "contains inconsistent exclusion counts");
+		}
+		assertAnalysisTaskResultV1(comparison.result, "trajectory-comparison", `${comparisonPath}.result`);
+		const result = comparison.result;
+		if (result.design !== comparison.design) contractError(`${comparisonPath}.result.design`, "must match comparison design");
+		if (result.permutation.status !== "complete" || result.permutation.replicateCount < 1 || result.tests.some((test) => test.permutationCount !== result.permutation.replicateCount)) contractError(`${comparisonPath}.result.permutation.replicateCount`, "must bind every permutation test");
+	});
+	const bootstrapGroups = /* @__PURE__ */ new Set();
+	bundle.bootstrap.forEach((candidate, index) => {
+		const bootstrapPath = `${path}.bootstrap[${index}]`;
+		const bootstrap = objectAt$1(candidate, bootstrapPath);
+		const fields = [
+			"groupCanonical",
+			"status",
+			"notEstimableReason",
+			"seed",
+			"planHash",
+			"finiteReplicates",
+			"requiredFiniteReplicates",
+			"totalReplicates",
+			"confidenceLevel",
+			"requestedResamplingDesign",
+			"resolvedResamplingDesign",
+			"resamplingAlgorithm",
+			"intervalContract",
+			"rotationPolicy",
+			"speedIntervals",
+			"result"
+		];
+		exactFields$1(bootstrap, fields, fields, bootstrapPath);
+		const bootstrapGroup = nonEmptyString$1(bootstrap.groupCanonical, `${bootstrapPath}.groupCanonical`);
+		if (!groupCanonicals.has(bootstrapGroup)) contractError(`${bootstrapPath}.groupCanonical`, "must reference a computed group path");
+		if (bootstrapGroups.has(bootstrapGroup)) contractError(`${bootstrapPath}.groupCanonical`, "duplicates an earlier bootstrap group");
+		bootstrapGroups.add(bootstrapGroup);
+		if (bootstrap.status !== "available" && bootstrap.status !== "not-estimable") contractError(`${bootstrapPath}.status`, "is unsupported");
+		if (bootstrap.status === "available" ? bootstrap.notEstimableReason !== null : typeof bootstrap.notEstimableReason !== "string" || bootstrap.notEstimableReason.length === 0) contractError(`${bootstrapPath}.notEstimableReason`, "is inconsistent with status");
+		const seed = nonNegativeIntegerV2(bootstrap.seed, `${bootstrapPath}.seed`);
+		if (seed > 4294967295) contractError(`${bootstrapPath}.seed`, "must fit uint32");
+		if (typeof bootstrap.planHash !== "string" || !SHA256$1.test(bootstrap.planHash)) contractError(`${bootstrapPath}.planHash`, "must be a lowercase SHA-256 digest");
+		const finite = nonNegativeIntegerV2(bootstrap.finiteReplicates, `${bootstrapPath}.finiteReplicates`);
+		const required = positiveIntegerV2(bootstrap.requiredFiniteReplicates, `${bootstrapPath}.requiredFiniteReplicates`);
+		const total = positiveIntegerV2(bootstrap.totalReplicates, `${bootstrapPath}.totalReplicates`);
+		if (finite > total) contractError(bootstrapPath, "finite replicates cannot exceed total replicates");
+		const confidence = finiteNumberV2(bootstrap.confidenceLevel, `${bootstrapPath}.confidenceLevel`);
+		if (confidence <= 0 || confidence >= 1) contractError(`${bootstrapPath}.confidenceLevel`, "must be in (0,1)");
+		if (required !== Math.max(Math.ceil(total * .8), Math.ceil(10 / (1 - confidence) - 1e-12))) contractError(`${bootstrapPath}.requiredFiniteReplicates`, "must enforce both the 80% and five-replicates-per-tail rules");
+		if (bootstrap.status === "available" !== finite >= required) contractError(`${bootstrapPath}.status`, "must reflect the finite-replicate threshold");
+		if (![
+			"auto",
+			"global-participant",
+			"within-group",
+			"explicit-strata"
+		].includes(String(bootstrap.requestedResamplingDesign))) contractError(`${bootstrapPath}.requestedResamplingDesign`, "is unsupported");
+		if (![
+			"global-participant",
+			"within-group",
+			"explicit-strata"
+		].includes(String(bootstrap.resolvedResamplingDesign))) contractError(`${bootstrapPath}.resolvedResamplingDesign`, "is unsupported");
+		if (!["participant-complete-history-mulberry32-uint32-v1", "global-participant-complete-history-mulberry32-uint32-v2"].includes(String(bootstrap.resamplingAlgorithm))) contractError(`${bootstrapPath}.resamplingAlgorithm`, "is unsupported");
+		if (bootstrap.intervalContract !== "pointwise-percentile-linear-type7" || bootstrap.rotationPolicy !== "fixed-same-fit-projection") contractError(bootstrapPath, "contains unsupported interval semantics");
+		assertAnalysisTaskResultV1(bootstrap.result, "bootstrap", `${bootstrapPath}.result`);
+		const result = bootstrap.result;
+		if (result.confidenceLevel !== confidence || result.resampling.replicateCount !== total) contractError(`${bootstrapPath}.result`, "must bind confidence and replicate count");
+		if (result.resampling.generation.kind !== "seeded" || result.resampling.generation.seed !== seed) contractError(`${bootstrapPath}.result.resampling.generation`, "must bind the declared bootstrap seed");
+		if (!Array.isArray(bootstrap.speedIntervals) || bootstrap.speedIntervals.length !== result.periods.length) contractError(`${bootstrapPath}.speedIntervals`, "must align with bootstrap periods");
+		bootstrap.speedIntervals.forEach((candidateInterval, periodIndex) => {
+			const intervalPath = `${bootstrapPath}.speedIntervals[${periodIndex}]`;
+			const interval = objectAt$1(candidateInterval, intervalPath);
+			exactFields$1(interval, [
+				"periodCanonical",
+				"selected",
+				"full"
+			], [
+				"periodCanonical",
+				"selected",
+				"full"
+			], intervalPath);
+			if (nonEmptyString$1(interval.periodCanonical, `${intervalPath}.periodCanonical`) !== result.periods[periodIndex].time.canonical) contractError(`${intervalPath}.periodCanonical`, "must align with the bootstrap result period");
+			for (const field of ["selected", "full"]) {
+				if (interval[field] === null) continue;
+				const value = objectAt$1(interval[field], `${intervalPath}.${field}`);
+				exactFields$1(value, [
+					"estimate",
+					"lower",
+					"upper",
+					"finiteReplicates",
+					"requiredFiniteReplicates",
+					"totalReplicates"
+				], [
+					"estimate",
+					"lower",
+					"upper",
+					"finiteReplicates",
+					"requiredFiniteReplicates",
+					"totalReplicates"
+				], `${intervalPath}.${field}`);
+				const lower = finiteNumberV2(value.lower, `${intervalPath}.${field}.lower`);
+				const upper = finiteNumberV2(value.upper, `${intervalPath}.${field}.upper`);
+				finiteNumberV2(value.estimate, `${intervalPath}.${field}.estimate`);
+				if (lower > upper) contractError(`${intervalPath}.${field}`, "lower must not exceed upper");
+				if (nonNegativeIntegerV2(value.finiteReplicates, `${intervalPath}.${field}.finiteReplicates`) > total || positiveIntegerV2(value.requiredFiniteReplicates, `${intervalPath}.${field}.requiredFiniteReplicates`) !== required || positiveIntegerV2(value.totalReplicates, `${intervalPath}.${field}.totalReplicates`) !== total) contractError(`${intervalPath}.${field}`, "replicate counts are inconsistent");
+			}
+		});
+	});
+	const networkKeys = /* @__PURE__ */ new Set();
+	bundle.networkOverlays.forEach((candidate, index) => {
+		const overlayPath = `${path}.networkOverlays[${index}]`;
+		const overlay = objectAt$1(candidate, overlayPath);
+		const fields = [
+			"status",
+			"reason",
+			"groupCanonical",
+			"periodCanonical",
+			"dimensions",
+			"estimand",
+			"sourceRows",
+			"participantPeriods",
+			"effectiveParticipantN",
+			"edges"
+		];
+		exactFields$1(overlay, fields, fields, overlayPath);
+		if (overlay.status !== "available" && overlay.status !== "not-estimable") contractError(`${overlayPath}.status`, "is unsupported");
+		if (overlay.status === "available" ? overlay.reason !== null : typeof overlay.reason !== "string" || overlay.reason.length === 0) contractError(`${overlayPath}.reason`, "is inconsistent with status");
+		if (overlay.groupCanonical !== null && !groupCanonicals.has(nonEmptyString$1(overlay.groupCanonical, `${overlayPath}.groupCanonical`))) contractError(`${overlayPath}.groupCanonical`, "must reference a computed group path");
+		const period = nonEmptyString$1(overlay.periodCanonical, `${overlayPath}.periodCanonical`);
+		if (!bundle.runSpec.orderedPeriods.some((candidatePeriod) => candidatePeriod.sourceTimeCanonical === period)) contractError(`${overlayPath}.periodCanonical`, "must reference an ordered period");
+		if (JSON.stringify(stringList(overlay.dimensions, `${overlayPath}.dimensions`, 3)) !== JSON.stringify(selectedDimensions)) contractError(`${overlayPath}.dimensions`, "must match model.selectedDimensions");
+		if (overlay.estimand !== bundle.runSpec.estimand.kind) contractError(`${overlayPath}.estimand`, "must match runSpec.estimand");
+		const networkKey = JSON.stringify([period, overlay.groupCanonical]);
+		if (networkKeys.has(networkKey)) contractError(overlayPath, "duplicates an earlier mean-network overlay");
+		networkKeys.add(networkKey);
+		const sourceRows = nonNegativeIntegerV2(overlay.sourceRows, `${overlayPath}.sourceRows`);
+		const participantPeriods = nonNegativeIntegerV2(overlay.participantPeriods, `${overlayPath}.participantPeriods`);
+		if (sourceRows < participantPeriods) contractError(overlayPath, "sourceRows cannot be smaller than participantPeriods");
+		if (overlay.effectiveParticipantN !== null) {
+			const effectiveN = finiteNumberV2(overlay.effectiveParticipantN, `${overlayPath}.effectiveParticipantN`);
+			if (effectiveN <= 0 || effectiveN > participantPeriods) contractError(`${overlayPath}.effectiveParticipantN`, "must be positive and no larger than participantPeriods");
+		}
+		if (overlay.status === "available" && (participantPeriods === 0 || overlay.effectiveParticipantN === null)) contractError(overlayPath, "an available overlay requires contributors and an effective N");
+		if (overlay.status === "not-estimable" && (sourceRows !== 0 || participantPeriods !== 0 || overlay.effectiveParticipantN !== null)) contractError(overlayPath, "a non-estimable overlay must not report contributors");
+		if (!Array.isArray(overlay.edges)) contractError(`${overlayPath}.edges`, "must be an array");
+		if (overlay.status === "not-estimable" && overlay.edges.length !== 0) contractError(`${overlayPath}.edges`, "must be empty when overlay is not estimable");
+		overlay.edges.forEach((candidateEdge, edgeIndex) => {
+			const edgePath = `${overlayPath}.edges[${edgeIndex}]`;
+			const edge = objectAt$1(candidateEdge, edgePath);
+			exactFields$1(edge, [
+				"id",
+				"sourceIndex",
+				"targetIndex",
+				"weight"
+			], [
+				"id",
+				"sourceIndex",
+				"targetIndex",
+				"weight"
+			], edgePath);
+			nonEmptyString$1(edge.id, `${edgePath}.id`);
+			const sourceIndex = nonNegativeIntegerV2(edge.sourceIndex, `${edgePath}.sourceIndex`);
+			const targetIndex = nonNegativeIntegerV2(edge.targetIndex, `${edgePath}.targetIndex`);
+			if (sourceIndex >= codeNodes.length || targetIndex >= codeNodes.length || sourceIndex === targetIndex) contractError(edgePath, "must reference two distinct fitted code nodes");
+			finiteNumberV2(edge.weight, `${edgePath}.weight`);
+		});
+	});
+	bundle.diagnostics.forEach((candidate, index) => assertLongitudinalDiagnosticV2(candidate, `${path}.diagnostics[${index}]`));
+	const execution = objectAt$1(bundle.execution, `${path}.execution`);
+	exactFields$1(execution, [
+		"target",
+		"jenaVersion",
+		"jenaCommit",
+		"jenaTarballIntegrity",
+		"sdkVersion",
+		"buildId",
+		"seed",
+		"permutationPlanHashes",
+		"resamplingPlanHashes",
+		"evidenceStatus"
+	], [
+		"target",
+		"jenaVersion",
+		"jenaCommit",
+		"jenaTarballIntegrity",
+		"sdkVersion",
+		"buildId",
+		"seed",
+		"permutationPlanHashes",
+		"resamplingPlanHashes",
+		"evidenceStatus"
+	], `${path}.execution`);
+	validateExecutionMetadata(execution);
+	for (const [field, values] of [["permutationPlanHashes", execution.permutationPlanHashes], ["resamplingPlanHashes", execution.resamplingPlanHashes]]) if (!Array.isArray(values) || values.some((hash) => typeof hash !== "string" || !SHA256$1.test(hash))) contractError(`${path}.execution.${field}`, "must be an array of lowercase SHA-256 digests");
+	if (![
+		"IMPLEMENTED_UNVERIFIED",
+		"PARITY_CANDIDATE",
+		"PRODUCTION_CANDIDATE",
+		"PRODUCTION_READY"
+	].includes(String(execution.evidenceStatus))) contractError(`${path}.execution.evidenceStatus`, "is unsupported");
+	const typed = bundle;
+	if (typed.identity.sourceResultHash !== typed.runSpec.sourceResultHash) contractError(`${path}.identity.sourceResultHash`, "must match runSpec.sourceResultHash");
+	const expectedJenaBuildId = `jena-js@${typed.execution.jenaVersion}+${typed.execution.jenaCommit}:${typed.execution.buildId}`;
+	if (typed.identity.jenaBuildId !== expectedJenaBuildId) contractError(`${path}.identity.jenaBuildId`, "must bind the exact execution build identity");
+	if (typed.pathComparisons.some((comparison) => comparison.seed !== typed.execution.seed)) contractError(`${path}.pathComparisons`, "every permutation seed must equal execution.seed");
+	if (typed.bootstrap.some((entry) => entry.seed !== typed.execution.seed)) contractError(`${path}.bootstrap`, "every bootstrap seed must equal execution.seed");
+	if (JSON.stringify(typed.execution.permutationPlanHashes) !== JSON.stringify(typed.pathComparisons.map((comparison) => comparison.planHash))) contractError(`${path}.execution.permutationPlanHashes`, "must exactly bind path comparison plans");
+	const expectedResamplingPlanHashes = typed.bootstrap.every((entry) => entry.resolvedResamplingDesign === "global-participant") ? [...new Set(typed.bootstrap.map((entry) => entry.planHash))] : typed.bootstrap.map((entry) => entry.planHash);
+	if (JSON.stringify(typed.execution.resamplingPlanHashes) !== JSON.stringify(expectedResamplingPlanHashes)) contractError(`${path}.execution.resamplingPlanHashes`, "must exactly bind bootstrap plans");
+}
+function scientificCoreFromBundleV2(bundle) {
+	const { resultHash: _resultHash, runId: _runId, requestHash: _requestHash, ...scientificIdentity } = bundle.identity;
+	const { target: _target, ...scientificExecution } = bundle.execution;
+	return {
+		schemaVersion: bundle.schemaVersion,
+		identity: scientificIdentity,
+		runSpec: bundle.runSpec,
+		model: bundle.model,
+		paths: bundle.paths,
+		inference: bundle.inference,
+		pathComparisons: bundle.pathComparisons,
+		bootstrap: bundle.bootstrap,
+		codeGeometry: bundle.codeGeometry,
+		networkOverlays: bundle.networkOverlays,
+		diagnostics: bundle.diagnostics,
+		scientificExecution
+	};
+}
+/**
+* Recomputes the canonical scientific hash. Execution target and the
+* operational run ID remain transport/audit provenance and are intentionally
+* excluded, so identical science is stable across retries and execution paths.
+*/
+async function verifyLongitudinalAnalysisBundleV2(bundle) {
+	assertLongitudinalAnalysisBundleV2(bundle);
+	if (await hashAnalysisValueV1(scientificCoreFromBundleV2(bundle)) !== bundle.identity.resultHash) executionReject("LONGITUDINAL_RESULT_HASH_MISMATCH", "bundle.identity.resultHash", "does not match the canonical scientific envelope");
+}
+function executionReject(code, path, message) {
+	throw new LongitudinalExecutionErrorV2(code, path, message);
+}
+function assertPathTaskV2(task, path = "pathTask") {
+	const record = objectAt$1(task, path);
+	exactFields$1(record, [
+		"schemaVersion",
+		"kind",
+		"datasetHash",
+		"specHash",
+		"runId",
+		"runSpec"
+	], [
+		"schemaVersion",
+		"kind",
+		"datasetHash",
+		"specHash",
+		"runId",
+		"runSpec"
+	], path);
+	if (record.schemaVersion !== "3dena.trajectory-path-task.v2") contractError(`${path}.schemaVersion`, "must be 3dena.trajectory-path-task.v2");
+	if (record.kind !== "trajectory-path-v2") contractError(`${path}.kind`, "must be trajectory-path-v2");
+	for (const field of ["datasetHash", "specHash"]) if (typeof record[field] !== "string" || !SHA256$1.test(record[field])) contractError(`${path}.${field}`, "must be a lowercase SHA-256 digest");
+	nonEmptyString$1(record.runId, `${path}.runId`);
+	assertTrajectoryRunSpecV2(record.runSpec, `${path}.runSpec`);
+}
+function validateExecutionMetadata(input) {
+	if (![
+		"browser-worker",
+		"persistent-compute-service",
+		"node-service"
+	].includes(input.target)) executionReject("INVALID_EXECUTION_TARGET", "execution.target", "is unsupported");
+	for (const field of [
+		"jenaVersion",
+		"jenaCommit",
+		"jenaTarballIntegrity",
+		"sdkVersion",
+		"buildId"
+	]) if (typeof input[field] !== "string" || input[field].trim() === "") executionReject("INVALID_BUILD_METADATA", `execution.${field}`, "must be non-empty");
+	if (!Number.isSafeInteger(input.seed) || input.seed < 0 || input.seed > 4294967295) executionReject("INVALID_EXECUTION_SEED", "execution.seed", "must be a uint32 safe integer");
+}
+/**
+* Strict, side-effect-free boundary validation for browser, HTTP and durable
+* worker callers. Scientific source-hash verification remains asynchronous and
+* is performed by `executeLongitudinalAnalysisV2` before any result is emitted.
+*/
+function assertLongitudinalExecutionRequestV2(value, path = "input") {
+	const request = objectAt$1(value, path);
+	exactFields$1(request, [
+		"dataset",
+		"pathTask",
+		"inferenceTask",
+		"bootstrapTask",
+		"networkOverlayTask",
+		"execution"
+	], [
+		"dataset",
+		"pathTask",
+		"execution"
+	], path);
+	assertAnalysisExecutionDatasetV2(request.dataset, `${path}.dataset`);
+	assertPathTaskV2(request.pathTask, `${path}.pathTask`);
+	const pathTask = request.pathTask;
+	if (Object.hasOwn(request, "inferenceTask")) assertInferenceTaskV2(request.inferenceTask, pathTask);
+	if (Object.hasOwn(request, "bootstrapTask")) assertBootstrapTaskV2(request.bootstrapTask, pathTask);
+	if (Object.hasOwn(request, "networkOverlayTask")) assertNetworkOverlayTaskV2(request.networkOverlayTask, pathTask);
+	const execution = objectAt$1(request.execution, `${path}.execution`);
+	exactFields$1(execution, [
+		"target",
+		"jenaVersion",
+		"jenaCommit",
+		"jenaTarballIntegrity",
+		"sdkVersion",
+		"buildId",
+		"seed"
+	], [
+		"target",
+		"jenaVersion",
+		"jenaCommit",
+		"jenaTarballIntegrity",
+		"sdkVersion",
+		"buildId",
+		"seed"
+	], `${path}.execution`);
+	validateExecutionMetadata(execution);
+	const executionSeed = execution.seed;
+	if (request.inferenceTask !== void 0) request.inferenceTask.requests.forEach((candidate, index) => {
+		if (candidate.kind === "path-comparison" && candidate.seed !== executionSeed) contractError(`${path}.inferenceTask.requests[${index}].seed`, "must equal execution.seed");
+	});
+	if (request.bootstrapTask !== void 0 && request.bootstrapTask.seed !== executionSeed) contractError(`${path}.bootstrapTask.seed`, "must equal execution.seed");
+}
+function longitudinalExecutionRequestBindingCoreV2(request) {
+	const { target: _transportTarget, ...scientificExecution } = request.execution;
+	return {
+		dataset: request.dataset,
+		pathTask: request.pathTask,
+		...request.inferenceTask === void 0 ? {} : { inferenceTask: request.inferenceTask },
+		...request.bootstrapTask === void 0 ? {} : { bootstrapTask: request.bootstrapTask },
+		...request.networkOverlayTask === void 0 ? {} : { networkOverlayTask: request.networkOverlayTask },
+		execution: scientificExecution
+	};
+}
+/**
+* Canonical binding for every scientific input field. The transport target is
+* deliberately excluded because the server owns it and it cannot change the
+* scientific task; build metadata, tasks, seeds and repetition plans remain
+* bound.
+*/
+async function hashLongitudinalExecutionRequestV2(request) {
+	assertLongitudinalExecutionRequestV2(request);
+	return hashAnalysisValueV1(longitudinalExecutionRequestBindingCoreV2(request));
+}
+function assertDerivedTaskBinding(task, pathTask, path) {
+	if (task.datasetHash !== pathTask.datasetHash) executionReject("TRAJECTORY_DATASET_BINDING_MISMATCH", `${path}.datasetHash`, "does not match the path task");
+	if (task.specHash !== pathTask.specHash) executionReject("TRAJECTORY_SPEC_BINDING_MISMATCH", `${path}.specHash`, "does not match the path task");
+	if (task.sourceResultHash !== pathTask.runSpec.sourceResultHash) executionReject("TRAJECTORY_SOURCE_BINDING_MISMATCH", `${path}.sourceResultHash`, "does not match the path task");
+	if (task.runId !== pathTask.runId) executionReject("TRAJECTORY_RUN_BINDING_MISMATCH", `${path}.runId`, "does not match the path task");
+}
+function assertInferenceTaskV2(task, pathTask) {
+	const record = objectAt$1(task, "inferenceTask");
+	exactFields$1(record, [
+		"schemaVersion",
+		"kind",
+		"datasetHash",
+		"specHash",
+		"sourceResultHash",
+		"runId",
+		"requests",
+		"adjustment"
+	], [
+		"schemaVersion",
+		"kind",
+		"datasetHash",
+		"specHash",
+		"sourceResultHash",
+		"runId",
+		"requests",
+		"adjustment"
+	], "inferenceTask");
+	if (record.schemaVersion !== "3dena.trajectory-inference-task.v2" || record.kind !== "trajectory-inference-v2") contractError("inferenceTask", "must use the V2 inference task contract");
+	if (record.adjustment !== "holm") contractError("inferenceTask.adjustment", "must be holm");
+	for (const field of [
+		"datasetHash",
+		"specHash",
+		"sourceResultHash"
+	]) if (typeof record[field] !== "string" || !SHA256$1.test(record[field])) contractError(`inferenceTask.${field}`, "must be a lowercase SHA-256 digest");
+	nonEmptyString$1(record.runId, "inferenceTask.runId");
+	if (!Array.isArray(record.requests) || record.requests.length === 0) contractError("inferenceTask.requests", "must be a non-empty array");
+	record.requests.forEach((candidate, index) => {
+		const path = `inferenceTask.requests[${index}]`;
+		const request = objectAt$1(candidate, path);
+		if (request.kind === "independent-period") {
+			exactFields$1(request, [
+				"kind",
+				"groups",
+				"periodCanonical"
+			], [
+				"kind",
+				"groups",
+				"periodCanonical"
+			], path);
+			stringList(request.groups, `${path}.groups`, 2);
+			nonEmptyString$1(request.periodCanonical, `${path}.periodCanonical`);
+			return;
+		}
+		if (request.kind === "paired-periods") {
+			exactFields$1(request, [
+				"kind",
+				"group",
+				"earlierPeriodCanonical",
+				"laterPeriodCanonical",
+				"samePhysicalEntityConfirmed"
+			], [
+				"kind",
+				"group",
+				"earlierPeriodCanonical",
+				"laterPeriodCanonical",
+				"samePhysicalEntityConfirmed"
+			], path);
+			if (request.group !== null) nonEmptyString$1(request.group, `${path}.group`);
+			if (nonEmptyString$1(request.earlierPeriodCanonical, `${path}.earlierPeriodCanonical`) === nonEmptyString$1(request.laterPeriodCanonical, `${path}.laterPeriodCanonical`)) contractError(path, "paired periods must differ");
+			if (typeof request.samePhysicalEntityConfirmed !== "boolean") contractError(`${path}.samePhysicalEntityConfirmed`, "must be boolean");
+			return;
+		}
+		if (request.kind === "repeated-periods") {
+			exactFields$1(request, [
+				"kind",
+				"group",
+				"periodCanonicals",
+				"samePhysicalEntityConfirmed"
+			], [
+				"kind",
+				"group",
+				"periodCanonicals",
+				"samePhysicalEntityConfirmed"
+			], path);
+			if (request.group !== null) nonEmptyString$1(request.group, `${path}.group`);
+			stringList(request.periodCanonicals, `${path}.periodCanonicals`);
+			if (request.periodCanonicals.length < 3) contractError(`${path}.periodCanonicals`, "must contain at least three periods");
+			if (typeof request.samePhysicalEntityConfirmed !== "boolean") contractError(`${path}.samePhysicalEntityConfirmed`, "must be boolean");
+			return;
+		}
+		if (request.kind === "path-comparison") {
+			exactFields$1(request, [
+				"kind",
+				"design",
+				"groups",
+				"repetitions",
+				"seed",
+				"samePhysicalEntityConfirmed"
+			], [
+				"kind",
+				"design",
+				"groups",
+				"repetitions",
+				"seed",
+				"samePhysicalEntityConfirmed"
+			], path);
+			if (request.design !== "independent" && request.design !== "paired") contractError(`${path}.design`, "must be independent or paired");
+			stringList(request.groups, `${path}.groups`, 2);
+			if (!Number.isSafeInteger(request.repetitions) || request.repetitions < 1 || request.repetitions > 1e4) contractError(`${path}.repetitions`, "must be an integer in [1, 10000]");
+			if (!Number.isSafeInteger(request.seed) || request.seed < 0 || request.seed > 4294967295) contractError(`${path}.seed`, "must be a uint32 integer");
+			if (typeof request.samePhysicalEntityConfirmed !== "boolean") contractError(`${path}.samePhysicalEntityConfirmed`, "must be boolean");
+			if (request.design === "independent" && request.samePhysicalEntityConfirmed !== false) contractError(`${path}.samePhysicalEntityConfirmed`, "must be false for independent comparison");
+			return;
+		}
+		contractError(`${path}.kind`, "is unsupported");
+	});
+	assertDerivedTaskBinding(record, pathTask, "inferenceTask");
+}
+function assertBootstrapTaskV2(task, pathTask) {
+	const record = objectAt$1(task, "bootstrapTask");
+	exactFields$1(record, [
+		"schemaVersion",
+		"kind",
+		"datasetHash",
+		"specHash",
+		"sourceResultHash",
+		"runId",
+		"repetitions",
+		"confidenceLevel",
+		"seed",
+		"resamplingDesign",
+		"explicitStrataField",
+		"interval",
+		"rotationPolicy"
+	], [
+		"schemaVersion",
+		"kind",
+		"datasetHash",
+		"specHash",
+		"sourceResultHash",
+		"runId",
+		"repetitions",
+		"confidenceLevel",
+		"seed",
+		"resamplingDesign",
+		"explicitStrataField",
+		"interval",
+		"rotationPolicy"
+	], "bootstrapTask");
+	if (record.schemaVersion !== "3dena.trajectory-bootstrap-task.v2" || record.kind !== "trajectory-bootstrap-v2") contractError("bootstrapTask", "must use the V2 bootstrap task contract");
+	for (const field of [
+		"datasetHash",
+		"specHash",
+		"sourceResultHash"
+	]) if (typeof record[field] !== "string" || !SHA256$1.test(record[field])) contractError(`bootstrapTask.${field}`, "must be a lowercase SHA-256 digest");
+	nonEmptyString$1(record.runId, "bootstrapTask.runId");
+	if (!Number.isSafeInteger(record.repetitions) || record.repetitions < 1 || record.repetitions > 1e4) contractError("bootstrapTask.repetitions", "must be an integer in [1, 10000]");
+	if (typeof record.confidenceLevel !== "number" || !Number.isFinite(record.confidenceLevel) || record.confidenceLevel <= 0 || record.confidenceLevel >= 1) contractError("bootstrapTask.confidenceLevel", "must be finite and in (0,1)");
+	if (!Number.isSafeInteger(record.seed) || record.seed < 0 || record.seed > 4294967295) contractError("bootstrapTask.seed", "must be a uint32 integer");
+	if (![
+		"auto",
+		"global-participant",
+		"within-group",
+		"explicit-strata"
+	].includes(String(record.resamplingDesign))) contractError("bootstrapTask.resamplingDesign", "is unsupported");
+	if (record.resamplingDesign === "explicit-strata") nonEmptyString$1(record.explicitStrataField, "bootstrapTask.explicitStrataField");
+	else if (record.explicitStrataField !== null) contractError("bootstrapTask.explicitStrataField", "must be null unless explicit-strata is selected");
+	if (record.interval !== "pointwise-percentile-linear-type7") contractError("bootstrapTask.interval", "must be pointwise-percentile-linear-type7");
+	if (record.rotationPolicy !== "fixed-same-fit-projection") contractError("bootstrapTask.rotationPolicy", "must be fixed-same-fit-projection");
+	assertDerivedTaskBinding(record, pathTask, "bootstrapTask");
+}
+function assertNetworkOverlayTaskV2(task, pathTask) {
+	const record = objectAt$1(task, "networkOverlayTask");
+	exactFields$1(record, [
+		"schemaVersion",
+		"kind",
+		"datasetHash",
+		"specHash",
+		"sourceResultHash",
+		"runId",
+		"requests"
+	], [
+		"schemaVersion",
+		"kind",
+		"datasetHash",
+		"specHash",
+		"sourceResultHash",
+		"runId",
+		"requests"
+	], "networkOverlayTask");
+	if (record.schemaVersion !== "3dena.trajectory-network-overlay-task.v2" || record.kind !== "trajectory-network-overlay-v2") contractError("networkOverlayTask", "must use the V2 network-overlay task contract");
+	for (const field of [
+		"datasetHash",
+		"specHash",
+		"sourceResultHash"
+	]) if (typeof record[field] !== "string" || !SHA256$1.test(record[field])) contractError(`networkOverlayTask.${field}`, "must be a lowercase SHA-256 digest");
+	nonEmptyString$1(record.runId, "networkOverlayTask.runId");
+	if (!Array.isArray(record.requests) || record.requests.length === 0) contractError("networkOverlayTask.requests", "must be a non-empty array");
+	const unique = /* @__PURE__ */ new Set();
+	record.requests.forEach((candidate, index) => {
+		const path = `networkOverlayTask.requests[${index}]`;
+		const request = objectAt$1(candidate, path);
+		exactFields$1(request, ["periodCanonical", "groupCanonical"], ["periodCanonical", "groupCanonical"], path);
+		const period = nonEmptyString$1(request.periodCanonical, `${path}.periodCanonical`);
+		const group = request.groupCanonical === null ? null : nonEmptyString$1(request.groupCanonical, `${path}.groupCanonical`);
+		const key = JSON.stringify([period, group]);
+		if (unique.has(key)) contractError(path, "duplicates an earlier overlay request");
+		unique.add(key);
+	});
+	assertDerivedTaskBinding(record, pathTask, "networkOverlayTask");
 }
 new TextEncoder();
-new TextEncoder();
+//#endregion
+//#region packages/analysis/src/index.ts
+init_trajectory();
+init_validation();
 //#endregion
 //#region packages/compute-service-core/src/contracts.ts
 var COMPUTE_TASK_OWNER_CONTRACT_VERSION = "3dena.compute-task-owner.v1";
@@ -32717,6 +35471,7 @@ var ComputeServiceCore = class {
 	#capacity;
 	#maxLeaseDurationMs;
 	#maxProcessLaunchDurationMs;
+	#deferProcessOwnedDeletionCompletion;
 	#background = /* @__PURE__ */ new Set();
 	#operationalFailures = new BoundedOperationalFailureJournal();
 	#executeOperations = /* @__PURE__ */ new Map();
@@ -32735,6 +35490,7 @@ var ComputeServiceCore = class {
 		this.#capacity = new ObservedTerminationCapacity(options.maxConcurrency, options.idFactory);
 		this.#maxLeaseDurationMs = maxLeaseDurationMs;
 		this.#maxProcessLaunchDurationMs = maxProcessLaunchDurationMs;
+		this.#deferProcessOwnedDeletionCompletion = options.deferProcessOwnedDeletionCompletion ?? false;
 	}
 	capacitySnapshot() {
 		return this.#capacity.snapshot();
@@ -33262,7 +36018,7 @@ var ComputeServiceCore = class {
 				const next = this.#nextRecord(record, target, now, {}, remove);
 				const changed = await this.#repository.compareAndSet(taskId, record.revision, next);
 				if (!changed.applied) continue;
-				if (changed.record.state === "deleting") return (await this.#completeDeletion(taskId)).record;
+				if (changed.record.state === "deleting" && !this.#deferProcessOwnedDeletionCompletion) return (await this.#completeDeletion(taskId)).record;
 				if (changed.record.state !== "queued") await this.#emit(changed.record, "task_terminal", { reasonCode: changed.record.state.toUpperCase() });
 				return changed.record;
 			}
@@ -33364,7 +36120,7 @@ var ComputeServiceCore = class {
 		this.#capacity.observeTermination(slotId, childId);
 		await this.#emit(finalized, "process_termination_observed", { reasonCode: termination.kind.toUpperCase() });
 		if (deleteResultObjects) await this.#objectStore.delete(resultObjectKey);
-		if (finalized.state === "deleting") await this.#completeDeletion(taskId);
+		if (finalized.state === "deleting" && !this.#deferProcessOwnedDeletionCompletion) await this.#completeDeletion(taskId);
 		else if (finalized.state !== "queued") await this.#emit(finalized, "task_terminal", { reasonCode: finalized.state.toUpperCase() });
 	}
 	async #completeDeletion(taskId) {
@@ -34902,12 +37658,233 @@ function createTabularImportParserAdapter() {
 	});
 }
 //#endregion
+//#region packages/compute-service-http/src/longitudinal-contracts.ts
+var LONGITUDINAL_COMPUTE_SUBMISSION_VERSION_V2 = "3dena.longitudinal-compute-submission.v2";
+var LONGITUDINAL_COMPUTE_CAPABILITY_VERSION_V2 = "3dena.longitudinal-compute-capability.v2";
+var LONGITUDINAL_COMPUTE_STATUS_URLS_VERSION_V2 = "3dena.longitudinal-compute-status-urls.v2";
+var LONGITUDINAL_COMPUTE_STORED_INPUT_VERSION_V2 = "3dena.compute-scientific-stored-longitudinal-input.v2";
+var LONGITUDINAL_COMPUTE_TASK_KIND_V2 = "longitudinal-analysis-v2";
+/** Exact maximum accepted by the production scientific input provider. */
+var MAX_LONGITUDINAL_STORED_INPUT_BYTES_V2 = 33554432;
+var JENA_COMMIT = /^[a-f0-9]{40}$/u;
+var OPAQUE_BUILD_ID = /^[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$/u;
+var PARTICIPANT_TOKEN = /^participant-[1-9][0-9]*-[a-f0-9]{32}$/u;
+var UNIT_TOKEN = /^unit-[1-9][0-9]*-[a-f0-9]{32}$/u;
+var STEP_TOKEN = /^step-[1-9][0-9]*-[a-f0-9]{32}$/u;
+var FIXED_PROJECTION_SEMANTICS = "one immutable fitted jENA rotation; fixed projectIn full-space recovery; participant-period reduction before group-time centroids";
+var FIXED_PROJECTION_DIAGNOSTIC = "Full-space coordinates were projected by jENA against the immutable successful-fit rotation; no ENA accumulation or rotation fit was repeated.";
+var LongitudinalComputeSubmissionErrorV2 = class extends Error {
+	code;
+	path;
+	constructor(code, path, message) {
+		super(`${path}: ${message}`);
+		this.name = "LongitudinalComputeSubmissionErrorV2";
+		this.code = code;
+		this.path = path;
+	}
+};
+function reject(code, path, message) {
+	throw new LongitudinalComputeSubmissionErrorV2(code, path, message);
+}
+function objectAt(value, path) {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) reject("INVALID_SUBMISSION", path, "must be an object");
+	return value;
+}
+function exactFields(value, allowed, required, path) {
+	const allowedSet = new Set(allowed);
+	const unknown = Object.keys(value).find((field) => !allowedSet.has(field));
+	if (unknown) reject("INVALID_SUBMISSION", path, `contains unknown field ${JSON.stringify(unknown)}`);
+	const missing = required.find((field) => !Object.hasOwn(value, field));
+	if (missing) reject("INVALID_SUBMISSION", path, `is missing required field ${JSON.stringify(missing)}`);
+}
+function assertApprovedLongitudinalExecutionBuildV2(value) {
+	const build = objectAt(value, "approvedBuild");
+	const fields = [
+		"jenaVersion",
+		"jenaCommit",
+		"jenaTarballIntegrity",
+		"sdkVersion",
+		"buildId"
+	];
+	exactFields(build, fields, fields, "approvedBuild");
+	for (const field of fields) if (typeof build[field] !== "string" || build[field].trim() === "") reject("INVALID_APPROVED_BUILD_IDENTITY", `approvedBuild.${field}`, "must be non-empty");
+	if (!JENA_COMMIT.test(build.jenaCommit)) reject("INVALID_APPROVED_BUILD_IDENTITY", "approvedBuild.jenaCommit", "must be a lowercase 40-character commit");
+	if (!OPAQUE_BUILD_ID.test(build.buildId)) reject("INVALID_APPROVED_BUILD_IDENTITY", "approvedBuild.buildId", "must be an opaque build identifier");
+}
+function scalarEquals(left, right) {
+	return Object.is(left, right);
+}
+function scalarArraysEqual(left, right) {
+	return left.length === right.length && left.every((value, index) => scalarEquals(value, right[index]));
+}
+function stringArraysEqual(left, right) {
+	return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+function privacyReject(path, message) {
+	return reject("PRIVACY_BOUNDARY_VIOLATION", path, message);
+}
+function tokenFromCanonical(value, prefix, pattern, path) {
+	if (!value.startsWith(prefix)) privacyReject(path, "must use the service-approved opaque identity namespace");
+	const token = value.slice(prefix.length);
+	if (!pattern.test(token)) privacyReject(path, "contains a malformed opaque identity token");
+	return token;
+}
+function assertOpaquePointIdentities(result, pathTask) {
+	const groupColumn = pathTask.runSpec.groupColumn;
+	const timeColumn = pathTask.runSpec.timeColumn;
+	result.points.forEach((point, index) => {
+		const path = `submission.dataset.sourceResult.result.points[${index}]`;
+		if (!point.group || !point.time || !point.step) privacyReject(path, "must retain group/time semantics while removing raw entity identities");
+		if (!stringArraysEqual(point.participantLabel.columns, pathTask.runSpec.participantColumns)) privacyReject(`${path}.participantLabel.columns`, "does not match the declared participant mapping");
+		const participantToken = tokenFromCanonical(point.participantLabel.canonical, "opaque-participant:", PARTICIPANT_TOKEN, `${path}.participantLabel.canonical`);
+		if (point.participantLabel.display !== "Opaque participant") privacyReject(`${path}.participantLabel.display`, "must be the generic Opaque participant label");
+		if (point.participantLabel.values.length !== point.participantLabel.columns.length || point.participantLabel.values[0] !== participantToken || point.participantLabel.values.slice(1).some((value) => value !== "@opaque-component")) privacyReject(`${path}.participantLabel.values`, "contains a raw participant identity component");
+		const unitToken = tokenFromCanonical(point.unit.canonical, "opaque-unit:", UNIT_TOKEN, `${path}.unit.canonical`);
+		if (point.unit.display !== "Opaque unit") privacyReject(`${path}.unit.display`, "must be the generic Opaque unit label");
+		if (point.unit.values.length !== point.unit.columns.length) privacyReject(`${path}.unit.values`, "must align with the unit columns");
+		let unitTokenObserved = false;
+		point.unit.columns.forEach((column, componentIndex) => {
+			const value = point.unit.values[componentIndex];
+			if (groupColumn !== null && column === groupColumn) {
+				if (!scalarEquals(value, point.group.value)) privacyReject(`${path}.unit.values[${componentIndex}]`, "must retain only the declared group value");
+				return;
+			}
+			if (!unitTokenObserved) {
+				if (value !== unitToken) privacyReject(`${path}.unit.values[${componentIndex}]`, "contains a raw unit identity component");
+				unitTokenObserved = true;
+			} else if (value !== "@opaque-unit-component") privacyReject(`${path}.unit.values[${componentIndex}]`, "contains a raw unit identity component");
+		});
+		if (!unitTokenObserved) privacyReject(`${path}.unit.values`, "must contain one opaque unit token outside the group column");
+		const stepToken = tokenFromCanonical(point.step.canonical, "opaque-step:", STEP_TOKEN, `${path}.step.canonical`);
+		if (point.step.display !== "Opaque step") privacyReject(`${path}.step.display`, "must be the generic Opaque step label");
+		if (point.step.values.length !== point.step.columns.length) privacyReject(`${path}.step.values`, "must align with the step columns");
+		let stepTokenObserved = false;
+		let timeObserved = false;
+		point.step.columns.forEach((column, componentIndex) => {
+			const value = point.step.values[componentIndex];
+			if (column === timeColumn) {
+				if (timeObserved || !scalarEquals(value, point.time.value)) privacyReject(`${path}.step.values[${componentIndex}]`, "must retain exactly the declared time value");
+				timeObserved = true;
+				return;
+			}
+			if (!stepTokenObserved) {
+				if (value !== stepToken) privacyReject(`${path}.step.values[${componentIndex}]`, "contains a raw step identity component");
+				stepTokenObserved = true;
+			} else if (value !== "@opaque-step-component") privacyReject(`${path}.step.values[${componentIndex}]`, "contains a raw step identity component");
+		});
+		if (!timeObserved) privacyReject(`${path}.step.columns`, "must contain the declared time column");
+		if (point.id.display !== "Opaque fitted point" || point.id.canonical !== `opaque-point:${unitToken}:${stepToken}` || !stringArraysEqual(point.id.columns, [...point.unit.columns, ...point.step.columns]) || !scalarArraysEqual(point.id.values, [...point.unit.values, ...point.step.values])) privacyReject(`${path}.id`, "must be the exact opaque unit-step identity composition");
+	});
+}
+function assertPrivacyMinimizedSource(result, pathTask) {
+	const rowCounts = result.accumulation.rowCounts;
+	if (rowCounts.rowKeys.length !== 0 || rowCounts.values.length !== 0 || result.summary.rowCountRows !== 0) privacyReject("submission.dataset.sourceResult.result.accumulation.rowCounts", "must be empty; raw coded row counts cannot enter durable longitudinal compute");
+	const trajectory = result.trajectory;
+	if (!trajectory) privacyReject("submission.dataset.sourceResult.result.trajectory", "must retain the fitted group/time inventory");
+	if (trajectory.participantPeriods.length !== 0 || result.summary.participantPeriods !== 0) privacyReject("submission.dataset.sourceResult.result.trajectory.participantPeriods", "must be empty before service-side participant-period reduction");
+	if (trajectory.centroids.length !== 0 || result.summary.trajectoryCentroids !== 0) privacyReject("submission.dataset.sourceResult.result.trajectory.centroids", "must be empty before service-side centroid calculation");
+	if (trajectory.paths.some((path) => path.steps.some((step) => step.centroidIndex !== null))) privacyReject("submission.dataset.sourceResult.result.trajectory.paths", "must not retain precomputed centroid references");
+	const metadataField = pathTask.runSpec.estimand.kind === "weighted-participant" ? pathTask.runSpec.estimand.metadataField : null;
+	result.points.forEach((point, index) => {
+		const fields = Object.keys(point.metadata);
+		if (metadataField === null) {
+			if (fields.length !== 0) privacyReject(`submission.dataset.sourceResult.result.points[${index}].metadata`, "must be empty for an equal-participant estimand");
+			return;
+		}
+		if (fields.length !== 1 || fields[0] !== metadataField) privacyReject(`submission.dataset.sourceResult.result.points[${index}].metadata`, "may contain only the weighted-estimand binding field");
+		const weight = point.metadata[metadataField];
+		if (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0) privacyReject(`submission.dataset.sourceResult.result.points[${index}].metadata`, "weighted-estimand metadata must be finite and strictly positive");
+	});
+	assertOpaquePointIdentities(result, pathTask);
+	if (result.accumulation.modelCounts.rowKeys.length !== result.points.length) privacyReject("submission.dataset.sourceResult.result.accumulation.modelCounts.rowKeys", "must align one-to-one with opaque fitted points");
+	result.accumulation.modelCounts.rowKeys.forEach((rowKey, index) => {
+		const pointId = result.points[index].id;
+		if (rowKey.canonical !== pointId.canonical || rowKey.display !== pointId.display || !stringArraysEqual(rowKey.columns, pointId.columns) || !scalarArraysEqual(rowKey.values, pointId.values)) privacyReject(`submission.dataset.sourceResult.result.accumulation.modelCounts.rowKeys[${index}]`, "must reuse the exact opaque point identity");
+	});
+}
+function assertFixedProjectionSource(result, dataset, approvedBuild) {
+	if (dataset.buildId !== approvedBuild.buildId || result.provenance.jenaVersion !== approvedBuild.jenaVersion || result.provenance.jenaCommit !== approvedBuild.jenaCommit || result.provenance.adapterVersion !== approvedBuild.sdkVersion) reject("UNAPPROVED_SOURCE_BUILD", "submission.dataset.sourceResult.result.provenance", "must match the service-approved build identity");
+	if (result.provenance.adapter !== "@3dena/analysis" || result.provenance.jenaPackage !== "jena-js" || result.provenance.resultSemantics !== FIXED_PROJECTION_SEMANTICS || result.provenance.resolvedConfig.model === "EndPoint") reject("PRIVACY_BOUNDARY_VIOLATION", "submission.dataset.sourceResult.result.provenance", "must be the raw-jENA fixed-rotation longitudinal projection contract");
+	if (result.diagnostics.length !== 1 || result.diagnostics[0]?.code !== "FITTED_JENA_FIXED_ROTATION_ADAPTER_V2" || result.diagnostics[0]?.severity !== "info" || result.diagnostics[0]?.message !== FIXED_PROJECTION_DIAGNOSTIC || result.diagnostics[0]?.path !== "provenance.resultSemantics") reject("PRIVACY_BOUNDARY_VIOLATION", "submission.dataset.sourceResult.result.diagnostics", "must contain only the fixed-jENA-projection audit receipt");
+}
+function assertSubmissionShape(value) {
+	const submission = objectAt(value, "submission");
+	exactFields(submission, [
+		"schemaVersion",
+		"dataset",
+		"pathTask",
+		"inferenceTask",
+		"networkOverlayTask",
+		"seed",
+		"processingPolicyConfirmed"
+	], [
+		"schemaVersion",
+		"dataset",
+		"pathTask",
+		"seed",
+		"processingPolicyConfirmed"
+	], "submission");
+	if (submission.schemaVersion !== "3dena.longitudinal-compute-submission.v2") reject("INVALID_SUBMISSION", "submission.schemaVersion", `must be ${LONGITUDINAL_COMPUTE_SUBMISSION_VERSION_V2}`);
+	if (submission.processingPolicyConfirmed !== true) reject("PROCESSING_POLICY_NOT_CONFIRMED", "submission.processingPolicyConfirmed", "must be true");
+	if (!Number.isSafeInteger(submission.seed) || submission.seed < 0 || submission.seed > 4294967295) reject("INVALID_SUBMISSION", "submission.seed", "must be a uint32 safe integer");
+}
+/**
+* Validate a caller-controlled, privacy-minimized submission and inject the
+* one service-approved execution identity. The returned bytes are the exact
+* canonical worker input to persist and hash.
+*/
+async function materializeLongitudinalComputeSubmissionV2(value, approvedBuildValue) {
+	assertSubmissionShape(value);
+	assertApprovedLongitudinalExecutionBuildV2(approvedBuildValue);
+	const submission = value;
+	const approvedBuild = approvedBuildValue;
+	const request = {
+		dataset: structuredClone(submission.dataset),
+		pathTask: structuredClone(submission.pathTask),
+		...Object.hasOwn(submission, "inferenceTask") ? { inferenceTask: structuredClone(submission.inferenceTask) } : {},
+		...Object.hasOwn(submission, "networkOverlayTask") ? { networkOverlayTask: structuredClone(submission.networkOverlayTask) } : {},
+		execution: {
+			target: "persistent-compute-service",
+			jenaVersion: approvedBuild.jenaVersion,
+			jenaCommit: approvedBuild.jenaCommit,
+			jenaTarballIntegrity: approvedBuild.jenaTarballIntegrity,
+			sdkVersion: approvedBuild.sdkVersion,
+			buildId: approvedBuild.buildId,
+			seed: submission.seed
+		}
+	};
+	try {
+		assertLongitudinalExecutionRequestV2(request, "submission");
+	} catch (error) {
+		reject("INVALID_LONGITUDINAL_TASK", "submission", error instanceof Error ? error.message : "failed strict V2 validation");
+	}
+	const source = request.dataset.sourceResult;
+	if (!source || source.sourceKind !== "raw-jena") reject("PRIVACY_BOUNDARY_VIOLATION", "submission.dataset.sourceResult", "must be a raw-jena fixed projection");
+	if (request.pathTask.datasetHash !== request.dataset.receipt.sha256 || request.pathTask.specHash !== request.dataset.specHash || request.pathTask.runSpec.sourceResultHash !== source.hash) reject("IMMUTABLE_BINDING_MISMATCH", "submission.pathTask", "dataset, spec, and source-result hashes must share one immutable binding");
+	if (await hashAnalysisValueV1(source.result) !== source.hash) reject("SOURCE_HASH_MISMATCH", "submission.dataset.sourceResult.hash", "does not match the canonical source result");
+	if (await hashAnalysisValueV1(request.pathTask.runSpec) !== request.dataset.specHash) reject("IMMUTABLE_BINDING_MISMATCH", "submission.dataset.specHash", "does not match the canonical trajectory run spec");
+	assertFixedProjectionSource(source.result, request.dataset, approvedBuild);
+	assertPrivacyMinimizedSource(source.result, request.pathTask);
+	const canonicalRequest = cloneFrozen(request);
+	const canonicalBytes = new TextEncoder().encode(canonicalStringify(canonicalRequest));
+	return Object.freeze({
+		canonicalRequest,
+		canonicalBytes,
+		requestSha256: sha256Bytes$1(canonicalBytes),
+		byteLength: canonicalBytes.byteLength
+	});
+}
+//#endregion
 //#region packages/compute-service-http/src/router.ts
 var MAX_CAS_ATTEMPTS = 24;
 var MAX_DATASET_BYTES = 5242880;
+var MAX_PREPARED_DATASET_BYTES = 2097152;
 var MAX_JOB_TTL_MS = 864e5;
 var DEFAULT_TASK_RUNTIME_MS = 36e5;
 var DEFAULT_JSON_BYTES = 5242880;
+var DEFAULT_LONGITUDINAL_JSON_BYTES = 33554432;
+var MAX_LONGITUDINAL_JSON_BYTES = 33554432;
+var LONGITUDINAL_HARD_DEADLINE_MS = 6e4;
 var JSON_CONTENT_TYPE = /^application\/json(?:\s*;\s*charset=utf-8)?$/iu;
 var IDEMPOTENCY_KEY = /^[^\u0000-\u0020\u007f]{8,200}$/u;
 var GIT_COMMIT = /^[a-f0-9]{40}$/u;
@@ -34932,10 +37909,12 @@ var CORS_ALLOWED_HEADERS = /* @__PURE__ */ new Set([
 	"content-type",
 	"idempotency-key",
 	"last-event-id",
-	"x-3dena-contract-version"
+	"x-3dena-contract-version",
+	"x-3dena-service-token"
 ]);
 var SUPPORTED_TASK_KINDS = /* @__PURE__ */ new Set([
 	"ena-model",
+	"prepared-import",
 	"network-comparison",
 	"change-network",
 	"statistics",
@@ -34963,7 +37942,7 @@ function validatePositiveInteger(value, name, maximum) {
 	return value;
 }
 function isDatasetFormat(value) {
-	return value === "csv" || value === "xlsx" || value === "xls";
+	return value === "csv" || value === "xlsx" || value === "xls" || value === "ena3d-json";
 }
 var ANALYSIS_LIMIT_FIELDS = Object.freeze(Object.keys(HARD_ANALYSIS_LIMITS));
 function assertActivatedTaskSpec(value) {
@@ -35130,9 +38109,12 @@ function taskFailureCode(record) {
 	if (record.state === "failed") return record.failure?.code ?? "TASK_FAILED";
 	return null;
 }
+function sameTaskOwner(left, right) {
+	return left.contractVersion === right.contractVersion && left.datasetHash === right.datasetHash && left.specHash === right.specHash && left.runId === right.runId && left.taskId === right.taskId;
+}
 function rateLimitClass(pathname, method) {
 	if (pathname === "/v1/datasets") return "dataset-mutation";
-	if (pathname === "/v1/jobs") return "job-create";
+	if (pathname === "/v1/jobs" || pathname === "/v2/longitudinal-jobs") return "job-create";
 	if (/^\/v1\/datasets\/[^/]+\/content$/u.test(pathname)) return "dataset-upload";
 	if (pathname.startsWith("/v1/datasets/")) return "dataset-mutation";
 	if (/^\/v1\/jobs\/[^/]+\/execute$/u.test(pathname)) return "job-execute";
@@ -35224,9 +38206,13 @@ var ComputeV1HttpRouter = class {
 	#infrastructure;
 	#allowedOrigins;
 	#buildIdentity;
+	#approvedLongitudinalBuild;
+	#longitudinalServiceTokenSha256;
 	#jobTtlMs;
 	#maxTaskRuntimeMs;
 	#maxJsonBodyBytes;
+	#maxLongitudinalJsonBodyBytes;
+	#maxLongitudinalStoredInputBytes;
 	constructor(options) {
 		if (!(options.core instanceof ComputeServiceCore)) throw new TypeError("ComputeV1HttpRouter requires a ComputeServiceCore.");
 		if (!Array.isArray(options.allowedOrigins) || options.allowedOrigins.length < 1) throw new TypeError("At least one explicit CORS origin is required.");
@@ -35237,9 +38223,19 @@ var ComputeV1HttpRouter = class {
 		this.#infrastructure = options.infrastructure;
 		this.#allowedOrigins = new Set(origins);
 		this.#buildIdentity = cloneFrozen(options.buildIdentity);
+		if (options.approvedLongitudinalBuild !== void 0) try {
+			assertApprovedLongitudinalExecutionBuildV2(options.approvedLongitudinalBuild);
+		} catch {
+			throw new TypeError("approvedLongitudinalBuild must be one exact approved scientific runtime identity.");
+		}
+		this.#approvedLongitudinalBuild = options.approvedLongitudinalBuild === void 0 ? void 0 : cloneFrozen(options.approvedLongitudinalBuild);
+		if (options.approvedLongitudinalBuild === void 0 !== (options.longitudinalServiceTokenSha256 === void 0) || options.longitudinalServiceTokenSha256 !== void 0 && !LOWER_SHA256.test(options.longitudinalServiceTokenSha256)) throw new TypeError("The dedicated longitudinal build and protected service-token hash must be configured together.");
+		this.#longitudinalServiceTokenSha256 = options.longitudinalServiceTokenSha256;
 		this.#jobTtlMs = validatePositiveInteger(options.jobTtlMs ?? MAX_JOB_TTL_MS, "jobTtlMs", MAX_JOB_TTL_MS);
 		this.#maxTaskRuntimeMs = validatePositiveInteger(options.maxTaskRuntimeMs ?? DEFAULT_TASK_RUNTIME_MS, "maxTaskRuntimeMs", MAX_JOB_TTL_MS);
 		this.#maxJsonBodyBytes = validatePositiveInteger(options.maxJsonBodyBytes ?? DEFAULT_JSON_BYTES, "maxJsonBodyBytes", MAX_DATASET_BYTES);
+		this.#maxLongitudinalJsonBodyBytes = validatePositiveInteger(options.maxLongitudinalJsonBodyBytes ?? DEFAULT_LONGITUDINAL_JSON_BYTES, "maxLongitudinalJsonBodyBytes", MAX_LONGITUDINAL_JSON_BYTES);
+		this.#maxLongitudinalStoredInputBytes = validatePositiveInteger(options.maxLongitudinalStoredInputBytes ?? 33554432, "maxLongitudinalStoredInputBytes", MAX_LONGITUDINAL_STORED_INPUT_BYTES_V2);
 	}
 	/** Web-standard entry point that a Node HTTP or Fastify shell can adapt. */
 	async handle(request) {
@@ -35255,10 +38251,11 @@ var ComputeV1HttpRouter = class {
 			const url = new URL(request.url);
 			if (url.search !== "" || url.hash !== "") httpError("NOT_FOUND", 404, "Compute routes do not accept query strings.");
 			const method = request.method.toUpperCase();
+			const longitudinalServicePrincipal = url.pathname === "/v2/longitudinal-jobs" && method === "POST" ? this.#assertLongitudinalServiceToken(request) : null;
 			const limitClass = rateLimitClass(url.pathname, method);
 			if (limitClass !== null) {
-				const authorization = request.headers.get("authorization") ?? "anonymous";
-				const keyHash = this.#infrastructure.capabilityCodec.hashSecret(`rate\0${origin ?? "no-origin"}\0${authorization}`);
+				const principal = longitudinalServicePrincipal ?? await this.#rateLimitPrincipal(request, url.pathname, origin, limitClass);
+				const keyHash = this.#infrastructure.capabilityCodec.hashSecret(`rate\0${limitClass}\0${principal}`);
 				const limit = await this.#infrastructure.rateLimiter.consume({
 					keyHash,
 					routeClass: limitClass
@@ -35291,7 +38288,7 @@ var ComputeV1HttpRouter = class {
 					...this.#publicBuildIdentity()
 				}, context);
 			}
-			if (url.pathname === "/v1/jobs" || url.pathname.startsWith("/v1/jobs/") || url.pathname === "/v1/datasets" || url.pathname.startsWith("/v1/datasets/")) {
+			if (url.pathname === "/v1/jobs" || url.pathname.startsWith("/v1/jobs/") || url.pathname === "/v2/longitudinal-jobs" || url.pathname === "/v1/datasets" || url.pathname.startsWith("/v1/datasets/")) {
 				if (!await this.#infrastructure.readiness.check()) httpError("NOT_READY", 503, "The approved compute runtime is unavailable.");
 			}
 			this.#assertContract(request);
@@ -35379,7 +38376,11 @@ var ComputeV1HttpRouter = class {
 				this.#assertMethod(method, ["POST"]);
 				return await this.#createJob(request, context);
 			}
-			const match = /^\/v1\/jobs\/([^/]+)(?:\/(execute|events|result|artifact))?$/u.exec(url.pathname);
+			if (url.pathname === "/v2/longitudinal-jobs") {
+				this.#assertMethod(method, ["POST"]);
+				return await this.#createLongitudinalJob(request, url, context);
+			}
+			const match = /^\/v1\/jobs\/([^/]+)(?:\/(content|execute|events|result|artifact))?$/u.exec(url.pathname);
 			if (match === null) httpError("NOT_FOUND", 404, "No compute route matched.");
 			const encodedJobId = match[1];
 			if (encodedJobId === void 0) httpError("NOT_FOUND", 404, "The compute job route is malformed.");
@@ -35391,9 +38392,16 @@ var ComputeV1HttpRouter = class {
 			}
 			if (!OPAQUE_ID.test(jobId)) httpError("NOT_FOUND", 404, "The compute job identifier is invalid.");
 			const action = match[2] ?? null;
+			if (action === "content") {
+				this.#assertMethod(method, ["PUT"]);
+				const job = await this.#authorize(request, jobId, origin, false);
+				if (job.taskKind === "longitudinal-analysis-v2") httpError("METHOD_NOT_ALLOWED", 405, "Dedicated longitudinal jobs have immutable service-owned input.");
+				return await this.#putJobContent(request, job, context);
+			}
 			if (action === "execute") {
 				this.#assertMethod(method, ["POST"]);
 				const job = await this.#authorize(request, jobId, origin, false);
+				if (job.taskKind === "longitudinal-analysis-v2") httpError("METHOD_NOT_ALLOWED", 405, "Dedicated longitudinal jobs are queued during creation.");
 				return await this.#executeJob(request, job, context);
 			}
 			if (action === "events") {
@@ -35444,6 +38452,95 @@ var ComputeV1HttpRouter = class {
 		const snapshot = await this.#statusSnapshot(job);
 		await this.#publishStatus(snapshot.status);
 		return snapshot.status;
+	}
+	/**
+	* Completes a previously persisted DELETE intent without requiring the
+	* capability or plaintext idempotency key. This hook is intentionally
+	* unavailable until the durable intent exists and never starts a deletion.
+	* It is used by the singleton database temporal sweeper after the owning
+	* worker has released any fenced capacity slot.
+	*/
+	async reconcileDurableDeletion(jobId) {
+		if (!OPAQUE_ID.test(jobId)) httpError("INVALID_REQUEST", 400, "jobId is invalid for deletion reconciliation.");
+		let job = await this.#infrastructure.repository.get(jobId);
+		if (job === null) return false;
+		if (job.deleteRequestedAtMs === void 0 || job.deleteIdempotencyHash === void 0) {
+			const deadlineAtMs = job.createdAtMs + LONGITUDINAL_HARD_DEADLINE_MS;
+			if (!(job.taskKind === "longitudinal-analysis-v2" && job.inputDeletedAtMs === void 0 && Number.isSafeInteger(deadlineAtMs) && this.#infrastructure.clock.now() >= deadlineAtMs && job.coreTaskId !== void 0 && await this.#core.getTask(job.coreTaskId) === null)) return false;
+			const requestedAtMs = this.#infrastructure.clock.now();
+			job = await this.#patchJob(job.jobId, (current) => ({
+				...current,
+				revision: current.revision + 1,
+				updatedAtMs: requestedAtMs,
+				deleteIdempotencyHash: current.deleteIdempotencyHash ?? this.#infrastructure.capabilityCodec.hashSecret(`longitudinal-deadline-cleanup\0${jobId}`),
+				deleteRequestedAtMs: current.deleteRequestedAtMs ?? requestedAtMs,
+				deleteCancelled: current.deleteCancelled ?? true,
+				deleteTerminationRequired: current.deleteTerminationRequired === true,
+				deleteCapacityReserved: current.deleteCapacityReserved === true
+			}));
+		}
+		if (job.inputDeletedAtMs !== void 0) return true;
+		let coreRecord = job.coreTaskId === void 0 ? null : await this.#core.getTask(job.coreTaskId);
+		let capacityReleased = job.coreTaskId === void 0;
+		if (job.coreTaskId !== void 0) capacityReleased = this.#infrastructure.deletionLifecycle !== void 0 ? await this.#infrastructure.deletionLifecycle.capacityReleased(job.coreTaskId) : !this.#core.capacitySnapshot().slots.some((slot) => slot.taskRef === coreRecord?.taskRef);
+		if (job.coreTaskId !== void 0 && coreRecord !== null && coreRecord.state !== "deleted") {
+			if (!capacityReleased && coreRecord.execution === void 0 && ![
+				"succeeded",
+				"failed",
+				"cancelled",
+				"timed_out",
+				"expired",
+				"deleting",
+				"deleted"
+			].includes(coreRecord.state)) coreRecord = await this.#core.cancelTask(job.coreTaskId);
+			else coreRecord = (await this.#core.deleteTask(job.coreTaskId)).record;
+			capacityReleased = this.#infrastructure.deletionLifecycle !== void 0 ? await this.#infrastructure.deletionLifecycle.capacityReleased(job.coreTaskId) : !this.#core.capacitySnapshot().slots.some((slot) => slot.taskRef === coreRecord?.taskRef);
+		}
+		const terminationRequiredNow = job.coreTaskId !== void 0 && (!capacityReleased || coreRecord?.execution !== void 0 || coreRecord !== null && [
+			"starting",
+			"running",
+			"cancelling"
+		].includes(coreRecord.state));
+		if (terminationRequiredNow && job.deleteTerminationRequired !== true || !capacityReleased && job.deleteCapacityReserved !== true) job = await this.#patchJob(job.jobId, (current) => ({
+			...current,
+			revision: current.revision + 1,
+			updatedAtMs: this.#infrastructure.clock.now(),
+			deleteTerminationRequired: current.deleteTerminationRequired === true || terminationRequiredNow,
+			deleteCapacityReserved: current.deleteCapacityReserved === true || !capacityReleased
+		}));
+		if (!capacityReleased) return false;
+		if (!(job.deleteTerminationRequired !== true || job.coreTaskId !== void 0 && (this.#infrastructure.deletionLifecycle !== void 0 ? await this.#infrastructure.deletionLifecycle.terminationObserved(job.coreTaskId) : coreRecord?.execution === void 0 && coreRecord !== null && [
+			"succeeded",
+			"failed",
+			"cancelled",
+			"timed_out",
+			"expired",
+			"deleting",
+			"deleted"
+		].includes(coreRecord.state)))) return false;
+		let resultKeys = coreRecord?.ownedResultObjectKeys ?? [];
+		if (job.coreTaskId !== void 0 && coreRecord !== null && coreRecord.state !== "deleted") {
+			const deletion = await this.#core.deleteTask(job.coreTaskId);
+			if (deletion.status !== "deleted") return false;
+			coreRecord = deletion.record;
+			resultKeys = deletion.record.ownedResultObjectKeys;
+		}
+		if (job.inputObjectOwnedByJob === false && job.activatedDatasetId !== void 0 && job.activationReceiptSha256 !== void 0) await this.#requireDatasetService().deleteActivated(job.activatedDatasetId, job.activationReceiptSha256);
+		const inputKeys = [job.inputObjectOwnedByJob === false ? void 0 : job.inputObjectKey, job.executionObjectKey].filter((key) => key !== void 0);
+		for (const key of [...inputKeys, ...resultKeys]) await this.#infrastructure.objectStore.delete(key);
+		for (const key of [...inputKeys, ...resultKeys]) {
+			const [head, bytes] = await Promise.all([this.#infrastructure.objectStore.head(key), this.#infrastructure.objectStore.get(key)]);
+			if (head !== null || bytes !== null) httpError("INTERNAL_ERROR", 500, "Deletion was not observed in object storage.");
+		}
+		const completedAtMs = this.#infrastructure.clock.now();
+		const completed = await this.#patchJob(job.jobId, (current) => ({
+			...current,
+			revision: current.revision + 1,
+			updatedAtMs: completedAtMs,
+			inputDeletedAtMs: current.inputDeletedAtMs ?? completedAtMs
+		}));
+		await this.#publishStatus((await this.#statusSnapshot(completed)).status);
+		return true;
 	}
 	/** Worker-facing progress hook; only aggregate progress fields are accepted. */
 	async publishProgress(jobId, progress) {
@@ -35513,6 +38610,187 @@ var ComputeV1HttpRouter = class {
 			expiresAt: isoTimestamp(session.expiresAtMs)
 		};
 		return this.#json(201, response, context);
+	}
+	async #createLongitudinalJob(request, requestUrl, context) {
+		const approvedBuild = this.#approvedLongitudinalBuild;
+		if (approvedBuild === void 0 || this.#jobTtlMs < LONGITUDINAL_HARD_DEADLINE_MS || this.#maxTaskRuntimeMs < LONGITUDINAL_HARD_DEADLINE_MS) httpError("NOT_READY", 503, "The approved dedicated longitudinal runtime is unavailable.");
+		const idempotencyKey = this.#requireIdempotencyKey(request);
+		const parsed = await this.#parseJson(request, this.#maxLongitudinalJsonBodyBytes);
+		let materialized;
+		try {
+			materialized = await materializeLongitudinalComputeSubmissionV2(parsed, approvedBuild);
+		} catch (error) {
+			if (error instanceof LongitudinalComputeSubmissionErrorV2) httpError("INVALID_REQUEST", 400, `Dedicated longitudinal submission was rejected with ${error.code}.`);
+			throw error;
+		}
+		const createIdempotencyHash = this.#infrastructure.capabilityCodec.hashSecret(`longitudinal-create\0${context.origin ?? "server"}\0${idempotencyKey}`);
+		const createRequestFingerprint = sha256Text(canonicalStringify({
+			schemaVersion: "3dena.longitudinal-http-create-binding.v2",
+			origin: context.origin,
+			requestSha256: materialized.requestSha256
+		}));
+		const replay = await this.#infrastructure.repository.findByCreateIdempotencyHash(createIdempotencyHash);
+		if (replay !== null) {
+			if (replay.createRequestFingerprint !== createRequestFingerprint || replay.taskKind !== "longitudinal-analysis-v2") httpError("IDEMPOTENCY_CONFLICT", 409, "Longitudinal create idempotency key is bound to another request.");
+			if (replay.deleteRequestedAtMs !== void 0) httpError("IDEMPOTENCY_CONFLICT", 409, "Deleted longitudinal operation is retired; Retry requires a new execution-attempt key.");
+			await this.#ensureLongitudinalCoreTask(replay, materialized.canonicalRequest);
+			const snapshot = await this.#statusSnapshot(replay);
+			await this.#publishStatus(snapshot.status);
+			return this.#longitudinalCapabilityResponse(replay, requestUrl, false, context);
+		}
+		const now = this.#infrastructure.clock.now();
+		const deadlineAtMs = now + LONGITUDINAL_HARD_DEADLINE_MS;
+		const expiresAtMs = now + this.#jobTtlMs;
+		if (!Number.isSafeInteger(deadlineAtMs) || !Number.isSafeInteger(expiresAtMs) || expiresAtMs < deadlineAtMs) httpError("INTERNAL_ERROR", 500, "Longitudinal deadline exceeds the safe service TTL.");
+		const jobId = `longitudinal-${createIdempotencyHash.slice(0, 40)}`;
+		if (!OPAQUE_ID.test(jobId)) httpError("INTERNAL_ERROR", 500, "Longitudinal job identity is unsafe.");
+		const capability = this.#infrastructure.capabilityCodec.issue(jobId);
+		const owner = cloneFrozen({
+			contractVersion: ANALYSIS_CONTRACT_VERSION_V1,
+			datasetHash: materialized.canonicalRequest.pathTask.datasetHash,
+			specHash: materialized.canonicalRequest.pathTask.specHash,
+			runId: materialized.canonicalRequest.pathTask.runId,
+			taskId: jobId
+		});
+		const inputObjectKey = `compute-inputs/${jobId}/longitudinal-v2.json`;
+		const storedInput = cloneFrozen({
+			version: LONGITUDINAL_COMPUTE_STORED_INPUT_VERSION_V2,
+			kind: LONGITUDINAL_COMPUTE_TASK_KIND_V2,
+			owner,
+			deadlineAtMs,
+			request: materialized.canonicalRequest
+		});
+		const storedInputBytes = new TextEncoder().encode(canonicalStringify(storedInput));
+		if (storedInputBytes.byteLength > this.#maxLongitudinalStoredInputBytes) httpError("PAYLOAD_TOO_LARGE", 413, "Trusted longitudinal worker input exceeds the scientific provider limit.");
+		const storedInputSha256 = sha256Bytes$1(storedInputBytes);
+		const sourceResult = materialized.canonicalRequest.dataset.sourceResult;
+		if (sourceResult === void 0) httpError("INTERNAL_ERROR", 500, "Validated longitudinal source result disappeared.");
+		const receipt = materialized.canonicalRequest.dataset.receipt;
+		const dataset = cloneFrozen({
+			sha256: receipt.sha256,
+			byteLength: receipt.byteLength,
+			format: receipt.format
+		});
+		const record = cloneFrozen({
+			version: COMPUTE_HTTP_JOB_VERSION,
+			jobId,
+			revision: 0,
+			capabilityHash: this.#infrastructure.capabilityCodec.hashSecret(capability),
+			boundOrigin: context.origin,
+			createIdempotencyHash,
+			createRequestFingerprint,
+			dataset,
+			inputObjectKey,
+			inputObjectOwnedByJob: true,
+			sourceResultHash: sourceResult.hash,
+			longitudinalInputSha256: storedInputSha256,
+			longitudinalInputByteLength: storedInputBytes.byteLength,
+			createdAtMs: now,
+			updatedAtMs: now,
+			expiresAtMs,
+			owner,
+			taskKind: LONGITUDINAL_COMPUTE_TASK_KIND_V2,
+			coreTaskId: jobId
+		});
+		const created = await this.#infrastructure.repository.createIfAbsent(record);
+		if (!created.created && (created.record.createIdempotencyHash !== createIdempotencyHash || created.record.createRequestFingerprint !== createRequestFingerprint || created.record.taskKind !== "longitudinal-analysis-v2")) httpError("IDEMPOTENCY_CONFLICT", 409, "Concurrent longitudinal create bound another immutable request.");
+		await this.#ensureLongitudinalCoreTask(created.record, materialized.canonicalRequest);
+		const snapshot = await this.#statusSnapshot(created.record);
+		await this.#publishStatus(snapshot.status);
+		return this.#longitudinalCapabilityResponse(created.record, requestUrl, created.created, context);
+	}
+	async #ensureLongitudinalCoreTask(job, canonicalRequest) {
+		const owner = job.owner;
+		const sha256 = job.longitudinalInputSha256;
+		const byteLength = job.longitudinalInputByteLength;
+		if (job.taskKind !== "longitudinal-analysis-v2" || job.coreTaskId !== job.jobId || owner === void 0 || sha256 === void 0 || !LOWER_SHA256.test(sha256) || byteLength === void 0 || !Number.isSafeInteger(byteLength) || byteLength < 1) httpError("INTERNAL_ERROR", 500, "Longitudinal HTTP job binding is incomplete.");
+		const deadlineAtMs = job.createdAtMs + LONGITUDINAL_HARD_DEADLINE_MS;
+		if (!Number.isSafeInteger(deadlineAtMs) || deadlineAtMs > job.expiresAtMs) httpError("INTERNAL_ERROR", 500, "Longitudinal hard deadline binding is invalid.");
+		const expectedInput = {
+			key: job.inputObjectKey,
+			sha256,
+			byteLength
+		};
+		const coreRequest = {
+			version: COMPUTE_TASK_REQUEST_VERSION,
+			owner: {
+				contractVersion: COMPUTE_TASK_OWNER_CONTRACT_VERSION,
+				datasetHash: owner.datasetHash,
+				specHash: owner.specHash,
+				runId: owner.runId,
+				taskId: owner.taskId
+			},
+			taskKind: LONGITUDINAL_COMPUTE_TASK_KIND_V2,
+			input: expectedInput,
+			deadlineAtMs,
+			expiresAtMs: job.expiresAtMs
+		};
+		const existing = await this.#core.getTask(job.coreTaskId);
+		if (existing !== null && canonicalStringify(existing.request) !== canonicalStringify(coreRequest)) httpError("INTERNAL_ERROR", 500, "Core longitudinal task binding diverged.");
+		if (job.inputDeletedAtMs !== void 0) {
+			if (existing === null) httpError("INTERNAL_ERROR", 500, "Deleted longitudinal input has no bound core task.");
+			return existing;
+		}
+		const reconciliationNow = this.#infrastructure.clock.now();
+		if (existing === null && reconciliationNow >= deadlineAtMs) {
+			await this.#patchJob(job.jobId, (current) => ({
+				...current,
+				revision: current.revision + 1,
+				updatedAtMs: reconciliationNow,
+				deleteIdempotencyHash: current.deleteIdempotencyHash ?? this.#infrastructure.capabilityCodec.hashSecret(`longitudinal-deadline-cleanup\0${job.jobId}`),
+				deleteRequestedAtMs: current.deleteRequestedAtMs ?? reconciliationNow,
+				deleteCancelled: current.deleteCancelled ?? true,
+				deleteTerminationRequired: current.deleteTerminationRequired === true,
+				deleteCapacityReserved: current.deleteCapacityReserved === true
+			}));
+			httpError("DEADLINE_EXCEEDED", 409, "Longitudinal core creation missed its hard deadline.");
+		}
+		if (canonicalRequest !== void 0) {
+			const storedInput = cloneFrozen({
+				version: LONGITUDINAL_COMPUTE_STORED_INPUT_VERSION_V2,
+				kind: LONGITUDINAL_COMPUTE_TASK_KIND_V2,
+				owner,
+				deadlineAtMs,
+				request: canonicalRequest
+			});
+			const bytes = new TextEncoder().encode(canonicalStringify(storedInput));
+			if (bytes.byteLength !== byteLength || sha256Bytes$1(bytes) !== sha256) httpError("IDEMPOTENCY_CONFLICT", 409, "Longitudinal replay does not match the immutable stored input receipt.");
+			if (!descriptorsEqual$1((await this.#infrastructure.objectStore.putImmutable(job.inputObjectKey, bytes)).descriptor, expectedInput)) httpError("INTERNAL_ERROR", 500, "Stored longitudinal input receipt diverged.");
+		} else {
+			const stored = await this.#infrastructure.objectStore.head(job.inputObjectKey);
+			if (stored === null) httpError("NOT_READY", 503, "Longitudinal immutable input awaits idempotent create replay.");
+			if (!descriptorsEqual$1(stored, expectedInput)) httpError("INTERNAL_ERROR", 500, "Stored longitudinal input failed its immutable receipt.");
+		}
+		if (existing !== null) return existing;
+		try {
+			return (await this.#core.createTask(coreRequest)).record;
+		} catch (error) {
+			if (error instanceof ComputeServiceCoreError) throw mapCoreError(error);
+			throw error;
+		}
+	}
+	#longitudinalCapabilityResponse(job, requestUrl, created, context) {
+		if (job.taskKind !== "longitudinal-analysis-v2") httpError("INTERNAL_ERROR", 500, "Longitudinal capability job binding is unavailable.");
+		const capabilityToken = this.#infrastructure.capabilityCodec.issue(job.jobId);
+		if (!this.#infrastructure.capabilityCodec.verify(capabilityToken, job.capabilityHash)) httpError("INTERNAL_ERROR", 500, "Stored longitudinal capability is inconsistent.");
+		const jobPath = `/v1/jobs/${encodeURIComponent(job.jobId)}`;
+		const urlFor = (suffix) => assertSafeAbsoluteUrl(new URL(`${jobPath}${suffix}`, requestUrl.origin).toString(), "longitudinal capability URL");
+		const response = {
+			schemaVersion: LONGITUDINAL_COMPUTE_CAPABILITY_VERSION_V2,
+			jobId: job.jobId,
+			capabilityToken,
+			urls: {
+				schemaVersion: LONGITUDINAL_COMPUTE_STATUS_URLS_VERSION_V2,
+				statusUrl: urlFor(""),
+				eventsUrl: urlFor("/events"),
+				resultUrl: urlFor("/result"),
+				artifactUrl: urlFor("/artifact"),
+				cancelUrl: urlFor(""),
+				deleteUrl: urlFor("")
+			},
+			expiresAt: isoTimestamp(job.expiresAtMs)
+		};
+		return this.#json(created ? 201 : 200, response, context);
 	}
 	async #createJob(request, context) {
 		if (this.#infrastructure.datasetWorkflow !== void 0) return this.#createActivatedJob(request, context);
@@ -35587,8 +38865,10 @@ var ComputeV1HttpRouter = class {
 	}
 	async #createActivatedJob(request, context) {
 		const idempotencyKey = this.#requireIdempotencyKey(request);
-		const capabilityToken = this.#bearerToken(request);
 		const parsed = await this.#parseJson(request);
+		if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) && parsed.schemaVersion === "3dena.create-job-request.v1") return this.#createPreparedImportJob(request, parsed, idempotencyKey, context);
+		const capabilityToken = this.#bearerToken(request);
+		if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) && parsed.schemaVersion === "3dena.create-source-result-job-request.v1") return this.#createSourceResultJob(request, parsed, idempotencyKey, context);
 		assertExactFields(parsed, [
 			"schemaVersion",
 			"activationReceipt",
@@ -35626,7 +38906,7 @@ var ComputeV1HttpRouter = class {
 		const jobCapability = this.#infrastructure.capabilityCodec.issue(jobId);
 		const expiresAtMs = Math.min(activation.session.expiresAtMs, now + this.#jobTtlMs);
 		const activatedDatasetFormat = activation.receipt.datasetReceipt.format;
-		if (!isDatasetFormat(activatedDatasetFormat)) httpError("INVALID_REQUEST", 400, "Activated dataset format is not supported remotely.");
+		if (!isDatasetFormat(activatedDatasetFormat) || activatedDatasetFormat === "ena3d-json") httpError("INVALID_REQUEST", 400, "Activated dataset format is not supported remotely.");
 		const dataset = cloneFrozen({
 			sha256: activation.receipt.datasetReceipt.sha256,
 			byteLength: activation.receipt.datasetReceipt.byteLength,
@@ -35647,6 +38927,7 @@ var ComputeV1HttpRouter = class {
 			activatedDatasetId: activation.session.datasetId,
 			activationReceiptSha256: activation.receipt.activationReceiptSha256,
 			activatedDatasetContentUrl: contentUrl,
+			activatedDatasetReceipt: activation.receipt.datasetReceipt,
 			createdAtMs: now,
 			updatedAtMs: now,
 			expiresAtMs
@@ -35658,6 +38939,159 @@ var ComputeV1HttpRouter = class {
 			await this.#publishStatus(status.status);
 		}
 		return this.#jobCapabilityResponse(created.record, created.created, context);
+	}
+	async #createPreparedImportJob(request, parsed, idempotencyKey, context) {
+		assertExactFields(parsed, [
+			"schemaVersion",
+			"dataset",
+			"processingPolicyConfirmed"
+		], "prepared import create request");
+		const candidate = parsed;
+		if (candidate.schemaVersion !== "3dena.create-job-request.v1" || candidate.processingPolicyConfirmed !== true) httpError("INVALID_REQUEST", 400, "Prepared import create request is invalid.");
+		assertExactFields(candidate.dataset, [
+			"sha256",
+			"byteLength",
+			"format"
+		], "prepared import dataset");
+		const datasetCandidate = candidate.dataset;
+		if (typeof datasetCandidate.sha256 !== "string" || !LOWER_SHA256.test(datasetCandidate.sha256) || !Number.isSafeInteger(datasetCandidate.byteLength) || datasetCandidate.byteLength < 1 || datasetCandidate.byteLength > MAX_PREPARED_DATASET_BYTES || datasetCandidate.format !== "ena3d-json") httpError("INVALID_REQUEST", 400, "Prepared import exact-byte reservation is invalid.");
+		const createRequest = parsed;
+		const createRequestFingerprint = sha256Text(canonicalStringify({
+			request: createRequest,
+			origin: context.origin
+		}));
+		const createIdempotencyHash = this.#infrastructure.capabilityCodec.hashSecret(`prepared-create\0${context.origin ?? "server"}\0${idempotencyKey}`);
+		const replay = await this.#infrastructure.repository.findByCreateIdempotencyHash(createIdempotencyHash);
+		if (replay !== null) {
+			if (replay.createRequestFingerprint !== createRequestFingerprint) httpError("IDEMPOTENCY_CONFLICT", 409, "Prepared import create key is bound to another request.");
+			return this.#jobCapabilityResponse(replay, false, context);
+		}
+		const now = this.#infrastructure.clock.now();
+		const jobId = this.#infrastructure.idFactory.nextId("job");
+		if (!OPAQUE_ID.test(jobId)) httpError("INTERNAL_ERROR", 500, "Job ID is unsafe.");
+		const capability = this.#infrastructure.capabilityCodec.issue(jobId);
+		const expiresAtMs = now + this.#jobTtlMs;
+		const dataset = cloneFrozen({
+			sha256: createRequest.dataset.sha256,
+			byteLength: createRequest.dataset.byteLength,
+			format: "ena3d-json"
+		});
+		const upload = await this.#infrastructure.objectUrls.createUploadTarget({
+			jobId,
+			dataset,
+			expiresAtMs
+		});
+		assertSafeAbsoluteUrl(upload.uploadUrl, "prepared import upload URL");
+		if (typeof upload.objectKey !== "string" || !upload.objectKey.startsWith(`compute-inputs/${jobId}/`)) httpError("INTERNAL_ERROR", 500, "Prepared import upload issuer returned an unowned key.");
+		const record = cloneFrozen({
+			version: COMPUTE_HTTP_JOB_VERSION,
+			jobId,
+			revision: 0,
+			capabilityHash: this.#infrastructure.capabilityCodec.hashSecret(capability),
+			boundOrigin: context.origin,
+			createIdempotencyHash,
+			createRequestFingerprint,
+			dataset,
+			inputObjectKey: upload.objectKey,
+			inputObjectOwnedByJob: true,
+			createdAtMs: now,
+			updatedAtMs: now,
+			expiresAtMs
+		});
+		const created = await this.#infrastructure.repository.createIfAbsent(record);
+		if (!created.created && created.record.createRequestFingerprint !== createRequestFingerprint) httpError("IDEMPOTENCY_CONFLICT", 409, "Concurrent prepared import create conflicted.");
+		if (created.created) {
+			const status = await this.#statusSnapshot(created.record);
+			await this.#publishStatus(status.status);
+		}
+		return this.#jobCapabilityResponse(created.record, created.created, context);
+	}
+	async #createSourceResultJob(request, parsed, idempotencyKey, context) {
+		assertExactFields(parsed, [
+			"schemaVersion",
+			"sourceJobId",
+			"sourceResultHash",
+			"processingPolicyConfirmed"
+		], "source-result job create request");
+		const candidate = parsed;
+		if (candidate.schemaVersion !== "3dena.create-source-result-job-request.v1" || candidate.processingPolicyConfirmed !== true || typeof candidate.sourceJobId !== "string" || !OPAQUE_ID.test(candidate.sourceJobId) || typeof candidate.sourceResultHash !== "string" || !LOWER_SHA256.test(candidate.sourceResultHash)) httpError("INVALID_REQUEST", 400, "Source-result job request is invalid.");
+		const createRequest = parsed;
+		const sourceJob = await this.#authorize(request, createRequest.sourceJobId, context.origin, false);
+		const sourceSnapshot = await this.#statusSnapshot(sourceJob);
+		const receipt = sourceSnapshot.job.activatedDatasetReceipt;
+		const sourceOwner = sourceSnapshot.job.owner;
+		if (sourceSnapshot.status.state !== "SUCCEEDED" || !sourceSnapshot.status.resultAvailable || sourceSnapshot.job.taskKind !== "ena-model" && sourceSnapshot.job.taskKind !== "prepared-import" || sourceOwner === void 0 || receipt === void 0) httpError("DATASET_WORKFLOW_REJECTED", 409, "A successful service-owned scientific source job is required.");
+		try {
+			assertDatasetReceiptV1(receipt, "source.datasetReceipt");
+			assertTaskOwnerV1(sourceOwner, "source.owner");
+		} catch {
+			httpError("DATASET_RECEIPT_MISMATCH", 409, "Source job metadata is invalid.");
+		}
+		const resolver = this.#infrastructure.sourceResults;
+		if (resolver === void 0) httpError("DATASET_WORKFLOW_REJECTED", 409, "Service-owned source result resolution is unavailable.");
+		const now = this.#infrastructure.clock.now();
+		const sourceBinding = await resolver.resolve({
+			sourceResultHash: createRequest.sourceResultHash,
+			activatedDatasetSha256: receipt.sha256,
+			requiredBuildId: this.#buildIdentity.flyBuildId,
+			nowMs: now
+		});
+		const expectedSourceKind = sourceSnapshot.job.taskKind === "ena-model" ? "raw-jena" : "prepared-exchange";
+		if (sourceBinding === null || sourceBinding.source.sourceKind !== expectedSourceKind || sourceBinding.source.hash !== createRequest.sourceResultHash || sourceBinding.buildId !== this.#buildIdentity.flyBuildId || !sameTaskOwner(sourceBinding.owner, sourceOwner) || sourceBinding.publishedAtMs > now || sourceBinding.expiresAtMs <= now || await hashAnalysisValueV1(sourceBinding.source.result) !== createRequest.sourceResultHash) httpError("DATASET_RECEIPT_MISMATCH", 409, "The requested scientific source result is unavailable or not owned by the source job.");
+		const createRequestFingerprint = sha256Text(canonicalStringify({
+			request: createRequest,
+			origin: context.origin
+		}));
+		const createIdempotencyHash = this.#infrastructure.capabilityCodec.hashSecret(`source-create\0${sourceJob.jobId}\0${createRequest.sourceResultHash}\0${idempotencyKey}`);
+		const replay = await this.#infrastructure.repository.findByCreateIdempotencyHash(createIdempotencyHash);
+		if (replay !== null) {
+			if (replay.createRequestFingerprint !== createRequestFingerprint) httpError("IDEMPOTENCY_CONFLICT", 409, "Source-result create key is bound to another request.");
+			return this.#sourceResultJobCapabilityResponse(replay, false, context);
+		}
+		const jobId = this.#infrastructure.idFactory.nextId("job");
+		if (!OPAQUE_ID.test(jobId)) httpError("INTERNAL_ERROR", 500, "Job ID is unsafe.");
+		const jobCapability = this.#infrastructure.capabilityCodec.issue(jobId);
+		const expiresAtMs = Math.min(sourceJob.expiresAtMs, sourceBinding.expiresAtMs, now + this.#jobTtlMs);
+		if (expiresAtMs <= now) httpError("JOB_EXPIRED", 410, "Source result has expired.");
+		const record = cloneFrozen({
+			version: COMPUTE_HTTP_JOB_VERSION,
+			jobId,
+			revision: 0,
+			capabilityHash: this.#infrastructure.capabilityCodec.hashSecret(jobCapability),
+			boundOrigin: context.origin,
+			createIdempotencyHash,
+			createRequestFingerprint,
+			dataset: sourceJob.dataset,
+			inputObjectKey: sourceJob.inputObjectKey,
+			inputObjectOwnedByJob: false,
+			activatedDatasetReceipt: receipt,
+			sourceJobId: sourceJob.jobId,
+			sourceResultHash: createRequest.sourceResultHash,
+			createdAtMs: now,
+			updatedAtMs: now,
+			expiresAtMs
+		});
+		const created = await this.#infrastructure.repository.createIfAbsent(record);
+		if (!created.created && created.record.createRequestFingerprint !== createRequestFingerprint) httpError("IDEMPOTENCY_CONFLICT", 409, "Concurrent source-result create conflicted.");
+		if (created.created) {
+			const status = await this.#statusSnapshot(created.record);
+			await this.#publishStatus(status.status);
+		}
+		return this.#sourceResultJobCapabilityResponse(created.record, created.created, context);
+	}
+	#sourceResultJobCapabilityResponse(job, created, context) {
+		if (job.sourceJobId === void 0 || job.sourceResultHash === void 0) httpError("INTERNAL_ERROR", 500, "Source-result job binding is unavailable.");
+		const capability = this.#infrastructure.capabilityCodec.issue(job.jobId);
+		if (!this.#infrastructure.capabilityCodec.verify(capability, job.capabilityHash)) httpError("INTERNAL_ERROR", 500, "Stored source-result capability is inconsistent.");
+		const response = {
+			schemaVersion: "3dena.source-result-job-capability.v1",
+			jobId: job.jobId,
+			capabilityToken: capability,
+			sourceJobId: job.sourceJobId,
+			sourceResultHash: job.sourceResultHash,
+			expiresAt: isoTimestamp(job.expiresAtMs)
+		};
+		return this.#json(created ? 201 : 200, response, context);
 	}
 	async #jobCapabilityResponse(job, created, context) {
 		const capability = this.#infrastructure.capabilityCodec.issue(job.jobId);
@@ -35683,7 +39117,8 @@ var ComputeV1HttpRouter = class {
 		return this.#json(created ? 201 : 200, response, context);
 	}
 	async #executeJob(request, authorizedJob, context) {
-		if (authorizedJob.inputObjectOwnedByJob === false && authorizedJob.activatedDatasetId !== void 0 && authorizedJob.activationReceiptSha256 !== void 0) return this.#executeActivatedJob(request, authorizedJob, context);
+		if (authorizedJob.inputObjectOwnedByJob === false && (authorizedJob.activatedDatasetId !== void 0 && authorizedJob.activationReceiptSha256 !== void 0 || authorizedJob.sourceJobId !== void 0 && authorizedJob.sourceResultHash !== void 0 && authorizedJob.activatedDatasetReceipt !== void 0)) return this.#executeActivatedJob(request, authorizedJob, context);
+		if (authorizedJob.dataset.format === "ena3d-json") return this.#executePreparedImportJob(request, authorizedJob, context);
 		const idempotencyKey = this.#requireIdempotencyKey(request);
 		const parsed = await this.#parseJson(request);
 		assertExactFields(parsed, [
@@ -35699,6 +39134,90 @@ var ComputeV1HttpRouter = class {
 			httpError("INVALID_REQUEST", 400, "Execute request violates analysis contracts.");
 		}
 		const executeRequest = parsed;
+		return this.#executeReservedJob(authorizedJob, context, idempotencyKey, executeRequest);
+	}
+	async #putJobContent(request, job, context) {
+		this.#requireIdempotencyKey(request);
+		if (job.dataset.format !== "ena3d-json" || job.inputObjectOwnedByJob !== true || job.executeRequestFingerprint !== void 0 || job.inputDeletedAtMs !== void 0) httpError("DATASET_WORKFLOW_REJECTED", 409, "This job does not accept prepared-exchange content.");
+		const bytes = await this.#parseRawDataset(request, job.dataset.byteLength);
+		if (sha256Bytes$1(bytes) !== job.dataset.sha256) httpError("DATASET_RECEIPT_MISMATCH", 409, "Prepared-exchange bytes do not match the reserved SHA-256.");
+		const stored = await this.#infrastructure.objectStore.putImmutable(job.inputObjectKey, bytes);
+		if (!descriptorsEqual$1(stored.descriptor, {
+			key: job.inputObjectKey,
+			sha256: job.dataset.sha256,
+			byteLength: job.dataset.byteLength
+		})) httpError("DATASET_RECEIPT_MISMATCH", 409, "Prepared-exchange storage receipt diverged.");
+		return this.#json(200, {
+			schemaVersion: "3dena.prepared-import-upload-receipt.v1",
+			jobId: job.jobId,
+			sha256: stored.descriptor.sha256,
+			byteLength: stored.descriptor.byteLength,
+			accepted: true
+		}, context);
+	}
+	async #executePreparedImportJob(request, authorizedJob, context) {
+		const idempotencyKey = this.#requireIdempotencyKey(request);
+		const parsed = await this.#parseJson(request);
+		assertExactFields(parsed, [
+			"schemaVersion",
+			"datasetReceipt",
+			"task"
+		], "prepared import execute request");
+		if (parsed.schemaVersion !== "3dena.execute-prepared-import-job-request.v1") httpError("INVALID_REQUEST", 400, "Unsupported prepared import execute request version.");
+		try {
+			assertDatasetReceiptV1(parsed.datasetReceipt, "request.datasetReceipt");
+		} catch {
+			httpError("INVALID_REQUEST", 400, "Prepared import dataset receipt is invalid.");
+		}
+		assertExactFields(parsed.task, [
+			"schemaVersion",
+			"kind",
+			"runId",
+			"deadlineEpochMilliseconds",
+			"mapping"
+		], "prepared import task");
+		const requestTask = parsed.task;
+		if (requestTask.schemaVersion !== "3dena.activated-prepared-import-task-spec.v1" || requestTask.kind !== "prepared-import" || typeof requestTask.runId !== "string" || !OPAQUE_ID.test(requestTask.runId) || !Number.isSafeInteger(requestTask.deadlineEpochMilliseconds)) httpError("INVALID_REQUEST", 400, "Prepared import task binding is invalid.");
+		const receipt = parsed.datasetReceipt;
+		if (receipt.format !== "ena3d-json" || receipt.sha256 !== authorizedJob.dataset.sha256 || receipt.byteLength !== authorizedJob.dataset.byteLength) httpError("DATASET_RECEIPT_MISMATCH", 409, "Prepared import receipt does not match the reserved exact bytes.");
+		const uploaded = await this.#infrastructure.objectStore.head(authorizedJob.inputObjectKey);
+		const bytes = await this.#infrastructure.objectStore.get(authorizedJob.inputObjectKey);
+		if (uploaded === null || bytes === null || uploaded.sha256 !== receipt.sha256 || uploaded.byteLength !== receipt.byteLength || bytes.byteLength !== receipt.byteLength || sha256Bytes$1(bytes) !== receipt.sha256) httpError("DATASET_RECEIPT_MISMATCH", 409, "Prepared import upload does not match its immutable receipt.");
+		const specHash = await hashAnalysisValueV1({
+			kind: "prepared-import",
+			mapping: requestTask.mapping
+		});
+		if (receipt.activationIdentity !== `prepared:${receipt.sha256}:${specHash}`) httpError("DATASET_RECEIPT_MISMATCH", 409, "Prepared import receipt is not bound to the frozen mapping.");
+		const task = {
+			schemaVersion: ANALYSIS_TASK_VERSION_V1,
+			kind: "prepared-import",
+			owner: {
+				contractVersion: ANALYSIS_CONTRACT_VERSION_V1,
+				datasetHash: receipt.sha256,
+				specHash,
+				runId: requestTask.runId,
+				taskId: authorizedJob.jobId
+			},
+			deadlineEpochMilliseconds: requestTask.deadlineEpochMilliseconds,
+			input: {
+				sourceName: "uploaded.ena3d.json",
+				exactBytesBase64: Buffer$1.from(bytes).toString("base64"),
+				mapping: requestTask.mapping
+			}
+		};
+		try {
+			assertAnalysisTaskV1(task, "service.task");
+		} catch {
+			httpError("INVALID_REQUEST", 400, "Prepared import mapping violates analysis contracts.");
+		}
+		const executeRequest = {
+			schemaVersion: "3dena.execute-job-request.v1",
+			datasetReceipt: receipt,
+			task
+		};
+		return this.#executeReservedJob(authorizedJob, context, idempotencyKey, executeRequest);
+	}
+	async #executeReservedJob(authorizedJob, context, idempotencyKey, executeRequest) {
 		const receipt = executeRequest.datasetReceipt;
 		const task = executeRequest.task;
 		if (!SUPPORTED_TASK_KINDS.has(task.kind)) httpError("INVALID_REQUEST", 400, "Analysis task kind is not supported.");
@@ -35772,7 +39291,8 @@ var ComputeV1HttpRouter = class {
 				coreTaskId,
 				executionObjectKey,
 				executeIdempotencyHash: idempotencyHash,
-				executeRequestFingerprint: requestFingerprint
+				executeRequestFingerprint: requestFingerprint,
+				activatedDatasetReceipt: receipt
 			});
 			const changed = await this.#infrastructure.repository.compareAndSet(current.jobId, current.revision, next);
 			if (!changed.applied) continue;
@@ -35803,15 +39323,25 @@ var ComputeV1HttpRouter = class {
 			await this.#publishStatus(replay.status);
 			return this.#json(202, replay.status, context);
 		}
-		const datasetId = authorizedJob.activatedDatasetId;
-		const activationReceiptSha256 = authorizedJob.activationReceiptSha256;
-		if (datasetId === void 0 || activationReceiptSha256 === void 0) httpError("DATASET_WORKFLOW_REJECTED", 409, "Activated dataset binding is unavailable.");
-		const resolved = await this.#requireDatasetService().resolveActivatedExecution(datasetId, activationReceiptSha256);
-		if (resolved === null || !descriptorsEqual$1(resolved.object, {
-			key: authorizedJob.inputObjectKey,
-			sha256: authorizedJob.dataset.sha256,
-			byteLength: authorizedJob.dataset.byteLength
-		})) httpError("DATASET_RECEIPT_MISMATCH", 409, "Activated service-owned dataset no longer matches the job binding.");
+		const sourceJobBacked = authorizedJob.sourceJobId !== void 0 && authorizedJob.sourceResultHash !== void 0 && authorizedJob.activatedDatasetReceipt !== void 0;
+		let activatedPayload;
+		let datasetReceipt = authorizedJob.activatedDatasetReceipt;
+		if (sourceJobBacked) {
+			if (requested.kind === "ena-model" || requested.sourceResultHash !== authorizedJob.sourceResultHash) httpError("DATASET_RECEIPT_MISMATCH", 409, "Derived task does not match its source-result job binding.");
+		} else {
+			const datasetId = authorizedJob.activatedDatasetId;
+			const activationReceiptSha256 = authorizedJob.activationReceiptSha256;
+			if (datasetId === void 0 || activationReceiptSha256 === void 0) httpError("DATASET_WORKFLOW_REJECTED", 409, "Activated dataset binding is unavailable.");
+			const resolved = await this.#requireDatasetService().resolveActivatedExecution(datasetId, activationReceiptSha256);
+			if (resolved === null || !descriptorsEqual$1(resolved.object, {
+				key: authorizedJob.inputObjectKey,
+				sha256: authorizedJob.dataset.sha256,
+				byteLength: authorizedJob.dataset.byteLength
+			})) httpError("DATASET_RECEIPT_MISMATCH", 409, "Activated service-owned dataset no longer matches the job binding.");
+			activatedPayload = resolved.payload;
+			datasetReceipt = resolved.receipt.datasetReceipt;
+		}
+		if (datasetReceipt === void 0) httpError("DATASET_RECEIPT_MISMATCH", 409, "Dataset receipt is unavailable for execution.");
 		const specHash = await hashAnalysisValueV1(requested.kind === "ena-model" ? requested.spec : Object.fromEntries(Object.entries(requested).filter(([field]) => ![
 			"schemaVersion",
 			"runId",
@@ -35819,7 +39349,7 @@ var ComputeV1HttpRouter = class {
 		].includes(field))));
 		const owner = {
 			contractVersion: ANALYSIS_CONTRACT_VERSION_V1,
-			datasetHash: resolved.receipt.datasetReceipt.sha256,
+			datasetHash: datasetReceipt.sha256,
 			specHash,
 			runId: requested.runId,
 			taskId: authorizedJob.jobId
@@ -35827,7 +39357,8 @@ var ComputeV1HttpRouter = class {
 		let task;
 		let sourceResult = void 0;
 		if (requested.kind === "ena-model") {
-			const materialized = materializeActivatedRows(resolved.payload, requested.spec);
+			if (activatedPayload === void 0) httpError("DATASET_WORKFLOW_REJECTED", 409, "ENA execution requires an active service-owned dataset.");
+			const materialized = materializeActivatedRows(activatedPayload, requested.spec);
 			task = {
 				schemaVersion: ANALYSIS_TASK_VERSION_V1,
 				kind: "ena-model",
@@ -35852,7 +39383,7 @@ var ComputeV1HttpRouter = class {
 			if (resolver === void 0) httpError("DATASET_WORKFLOW_REJECTED", 409, "Service-owned source result resolution is unavailable.");
 			const sourceBinding = await resolver.resolve({
 				sourceResultHash: requested.sourceResultHash,
-				activatedDatasetSha256: resolved.receipt.datasetReceipt.sha256,
+				activatedDatasetSha256: datasetReceipt.sha256,
 				requiredBuildId: this.#buildIdentity.flyBuildId,
 				nowMs: now
 			});
@@ -35862,7 +39393,7 @@ var ComputeV1HttpRouter = class {
 				httpError("DATASET_RECEIPT_MISMATCH", 409, "Source result ownership receipt is invalid.");
 			}
 			const resolvedSource = sourceBinding?.source ?? null;
-			if (sourceBinding === null || sourceBinding.owner.datasetHash !== resolved.receipt.datasetReceipt.sha256 || sourceBinding.buildId !== this.#buildIdentity.flyBuildId || !Number.isSafeInteger(sourceBinding.publishedAtMs) || !Number.isSafeInteger(sourceBinding.expiresAtMs) || sourceBinding.publishedAtMs > now || sourceBinding.expiresAtMs <= now || resolvedSource === null || resolvedSource.hash !== requested.sourceResultHash || await hashAnalysisValueV1(resolvedSource.result) !== requested.sourceResultHash) httpError("DATASET_RECEIPT_MISMATCH", 409, "Source result is missing or fails its canonical hash.");
+			if (sourceBinding === null || sourceBinding.owner.datasetHash !== datasetReceipt.sha256 || sourceBinding.buildId !== this.#buildIdentity.flyBuildId || !Number.isSafeInteger(sourceBinding.publishedAtMs) || !Number.isSafeInteger(sourceBinding.expiresAtMs) || sourceBinding.publishedAtMs > now || sourceBinding.expiresAtMs <= now || resolvedSource === null || resolvedSource.hash !== requested.sourceResultHash || await hashAnalysisValueV1(resolvedSource.result) !== requested.sourceResultHash) httpError("DATASET_RECEIPT_MISMATCH", 409, "Source result is missing or fails its canonical hash.");
 			sourceResult = resolvedSource;
 			const { schemaVersion: _schemaVersion, runId: _runId, ...scientificTask } = requested;
 			task = {
@@ -35873,7 +39404,7 @@ var ComputeV1HttpRouter = class {
 		}
 		const dataset = {
 			schemaVersion: ANALYSIS_EXECUTION_DATASET_VERSION_V2,
-			receipt: resolved.receipt.datasetReceipt,
+			receipt: datasetReceipt,
 			specHash,
 			buildId: this.#buildIdentity.flyBuildId,
 			generatedAt: isoTimestamp(now),
@@ -35985,42 +39516,150 @@ var ComputeV1HttpRouter = class {
 		});
 	}
 	async #deleteJob(request, job, context) {
+		const wantsV2 = (request.headers.get("accept") ?? "").toLocaleLowerCase("en-US").split(",").some((value) => value.trim().startsWith("application/vnd.3dena.job-deletion-receipt.v2+json"));
 		const idempotencyKey = this.#requireIdempotencyKey(request);
 		const idempotencyHash = this.#infrastructure.capabilityCodec.hashSecret(`delete\0${job.jobId}\0${idempotencyKey}`);
+		if (job.deleteIdempotencyHash !== void 0 && job.deleteIdempotencyHash !== idempotencyHash) httpError("IDEMPOTENCY_CONFLICT", 409, "Deletion operation key conflicts with the durable intent.");
 		const before = await this.#statusSnapshot(job);
+		const now = this.#infrastructure.clock.now();
+		const coreBefore = job.coreTaskId === void 0 ? null : await this.#core.getTask(job.coreTaskId);
+		const capacityReleasedFor = async (taskId, record) => {
+			if (taskId === void 0) return true;
+			if (this.#infrastructure.deletionLifecycle !== void 0) return this.#infrastructure.deletionLifecycle.capacityReleased(taskId);
+			return !this.#core.capacitySnapshot().slots.some((slot) => slot.taskRef === record?.taskRef);
+		};
+		const capacityInitiallyReleased = await capacityReleasedFor(job.coreTaskId, coreBefore);
+		const terminationRequired = !capacityInitiallyReleased || coreBefore?.execution !== void 0 && [
+			"starting",
+			"running",
+			"cancelling"
+		].includes(coreBefore.state);
+		let intent = await this.#patchJob(job.jobId, (current) => ({
+			...current,
+			revision: current.revision + 1,
+			updatedAtMs: now,
+			deleteIdempotencyHash: current.deleteIdempotencyHash ?? idempotencyHash,
+			deleteRequestedAtMs: current.deleteRequestedAtMs ?? now,
+			deleteCancelled: current.deleteCancelled ?? (before.status.state !== "SUCCEEDED" && before.status.state !== "FAILED"),
+			deleteTerminationRequired: current.deleteTerminationRequired === true || terminationRequired,
+			deleteCapacityReserved: current.deleteCapacityReserved === true || !capacityInitiallyReleased
+		}));
+		await this.#publishStatus((await this.#statusSnapshot(intent)).status);
+		let deletionRecord = coreBefore;
 		let pendingTermination = false;
-		let resultKeys = [];
-		if (job.coreTaskId !== void 0) {
-			resultKeys = (await this.#core.getTask(job.coreTaskId))?.ownedResultObjectKeys ?? [];
+		let capacityReleased = capacityInitiallyReleased;
+		if (job.coreTaskId !== void 0 && deletionRecord !== null) {
+			if (!capacityReleased && deletionRecord.execution === void 0) {
+				if (![
+					"succeeded",
+					"failed",
+					"cancelled",
+					"timed_out",
+					"expired",
+					"deleted",
+					"deleting"
+				].includes(deletionRecord.state)) deletionRecord = await this.#core.cancelTask(job.coreTaskId);
+			} else {
+				const deletion = await this.#core.deleteTask(job.coreTaskId);
+				pendingTermination = deletion.status === "pending_termination";
+				deletionRecord = deletion.record;
+			}
+			capacityReleased = await capacityReleasedFor(job.coreTaskId, deletionRecord);
+		}
+		const terminationRequiredAfterControl = job.coreTaskId !== void 0 && (!capacityReleased || deletionRecord?.execution !== void 0 || deletionRecord !== null && [
+			"starting",
+			"running",
+			"cancelling"
+		].includes(deletionRecord.state));
+		if (terminationRequiredAfterControl && intent.deleteTerminationRequired !== true || !capacityReleased && intent.deleteCapacityReserved !== true) intent = await this.#patchJob(job.jobId, (current) => ({
+			...current,
+			revision: current.revision + 1,
+			updatedAtMs: this.#infrastructure.clock.now(),
+			deleteTerminationRequired: current.deleteTerminationRequired === true || terminationRequiredAfterControl,
+			deleteCapacityReserved: current.deleteCapacityReserved === true || !capacityReleased
+		}));
+		const terminationObserved = intent.deleteTerminationRequired !== true || job.coreTaskId !== void 0 && (this.#infrastructure.deletionLifecycle !== void 0 ? await this.#infrastructure.deletionLifecycle.terminationObserved(job.coreTaskId) : deletionRecord?.execution === void 0 && deletionRecord !== null && [
+			"succeeded",
+			"failed",
+			"cancelled",
+			"timed_out",
+			"expired",
+			"deleting",
+			"deleted"
+		].includes(deletionRecord.state));
+		if (intent.deleteTerminationRequired === true && capacityReleased && !terminationObserved) httpError("INTERNAL_ERROR", 500, "Distributed capacity was released without an observed-termination receipt.");
+		if (pendingTermination || !terminationObserved || !capacityReleased || deletionRecord?.state === "cancelling") {
+			if (wantsV2) {
+				const receipt = {
+					schemaVersion: "3dena.job-deletion-receipt.v2",
+					jobId: job.jobId,
+					cancelled: false,
+					inputDeleted: false,
+					resultDeleted: false,
+					deletedAt: null,
+					intentAccepted: true,
+					termination: intent.deleteTerminationRequired === true ? terminationObserved ? "observed" : "pending" : "not_required",
+					capacity: intent.deleteCapacityReserved === true ? capacityReleased ? "released" : "held" : "not_reserved",
+					objects: "pending"
+				};
+				return this.#json(202, receipt, context);
+			}
+			const legacy = {
+				schemaVersion: "3dena.job-deletion-receipt.v1",
+				jobId: job.jobId,
+				cancelled: false,
+				inputDeleted: false,
+				resultDeleted: false,
+				deletedAt: isoTimestamp(intent.deleteRequestedAtMs ?? now)
+			};
+			return this.#json(202, legacy, context);
+		}
+		let resultKeys = deletionRecord?.ownedResultObjectKeys ?? [];
+		if (job.coreTaskId !== void 0 && deletionRecord !== null && deletionRecord.state !== "deleted") {
 			const deletion = await this.#core.deleteTask(job.coreTaskId);
-			pendingTermination = deletion.status === "pending_termination";
+			if (deletion.status !== "deleted") httpError("INTERNAL_ERROR", 500, "Deletion became non-terminal after capacity release.");
+			deletionRecord = deletion.record;
 			resultKeys = deletion.record.ownedResultObjectKeys;
 		}
 		if (job.inputObjectOwnedByJob === false && job.activatedDatasetId !== void 0 && job.activationReceiptSha256 !== void 0) await this.#requireDatasetService().deleteActivated(job.activatedDatasetId, job.activationReceiptSha256);
 		const inputKeys = [job.inputObjectOwnedByJob === false ? void 0 : job.inputObjectKey, job.executionObjectKey].filter((key) => key !== void 0);
 		for (const key of [...inputKeys, ...resultKeys]) await this.#infrastructure.objectStore.delete(key);
-		for (const key of [...inputKeys, ...resultKeys]) if (await this.#infrastructure.objectStore.head(key) !== null) httpError("INTERNAL_ERROR", 500, "Deletion was not observed in object storage.");
-		const now = this.#infrastructure.clock.now();
-		const updated = await this.#patchJob(job.jobId, (current) => ({
+		for (const key of [...inputKeys, ...resultKeys]) {
+			const [head, bytes] = await Promise.all([this.#infrastructure.objectStore.head(key), this.#infrastructure.objectStore.get(key)]);
+			if (head !== null || bytes !== null) httpError("INTERNAL_ERROR", 500, "Deletion was not observed in object storage.");
+		}
+		const completedAtMs = this.#infrastructure.clock.now();
+		const completed = await this.#patchJob(job.jobId, (current) => ({
 			...current,
 			revision: current.revision + 1,
-			updatedAtMs: now,
-			inputDeletedAtMs: current.inputDeletedAtMs ?? now,
-			deleteIdempotencyHash: current.deleteIdempotencyHash ?? idempotencyHash,
-			deleteRequestedAtMs: current.deleteRequestedAtMs ?? now,
-			deleteCancelled: current.deleteCancelled ?? (before.status.state !== "SUCCEEDED" && before.status.state !== "FAILED")
+			updatedAtMs: completedAtMs,
+			inputDeletedAtMs: current.inputDeletedAtMs ?? completedAtMs
 		}));
-		const after = await this.#statusSnapshot(updated);
-		await this.#publishStatus(after.status);
-		const receipt = {
+		await this.#publishStatus((await this.#statusSnapshot(completed)).status);
+		if (wantsV2) {
+			const receipt = {
+				schemaVersion: "3dena.job-deletion-receipt.v2",
+				jobId: job.jobId,
+				cancelled: completed.deleteCancelled ?? false,
+				inputDeleted: true,
+				resultDeleted: true,
+				deletedAt: isoTimestamp(completed.inputDeletedAtMs ?? completedAtMs),
+				intentAccepted: true,
+				termination: completed.deleteTerminationRequired === true ? "observed" : "not_required",
+				capacity: completed.deleteCapacityReserved === true ? "released" : "not_reserved",
+				objects: "deleted"
+			};
+			return this.#json(200, receipt, context);
+		}
+		const legacy = {
 			schemaVersion: "3dena.job-deletion-receipt.v1",
 			jobId: job.jobId,
-			cancelled: updated.deleteCancelled ?? false,
+			cancelled: completed.deleteCancelled ?? false,
 			inputDeleted: true,
 			resultDeleted: true,
-			deletedAt: isoTimestamp(updated.deleteRequestedAtMs ?? now)
+			deletedAt: isoTimestamp(completed.inputDeletedAtMs ?? completedAtMs)
 		};
-		return this.#json(pendingTermination ? 202 : 200, receipt, context);
+		return this.#json(200, legacy, context);
 	}
 	async #events(request, job, context) {
 		if (!(request.headers.get("accept") ?? "").toLocaleLowerCase("en-US").includes("text/event-stream")) httpError("UNSUPPORTED_MEDIA_TYPE", 406, "SSE endpoint requires text/event-stream.");
@@ -36072,10 +39711,11 @@ var ComputeV1HttpRouter = class {
 	async #statusSnapshot(initialJob) {
 		let job = initialJob;
 		let core = job.coreTaskId === void 0 ? null : await this.#core.getTask(job.coreTaskId);
-		if (job.coreTaskId !== void 0 && core === null) httpError("INTERNAL_ERROR", 500, "Bound core task is missing.");
+		if (core === null && job.taskKind === "longitudinal-analysis-v2" && job.deleteRequestedAtMs === void 0 && job.inputDeletedAtMs === void 0) core = await this.#ensureLongitudinalCoreTask(job);
+		if (job.coreTaskId !== void 0 && core === null && job.deleteRequestedAtMs === void 0) httpError("INTERNAL_ERROR", 500, "Bound core task is missing.");
 		const now = this.#infrastructure.clock.now();
-		const uploadedObject = job.inputDeletedAtMs === void 0 ? await this.#infrastructure.objectStore.head(job.inputObjectKey) : null;
-		let uploaded = false;
+		const uploadedObject = job.inputDeletedAtMs === void 0 && job.sourceResultHash === void 0 ? await this.#infrastructure.objectStore.head(job.inputObjectKey) : null;
+		let uploaded = job.sourceResultHash !== void 0;
 		if (uploadedObject !== null) {
 			if (!descriptorsEqual$1(uploadedObject, {
 				key: job.inputObjectKey,
@@ -36085,7 +39725,7 @@ var ComputeV1HttpRouter = class {
 			uploaded = true;
 		}
 		const state = publicState(job, core, uploaded, now);
-		if (job.inputDeletedAtMs === void 0 && (TERMINAL_REMOTE_STATES.has(state) || state === "CANCEL_REQUESTED")) {
+		if (job.inputDeletedAtMs === void 0 && job.deleteRequestedAtMs === void 0 && TERMINAL_REMOTE_STATES.has(state)) {
 			job = await this.#deleteOwnedInputs(job);
 			core = job.coreTaskId === void 0 ? null : await this.#core.getTask(job.coreTaskId);
 		}
@@ -36214,7 +39854,31 @@ var ComputeV1HttpRouter = class {
 		const contentLength = request.headers.get("content-length");
 		if (request.body !== null || contentLength !== null && contentLength !== "0") httpError("INVALID_REQUEST", 400, "GET and DELETE routes do not accept request bodies.");
 	}
-	async #parseJson(request) {
+	#assertLongitudinalServiceToken(request) {
+		const expected = this.#longitudinalServiceTokenSha256;
+		if (expected === void 0) return null;
+		const supplied = request.headers.get("x-3dena-service-token");
+		const suppliedHash = sha256Text(supplied ?? "");
+		if (!(expected !== void 0 && supplied !== null && /^[^\u0000-\u0020\u007f]{32,512}$/u.test(supplied) && timingSafeEqual(Buffer$1.from(suppliedHash, "hex"), Buffer$1.from(expected, "hex")))) httpError("UNAUTHORIZED", 401, "Longitudinal service authentication failed.");
+		return `longitudinal-service:${expected}`;
+	}
+	async #rateLimitPrincipal(request, pathname, origin, routeClass) {
+		const jobMatch = /^\/v1\/jobs\/([^/]+)(?:\/|$)/u.exec(pathname);
+		if (jobMatch === null) return `origin:${origin ?? "no-origin"}`;
+		let jobId = null;
+		try {
+			const decoded = decodeURIComponent(jobMatch[1] ?? "");
+			if (OPAQUE_ID.test(decoded)) jobId = decoded;
+		} catch {
+			jobId = null;
+		}
+		const authorization = request.headers.get("authorization");
+		const bearer = authorization === null ? null : /^Bearer ([A-Za-z0-9_-]{16,512})$/u.exec(authorization)?.[1] ?? null;
+		const job = jobId === null ? null : await this.#infrastructure.repository.get(jobId);
+		if (job !== null && bearer !== null && job.boundOrigin === origin && this.#infrastructure.capabilityCodec.verify(bearer, job.capabilityHash)) return `job:${job.jobId}`;
+		return `invalid-job:${routeClass}:${origin ?? "no-origin"}`;
+	}
+	async #parseJson(request, maximumBytes = this.#maxJsonBodyBytes) {
 		const contentType = request.headers.get("content-type") ?? "";
 		if (!JSON_CONTENT_TYPE.test(contentType)) httpError("UNSUPPORTED_MEDIA_TYPE", 415, "Request body must be JSON UTF-8.");
 		const contentLength = request.headers.get("content-length");
@@ -36222,12 +39886,38 @@ var ComputeV1HttpRouter = class {
 		if (contentLength !== null) {
 			if (!/^(?:0|[1-9][0-9]{0,14})$/u.test(contentLength)) httpError("INVALID_REQUEST", 400, "Content-Length is malformed.");
 			const declared = Number(contentLength);
-			if (!Number.isSafeInteger(declared) || declared > this.#maxJsonBodyBytes) httpError("PAYLOAD_TOO_LARGE", 413, "JSON body exceeds configured limit.");
+			if (!Number.isSafeInteger(declared) || declared > maximumBytes) httpError("PAYLOAD_TOO_LARGE", 413, "JSON body exceeds configured limit.");
 			declaredLength = declared;
 		}
-		const bytes = new Uint8Array(await request.arrayBuffer());
-		if (bytes.byteLength > this.#maxJsonBodyBytes) httpError("PAYLOAD_TOO_LARGE", 413, "JSON body exceeds configured limit.");
-		if (declaredLength !== null && declaredLength !== bytes.byteLength) httpError("INVALID_REQUEST", 400, "Content-Length does not match the JSON body.");
+		const chunks = [];
+		let total = 0;
+		const reader = request.body?.getReader();
+		if (reader !== void 0) try {
+			while (true) {
+				const next = await reader.read();
+				if (next.done) break;
+				const chunk = next.value;
+				if (total + chunk.byteLength > maximumBytes) {
+					try {
+						await reader.cancel("JSON body exceeds configured limit.");
+					} catch {}
+					httpError("PAYLOAD_TOO_LARGE", 413, "JSON body exceeds configured limit.");
+				}
+				const copy = new Uint8Array(chunk.byteLength);
+				copy.set(chunk);
+				chunks.push(copy);
+				total += copy.byteLength;
+			}
+		} finally {
+			reader.releaseLock();
+		}
+		const bytes = new Uint8Array(total);
+		let offset = 0;
+		for (const chunk of chunks) {
+			bytes.set(chunk, offset);
+			offset += chunk.byteLength;
+		}
+		if (declaredLength !== null && declaredLength !== total) httpError("INVALID_REQUEST", 400, "Content-Length does not match the JSON body.");
 		let text;
 		try {
 			text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -36896,6 +40586,9 @@ function scientificWorkerError(code) {
 //#region packages/compute-service-node/src/scientific/contracts.ts
 var SCIENTIFIC_WORKER_PROTOCOL_VERSION = "3dena.compute-scientific-worker.v1";
 var SCIENTIFIC_EXECUTION_INPUT_VERSION = "3dena.compute-scientific-execution-input.v1";
+var SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION = "3dena.compute-scientific-longitudinal-execution-input.v2";
+var SCIENTIFIC_STORED_LONGITUDINAL_INPUT_VERSION = LONGITUDINAL_COMPUTE_STORED_INPUT_VERSION_V2;
+var SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2 = LONGITUDINAL_COMPUTE_TASK_KIND_V2;
 var SCIENTIFIC_WORKER_LAUNCH_VERSION = "3dena.compute-scientific-worker-launch.v1";
 var SCIENTIFIC_ARTIFACT_PUT_ACK_VERSION = "3dena.compute-scientific-artifact-put-ack.v1";
 var SCIENTIFIC_PUBLICATION_ACK_VERSION = "3dena.compute-scientific-publication-ack.v1";
@@ -36927,6 +40620,45 @@ function nonEmptyString(value) {
 }
 function safeNonNegativeInteger(value) {
 	return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+function bindPersistentLongitudinalRequestV2(request) {
+	try {
+		assertLongitudinalExecutionRequestV2(request);
+	} catch {
+		scientificWorkerError("INVALID_EXECUTION_INPUT");
+	}
+	const build = getAnalysisBuildIdentityV2();
+	if (process.env.NODE_ENV === "production" && !build.bound) scientificWorkerError("INVALID_EXECUTION_INPUT");
+	for (const field of [
+		"jenaVersion",
+		"jenaCommit",
+		"jenaTarballIntegrity",
+		"sdkVersion",
+		"buildId"
+	]) if (request.execution[field] !== build[field]) scientificWorkerError("INVALID_EXECUTION_INPUT");
+	return structuredClone({
+		...request,
+		execution: {
+			...request.execution,
+			target: "persistent-compute-service",
+			jenaVersion: build.jenaVersion,
+			jenaCommit: build.jenaCommit,
+			jenaTarballIntegrity: build.jenaTarballIntegrity,
+			sdkVersion: build.sdkVersion,
+			buildId: build.buildId
+		}
+	});
+}
+async function bindAndHashPersistentLongitudinalRequestV2(request) {
+	const bound = bindPersistentLongitudinalRequestV2(request);
+	try {
+		return {
+			request: bound,
+			requestHash: await hashLongitudinalExecutionRequestV2(bound)
+		};
+	} catch {
+		scientificWorkerError("INVALID_EXECUTION_INPUT");
+	}
 }
 function assertObjectDescriptor(value) {
 	if (!isRecord$1(value) || !hasExactKeys(value, [
@@ -36971,7 +40703,39 @@ function assertDataset(value) {
 		scientificWorkerError("INVALID_EXECUTION_INPUT");
 	}
 }
+function assertLongitudinalRequestShape(value) {
+	try {
+		assertLongitudinalExecutionRequestV2(value);
+	} catch {
+		scientificWorkerError("INVALID_EXECUTION_INPUT");
+	}
+}
+function assertScientificLongitudinalExecutionInput(value, context) {
+	if (!isRecord$1(value) || !hasExactKeys(value, [
+		"version",
+		"kind",
+		"source",
+		"owner",
+		"deadlineAtMs",
+		"requestHash",
+		"request"
+	]) || value.version !== "3dena.compute-scientific-longitudinal-execution-input.v2" || value.kind !== SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2 || !safeNonNegativeInteger(value.deadlineAtMs) || typeof value.requestHash !== "string" || !SHA256.test(value.requestHash)) scientificWorkerError("INVALID_EXECUTION_INPUT");
+	try {
+		assertObjectDescriptor(value.source);
+		assertComputeOwner(value.owner);
+		assertLongitudinalRequestShape(value.request);
+	} catch {
+		scientificWorkerError("INVALID_EXECUTION_INPUT");
+	}
+	const request = value.request;
+	if (value.owner.datasetHash !== request.pathTask.datasetHash || value.owner.datasetHash !== request.dataset.receipt.sha256 || value.owner.specHash !== request.pathTask.specHash || value.owner.specHash !== request.dataset.specHash || value.owner.runId !== request.pathTask.runId || request.dataset.sourceResult?.hash !== request.pathTask.runSpec.sourceResultHash) scientificWorkerError("INVALID_EXECUTION_INPUT");
+	if (context !== void 0 && (!descriptorsEqual(value.source, context.request.input) || !ownersEqual(value.owner, context.owner) || context.request.taskKind !== SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2 || context.request.deadlineAtMs !== value.deadlineAtMs)) scientificWorkerError("INVALID_EXECUTION_INPUT");
+}
 function assertScientificExecutionInput(value, context) {
+	if (isRecord$1(value) && value.version === "3dena.compute-scientific-longitudinal-execution-input.v2") {
+		assertScientificLongitudinalExecutionInput(value, context);
+		return;
+	}
 	if (!isRecord$1(value) || !hasExactKeys(value, [
 		"version",
 		"source",
@@ -37048,8 +40812,17 @@ function assertPublicationReceipt(value, request) {
 }
 //#endregion
 //#region packages/compute-service-node/src/scientific/input-provider.ts
-function sha256$2(bytes) {
+function sha256$3(bytes) {
 	return createHash("sha256").update(bytes).digest("hex");
+}
+function storedAnalysisOwnerMatches(value, context) {
+	return isRecord$1(value) && hasExactKeys(value, [
+		"contractVersion",
+		"datasetHash",
+		"specHash",
+		"runId",
+		"taskId"
+	]) && value.contractVersion === "3dena.contract.v1" && value.datasetHash === context.owner.datasetHash && value.specHash === context.owner.specHash && value.runId === context.owner.runId && value.taskId === context.owner.taskId;
 }
 var JsonObjectStoreScientificInputProvider = class {
 	version = SCIENTIFIC_INPUT_PROVIDER_VERSION;
@@ -37078,7 +40851,7 @@ var JsonObjectStoreScientificInputProvider = class {
 			scientificWorkerError("STORE_OPERATION_FAILED");
 		}
 		if (signal.aborted) scientificWorkerError("SESSION_ABORTED");
-		if (head === null || bytes === null || head.key !== expected.key || head.sha256 !== expected.sha256 || head.byteLength !== expected.byteLength || bytes.byteLength !== expected.byteLength || sha256$2(bytes) !== expected.sha256) scientificWorkerError("INVALID_EXECUTION_INPUT");
+		if (head === null || bytes === null || head.key !== expected.key || head.sha256 !== expected.sha256 || head.byteLength !== expected.byteLength || bytes.byteLength !== expected.byteLength || sha256$3(bytes) !== expected.sha256) scientificWorkerError("INVALID_EXECUTION_INPUT");
 		let parsed;
 		try {
 			const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -37086,7 +40859,34 @@ var JsonObjectStoreScientificInputProvider = class {
 		} catch {
 			scientificWorkerError("INVALID_EXECUTION_INPUT");
 		}
-		if (!isRecord$1(parsed) || !hasExactKeys(parsed, [
+		if (!isRecord$1(parsed)) scientificWorkerError("INVALID_EXECUTION_INPUT");
+		if (parsed.version === SCIENTIFIC_STORED_LONGITUDINAL_INPUT_VERSION) {
+			if (!hasExactKeys(parsed, [
+				"version",
+				"kind",
+				"owner",
+				"deadlineAtMs",
+				"request"
+			]) || parsed.kind !== SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2 || !storedAnalysisOwnerMatches(parsed.owner, context)) scientificWorkerError("INVALID_EXECUTION_INPUT");
+			const stored = parsed;
+			const bound = await bindAndHashPersistentLongitudinalRequestV2(stored.request);
+			const execution = {
+				version: SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION,
+				kind: SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2,
+				source: {
+					key: expected.key,
+					sha256: expected.sha256,
+					byteLength: expected.byteLength
+				},
+				owner: { ...context.owner },
+				deadlineAtMs: stored.deadlineAtMs,
+				requestHash: bound.requestHash,
+				request: bound.request
+			};
+			assertScientificExecutionInput(execution, context);
+			return structuredClone(execution);
+		}
+		if (!hasExactKeys(parsed, [
 			"version",
 			"dataset",
 			"task"
@@ -37107,10 +40907,10 @@ var JsonObjectStoreScientificInputProvider = class {
 };
 //#endregion
 //#region packages/compute-service-node/src/scientific/session-adapter.ts
-function sha256$1(bytes) {
+function sha256$2(bytes) {
 	return createHash("sha256").update(bytes).digest("hex");
 }
-function analysisOwnerMatches(value, session) {
+function analysisOwnerMatches$1(value, session) {
 	return isRecord$1(value) && hasExactKeys(value, [
 		"contractVersion",
 		"datasetHash",
@@ -37119,27 +40919,52 @@ function analysisOwnerMatches(value, session) {
 		"taskId"
 	]) && value.contractVersion === "3dena.contract.v1" && value.datasetHash === session.context.owner.datasetHash && value.specHash === session.context.owner.specHash && value.runId === session.context.owner.runId && value.taskId === session.context.owner.taskId;
 }
-function assertArtifactBinding(bytes, session) {
+async function assertArtifactBinding(bytes, session, expectedLongitudinal) {
 	let artifact;
 	try {
 		artifact = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
 	} catch {
 		scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
 	}
-	if (!isRecord$1(artifact) || !hasExactKeys(artifact, [
+	if (!isRecord$1(artifact)) scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
+	if (artifact.version === "3dena.compute-scientific-longitudinal-result-artifact.v2") {
+		const bundle = isRecord$1(artifact.bundle) ? artifact.bundle : void 0;
+		const identity = bundle !== void 0 && isRecord$1(bundle.identity) ? bundle.identity : void 0;
+		const execution = bundle !== void 0 && isRecord$1(bundle.execution) ? bundle.execution : void 0;
+		if (!hasExactKeys(artifact, [
+			"version",
+			"owner",
+			"taskKind",
+			"requestHash",
+			"bundle"
+		]) || artifact.taskKind !== SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2 || session.context.request.taskKind !== SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2 || !isRecord$1(artifact.owner) || !hasExactKeys(artifact.owner, [
+			"contractVersion",
+			"datasetHash",
+			"specHash",
+			"runId",
+			"taskId"
+		]) || artifact.owner.contractVersion !== session.context.owner.contractVersion || artifact.owner.datasetHash !== session.context.owner.datasetHash || artifact.owner.specHash !== session.context.owner.specHash || artifact.owner.runId !== session.context.owner.runId || artifact.owner.taskId !== session.context.owner.taskId || expectedLongitudinal === void 0 || artifact.requestHash !== expectedLongitudinal.requestHash || bundle === void 0 || identity?.datasetHash !== session.context.owner.datasetHash || identity.specHash !== session.context.owner.specHash || identity.runId !== session.context.owner.runId || identity.sourceResultHash !== expectedLongitudinal.sourceResultHash || identity.requestHash !== expectedLongitudinal.requestHash || execution?.target !== "persistent-compute-service") scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
+		const build = getAnalysisBuildIdentityV2();
+		if (process.env.NODE_ENV === "production" && !build.bound || execution?.jenaVersion !== build.jenaVersion || execution.jenaCommit !== build.jenaCommit || execution.jenaTarballIntegrity !== build.jenaTarballIntegrity || execution.sdkVersion !== build.sdkVersion || execution.buildId !== build.buildId || identity.jenaBuildId !== `jena-js@${build.jenaVersion}+${build.jenaCommit}:${build.buildId}`) scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
+		try {
+			await verifyLongitudinalAnalysisBundleV2(bundle);
+		} catch {
+			scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
+		}
+		return;
+	}
+	try {
+		if (!isRecord$1(artifact.envelope)) throw new TypeError("INVALID_ENVELOPE");
+		assertAnalysisResultEnvelopeV1(artifact.envelope);
+	} catch {
+		scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
+	}
+	if (!hasExactKeys(artifact, [
 		"version",
 		"owner",
 		"taskKind",
 		"envelope"
-	]) || artifact.version !== "3dena.compute-scientific-result-artifact.v1" || artifact.taskKind !== session.context.request.taskKind || !analysisOwnerMatches(artifact.owner, session) || !isRecord$1(artifact.envelope) || !hasExactKeys(artifact.envelope, [
-		"schemaVersion",
-		"owner",
-		"taskKind",
-		"result",
-		"diagnostics",
-		"evidence",
-		"provenance"
-	]) || artifact.envelope.schemaVersion !== "3dena.analysis-result-envelope.v1" || artifact.envelope.taskKind !== session.context.request.taskKind || !analysisOwnerMatches(artifact.envelope.owner, session)) scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
+	]) || artifact.version !== "3dena.compute-scientific-result-artifact.v1" || artifact.taskKind !== session.context.request.taskKind || !analysisOwnerMatches$1(artifact.owner, session) || artifact.envelope.taskKind !== session.context.request.taskKind || !analysisOwnerMatches$1(artifact.envelope.owner, session)) scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
 }
 var ScientificWorkerSessionAdapter = class {
 	version = NODE_WORKER_SESSION_ADAPTER_VERSION;
@@ -37148,6 +40973,7 @@ var ScientificWorkerSessionAdapter = class {
 	#publisher;
 	#maxResultBytes;
 	#bindings = /* @__PURE__ */ new Map();
+	#expectedLongitudinal = /* @__PURE__ */ new Map();
 	#failureCounts = /* @__PURE__ */ new Map();
 	#totalFailures = 0;
 	constructor(options) {
@@ -37174,6 +41000,13 @@ var ScientificWorkerSessionAdapter = class {
 			scientificWorkerError("INVALID_EXECUTION_INPUT");
 		}
 		if (control.signal.aborted) scientificWorkerError("SESSION_ABORTED");
+		if (input.version === "3dena.compute-scientific-longitudinal-execution-input.v2") {
+			this.#expectedLongitudinal.set(context.executionId, {
+				requestHash: input.requestHash,
+				sourceResultHash: input.request.pathTask.runSpec.sourceResultHash
+			});
+			control.signal.addEventListener("abort", () => this.#expectedLongitudinal.delete(context.executionId), { once: true });
+		}
 		return {
 			version: SCIENTIFIC_WORKER_LAUNCH_VERSION,
 			input,
@@ -37191,6 +41024,7 @@ var ScientificWorkerSessionAdapter = class {
 			assertWorkerFailure(message, session.executionId);
 			this.#recordFailure(message.code);
 			this.#bindings.delete(session.childId);
+			this.#expectedLongitudinal.delete(session.executionId);
 			return;
 		}
 		if (isRecord$1(message) && message.type === "artifact-put-request") {
@@ -37217,8 +41051,9 @@ var ScientificWorkerSessionAdapter = class {
 	async #handleArtifactPut(session, message) {
 		assertArtifactPutRequest(message, session.context);
 		if (message.bytes.byteLength > this.#maxResultBytes || message.object.byteLength > this.#maxResultBytes) scientificWorkerError("ARTIFACT_TOO_LARGE");
-		if (message.bytes.byteLength !== message.object.byteLength || sha256$1(message.bytes) !== message.object.sha256) scientificWorkerError("ARTIFACT_CHECKSUM_MISMATCH");
-		assertArtifactBinding(message.bytes, session);
+		if (message.bytes.byteLength !== message.object.byteLength || sha256$2(message.bytes) !== message.object.sha256) scientificWorkerError("ARTIFACT_CHECKSUM_MISMATCH");
+		const expectedLongitudinal = this.#expectedLongitudinal.get(session.executionId);
+		await assertArtifactBinding(message.bytes, session, expectedLongitudinal);
 		const existingBinding = this.#bindings.get(session.childId);
 		if (existingBinding !== void 0 && !descriptorsEqual(existingBinding.descriptor, message.object)) scientificWorkerError("IMMUTABLE_ARTIFACT_CONFLICT");
 		let stored;
@@ -37231,9 +41066,13 @@ var ScientificWorkerSessionAdapter = class {
 		}
 		if (session.signal.aborted || !descriptorsEqual(stored.descriptor, message.object) || observed === null || !descriptorsEqual(observed, message.object)) scientificWorkerError(session.signal.aborted ? "SESSION_ABORTED" : "IMMUTABLE_ARTIFACT_CONFLICT");
 		if (existingBinding === void 0) {
-			this.#bindings.set(session.childId, { descriptor: message.object });
+			this.#bindings.set(session.childId, {
+				descriptor: message.object,
+				...expectedLongitudinal === void 0 ? {} : { longitudinalRequestHash: expectedLongitudinal.requestHash }
+			});
 			session.signal.addEventListener("abort", () => {
 				this.#bindings.delete(session.childId);
+				this.#expectedLongitudinal.delete(session.executionId);
 			}, { once: true });
 		}
 		await session.send({
@@ -37247,7 +41086,7 @@ var ScientificWorkerSessionAdapter = class {
 	async #handlePublication(session, message) {
 		assertPublicationRequest(message, session.context);
 		const binding = this.#bindings.get(session.childId);
-		if (binding === void 0 || !descriptorsEqual(binding.descriptor, message.object)) scientificWorkerError("INVALID_WORKER_MESSAGE");
+		if (binding === void 0 || !descriptorsEqual(binding.descriptor, message.object) || session.context.request.taskKind === SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2 && binding.longitudinalRequestHash === void 0) scientificWorkerError("INVALID_WORKER_MESSAGE");
 		if (binding.publicationReceipt === void 0) {
 			let receipt;
 			try {
@@ -37265,6 +41104,7 @@ var ScientificWorkerSessionAdapter = class {
 			type: "publication-ack",
 			receipt: structuredClone(binding.publicationReceipt)
 		});
+		this.#expectedLongitudinal.delete(session.executionId);
 	}
 	#recordFailure(code) {
 		if (this.#totalFailures < Number.MAX_SAFE_INTEGER) this.#totalFailures += 1;
@@ -41543,13 +45383,16 @@ import_lib$1.default.TypeOverrides;
 import_lib$1.default.defaults;
 var BUILD_APPROVAL_REGISTRY_VERSION = "3dena.build-approval-registry.v1";
 var PERSISTENT_LEASE_CLAIM_VERSION = "3dena.persistent-lease-claim.v1";
-var RECOVERY_RECEIPT_VERSION = "3dena.compute-recovery-receipt.v1";
+var RECOVERY_RECEIPT_VERSION_V2 = "3dena.compute-recovery-receipt.v2";
 var OBJECT_DELETION_PROBE_VERSION = "3dena.object-deletion-probe.v1";
+var ORPHAN_RECONCILIATION_RECEIPT_VERSION = "3dena.orphan-reconciliation-receipt.v1";
+var TERMINATION_RECONCILIATION_RECEIPT_VERSION = "3dena.termination-reconciliation-receipt.v1";
 //#endregion
 //#region packages/compute-service-persistent/src/build-approval.ts
 var COMMIT = /^[a-f0-9]{40}$/u;
 var IMAGE_DIGEST = /^sha256:[a-f0-9]{64}$/u;
 var VERSION = /^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u;
+var TARBALL_INTEGRITY = /^sha512-[A-Za-z0-9+/]+={0,2}$/u;
 var CANDIDATE_KEYS = [
 	"version",
 	"releaseId",
@@ -41563,11 +45406,13 @@ var CANDIDATE_KEYS = [
 	"jenaVersion",
 	"jenaCommit",
 	"jenaTarballSha256",
+	"jenaTarballIntegrity",
+	"sdkVersion",
+	"buildId",
 	"lockfileSha256",
 	"sbomSha256",
 	"schemaBundleSha256",
-	"migrationVersion",
-	"migrationSha256",
+	"migrationManifestSha256",
 	"contractVersions",
 	"implementationActorIds"
 ];
@@ -41587,14 +45432,14 @@ function validTimestamp(value) {
 function assertBuildApprovalCandidate(value) {
 	const contractVersions = isRecord$3(value) && Array.isArray(value.contractVersions) ? value.contractVersions : null;
 	const implementationActorIds = isRecord$3(value) && Array.isArray(value.implementationActorIds) ? value.implementationActorIds : null;
-	if (!isRecord$3(value) || !hasExactKeys$1(value, CANDIDATE_KEYS) || value.version !== "3dena.build-approval-candidate.v1" || typeof value.releaseId !== "string" || !OPAQUE_ID$1.test(value.releaseId) || value.environment !== "preview" && value.environment !== "production" || typeof value.gitCommit !== "string" || !COMMIT.test(value.gitCommit) || typeof value.vercelDeploymentId !== "string" || !OPAQUE_ID$1.test(value.vercelDeploymentId) || typeof value.vercelBuildId !== "string" || !OPAQUE_ID$1.test(value.vercelBuildId) || typeof value.flyImageDigest !== "string" || !IMAGE_DIGEST.test(value.flyImageDigest) || typeof value.flyBuildId !== "string" || !OPAQUE_ID$1.test(value.flyBuildId) || typeof value.analysisTarballSha256 !== "string" || !LOWER_SHA256$1.test(value.analysisTarballSha256) || typeof value.jenaVersion !== "string" || !VERSION.test(value.jenaVersion) || typeof value.jenaCommit !== "string" || !COMMIT.test(value.jenaCommit) || typeof value.jenaTarballSha256 !== "string" || !LOWER_SHA256$1.test(value.jenaTarballSha256) || typeof value.lockfileSha256 !== "string" || !LOWER_SHA256$1.test(value.lockfileSha256) || typeof value.sbomSha256 !== "string" || !LOWER_SHA256$1.test(value.sbomSha256) || typeof value.schemaBundleSha256 !== "string" || !LOWER_SHA256$1.test(value.schemaBundleSha256) || typeof value.migrationVersion !== "string" || !VERSION.test(value.migrationVersion) || typeof value.migrationSha256 !== "string" || !LOWER_SHA256$1.test(value.migrationSha256) || contractVersions === null || contractVersions.length < 1 || contractVersions.some((item) => typeof item !== "string" || !VERSION.test(item)) || new Set(contractVersions).size !== contractVersions.length || [...contractVersions].sort().some((item, index) => item !== contractVersions[index]) || implementationActorIds === null || implementationActorIds.length < 1 || implementationActorIds.some((item) => typeof item !== "string" || !OPAQUE_ID$1.test(item)) || new Set(implementationActorIds).size !== implementationActorIds.length || [...implementationActorIds].sort().some((item, index) => item !== implementationActorIds[index])) persistentError("BUILD_APPROVAL_INVALID");
+	if (!isRecord$3(value) || !hasExactKeys$1(value, CANDIDATE_KEYS) || value.version !== "3dena.build-approval-candidate.v3" || typeof value.releaseId !== "string" || !OPAQUE_ID$1.test(value.releaseId) || value.environment !== "preview" && value.environment !== "production" || typeof value.gitCommit !== "string" || !COMMIT.test(value.gitCommit) || typeof value.vercelDeploymentId !== "string" || !OPAQUE_ID$1.test(value.vercelDeploymentId) || typeof value.vercelBuildId !== "string" || !OPAQUE_ID$1.test(value.vercelBuildId) || typeof value.flyImageDigest !== "string" || !IMAGE_DIGEST.test(value.flyImageDigest) || typeof value.flyBuildId !== "string" || !OPAQUE_ID$1.test(value.flyBuildId) || typeof value.analysisTarballSha256 !== "string" || !LOWER_SHA256$1.test(value.analysisTarballSha256) || typeof value.jenaVersion !== "string" || !VERSION.test(value.jenaVersion) || typeof value.jenaCommit !== "string" || !COMMIT.test(value.jenaCommit) || typeof value.jenaTarballSha256 !== "string" || !LOWER_SHA256$1.test(value.jenaTarballSha256) || typeof value.jenaTarballIntegrity !== "string" || !TARBALL_INTEGRITY.test(value.jenaTarballIntegrity) || typeof value.sdkVersion !== "string" || !VERSION.test(value.sdkVersion) || typeof value.buildId !== "string" || !OPAQUE_ID$1.test(value.buildId) || typeof value.lockfileSha256 !== "string" || !LOWER_SHA256$1.test(value.lockfileSha256) || typeof value.sbomSha256 !== "string" || !LOWER_SHA256$1.test(value.sbomSha256) || typeof value.schemaBundleSha256 !== "string" || !LOWER_SHA256$1.test(value.schemaBundleSha256) || typeof value.migrationManifestSha256 !== "string" || !LOWER_SHA256$1.test(value.migrationManifestSha256) || contractVersions === null || contractVersions.length < 1 || contractVersions.some((item) => typeof item !== "string" || !VERSION.test(item)) || new Set(contractVersions).size !== contractVersions.length || [...contractVersions].sort().some((item, index) => item !== contractVersions[index]) || implementationActorIds === null || implementationActorIds.length < 1 || implementationActorIds.some((item) => typeof item !== "string" || !OPAQUE_ID$1.test(item)) || new Set(implementationActorIds).size !== implementationActorIds.length || [...implementationActorIds].sort().some((item, index) => item !== implementationActorIds[index])) persistentError("BUILD_APPROVAL_INVALID");
 }
 function buildApprovalManifestSha256(candidate) {
 	assertBuildApprovalCandidate(candidate);
 	return sha256Text$2(canonicalStringify$2(candidate));
 }
 function assertBuildApproval(value, publicKeys) {
-	if (!isRecord$3(value) || !hasExactKeys$1(value, APPROVAL_KEYS) || value.version !== "3dena.build-approval.v1" || typeof value.approvalManifestSha256 !== "string" || !LOWER_SHA256$1.test(value.approvalManifestSha256) || typeof value.reviewerId !== "string" || !OPAQUE_ID$1.test(value.reviewerId) || !validTimestamp(value.approvedAt) || typeof value.publicKeyId !== "string" || !OPAQUE_ID$1.test(value.publicKeyId) || value.signatureAlgorithm !== "Ed25519" || typeof value.signatureBase64 !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/u.test(value.signatureBase64)) persistentError("BUILD_APPROVAL_INVALID");
+	if (!isRecord$3(value) || !hasExactKeys$1(value, APPROVAL_KEYS) || value.version !== "3dena.build-approval.v3" || typeof value.approvalManifestSha256 !== "string" || !LOWER_SHA256$1.test(value.approvalManifestSha256) || typeof value.reviewerId !== "string" || !OPAQUE_ID$1.test(value.reviewerId) || !validTimestamp(value.approvedAt) || typeof value.publicKeyId !== "string" || !OPAQUE_ID$1.test(value.publicKeyId) || value.signatureAlgorithm !== "Ed25519" || typeof value.signatureBase64 !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/u.test(value.signatureBase64)) persistentError("BUILD_APPROVAL_INVALID");
 	assertBuildApprovalCandidate(value.candidate);
 	if (value.candidate.implementationActorIds.includes(value.reviewerId)) persistentError("BUILD_APPROVAL_INVALID");
 	if (buildApprovalManifestSha256(value.candidate) !== value.approvalManifestSha256) persistentError("BUILD_APPROVAL_INVALID");
@@ -41683,9 +45528,13 @@ var PostgresBuildApprovalRegistry = class {
 			"flyImageDigest",
 			"flyBuildId",
 			"approvalManifestSha256",
-			"migrationVersion",
-			"migrationSha256",
-			"contractVersions"
+			"migrationManifestSha256",
+			"contractVersions",
+			"jenaVersion",
+			"jenaCommit",
+			"jenaTarballIntegrity",
+			"sdkVersion",
+			"buildId"
 		])) return false;
 		const approval = (await this.#database.query(`WITH latest_activation AS (
          SELECT event_id, approval_manifest_sha256
@@ -41717,7 +45566,7 @@ var PostgresBuildApprovalRegistry = class {
 		if (approval === void 0) return false;
 		try {
 			assertBuildApproval(approval, this.#publicKeys);
-			return approval.candidate.migrationVersion === expected.migrationVersion && approval.candidate.migrationSha256 === expected.migrationSha256 && canonicalStringify$2(approval.candidate.contractVersions) === canonicalStringify$2(expected.contractVersions);
+			return approval.candidate.migrationManifestSha256 === expected.migrationManifestSha256 && canonicalStringify$2(approval.candidate.contractVersions) === canonicalStringify$2(expected.contractVersions) && approval.candidate.jenaVersion === expected.jenaVersion && approval.candidate.jenaCommit === expected.jenaCommit && approval.candidate.jenaTarballIntegrity === expected.jenaTarballIntegrity && approval.candidate.sdkVersion === expected.sdkVersion && approval.candidate.buildId === expected.buildId;
 		} catch {
 			return false;
 		}
@@ -42211,10 +46060,10 @@ var PostgresComputeHttpDatasetWorkflowService = class {
 //#region packages/compute-service-persistent/src/migration.ts
 /** Runtime startup is verify-only. Schema mutation is reserved for migrate.mjs apply. */
 async function verifyPersistentComputeMigration(database, expected) {
-	if (!/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u.test(expected.version) || !LOWER_SHA256$1.test(expected.sha256)) return false;
+	if (expected.length < 1 || expected.some((entry) => !/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u.test(entry.version) || !LOWER_SHA256$1.test(entry.sha256)) || new Set(expected.map((entry) => entry.version)).size !== expected.length || [...expected].sort((left, right) => left.version.localeCompare(right.version)).some((entry, index) => entry.version !== expected[index]?.version)) return false;
 	try {
 		const result = await database.query("SELECT version, sha256 FROM compute_schema_migrations ORDER BY applied_at, version");
-		return result.rows.length === 1 && result.rows[0]?.version === expected.version && result.rows[0]?.sha256 === expected.sha256;
+		return result.rows.length === expected.length && result.rows.every((row, index) => row.version === expected[index]?.version && row.sha256 === expected[index]?.sha256);
 	} catch {
 		return false;
 	}
@@ -66314,14 +70163,14 @@ var require_constants$3 = /* @__PURE__ */ __commonJSMin(((exports) => {
 //#endregion
 //#region node_modules/@vercel/blob/node_modules/undici/lib/llhttp/llhttp-wasm.js
 var require_llhttp_wasm = /* @__PURE__ */ __commonJSMin(((exports, module) => {
-	var { Buffer: Buffer$2 } = __require("node:buffer");
-	module.exports = Buffer$2.from("AGFzbQEAAAABJwdgAX8Bf2ADf39/AX9gAX8AYAJ/fwBgBH9/f38Bf2AAAGADf39/AALLAQgDZW52GHdhc21fb25faGVhZGVyc19jb21wbGV0ZQAEA2VudhV3YXNtX29uX21lc3NhZ2VfYmVnaW4AAANlbnYLd2FzbV9vbl91cmwAAQNlbnYOd2FzbV9vbl9zdGF0dXMAAQNlbnYUd2FzbV9vbl9oZWFkZXJfZmllbGQAAQNlbnYUd2FzbV9vbl9oZWFkZXJfdmFsdWUAAQNlbnYMd2FzbV9vbl9ib2R5AAEDZW52GHdhc21fb25fbWVzc2FnZV9jb21wbGV0ZQAAAy0sBQYAAAIAAAAAAAACAQIAAgICAAADAAAAAAMDAwMBAQEBAQEBAQEAAAIAAAAEBQFwARISBQMBAAIGCAF/AUGA1AQLB9EFIgZtZW1vcnkCAAtfaW5pdGlhbGl6ZQAIGV9faW5kaXJlY3RfZnVuY3Rpb25fdGFibGUBAAtsbGh0dHBfaW5pdAAJGGxsaHR0cF9zaG91bGRfa2VlcF9hbGl2ZQAvDGxsaHR0cF9hbGxvYwALBm1hbGxvYwAxC2xsaHR0cF9mcmVlAAwEZnJlZQAMD2xsaHR0cF9nZXRfdHlwZQANFWxsaHR0cF9nZXRfaHR0cF9tYWpvcgAOFWxsaHR0cF9nZXRfaHR0cF9taW5vcgAPEWxsaHR0cF9nZXRfbWV0aG9kABAWbGxodHRwX2dldF9zdGF0dXNfY29kZQAREmxsaHR0cF9nZXRfdXBncmFkZQASDGxsaHR0cF9yZXNldAATDmxsaHR0cF9leGVjdXRlABQUbGxodHRwX3NldHRpbmdzX2luaXQAFQ1sbGh0dHBfZmluaXNoABYMbGxodHRwX3BhdXNlABcNbGxodHRwX3Jlc3VtZQAYG2xsaHR0cF9yZXN1bWVfYWZ0ZXJfdXBncmFkZQAZEGxsaHR0cF9nZXRfZXJybm8AGhdsbGh0dHBfZ2V0X2Vycm9yX3JlYXNvbgAbF2xsaHR0cF9zZXRfZXJyb3JfcmVhc29uABwUbGxodHRwX2dldF9lcnJvcl9wb3MAHRFsbGh0dHBfZXJybm9fbmFtZQAeEmxsaHR0cF9tZXRob2RfbmFtZQAfEmxsaHR0cF9zdGF0dXNfbmFtZQAgGmxsaHR0cF9zZXRfbGVu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PgtBhwEMPQtBiAEMPAtBiQEMOwtBigEMOgtBiwEMOQtBjAEMOAtBjQEMNwtBjgEMNgtBjwEMNQtBkAEMNAtBkQEMMwtBkgEMMgtBkwEMMQtBlAEMMAtBlQEMLwtBlgEMLgtBlwEMLQtBmAEMLAtBmQEMKwtBmgEMKgtBmwEMKQtBnAEMKAtBnQEMJwtBngEMJgtBnwEMJQtBoAEMJAtBoQEMIwtBogEMIgtBowEMIQtBpAEMIAtBpQEMHwtBpgEMHgtBpwEMHQtBqAEMHAtBqQEMGwtBqgEMGgtBqwEMGQtBrAEMGAtBrQEMFwtBrgEMFgtBAQwVC0GvAQwUC0GwAQwTC0GxAQwSC0GzAQwRC0GyAQwQC0G0AQwPC0G1AQwOC0G2AQwNC0G3AQwMC0G4AQwLC0G5AQwKC0G6AQwJC0G7AQwIC0HGAQwHC0G8AQwGC0G9AQwFC0G+AQwEC0G/AQwDC0HAAQwCC0HCAQwBC0HBAQshAwNAAkACQAJAAkACQAJAAkACQAJAIAICfwJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJ/AkACQAJAAkACQAJAAkACQAJAAkACQAJAAkAgAgJ/AkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACfwJAAkACfwJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACfwJAAkACQAJAAn8CQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQCADDsYBAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHyAhIyUmKCorLC8wMTIzNDU2Nzk6Ozw9lANAQkRFRklLTk9QUVJTVFVWWFpbXF1eX2BhYmNkZWZnaGpsb3Bxc3V2eHl6e3x/gAGBAYIBgwGEAYUBhgGHAYgBiQGKAYsBjAGNAY4BjwGQAZEBkgGTAZQBlQGWAZcBmAGZAZoBmwGcAZ0BngGfAaABoQGiAaMBpAGlAaYBpwGoAakBqgGrAawBrQGuAa8BsAGxAbIBswG0AbUBtgG3AbgBuQG6AbsBvAG9Ab4BvwHAAcEBwgHDAcQBxQHGAccByAHJAcsBzAHNAc4BzwGKA4kDiAOHA4QDgwOAA/sC+gL5AvgC9wL0AvMC8gLLAsECsALZAQsgASAERw3wAkHdASEDDLMDCyABIARHDcgBQcMBIQMMsgMLIAEgBEcNe0H3ACEDDLEDCyABIARHDXBB7wAhAwywAwsgASAERw1pQeoAIQMMrwMLIAEgBEcNZUHoACEDDK4DCyABIARHDWJB5gAhAwytAwsgASAERw0aQRghAwysAwsgASAERw0VQRIhAwyrAwsgASAERw1CQcUAIQMMqgMLIAEgBEcNNEE/IQMMqQMLIAEgBEcNMkE8IQMMqAMLIAEgBEcNK0ExIQMMpwMLIAItAC5BAUYNnwMMwQILQQAhAAJAAkACQCACLQAqRQ0AIAItACtFDQAgAi8BMCIDQQJxRQ0BDAILIAIvATAiA0EBcUUNAQtBASEAIAItAChBAUYNACACLwEyIgVB5ABrQeQASQ0AIAVBzAFGDQAgBUGwAkYNACADQcAAcQ0AQQAhACADQYgEcUGABEYNACADQShxQQBHIQALIAJBADsBMCACQQA6AC8gAEUN3wIgAkIANwMgDOACC0EAIQACQCACKAI4IgNFDQAgAygCLCIDRQ0AIAIgAxEAACEACyAARQ3MASAAQRVHDd0CIAJBBDYCHCACIAE2AhQgAkGwGDYCECACQRU2AgxBACEDDKQDCyABIARGBEBBBiEDDKQDCyABQQFqIQFBACEAAkAgAigCOCIDRQ0AIAMoAlQiA0UNACACIAMRAAAhAAsgAA3ZAgwcCyACQgA3AyBBEiEDDIkDCyABIARHDRZBHSEDDKEDCyABIARHBEAgAUEBaiEBQRAhAwyIAwtBByEDDKADCyACIAIpAyAiCiAEIAFrrSILfSIMQgAgCiAMWhs3AyAgCiALWA3UAkEIIQMMnwMLIAEgBEcEQCACQQk2AgggAiABNgIEQRQhAwyGAwtBCSEDDJ4DCyACKQMgQgBSDccBIAIgAi8BMEGAAXI7ATAMQgsgASAERw0/QdAAIQMMnAMLIAEgBEYEQEELIQMMnAMLIAFBAWohAUEAIQACQCACKAI4IgNFDQAgAygCUCIDRQ0AIAIgAxEAACEACyAADc8CDMYBC0EAIQACQCACKAI4IgNFDQAgAygCSCIDRQ0AIAIgAxEAACEACyAARQ3GASAAQRVHDc0CIAJBCzYCHCACIAE2AhQgAkGCGTYCECACQRU2AgxBACEDDJoDC0EAIQACQCACKAI4IgNFDQAgAygCSCIDRQ0AIAIgAxEAACEACyAARQ0MIABBFUcNygIgAkEaNgIcIAIgATYCFCACQYIZNgIQIAJBFTYCDEEAIQMMmQMLQQAhAAJAIAIoAjgiA0UNACADKAJMIgNFDQAgAiADEQAAIQALIABFDcQBIABBFUcNxwIgAkELNgIcIAIgATYCFCACQZEXNgIQIAJBFTYCDEEAIQMMmAMLIAEgBEYEQEEPIQMMmAMLIAEtAAAiAEE7Rg0HIABBDUcNxAIgAUEBaiEBDMMBC0EAIQACQCACKAI4IgNFDQAgAygCTCIDRQ0AIAIgAxEAACEACyAARQ3DASAAQRVHDcICIAJBDzYCHCACIAE2AhQgAkGRFzYCECACQRU2AgxBACEDDJYDCwNAIAEtAABB8DVqLQAAIgBBAUcEQCAAQQJHDcECIAIoAgQhAEEAIQMgAkEANgIEIAIgACABQQFqIgEQLSIADcICDMUBCyAEIAFBAWoiAUcNAAtBEiEDDJUDC0EAIQACQCACKAI4IgNFDQAgAygCTCIDRQ0AIAIgAxEAACEACyAARQ3FASAAQRVHDb0CIAJBGzYCHCACIAE2AhQgAkGRFzYCECACQRU2AgxBACEDDJQDCyABIARGBEBBFiEDDJQDCyACQQo2AgggAiABNgIEQQAhAAJAIAIoAjgiA0UNACADKAJIIgNFDQAgAiADEQAAIQALIABFDcIBIABBFUcNuQIgAkEVNgIcIAIgATYCFCACQYIZNgIQIAJBFTYCDEEAIQMMkwMLIAEgBEcEQANAIAEtAABB8DdqLQAAIgBBAkcEQAJAIABBAWsOBMQCvQIAvgK9AgsgAUEBaiEBQQghAwz8AgsgBCABQQFqIgFHDQALQRUhAwyTAwtBFSEDDJIDCwNAIAEtAABB8DlqLQAAIgBBAkcEQCAAQQFrDgTFArcCwwK4ArcCCyAEIAFBAWoiAUcNAAtBGCEDDJEDCyABIARHBEAgAkELNgIIIAIgATYCBEEHIQMM+AILQRkhAwyQAwsgAUEBaiEBDAILIAEgBEYEQEEaIQMMjwMLAkAgAS0AAEENaw4UtQG/Ab8BvwG/Ab8BvwG/Ab8BvwG/Ab8BvwG/Ab8BvwG/Ab8BvwEAvwELQQAhAyACQQA2AhwgAkGvCzYCECACQQI2AgwgAiABQQFqNgIUDI4DCyABIARGBEBBGyEDDI4DCyABLQAAIgBBO0cEQCAAQQ1HDbECIAFBAWohAQy6AQsgAUEBaiEBC0EiIQMM8wILIAEgBEYEQEEcIQMMjAMLQgAhCgJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkAgAS0AAEEwaw43wQLAAgABAgMEBQYH0AHQAdAB0AHQAdAB0AEICQoLDA3QAdAB0AHQAdAB0AHQAdAB0AHQAdAB0AHQAdAB0AHQAdAB0AHQAdAB0AHQAdAB0AHQAdABDg8QERIT0AELQgIhCgzAAgtCAyEKDL8CC0IEIQoMvgILQgUhCgy9AgtCBiEKDLwCC0IHIQoMuwILQgghCgy6AgtCCSEKDLkCC0IKIQoMuAILQgshCgy3AgtCDCEKDLYCC0INIQoMtQILQg4hCgy0AgtCDyEKDLMCC0IKIQoMsgILQgshCgyxAgtCDCEKDLACC0INIQoMrwILQg4hCgyuAgtCDyEKDK0CC0IAIQoCQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAIAEtAABBMGsON8ACvwIAAQIDBAUGB74CvgK+Ar4CvgK+Ar4CCAkKCwwNvgK+Ar4CvgK+Ar4CvgK+Ar4CvgK+Ar4CvgK+Ar4CvgK+Ar4CvgK+Ar4CvgK+Ar4CvgK+Ag4PEBESE74CC0ICIQoMvwILQgMhCgy+AgtCBCEKDL0CC0IFIQoMvAILQgYhCgy7AgtCByEKDLoCC0IIIQoMuQILQgkhCgy4AgtCCiEKDLcCC0ILIQoMtgILQgwhCgy1AgtCDSEKDLQCC0IOIQoMswILQg8hCgyyAgtCCiEKDLECC0ILIQoMsAILQgwhCgyvAgtCDSEKDK4CC0IOIQoMrQILQg8hCgysAgsgAiACKQMgIgogBCABa60iC30iDEIAIAogDFobNwMgIAogC1gNpwJBHyEDDIkDCyABIARHBEAgAkEJNgIIIAIgATYCBEElIQMM8AILQSAhAwyIAwtBASEFIAIvATAiA0EIcUUEQCACKQMgQgBSIQULAkAgAi0ALgRAQQEhACACLQApQQVGDQEgA0HAAHFFIAVxRQ0BC0EAIQAgA0HAAHENAEECIQAgA0EIcQ0AIANBgARxBEACQCACLQAoQQFHDQAgAi0ALUEKcQ0AQQUhAAwCC0EEIQAMAQsgA0EgcUUEQAJAIAItAChBAUYNACACLwEyIgBB5ABrQeQASQ0AIABBzAFGDQAgAEGwAkYNAEEEIQAgA0EocUUNAiADQYgEcUGABEYNAgtBACEADAELQQBBAyACKQMgUBshAAsgAEEBaw4FvgIAsAEBpAKhAgtBESEDDO0CCyACQQE6AC8MhAMLIAEgBEcNnQJBJCEDDIQDCyABIARHDRxBxgAhAwyDAwtBACEAAkAgAigCOCIDRQ0AIAMoAkQiA0UNACACIAMRAAAhAAsgAEUNJyAAQRVHDZgCIAJB0AA2AhwgAiABNgIUIAJBkRg2AhAgAkEVNgIMQQAhAwyCAwsgASAERgRAQSghAwyCAwtBACEDIAJBADYCBCACQQw2AgggAiABIAEQKiIARQ2UAiACQSc2AhwgAiABNgIUIAIgADYCDAyBAwsgASAERgRAQSkhAwyBAwsgAS0AACIAQSBGDRMgAEEJRw2VAiABQQFqIQEMFAsgASAERwRAIAFBAWohAQwWC0EqIQMM/wILIAEgBEYEQEErIQMM/wILIAEtAAAiAEEJRyAAQSBHcQ2QAiACLQAsQQhHDd0CIAJBADoALAzdAgsgASAERgRAQSwhAwz+AgsgAS0AAEEKRw2OAiABQQFqIQEMsAELIAEgBEcNigJBLyEDDPwCCwNAIAEtAAAiAEEgRwRAIABBCmsOBIQCiAKIAoQChgILIAQgAUEBaiIBRw0AC0ExIQMM+wILQTIhAyABIARGDfoCIAIoAgAiACAEIAFraiEHIAEgAGtBA2ohBgJAA0AgAEHwO2otAAAgAS0AACIFQSByIAUgBUHBAGtB/wFxQRpJG0H/AXFHDQEgAEEDRgRAQQYhAQziAgsgAEEBaiEAIAQgAUEBaiIBRw0ACyACIAc2AgAM+wILIAJBADYCAAyGAgtBMyEDIAQgASIARg35AiAEIAFrIAIoAgAiAWohByAAIAFrQQhqIQYCQANAIAFB9DtqLQAAIAAtAAAiBUEgciAFIAVBwQBrQf8BcUEaSRtB/wFxRw0BIAFBCEYEQEEFIQEM4QILIAFBAWohASAEIABBAWoiAEcNAAsgAiAHNgIADPoCCyACQQA2AgAgACEBDIUCC0E0IQMgBCABIgBGDfgCIAQgAWsgAigCACIBaiEHIAAgAWtBBWohBgJAA0AgAUHQwgBqLQAAIAAtAAAiBUEgciAFIAVBwQBrQf8BcUEaSRtB/wFxRw0BIAFBBUYEQEEHIQEM4AILIAFBAWohASAEIABBAWoiAEcNAAsgAiAHNgIADPkCCyACQQA2AgAgACEBDIQCCyABIARHBEADQCABLQAAQYA+ai0AACIAQQFHBEAgAEECRg0JDIECCyAEIAFBAWoiAUcNAAtBMCEDDPgCC0EwIQMM9wILIAEgBEcEQANAIAEtAAAiAEEgRwRAIABBCmsOBP8B/gH+Af8B/gELIAQgAUEBaiIBRw0AC0E4IQMM9wILQTghAwz2AgsDQCABLQAAIgBBIEcgAEEJR3EN9gEgBCABQQFqIgFHDQALQTwhAwz1AgsDQCABLQAAIgBBIEcEQAJAIABBCmsOBPkBBAT5AQALIABBLEYN9QEMAwsgBCABQQFqIgFHDQALQT8hAwz0AgtBwAAhAyABIARGDfMCIAIoAgAiACAEIAFraiEFIAEgAGtBBmohBgJAA0AgAEGAQGstAAAgAS0AAEEgckcNASAAQQZGDdsCIABBAWohACAEIAFBAWoiAUcNAAsgAiAFNgIADPQCCyACQQA2AgALQTYhAwzZAgsgASAERgRAQcEAIQMM8gILIAJBDDYCCCACIAE2AgQgAi0ALEEBaw4E+wHuAewB6wHUAgsgAUEBaiEBDPoBCyABIARHBEADQAJAIAEtAAAiAEEgciAAIABBwQBrQf8BcUEaSRtB/wFxIgBBCUYNACAAQSBGDQACQAJAAkACQCAAQeMAaw4TAAMDAwMDAwMBAwMDAwMDAwMDAgMLIAFBAWohAUExIQMM3AILIAFBAWohAUEyIQMM2wILIAFBAWohAUEzIQMM2gILDP4BCyAEIAFBAWoiAUcNAAtBNSEDDPACC0E1IQMM7wILIAEgBEcEQANAIAEtAABBgDxqLQAAQQFHDfcBIAQgAUEBaiIBRw0AC0E9IQMM7wILQT0hAwzuAgtBACEAAkAgAigCOCIDRQ0AIAMoAkAiA0UNACACIAMRAAAhAAsgAEUNASAAQRVHDeYBIAJBwgA2AhwgAiABNgIUIAJB4xg2AhAgAkEVNgIMQQAhAwztAgsgAUEBaiEBC0E8IQMM0gILIAEgBEYEQEHCACEDDOsCCwJAA0ACQCABLQAAQQlrDhgAAswCzALRAswCzALMAswCzALMAswCzALMAswCzALMAswCzALMAswCzALMAgDMAgsgBCABQQFqIgFHDQALQcIAIQMM6wILIAFBAWohASACLQAtQQFxRQ3+AQtBLCEDDNACCyABIARHDd4BQcQAIQMM6AILA0AgAS0AAEGQwABqLQAAQQFHDZwBIAQgAUEBaiIBRw0AC0HFACEDDOcCCyABLQAAIgBBIEYN/gEgAEE6Rw3AAiACKAIEIQBBACEDIAJBADYCBCACIAAgARApIgAN3gEM3QELQccAIQMgBCABIgBGDeUCIAQgAWsgAigCACIBaiEHIAAgAWtBBWohBgNAIAFBkMIAai0AACAALQAAIgVBIHIgBSAFQcEAa0H/AXFBGkkbQf8BcUcNvwIgAUEFRg3CAiABQQFqIQEgBCAAQQFqIgBHDQALIAIgBzYCAAzlAgtByAAhAyAEIAEiAEYN5AIgBCABayACKAIAIgFqIQcgACABa0EJaiEGA0AgAUGWwgBqLQAAIAAtAAAiBUEgciAFIAVBwQBrQf8BcUEaSRtB/wFxRw2+AkECIAFBCUYNwgIaIAFBAWohASAEIABBAWoiAEcNAAsgAiAHNgIADOQCCyABIARGBEBByQAhAwzkAgsCQAJAIAEtAAAiAEEgciAAIABBwQBrQf8BcUEaSRtB/wFxQe4Aaw4HAL8CvwK/Ar8CvwIBvwILIAFBAWohAUE+IQMMywILIAFBAWohAUE/IQMMygILQcoAIQMgBCABIgBGDeICIAQgAWsgAigCACIBaiEGIAAgAWtBAWohBwNAIAFBoMIAai0AACAALQAAIgVBIHIgBSAFQcEAa0H/AXFBGkkbQf8BcUcNvAIgAUEBRg2+AiABQQFqIQEgBCAAQQFqIgBHDQALIAIgBjYCAAziAgtBywAhAyAEIAEiAEYN4QIgBCABayACKAIAIgFqIQcgACABa0EOaiEGA0AgAUGiwgBqLQAAIAAtAAAiBUEgciAFIAVBwQBrQf8BcUEaSRtB/wFxRw27AiABQQ5GDb4CIAFBAWohASAEIABBAWoiAEcNAAsgAiAHNgIADOECC0HMACEDIAQgASIARg3gAiAEIAFrIAIoAgAiAWohByAAIAFrQQ9qIQYDQCABQcDCAGotAAAgAC0AACIFQSByIAUgBUHBAGtB/wFxQRpJG0H/AXFHDboCQQMgAUEPRg2+AhogAUEBaiEBIAQgAEEBaiIARw0ACyACIAc2AgAM4AILQc0AIQMgBCABIgBGDd8CIAQgAWsgAigCACIBaiEHIAAgAWtBBWohBgNAIAFB0MIAai0AACAALQAAIgVBIHIgBSAFQcEAa0H/AXFBGkkbQf8BcUcNuQJBBCABQQVGDb0CGiABQQFqIQEgBCAAQQFqIgBHDQALIAIgBzYCAAzfAgsgASAERgRAQc4AIQMM3wILAkACQAJAAkAgAS0AACIAQSByIAAgAEHBAGtB/wFxQRpJG0H/AXFB4wBrDhMAvAK8ArwCvAK8ArwCvAK8ArwCvAK8ArwCAbwCvAK8AgIDvAILIAFBAWohAUHBACEDDMgCCyABQQFqIQFBwgAhAwzHAgsgAUEBaiEBQcMAIQMMxgILIAFBAWohAUHEACEDDMUCCyABIARHBEAgAkENNgIIIAIgATYCBEHFACEDDMUCC0HPACEDDN0CCwJAAkAgAS0AAEEKaw4EAZABkAEAkAELIAFBAWohAQtBKCEDDMMCCyABIARGBEBB0QAhAwzcAgsgAS0AAEEgRw0AIAFBAWohASACLQAtQQFxRQ3QAQtBFyEDDMECCyABIARHDcsBQdIAIQMM2QILQdMAIQMgASAERg3YAiACKAIAIgAgBCABa2ohBiABIABrQQFqIQUDQCABLQAAIABB1sIAai0AAEcNxwEgAEEBRg3KASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBjYCAAzYAgsgASAERgRAQdUAIQMM2AILIAEtAABBCkcNwgEgAUEBaiEBDMoBCyABIARGBEBB1gAhAwzXAgsCQAJAIAEtAABBCmsOBADDAcMBAcMBCyABQQFqIQEMygELIAFBAWohAUHKACEDDL0CC0EAIQACQCACKAI4IgNFDQAgAygCPCIDRQ0AIAIgAxEAACEACyAADb8BQc0AIQMMvAILIAItAClBIkYNzwIMiQELIAQgASIFRgRAQdsAIQMM1AILQQAhAEEBIQFBASEGQQAhAwJAAn8CQAJAAkACQAJAAkACQCAFLQAAQTBrDgrFAcQBAAECAwQFBgjDAQtBAgwGC0EDDAULQQQMBAtBBQwDC0EGDAILQQcMAQtBCAshA0EAIQFBACEGDL0BC0EJIQNBASEAQQAhAUEAIQYMvAELIAEgBEYEQEHdACEDDNMCCyABLQAAQS5HDbgBIAFBAWohAQyIAQsgASAERw22AUHfACEDDNECCyABIARHBEAgAkEONgIIIAIgATYCBEHQACEDDLgCC0HgACEDDNACC0HhACEDIAEgBEYNzwIgAigCACIAIAQgAWtqIQUgASAAa0EDaiEGA0AgAS0AACAAQeLCAGotAABHDbEBIABBA0YNswEgAEEBaiEAIAQgAUEBaiIBRw0ACyACIAU2AgAMzwILQeIAIQMgASAERg3OAiACKAIAIgAgBCABa2ohBSABIABrQQJqIQYDQCABLQAAIABB5sIAai0AAEcNsAEgAEECRg2vASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAzOAgtB4wAhAyABIARGDc0CIAIoAgAiACAEIAFraiEFIAEgAGtBA2ohBgNAIAEtAAAgAEHpwgBqLQAARw2vASAAQQNGDa0BIABBAWohACAEIAFBAWoiAUcNAAsgAiAFNgIADM0CCyABIARGBEBB5QAhAwzNAgsgAUEBaiEBQQAhAAJAIAIoAjgiA0UNACADKAIwIgNFDQAgAiADEQAAIQALIAANqgFB1gAhAwyzAgsgASAERwRAA0AgAS0AACIAQSBHBEACQAJAAkAgAEHIAGsOCwABswGzAbMBswGzAbMBswGzAQKzAQsgAUEBaiEBQdIAIQMMtwILIAFBAWohAUHTACEDDLYCCyABQQFqIQFB1AAhAwy1AgsgBCABQQFqIgFHDQALQeQAIQMMzAILQeQAIQMMywILA0AgAS0AAEHwwgBqLQAAIgBBAUcEQCAAQQJrDgOnAaYBpQGkAQsgBCABQQFqIgFHDQALQeYAIQMMygILIAFBAWogASAERw0CGkHnACEDDMkCCwNAIAEtAABB8MQAai0AACIAQQFHBEACQCAAQQJrDgSiAaEBoAEAnwELQdcAIQMMsQILIAQgAUEBaiIBRw0AC0HoACEDDMgCCyABIARGBEBB6QAhAwzIAgsCQCABLQAAIgBBCmsOGrcBmwGbAbQBmwGbAZsBmwGbAZsBmwGbAZsBmwGbAZsBmwGbAZsBmwGbAZsBpAGbAZsBAJkBCyABQQFqCyEBQQYhAwytAgsDQCABLQAAQfDGAGotAABBAUcNfSAEIAFBAWoiAUcNAAtB6gAhAwzFAgsgAUEBaiABIARHDQIaQesAIQMMxAILIAEgBEYEQEHsACEDDMQCCyABQQFqDAELIAEgBEYEQEHtACEDDMMCCyABQQFqCyEBQQQhAwyoAgsgASAERgRAQe4AIQMMwQILAkACQAJAIAEtAABB8MgAai0AAEEBaw4HkAGPAY4BAHwBAo0BCyABQQFqIQEMCwsgAUEBagyTAQtBACEDIAJBADYCHCACQZsSNgIQIAJBBzYCDCACIAFBAWo2AhQMwAILAkADQCABLQAAQfDIAGotAAAiAEEERwRAAkACQCAAQQFrDgeUAZMBkgGNAQAEAY0BC0HaACEDDKoCCyABQQFqIQFB3AAhAwypAgsgBCABQQFqIgFHDQALQe8AIQMMwAILIAFBAWoMkQELIAQgASIARgRAQfAAIQMMvwILIAAtAABBL0cNASAAQQFqIQEMBwsgBCABIgBGBEBB8QAhAwy+AgsgAC0AACIBQS9GBEAgAEEBaiEBQd0AIQMMpQILIAFBCmsiA0EWSw0AIAAhAUEBIAN0QYmAgAJxDfkBC0EAIQMgAkEANgIcIAIgADYCFCACQYwcNgIQIAJBBzYCDAy8AgsgASAERwRAIAFBAWohAUHeACEDDKMCC0HyACEDDLsCCyABIARGBEBB9AAhAwy7AgsCQCABLQAAQfDMAGotAABBAWsOA/cBcwCCAQtB4QAhAwyhAgsgASAERwRAA0AgAS0AAEHwygBqLQAAIgBBA0cEQAJAIABBAWsOAvkBAIUBC0HfACEDDKMCCyAEIAFBAWoiAUcNAAtB8wAhAwy6AgtB8wAhAwy5AgsgASAERwRAIAJBDzYCCCACIAE2AgRB4AAhAwygAgtB9QAhAwy4AgsgASAERgRAQfYAIQMMuAILIAJBDzYCCCACIAE2AgQLQQMhAwydAgsDQCABLQAAQSBHDY4CIAQgAUEBaiIBRw0AC0H3ACEDDLUCCyABIARGBEBB+AAhAwy1AgsgAS0AAEEgRw16IAFBAWohAQxbC0EAIQACQCACKAI4IgNFDQAgAygCOCIDRQ0AIAIgAxEAACEACyAADXgMgAILIAEgBEYEQEH6ACEDDLMCCyABLQAAQcwARw10IAFBAWohAUETDHYLQfsAIQMgASAERg2xAiACKAIAIgAgBCABa2ohBSABIABrQQVqIQYDQCABLQAAIABB8M4Aai0AAEcNcyAAQQVGDXUgAEEBaiEAIAQgAUEBaiIBRw0ACyACIAU2AgAMsQILIAEgBEYEQEH8ACEDDLECCwJAAkAgAS0AAEHDAGsODAB0dHR0dHR0dHR0AXQLIAFBAWohAUHmACEDDJgCCyABQQFqIQFB5wAhAwyXAgtB/QAhAyABIARGDa8CIAIoAgAiACAEIAFraiEFIAEgAGtBAmohBgJAA0AgAS0AACAAQe3PAGotAABHDXIgAEECRg0BIABBAWohACAEIAFBAWoiAUcNAAsgAiAFNgIADLACCyACQQA2AgAgBkEBaiEBQRAMcwtB/gAhAyABIARGDa4CIAIoAgAiACAEIAFraiEFIAEgAGtBBWohBgJAA0AgAS0AACAAQfbOAGotAABHDXEgAEEFRg0BIABBAWohACAEIAFBAWoiAUcNAAsgAiAFNgIADK8CCyACQQA2AgAgBkEBaiEBQRYMcgtB/wAhAyABIARGDa0CIAIoAgAiACAEIAFraiEFIAEgAGtBA2ohBgJAA0AgAS0AACAAQfzOAGotAABHDXAgAEEDRg0BIABBAWohACAEIAFBAWoiAUcNAAsgAiAFNgIADK4CCyACQQA2AgAgBkEBaiEBQQUMcQsgASAERgRAQYABIQMMrQILIAEtAABB2QBHDW4gAUEBaiEBQQgMcAsgASAERgRAQYEBIQMMrAILAkACQCABLQAAQc4Aaw4DAG8BbwsgAUEBaiEBQesAIQMMkwILIAFBAWohAUHsACEDDJICCyABIARGBEBBggEhAwyrAgsCQAJAIAEtAABByABrDggAbm5ubm5uAW4LIAFBAWohAUHqACEDDJICCyABQQFqIQFB7QAhAwyRAgtBgwEhAyABIARGDakCIAIoAgAiACAEIAFraiEFIAEgAGtBAmohBgJAA0AgAS0AACAAQYDPAGotAABHDWwgAEECRg0BIABBAWohACAEIAFBAWoiAUcNAAsgAiAFNgIADKoCCyACQQA2AgAgBkEBaiEBQQAMbQtBhAEhAyABIARGDagCIAIoAgAiACAEIAFraiEFIAEgAGtBBGohBgJAA0AgAS0AACAAQYPPAGotAABHDWsgAEEERg0BIABBAWohACAEIAFBAWoiAUcNAAsgAiAFNgIADKkCCyACQQA2AgAgBkEBaiEBQSMMbAsgASAERgRAQYUBIQMMqAILAkACQCABLQAAQcwAaw4IAGtra2trawFrCyABQQFqIQFB7wAhAwyPAgsgAUEBaiEBQfAAIQMMjgILIAEgBEYEQEGGASEDDKcCCyABLQAAQcUARw1oIAFBAWohAQxgC0GHASEDIAEgBEYNpQIgAigCACIAIAQgAWtqIQUgASAAa0EDaiEGAkADQCABLQAAIABBiM8Aai0AAEcNaCAAQQNGDQEgAEEBaiEAIAQgAUEBaiIBRw0ACyACIAU2AgAMpgILIAJBADYCACAGQQFqIQFBLQxpC0GIASEDIAEgBEYNpAIgAigCACIAIAQgAWtqIQUgASAAa0EIaiEGAkADQCABLQAAIABB0M8Aai0AAEcNZyAAQQhGDQEgAEEBaiEAIAQgAUEBaiIBRw0ACyACIAU2AgAMpQILIAJBADYCACAGQQFqIQFBKQxoCyABIARGBEBBiQEhAwykAgtBASABLQAAQd8ARw1nGiABQQFqIQEMXgtBigEhAyABIARGDaICIAIoAgAiACAEIAFraiEFIAEgAGtBAWohBgNAIAEtAAAgAEGMzwBqLQAARw1kIABBAUYN+gEgAEEBaiEAIAQgAUEBaiIBRw0ACyACIAU2AgAMogILQYsBIQMgASAERg2hAiACKAIAIgAgBCABa2ohBSABIABrQQJqIQYCQANAIAEtAAAgAEGOzwBqLQAARw1kIABBAkYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAyiAgsgAkEANgIAIAZBAWohAUECDGULQYwBIQMgASAERg2gAiACKAIAIgAgBCABa2ohBSABIABrQQFqIQYCQANAIAEtAAAgAEHwzwBqLQAARw1jIABBAUYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAyhAgsgAkEANgIAIAZBAWohAUEfDGQLQY0BIQMgASAERg2fAiACKAIAIgAgBCABa2ohBSABIABrQQFqIQYCQANAIAEtAAAgAEHyzwBqLQAARw1iIABBAUYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAygAgsgAkEANgIAIAZBAWohAUEJDGMLIAEgBEYEQEGOASEDDJ8CCwJAAkAgAS0AAEHJAGsOBwBiYmJiYgFiCyABQQFqIQFB+AAhAwyGAgsgAUEBaiEBQfkAIQMMhQILQY8BIQMgASAERg2dAiACKAIAIgAgBCABa2ohBSABIABrQQVqIQYCQANAIAEtAAAgAEGRzwBqLQAARw1gIABBBUYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAyeAgsgAkEANgIAIAZBAWohAUEYDGELQZABIQMgASAERg2cAiACKAIAIgAgBCABa2ohBSABIABrQQJqIQYCQANAIAEtAAAgAEGXzwBqLQAARw1fIABBAkYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAydAgsgAkEANgIAIAZBAWohAUEXDGALQZEBIQMgASAERg2bAiACKAIAIgAgBCABa2ohBSABIABrQQZqIQYCQANAIAEtAAAgAEGazwBqLQAARw1eIABBBkYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAycAgsgAkEANgIAIAZBAWohAUEV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JSIARQ0RIAJB5QA2AhwgAiABNgIUIAIgADYCDEEAIQMMtAELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0gIAJB0wA2AhwgAiABNgIUIAIgADYCDEEAIQMMswELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0iIAJB0gA2AhwgAiABNgIUIAIgADYCDEEAIQMMsgELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0OIAJB5QA2AhwgAiABNgIUIAIgADYCDEEAIQMMsQELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0dIAJB0wA2AhwgAiABNgIUIAIgADYCDEEAIQMMsAELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0fIAJB0gA2AhwgAiABNgIUIAIgADYCDEEAIQMMrwELIABBP0cNASABQQFqCyEBQQUhAwyUAQtBACEDIAJBADYCHCACIAE2AhQgAkH9EjYCECACQQc2AgwMrAELIAJBADYCHCACIAE2AhQgAkHcCDYCECACQQc2AgxBACEDDKsBCyACKAIEIQAgAkEANgIEIAIgACABECUiAEUNByACQeUANgIcIAIgATYCFCACIAA2AgxBACEDDKoBCyACKAIEIQAgAkEANgIEIAIgACABECUiAEUNFiACQdMANgIcIAIgATYCFCACIAA2AgxBACEDDKkBCyACKAIEIQAgAkEANgIEIAIgACABECUiAEUNGCACQdIANgIcIAIgATYCFCACIAA2AgxBACEDDKgBCyACQQA2AhwgAiABNgIUIAJBxgo2AhAgAkEHNgIMQQAhAwynAQsgAigCBCEAIAJBADYCBCACIAAgARAlIgBFDQMgAkHlADYCHCACIAE2AhQgAiAANgIMQQAhAwymAQsgAigCBCEAIAJBADYCBCACIAAgARAlIgBFDRIgAkHTADYCHCACIAE2AhQgAiAANgIMQQAhAwylAQsgAigCBCEAIAJBADYCBCACIAAgARAlIgBFDRQgAkHSADYCHCACIAE2AhQgAiAANgIMQQAhAwykAQsgAigCBCEAIAJBADYCBCACIAAgARAlIgBFDQAgAkHlADYCHCACIAE2AhQgAiAANgIMQQAhAwyjAQtB1QAhAwyJAQsgAEEVRwRAIAJBADYCHCACIAE2AhQgAkG5DTYCECACQRo2AgxB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AkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAIABB5ABrDvQDY2IAAWFhYWFhYQIDBAVhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhBgcICQoLDA0OD2FhYWFhEGFhYWFhYWFhYWFhEWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYRITFBUWFxgZGhthYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhHB0eHyAhIiMkJSYnKCkqKywtLi8wMTIzNDU2YTc4OTphYWFhYWFhYTthYWE8YWFhYT0+P2FhYWFhYWFhQGFhQWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYUJDREVGR0hJSktMTU5PUFFSU2FhYWFhYWFhVFVWV1hZWlthXF1hYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFeYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhX2BhC0HhJw8LQaQhDwtByywPC0H+MQ8LQcAkDwtBqyQPC0GNKA8LQeImDwtBgDAPC0G5Lw8LQdckDwtB7x8PC0HhHw8LQfofDwtB8iAPC0GoLw8LQa4yDwtBiDAPC0HsJw8LQYIiDwtBjh0PC0HQLg8LQcojDwtBxTIPC0HfHA8LQdIcDwtBxCAPC0HXIA8LQaIfDwtB7S4PC0GrMA8LQdQlDwtBzC4PC0H6Lg8LQfwrDwtB0jAPC0HxHQ8LQbsgDwtB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CABB3AgLii1JbnZhbGlkIGNoYXIgaW4gdXJsIHF1ZXJ5AFNwYW4gY2FsbGJhY2sgZXJyb3IgaW4gb25fYm9keQBDb250ZW50LUxlbmd0aCBvdmVyZmxvdwBDaHVuayBzaXplIG92ZXJmbG93AFJlc3BvbnNlIG92ZXJmbG93AEludmFsaWQgbWV0aG9kIGZvciBIVFRQL3gueCByZXF1ZXN0AEludmFsaWQgbWV0aG9kIGZvciBSVFNQL3gueCByZXF1ZXN0AEV4cGVjdGVkIFNPVVJDRSBtZXRob2QgZm9yIElDRS94LnggcmVxdWVzdABJbnZhbGlkIGNoYXIgaW4gdXJsIGZyYWdtZW50IHN0YXJ0AEV4cGVjdGVkIGRvdABTcGFuIGNhbGxiYWNrIGVycm9yIGluIG9uX3N0YXR1cwBJbnZhbGlkIHJlc3BvbnNlIHN0YXR1cwBJbnZhbGlkIGNoYXJhY3RlciBpbiBjaHVuayBleHRlbnNpb25zAFVzZXIgY2FsbGJhY2sgZXJyb3IAYG9uX3Jlc2V0YCBjYWxsYmFjayBlcnJvcgBgb25fY2h1bmtfaGVhZGVyYCBjYWxsYmFjayBlcnJvcgBgb25fbWVzc2FnZV9iZWdpbmAgY2FsbGJhY2sgZXJyb3IAYG9uX2NodW5rX2V4dGVuc2lvbl92YWx1ZWAgY2FsbGJhY2sgZXJyb3IAYG9uX3N0YXR1c19jb21wbGV0ZWAgY2FsbGJhY2sgZXJyb3IAYG9uX3ZlcnNpb25fY29tcGxldGVgIGNhbGxiYWNrIGVycm9yAGBvbl91cmxfY29tcGxldGVgIGNhbGxiYWNrIGVycm9yAGBvbl9jaHVua19jb21wbGV0ZWAgY2FsbGJhY2sgZXJyb3IAYG9uX2hlYWRlcl92YWx1ZV9jb21wbGV0ZWAgY2FsbGJhY2sgZXJyb3IAYG9uX21lc3NhZ2VfY29tcGxldGVgIGNhbGxiYWNrIGVycm9yAGBvbl9tZXRob2RfY29tcGxldGVgIGNhbGxiYWNrIGVycm9yAGBvbl9oZWFkZXJfZmllbGRfY29tcGxldGVgIGNhbGxiYWNrIGVycm9yAGBvbl9jaHVua19leHRlbnNpb25fbmFtZWAgY2FsbGJhY2sgZXJyb3IAVW5leHBlY3RlZCBjaGFyIGluIHVybCBzZXJ2ZXIASW52YWxpZCBoZWFkZXIgdmFsdWUgY2hhcgBJbnZhbGlkIGhlYWRlciBmaWVsZCBjaGFyAFNwYW4gY2FsbGJhY2sgZXJyb3IgaW4gb25fdmVyc2lvbgBJbnZhbGlkIG1pbm9yIHZlcnNpb24ASW52YWxpZCBtYWpvciB2ZXJzaW9uAEV4cGVjdGVkIHNwYWNlIGFmdGVyIHZlcnNpb24ARXhwZWN0ZWQgQ1JMRiBhZnRlciB2ZXJzaW9uAEludmFsaWQgSFRUUCB2ZXJzaW9uAEludmFsaWQgaGVhZGVyIHRva2VuAFNwYW4gY2FsbGJhY2sgZXJyb3IgaW4gb25fdXJsAEludmFsaWQgY2hhcmFjdGVycyBpbiB1cmwAVW5leHBlY3RlZCBzdGFydCBjaGFyIGluIHVybABEb3VibGUgQCBpbiB1cmwARW1wdHkgQ29udGVudC1MZW5ndGgASW52YWxpZCBjaGFyYWN0ZXIgaW4gQ29udGVudC1MZW5ndGgARHVwbGljYXRlIENvbnRlbnQtTGVuZ3RoAEludmFsaWQgY2hhciBpbiB1cmwgcGF0aABDb250ZW50LUxlbmd0aCBjYW4ndCBiZSBwcmVzZW50IHdpdGggVHJhbnNmZXItRW5jb2RpbmcASW52YWxpZCBjaGFyYWN0ZXIgaW4gY2h1bmsgc2l6ZQBTcGFuIGNhbGxiYWNrIGVycm9yIGluIG9uX2hlYWRlcl92YWx1ZQBTcGFuIGNhbGxiYWNrIGVycm9yIGluIG9uX2NodW5rX2V4dGVuc2lvbl92YWx1ZQBJbnZhbGlkIGNoYXJhY3RlciBpbiBjaHVuayBleHRlbnNpb25zIHZhbHVlAE1pc3NpbmcgZXhwZWN0ZWQgTEYgYWZ0ZXIgaGVhZGVyIHZhbHVlAEludmFsaWQgYFRyYW5zZmVyLUVuY29kaW5nYCBoZWFkZXIgdmFsdWUASW52YWxpZCBjaGFyYWN0ZXIgaW4gY2h1bmsgZXh0ZW5zaW9ucyBxdW90ZSB2YWx1ZQBJbnZhbGlkIGNoYXJhY3RlciBpbiBjaHVuayBleHRlbnNpb25zIHF1b3RlZCB2YWx1ZQBQYXVzZWQgYnkgb25faGVhZGVyc19jb21wbGV0ZQBJbnZhbGlkIEVPRiBzdGF0ZQBvbl9yZXNldCBwYXVzZQBvbl9jaHVua19oZWFkZXIgcGF1c2UAb25fbWVzc2FnZV9iZWdpbiBwYXVzZQBvbl9jaHVua19leHRlbnNpb25fdmFsdWUgcGF1c2UAb25fc3RhdHVzX2NvbXBsZXRlIHBhdXNlAG9uX3ZlcnNpb25fY29tcGxldGUgcGF1c2UAb25fdXJsX2NvbXBsZXRlIHBhdXNlAG9uX2NodW5rX2NvbXBsZXRlIHBhdXNlAG9uX2hlYWRlcl92YWx1ZV9jb21wbGV0ZSBwYXVzZQBvbl9tZXNzYWdlX2NvbXBsZXRlIHBhdXNlAG9uX21ldGhvZF9jb21wbGV0ZSBwYXVzZQBvbl9oZWFkZXJfZmllbGRfY29tcGxldGUgcGF1c2UAb25fY2h1bmtfZXh0ZW5zaW9uX25hbWUgcGF1c2UAVW5leHBlY3RlZCBzcGFjZSBhZnRlciBzdGFydCBsaW5lAFNwYW4gY2FsbGJhY2sgZXJyb3IgaW4gb25fY2h1bmtfZXh0ZW5zaW9uX25hbWUASW52YWxpZCBjaGFyYWN0ZXIgaW4gY2h1bmsgZXh0ZW5zaW9ucyBuYW1lAFBhdXNlIG9uIENPTk5FQ1QvVXBncmFkZQBQYXVzZSBvbiBQUkkvVXBncmFkZQBFeHBlY3RlZCBIVFRQLzIgQ29ubmVjdGlvbiBQcmVmYWNlAFNwYW4gY2FsbGJhY2sgZXJyb3IgaW4gb25fbWV0aG9kAEV4cGVjdGVkIHNwYWNlIGFmdGVyIG1ldGhvZABTcGFuIGNhbGxiYWNrIGVycm9yIGluIG9uX2hlYWRlcl9maWVsZABQYXVzZWQASW52YWxpZCB3b3JkIGVuY291bnRlcmVkAEludmFsaWQgbWV0aG9kIGVuY291bnRlcmVkAFVuZXhwZWN0ZWQgY2hhciBpbiB1cmwgc2NoZW1hAFJlcXVlc3QgaGFzIGludmFsaWQgYFRyYW5zZmVyLUVuY29kaW5nYABTV0lUQ0hfUFJPWFkAVVNFX1BST1hZAE1LQUNUSVZJVFkAVU5QUk9DRVNTQUJMRV9FTlRJVFkAQ09QWQBNT1ZFRF9QRVJNQU5FTlRMWQBUT09fRUFSTFkATk9USUZZAEZBSUxFRF9ERVBFTkRFTkNZAEJBRF9HQVRFV0FZAFBMQVkAUFVUAENIRUNLT1VUAEdBVEVXQVlfVElNRU9VVABSRVFVRVNUX1RJTUVPVVQATkVUV09SS19DT05ORUNUX1RJTUVPVVQAQ09OTkVDVElPTl9USU1FT1VUAExPR0lOX1RJTUVPVVQATkVUV09SS19SRUFEX1RJTUVPVVQAUE9TVABNSVNESVJFQ1RFRF9SRVFVRVNUAENMSUVOVF9DTE9TRURfUkVRVUVTVABDTElFTlRfQ0xPU0VEX0xPQURfQkFMQU5DRURfUkVRVUVTVABCQURfUkVRVUVTVABIVFRQX1JFUVVFU1RfU0VOVF9UT19IVFRQU19QT1JUAFJFUE9SVABJTV9BX1RFQVBPVABSRVNFVF9DT05URU5UAE5PX0NPTlRFTlQAUEFSVElBTF9DT05URU5UAEhQRV9JTlZBTElEX0NPTlNUQU5UAEhQRV9DQl9SRVNFVABHRVQASFBFX1NUUklDVABDT05GTElDVABURU1QT1JBUllfUkVESVJFQ1QAUEVSTUFORU5UX1JFRElSRUNUAENPTk5FQ1QATVVMVElfU1RBVFVTAEhQRV9JTlZBTElEX1NUQVRVUwBUT09fTUFOWV9SRVFVRVNUUwBFQVJMWV9ISU5UUwBVTkFWQUlMQUJMRV9GT1JfTEVHQUxfUkVBU09OUwBPUFRJT05TAFNXSVRDSElOR19QUk9UT0NPTFMAVkFSSUFOVF9BTFNPX05FR09USUFURVMATVVMVElQTEVfQ0hPSUNFUwBJTlRFUk5BTF9TRVJWRVJfRVJST1IAV0VCX1NFUlZFUl9VTktOT1dOX0VSUk9SAFJBSUxHVU5fRVJST1IASURFTlRJVFlfUFJPVklERVJfQVVUSEVOVElDQVRJT05fRVJST1IAU1NMX0NFUlRJRklDQVRFX0VSUk9SAElOVkFMSURfWF9GT1JXQVJERURfRk9SAFNFVF9QQVJBTUVURVIAR0VUX1BBUkFNRVRFUgBIUEVfVVNFUgBTRUVfT1RIRVIASFBFX0NCX0NIVU5LX0hFQURFUgBNS0NBTEVOREFSAFNFVFVQAFdFQl9TRVJWRVJfSVNfRE9XTgBURUFSRE9XTgBIUEVfQ0xPU0VEX0NPTk5FQ1RJT04ASEVVUklTVElDX0VYUElSQVRJT04ARElTQ09OTkVDVEVEX09QRVJBVElPTgBOT05fQVVUSE9SSVRBVElWRV9JTkZPUk1BVElPTgBIUEVfSU5WQUxJRF9WRVJTSU9OAEhQRV9DQl9NRVNTQUdFX0JFR0lOAFNJVEVfSVNfRlJPWkVOAEhQRV9JTlZBTElEX0hFQURFUl9UT0tFTgBJTlZBTElEX1RPS0VOAEZPUkJJRERFTgBFTkhBTkNFX1lPVVJfQ0FMTQBIUEVfSU5WQUxJRF9VUkwAQkxPQ0tFRF9CWV9QQVJFTlRBTF9DT05UUk9MAE1LQ09MAEFDTABIUEVfSU5URVJOQUwAUkVRVUVTVF9IRUFERVJfRklFTERTX1RPT19MQVJHRV9VTk9GRklDSUFMAEhQRV9PSwBVTkxJTksAVU5MT0NLAFBSSQBSRVRSWV9XSVRIAEhQRV9JTlZBTElEX0NPTlRFTlRfTEVOR1RIAEhQRV9VTkVYUEVDVEVEX0NPTlRFTlRfTEVOR1RIAEZMVVNIAFBST1BQQVRDSABNLVNFQVJDSABVUklfVE9PX0xPTkcAUFJPQ0VTU0lORwBNSVNDRUxMQU5FT1VTX1BFUlNJU1RFTlRfV0FSTklORwBNSVNDRUxMQU5FT1VTX1dBUk5JTkcASFBFX0lOVkFMSURfVFJBTlNGRVJfRU5DT0RJTkcARXhwZWN0ZWQgQ1JMRgBIUEVfSU5WQUxJRF9DSFVOS19TSVpFAE1PVkUAQ09OVElOVUUASFBFX0NCX1NUQVRVU19DT01QTEVURQBIUEVfQ0JfSEVBREVSU19DT01QTEVURQBIUEVfQ0JfVkVSU0lPTl9DT01QTEVURQBIUEVfQ0JfVVJMX0NPTVBMRVRFAEhQRV9DQl9DSFVOS19DT01QTEVURQBIUEVfQ0JfSEVBREVSX1ZBTFVFX0NPTVBMRVRFAEhQRV9DQl9DSFVOS19FWFRFTlNJT05fVkFMVUVfQ09NUExFVEUASFBFX0NCX0NIVU5LX0VYVEVOU0lPTl9OQU1FX0NPTVBMRVRFAEhQRV9DQl9NRVNTQUdFX0NPTVBMRVRFAEhQRV9DQl9NRVRIT0RfQ09NUExFVEUASFBFX0NCX0hFQURFUl9GSUVMRF9DT01QTEVURQBERUxFVEUASFBFX0lOVkFMSURfRU9GX1NUQVRFAElOVkFMSURfU1NMX0NFUlRJRklDQVRFAFBBVVNFAE5PX1JFU1BPTlNFAFVOU1VQUE9SVEVEX01FRElBX1RZUEUAR09ORQBOT1RfQUNDRVBUQUJMRQBTRVJWSUNFX1VOQVZBSUxBQkxFAFJBTkdFX05PVF9TQVRJU0ZJQUJMRQBPUklHSU5fSVNfVU5SRUFDSEFCTEUAUkVTUE9OU0VfSVNfU1RBTEUAUFVSR0UATUVSR0UAUkVRVUVTVF9IRUFERVJfRklFTERTX1RPT19MQVJHRQBSRVFVRVNUX0hFQURFUl9UT09fTEFSR0UAUEFZTE9BRF9UT09fTEFSR0UASU5TVUZGSUNJRU5UX1NUT1JBR0UASFBFX1BBVVNFRF9VUEdSQURFAEhQRV9QQVVTRURfSDJfVVBHUkFERQBTT1VSQ0UAQU5OT1VOQ0UAVFJBQ0UASFBFX1VORVhQRUNURURfU1BBQ0UAREVTQ1JJQkUAVU5TVUJTQ1JJQkUAUkVDT1JEAEhQRV9JTlZBTElEX01FVEhPRABOT1RfRk9VTkQAUFJPUEZJTkQAVU5CSU5EAFJFQklORABVTkFVVEhPUklaRUQATUVUSE9EX05PVF9BTExPV0VEAEhUVFBfVkVSU0lPTl9OT1RfU1VQUE9SVEVEAEFMUkVBRFlfUkVQT1JURUQAQUNDRVBURUQATk9UX0lNUExFTUVOVEVEAExPT1BfREVURUNURUQASFBFX0NSX0VYUEVDVEVEAEhQRV9MRl9FWFBFQ1RFRABDUkVBVEVEAElNX1VTRUQASFBFX1BBVVNFRABUSU1FT1VUX09DQ1VSRUQAUEFZTUVOVF9SRVFVSVJFRABQUkVDT05ESVRJT05fUkVRVUlSRUQAUFJPWFlfQVVUSEVOVElDQVRJT05fUkVRVUlSRUQATkVUV09SS19BVVRIRU5USUNBVElPTl9SRVFVSVJFRABMRU5HVEhfUkVRVUlSRUQAU1NMX0NFUlRJRklDQVRFX1JFUVVJUkVEAFVQR1JBREVfUkVRVUlSRUQAUEFHRV9FWFBJUkVEAFBSRUNPTkRJVElPTl9GQUlMRUQARVhQRUNUQVRJT05fRkFJTEVEAFJFVkFMSURBVElPTl9GQUlMRUQAU1NMX0hBTkRTSEFLRV9GQUlMRUQATE9DS0VEAFRSQU5TRk9STUFUSU9OX0FQUExJRUQATk9UX01PRElGSUVEAE5PVF9FWFRFTkRFRABCQU5EV0lEVEhfTElNSVRfRVhDRUVERUQAU0lURV9JU19PVkVSTE9BREVEAEhFQUQARXhwZWN0ZWQgSFRUUC8AAF4TAAAmEwAAMBAAAPAXAACdEwAAFRIAADkXAADwEgAAChAAAHUSAACtEgAAghMAAE8UAAB/EAAAoBUAACMUAACJEgAAixQAAE0VAADUEQAAzxQAABAYAADJFgAA3BYAAMERAADgFwAAuxQAAHQUAAB8FQAA5RQAAAgXAAAfEAAAZRUAAKMUAAAoFQAAAhUAAJkVAAAsEAAAixkAAE8PAADUDgAAahAAAM4QAAACFwAAiQ4AAG4TAAAcEwAAZhQAAFYXAADBEwAAzRMAAGwTAABoFwAAZhcAAF8XAAAiEwAAzg8AAGkOAADYDgAAYxYAAMsTAACqDgAAKBcAACYXAADFEwAAXRYAAOgRAABnEwAAZRMAAPIWAABzEwAAHRcAAPkWAADzEQAAzw4AAM4VAAAMEgAAsxEAAKURAABhEAAAMhcAALsTAEH5NQsBAQBBkDYL4AEBAQIBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQBB/TcLAQEAQZE4C14CAwICAgICAAACAgACAgACAgICAgICAgICAAQAAAAAAAICAgICAgICAgICAgICAgICAgICAgICAgICAAAAAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAAgACAEH9OQsBAQBBkToLXgIAAgICAgIAAAICAAICAAICAgICAgICAgIAAwAEAAAAAgICAgICAgICAgICAgICAgICAgICAgICAgIAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgACAAIAQfA7Cw1sb3NlZWVwLWFsaXZlAEGJPAsBAQBBoDwL4AEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQBBiT4LAQEAQaA+C+cBAQEBAQEBAQEBAQEBAgEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQFjaHVua2VkAEGwwAALXwEBAAEBAQEBAAABAQABAQABAQEBAQEBAQEBAAAAAAAAAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAAAAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAAQABAEGQwgALIWVjdGlvbmVudC1sZW5ndGhvbnJveHktY29ubmVjdGlvbgBBwMIACy1yYW5zZmVyLWVuY29kaW5ncGdyYWRlDQoNCg0KU00NCg0KVFRQL0NFL1RTUC8AQfnCAAsFAQIAAQMAQZDDAAvgAQQBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAEH5xAALBQECAAEDAEGQxQAL4AEEAQEFAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQBB+cYACwQBAAABAEGRxwAL3wEBAQABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAEH6yAALBAEAAAIAQZDJAAtfAwQAAAQEBAQEBAQEBAQEBQQEBAQEBAQEBAQEBAAEAAYHBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAAQABAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAAAAQAQfrKAAsEAQAAAQBBkMsACwEBAEGqywALQQIAAAAAAAADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwAAAAAAAAMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAEH6zAALBAEAAAEAQZDNAAsBAQBBms0ACwYCAAAAAAIAQbHNAAs6AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMAAAAAAAADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwBB8M4AC5YBTk9VTkNFRUNLT1VUTkVDVEVURUNSSUJFTFVTSEVURUFEU0VBUkNIUkdFQ1RJVklUWUxFTkRBUlZFT1RJRllQVElPTlNDSFNFQVlTVEFUQ0hHRU9SRElSRUNUT1JUUkNIUEFSQU1FVEVSVVJDRUJTQ1JJQkVBUkRPV05BQ0VJTkROS0NLVUJTQ1JJQkVIVFRQL0FEVFAv", "base64");
+	var { Buffer: Buffer$3 } = __require("node:buffer");
+	module.exports = Buffer$3.from("AGFzbQEAAAABJwdgAX8Bf2ADf39/AX9gAX8AYAJ/fwBgBH9/f38Bf2AAAGADf39/AALLAQgDZW52GHdhc21fb25faGVhZGVyc19jb21wbGV0ZQAEA2VudhV3YXNtX29uX21lc3NhZ2VfYmVnaW4AAANlbnYLd2FzbV9vbl91cmwAAQNlbnYOd2FzbV9vbl9zdGF0dXMAAQNlbnYUd2FzbV9vbl9oZWFkZXJfZmllbGQAAQNlbnYUd2FzbV9vbl9oZWFkZXJfdmFsdWUAAQNlbnYMd2FzbV9vbl9ib2R5AAEDZW52GHdhc21fb25fbWVzc2FnZV9jb21wbGV0ZQAAAy0sBQYAAAIAAAAAAAACAQIAAgICAAADAAAAAAMDAwMBAQEBAQEBAQEAAAIAAAAEBQFwARISBQMBAAIGCAF/AUGA1AQLB9EFIgZtZW1vcnkCAAtfaW5pdGlhbGl6ZQAIGV9faW5kaXJlY3RfZnVuY3Rpb25fdGFibGUBAAtsbGh0dHBfaW5pdAAJGGxsaHR0cF9zaG91bGRfa2VlcF9hbGl2ZQAvDGxsaHR0cF9hbGxvYwALBm1hbGxvYwAxC2xsaHR0cF9mcmVlAAwEZnJlZQAMD2xsaHR0cF9nZXRfdHlwZQANFWxsaHR0cF9nZXRfaHR0cF9tYWpvcgAOFWxsaHR0cF9nZXRfaHR0cF9taW5vcgAPEWxsaHR0cF9nZXRfbWV0aG9kABAWbGxodHRwX2dldF9zdGF0dXNfY29kZQAREmxsaHR0cF9nZXRfdXBncmFkZQASDGxsaHR0cF9yZXNldAATDmxsaHR0cF9leGVjdXRlABQUbGxodHRwX3NldHRpbmdzX2luaXQAFQ1sbGh0dHBfZmluaXNoABYMbGxodHRwX3BhdXNlABcNbGxodHRwX3Jlc3VtZQAYG2xsaHR0cF9yZXN1bWVfYWZ0ZXJfdXBncmFkZQAZEGxsaHR0cF9nZXRfZXJybm8AGhdsbGh0dHBfZ2V0X2Vycm9yX3JlYXNvbgAbF2xsaHR0cF9zZXRfZXJyb3JfcmVhc29uABwUbGxodHRwX2dldF9lcnJvcl9wb3MAHRFsbGh0dHBfZXJybm9fbmFtZQAeEmxsaHR0cF9tZXRob2RfbmFtZQAfEmxsaHR0cF9zdGF0dXNfbmFtZQAgGmxsaHR0cF9zZXRfbGVu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PgtBhwEMPQtBiAEMPAtBiQEMOwtBigEMOgtBiwEMOQtBjAEMOAtBjQEMNwtBjgEMNgtBjwEMNQtBkAEMNAtBkQEMMwtBkgEMMgtBkwEMMQtBlAEMMAtBlQEMLwtBlgEMLgtBlwEMLQtBmAEMLAtBmQEMKwtBmgEMKgtBmwEMKQtBnAEMKAtBnQEMJwtBngEMJgtBnwEMJQtBoAEMJAtBoQEMIwtBogEMIgtBowEMIQtBpAEMIAtBpQEMHwtBpgEMHgtBpwEMHQtBqAEMHAtBqQEMGwtBqgEMGgtBqwEMGQtBrAEMGAtBrQEMFwtBrgEMFgtBAQwVC0GvAQwUC0GwAQwTC0GxAQwSC0GzAQwRC0GyAQwQC0G0AQwPC0G1AQwOC0G2AQwNC0G3AQwMC0G4AQwLC0G5AQwKC0G6AQwJC0G7AQwIC0HGAQwHC0G8AQwGC0G9AQwFC0G+AQwEC0G/AQwDC0HAAQwCC0HCAQwBC0HBAQshAwNAAkACQAJAAkACQAJAAkACQAJAIAICfwJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJ/AkACQAJAAkACQAJAAkACQAJAAkACQAJAAkAgAgJ/AkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACfwJAAkACfwJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACfwJAAkACQAJAAn8CQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQCADDsYBAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHyAhIyUmKCorLC8wMTIzNDU2Nzk6Ozw9lANAQkRFRklLTk9QUVJTVFVWWFpbXF1eX2BhYmNkZWZnaGpsb3Bxc3V2eHl6e3x/gAGBAYIBgwGEAYUBhgGHAYgBiQGKAYsBjAGNAY4BjwGQAZEBkgGTAZQBlQGWAZcBmAGZAZoBmwGcAZ0BngGfAaABoQGiAaMBpAGlAaYBpwGoAakBqgGrAawBrQGuAa8BsAGxAbIBswG0AbUBtgG3AbgBuQG6AbsBvAG9Ab4BvwHAAcEBwgHDAcQBxQHGAccByAHJAcsBzAHNAc4BzwGKA4kDiAOHA4QDgwOAA/sC+gL5AvgC9wL0AvMC8gLLAsECsALZAQsgASAERw3wAkHdASEDDLMDCyABIARHDcgBQcMBIQMMsgMLIAEgBEcNe0H3ACEDDLEDCyABIARHDXBB7wAhAwywAwsgASAERw1pQeoAIQMMrwMLIAEgBEcNZUHoACEDDK4DCyABIARHDWJB5gAhAwytAwsgASAERw0aQRghAwysAwsgASAERw0VQRIhAwyrAwsgASAERw1CQcUAIQMMqgMLIAEgBEcNNEE/IQMMqQMLIAEgBEcNMkE8IQMMqAMLIAEgBEcNK0ExIQMMpwMLIAItAC5BAUYNnwMMwQILQQAhAAJAAkACQCACLQAqRQ0AIAItACtFDQAgAi8BMCIDQQJxRQ0BDAILIAIvATAiA0EBcUUNAQtBASEAIAItAChBAUYNACACLwEyIgVB5ABrQeQASQ0AIAVBzAFGDQAgBUGwAkYNACADQcAAcQ0AQQAhACADQYgEcUGABEYNACADQShxQQBHIQALIAJBADsBMCACQQA6AC8gAEUN3wIgAkIANwMgDOACC0EAIQACQCACKAI4IgNFDQAgAygCLCIDRQ0AIAIgAxEAACEACyAARQ3MASAAQRVHDd0CIAJBBDYCHCACIAE2AhQgAkGwGDYCECACQRU2AgxBACEDDKQDCyABIARGBEBBBiEDDKQDCyABQQFqIQFBACEAAkAgAigCOCIDRQ0AIAMoAlQiA0UNACACIAMRAAAhAAsgAA3ZAgwcCyACQgA3AyBBEiEDDIkDCyABIARHDRZBHSEDDKEDCyABIARHBEAgAUEBaiEBQRAhAwyIAwtBByEDDKADCyACIAIpAyAiCiAEIAFrrSILfSIMQgAgCiAMWhs3AyAgCiALWA3UAkEIIQMMnwMLIAEgBEcEQCACQQk2AgggAiABNgIEQRQhAwyGAwtBCSEDDJ4DCyACKQMgQgBSDccBIAIgAi8BMEGAAXI7ATAMQgsgASAERw0/QdAAIQMMnAMLIAEgBEYEQEELIQMMnAMLIAFBAWohAUEAIQACQCACKAI4IgNFDQAgAygCUCIDRQ0AIAIgAxEAACEACyAADc8CDMYBC0EAIQACQCACKAI4IgNFDQAgAygCSCIDRQ0AIAIgAxEAACEACyAARQ3GASAAQRVHDc0CIAJBCzYCHCACIAE2AhQgAkGCGTYCECACQRU2AgxBACEDDJoDC0EAIQACQCACKAI4IgNFDQAgAygCSCIDRQ0AIAIgAxEAACEACyAARQ0MIABBFUcNygIgAkEaNgIcIAIgATYCFCACQYIZNgIQIAJBFTYCDEEAIQMMmQMLQQAhAAJAIAIoAjgiA0UNACADKAJMIgNFDQAgAiADEQAAIQALIABFDcQBIABBFUcNxwIgAkELNgIcIAIgATYCFCACQZEXNgIQIAJBFTYCDEEAIQMMmAMLIAEgBEYEQEEPIQMMmAMLIAEtAAAiAEE7Rg0HIABBDUcNxAIgAUEBaiEBDMMBC0EAIQACQCACKAI4IgNFDQAgAygCTCIDRQ0AIAIgAxEAACEACyAARQ3DASAAQRVHDcICIAJBDzYCHCACIAE2AhQgAkGRFzYCECACQRU2AgxBACEDDJYDCwNAIAEtAABB8DVqLQAAIgBBAUcEQCAAQQJHDcECIAIoAgQhAEEAIQMgAkEANgIEIAIgACABQQFqIgEQLSIADcICDMUBCyAEIAFBAWoiAUcNAAtBEiEDDJUDC0EAIQACQCACKAI4IgNFDQAgAygCTCIDRQ0AIAIgAxEAACEACyAARQ3FASAAQRVHDb0CIAJBGzYCHCACIAE2AhQgAkGRFzYCECACQRU2AgxBACEDDJQDCyABIARGBEBBFiEDDJQDCyACQQo2AgggAiABNgIEQQAhAAJAIAIoAjgiA0UNACADKAJIIgNFDQAgAiADEQAAIQALIABFDcIBIABBFUcNuQIgAkEVNgIcIAIgATYCFCACQYIZNgIQIAJBFTYCDEEAIQMMkwMLIAEgBEcEQANAIAEtAABB8DdqLQAAIgBBAkcEQAJAIABBAWsOBMQCvQIAvgK9AgsgAUEBaiEBQQghAwz8AgsgBCABQQFqIgFHDQALQRUhAwyTAwtBFSEDDJIDCwNAIAEtAABB8DlqLQAAIgBBAkcEQCAAQQFrDgTFArcCwwK4ArcCCyAEIAFBAWoiAUcNAAtBGCEDDJEDCyABIARHBEAgAkELNgIIIAIgATYCBEEHIQMM+AILQRkhAwyQAwsgAUEBaiEBDAILIAEgBEYEQEEaIQMMjwMLAkAgAS0AAEENaw4UtQG/Ab8BvwG/Ab8BvwG/Ab8BvwG/Ab8BvwG/Ab8BvwG/Ab8BvwEAvwELQQAhAyACQQA2AhwgAkGvCzYCECACQQI2AgwgAiABQQFqNgIUDI4DCyABIARGBEBBGyEDDI4DCyABLQAAIgBBO0cEQCAAQQ1HDbECIAFBAWohAQy6AQsgAUEBaiEBC0EiIQMM8wILIAEgBEYEQEEcIQMMjAMLQgAhCgJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkAgAS0AAEEwaw43wQLAAgABAgMEBQYH0AHQAdAB0AHQAdAB0AEICQoLDA3QAdAB0AHQAdAB0AHQAdAB0AHQAdAB0AHQAdAB0AHQAdAB0AHQAdAB0AHQAdAB0AHQAdABDg8QERIT0AELQgIhCgzAAgtCAyEKDL8CC0IEIQoMvgILQgUhCgy9AgtCBiEKDLwCC0IHIQoMuwILQgghCgy6AgtCCSEKDLkCC0IKIQoMuAILQgshCgy3AgtCDCEKDLYCC0INIQoMtQILQg4hCgy0AgtCDyEKDLMCC0IKIQoMsgILQgshCgyxAgtCDCEKDLACC0INIQoMrwILQg4hCgyuAgtCDyEKDK0CC0IAIQoCQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAIAEtAABBMGsON8ACvwIAAQIDBAUGB74CvgK+Ar4CvgK+Ar4CCAkKCwwNvgK+Ar4CvgK+Ar4CvgK+Ar4CvgK+Ar4CvgK+Ar4CvgK+Ar4CvgK+Ar4CvgK+Ar4CvgK+Ag4PEBESE74CC0ICIQoMvwILQgMhCgy+AgtCBCEKDL0CC0IFIQoMvAILQgYhCgy7AgtCByEKDLoCC0IIIQoMuQILQgkhCgy4AgtCCiEKDLcCC0ILIQoMtgILQgwhCgy1AgtCDSEKDLQCC0IOIQoMswILQg8hCgyyAgtCCiEKDLECC0ILIQoMsAILQgwhCgyvAgtCDSEKDK4CC0IOIQoMrQILQg8hCgysAgsgAiACKQMgIgogBCABa60iC30iDEIAIAogDFobNwMgIAogC1gNpwJBHyEDDIkDCyABIARHBEAgAkEJNgIIIAIgATYCBEElIQMM8AILQSAhAwyIAwtBASEFIAIvATAiA0EIcUUEQCACKQMgQgBSIQULAkAgAi0ALgRAQQEhACACLQApQQVGDQEgA0HAAHFFIAVxRQ0BC0EAIQAgA0HAAHENAEECIQAgA0EIcQ0AIANBgARxBEACQCACLQAoQQFHDQAgAi0ALUEKcQ0AQQUhAAwCC0EEIQAMAQsgA0EgcUUEQAJAIAItAChBAUYNACACLwEyIgBB5ABrQeQASQ0AIABBzAFGDQAgAEGwAkYNAEEEIQAgA0EocUUNAiADQYgEcUGABEYNAgtBACEADAELQQBBAyACKQMgUBshAAsgAEEBaw4FvgIAsAEBpAKhAgtBESEDDO0CCyACQQE6AC8MhAMLIAEgBEcNnQJBJCEDDIQDCyABIARHDRxBxgAhAwyDAwtBACEAAkAgAigCOCIDRQ0AIAMoAkQiA0UNACACIAMRAAAhAAsgAEUNJyAAQRVHDZgCIAJB0AA2AhwgAiABNgIUIAJBkRg2AhAgAkEVNgIMQQAhAwyCAwsgASAERgRAQSghAwyCAwtBACEDIAJBADYCBCACQQw2AgggAiABIAEQKiIARQ2UAiACQSc2AhwgAiABNgIUIAIgADYCDAyBAwsgASAERgRAQSkhAwyBAwsgAS0AACIAQSBGDRMgAEEJRw2VAiABQQFqIQEMFAsgASAERwRAIAFBAWohAQwWC0EqIQMM/wILIAEgBEYEQEErIQMM/wILIAEtAAAiAEEJRyAAQSBHcQ2QAiACLQAsQQhHDd0CIAJBADoALAzdAgsgASAERgRAQSwhAwz+AgsgAS0AAEEKRw2OAiABQQFqIQEMsAELIAEgBEcNigJBLyEDDPwCCwNAIAEtAAAiAEEgRwRAIABBCmsOBIQCiAKIAoQChgILIAQgAUEBaiIBRw0AC0ExIQMM+wILQTIhAyABIARGDfoCIAIoAgAiACAEIAFraiEHIAEgAGtBA2ohBgJAA0AgAEHwO2otAAAgAS0AACIFQSByIAUgBUHBAGtB/wFxQRpJG0H/AXFHDQEgAEEDRgRAQQYhAQziAgsgAEEBaiEAIAQgAUEBaiIBRw0ACyACIAc2AgAM+wILIAJBADYCAAyGAgtBMyEDIAQgASIARg35AiAEIAFrIAIoAgAiAWohByAAIAFrQQhqIQYCQANAIAFB9DtqLQAAIAAtAAAiBUEgciAFIAVBwQBrQf8BcUEaSRtB/wFxRw0BIAFBCEYEQEEFIQEM4QILIAFBAWohASAEIABBAWoiAEcNAAsgAiAHNgIADPoCCyACQQA2AgAgACEBDIUCC0E0IQMgBCABIgBGDfgCIAQgAWsgAigCACIBaiEHIAAgAWtBBWohBgJAA0AgAUHQwgBqLQAAIAAtAAAiBUEgciAFIAVBwQBrQf8BcUEaSRtB/wFxRw0BIAFBBUYEQEEHIQEM4AILIAFBAWohASAEIABBAWoiAEcNAAsgAiAHNgIADPkCCyACQQA2AgAgACEBDIQCCyABIARHBEADQCABLQAAQYA+ai0AACIAQQFHBEAgAEECRg0JDIECCyAEIAFBAWoiAUcNAAtBMCEDDPgCC0EwIQMM9wILIAEgBEcEQANAIAEtAAAiAEEgRwRAIABBCmsOBP8B/gH+Af8B/gELIAQgAUEBaiIBRw0AC0E4IQMM9wILQTghAwz2AgsDQCABLQAAIgBBIEcgAEEJR3EN9gEgBCABQQFqIgFHDQALQTwhAwz1AgsDQCABLQAAIgBBIEcEQAJAIABBCmsOBPkBBAT5AQALIABBLEYN9QEMAwsgBCABQQFqIgFHDQALQT8hAwz0AgtBwAAhAyABIARGDfMCIAIoAgAiACAEIAFraiEFIAEgAGtBBmohBgJAA0AgAEGAQGstAAAgAS0AAEEgckcNASAAQQZGDdsCIABBAWohACAEIAFBAWoiAUcNAAsgAiAFNgIADPQCCyACQQA2AgALQTYhAwzZAgsgASAERgRAQcEAIQMM8gILIAJBDDYCCCACIAE2AgQgAi0ALEEBaw4E+wHuAewB6wHUAgsgAUEBaiEBDPoBCyABIARHBEADQAJAIAEtAAAiAEEgciAAIABBwQBrQf8BcUEaSRtB/wFxIgBBCUYNACAAQSBGDQACQAJAAkACQCAAQeMAaw4TAAMDAwMDAwMBAwMDAwMDAwMDAgMLIAFBAWohAUExIQMM3AILIAFBAWohAUEyIQMM2wILIAFBAWohAUEzIQMM2gILDP4BCyAEIAFBAWoiAUcNAAtBNSEDDPACC0E1IQMM7wILIAEgBEcEQANAIAEtAABBgDxqLQAAQQFHDfcBIAQgAUEBaiIBRw0AC0E9IQMM7wILQT0hAwzuAgtBACEAAkAgAigCOCIDRQ0AIAMoAkAiA0UNACACIAMRAAAhAAsgAEUNASAAQRVHDeYBIAJBwgA2AhwgAiABNgIUIAJB4xg2AhAgAkEVNgIMQQAhAwztAgsgAUEBaiEBC0E8IQMM0gILIAEgBEYEQEHCACEDDOsCCwJAA0ACQCABLQAAQQlrDhgAAswCzALRAswCzALMAswCzALMAswCzALMAswCzALMAswCzALMAswCzALMAgDMAgsgBCABQQFqIgFHDQALQcIAIQMM6wILIAFBAWohASACLQAtQQFxRQ3+AQtBLCEDDNACCyABIARHDd4BQcQAIQMM6AILA0AgAS0AAEGQwABqLQAAQQFHDZwBIAQgAUEBaiIBRw0AC0HFACEDDOcCCyABLQAAIgBBIEYN/gEgAEE6Rw3AAiACKAIEIQBBACEDIAJBADYCBCACIAAgARApIgAN3gEM3QELQccAIQMgBCABIgBGDeUCIAQgAWsgAigCACIBaiEHIAAgAWtBBWohBgNAIAFBkMIAai0AACAALQAAIgVBIHIgBSAFQcEAa0H/AXFBGkkbQf8BcUcNvwIgAUEFRg3CAiABQQFqIQEgBCAAQQFqIgBHDQALIAIgBzYCAAzlAgtByAAhAyAEIAEiAEYN5AIgBCABayACKAIAIgFqIQcgACABa0EJaiEGA0AgAUGWwgBqLQAAIAAtAAAiBUEgciAFIAVBwQBrQf8BcUEaSRtB/wFxRw2+AkECIAFBCUYNwgIaIAFBAWohASAEIABBAWoiAEcNAAsgAiAHNgIADOQCCyABIARGBEBByQAhAwzkAgsCQAJAIAEtAAAiAEEgciAAIABBwQBrQf8BcUEaSRtB/wFxQe4Aaw4HAL8CvwK/Ar8CvwIBvwILIAFBAWohAUE+IQMMywILIAFBAWohAUE/IQMMygILQcoAIQMgBCABIgBGDeICIAQgAWsgAigCACIBaiEGIAAgAWtBAWohBwNAIAFBoMIAai0AACAALQAAIgVBIHIgBSAFQcEAa0H/AXFBGkkbQf8BcUcNvAIgAUEBRg2+AiABQQFqIQEgBCAAQQFqIgBHDQALIAIgBjYCAAziAgtBywAhAyAEIAEiAEYN4QIgBCABayACKAIAIgFqIQcgACABa0EOaiEGA0AgAUGiwgBqLQAAIAAtAAAiBUEgciAFIAVBwQBrQf8BcUEaSRtB/wFxRw27AiABQQ5GDb4CIAFBAWohASAEIABBAWoiAEcNAAsgAiAHNgIADOECC0HMACEDIAQgASIARg3gAiAEIAFrIAIoAgAiAWohByAAIAFrQQ9qIQYDQCABQcDCAGotAAAgAC0AACIFQSByIAUgBUHBAGtB/wFxQRpJG0H/AXFHDboCQQMgAUEPRg2+AhogAUEBaiEBIAQgAEEBaiIARw0ACyACIAc2AgAM4AILQc0AIQMgBCABIgBGDd8CIAQgAWsgAigCACIBaiEHIAAgAWtBBWohBgNAIAFB0MIAai0AACAALQAAIgVBIHIgBSAFQcEAa0H/AXFBGkkbQf8BcUcNuQJBBCABQQVGDb0CGiABQQFqIQEgBCAAQQFqIgBHDQALIAIgBzYCAAzfAgsgASAERgRAQc4AIQMM3wILAkACQAJAAkAgAS0AACIAQSByIAAgAEHBAGtB/wFxQRpJG0H/AXFB4wBrDhMAvAK8ArwCvAK8ArwCvAK8ArwCvAK8ArwCAbwCvAK8AgIDvAILIAFBAWohAUHBACEDDMgCCyABQQFqIQFBwgAhAwzHAgsgAUEBaiEBQcMAIQMMxgILIAFBAWohAUHEACEDDMUCCyABIARHBEAgAkENNgIIIAIgATYCBEHFACEDDMUCC0HPACEDDN0CCwJAAkAgAS0AAEEKaw4EAZABkAEAkAELIAFBAWohAQtBKCEDDMMCCyABIARGBEBB0QAhAwzcAgsgAS0AAEEgRw0AIAFBAWohASACLQAtQQFxRQ3QAQtBFyEDDMECCyABIARHDcsBQdIAIQMM2QILQdMAIQMgASAERg3YAiACKAIAIgAgBCABa2ohBiABIABrQQFqIQUDQCABLQAAIABB1sIAai0AAEcNxwEgAEEBRg3KASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBjYCAAzYAgsgASAERgRAQdUAIQMM2AILIAEtAABBCkcNwgEgAUEBaiEBDMoBCyABIARGBEBB1gAhAwzXAgsCQAJAIAEtAABBCmsOBADDAcMBAcMBCyABQQFqIQEMygELIAFBAWohAUHKACEDDL0CC0EAIQACQCACKAI4IgNFDQAgAygCPCIDRQ0AIAIgAxEAACEACyAADb8BQc0AIQMMvAILIAItAClBIkYNzwIMiQELIAQgASIFRgRAQdsAIQMM1AILQQAhAEEBIQFBASEGQQAhAwJAAn8CQAJAAkACQAJAAkACQCAFLQAAQTBrDgrFAcQBAAECAwQFBgjDAQtBAgwGC0EDDAULQQQMBAtBBQwDC0EGDAILQQcMAQtBCAshA0EAIQFBACEGDL0BC0EJIQNBASEAQQAhAUEAIQYMvAELIAEgBEYEQEHdACEDDNMCCyABLQAAQS5HDbgBIAFBAWohAQyIAQsgASAERw22AUHfACEDDNECCyABIARHBEAgAkEONgIIIAIgATYCBEHQACEDDLgCC0HgACEDDNACC0HhACEDIAEgBEYNzwIgAigCACIAIAQgAWtqIQUgASAAa0EDaiEGA0AgAS0AACAAQeLCAGotAABHDbEBIABBA0YNswEgAEEBaiEAIAQgAUEBaiIBRw0ACyACIAU2AgAMzwILQeIAIQMgASAERg3OAiACKAIAIgAgBCABa2ohBSABIABrQQJqIQYDQCABLQAAIABB5sIAai0AAEcNsAEgAEECRg2vASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAzOAgtB4wAhAyABIARGDc0CIAIoAgAiACAEIAFraiEFIAEgAGtBA2ohBgNAIAEtAAAgAEHpwgBqLQAARw2vASAAQQNGDa0BIABBAWohACAEIAFBAWoiAUcNAAsgAiAFNgIADM0CCyABIARGBEBB5QAhAwzNAgsgAUEBaiEBQQAhAAJAIAIoAjgiA0UNACADKAIwIgNFDQAgAiADEQAAIQALIAANqgFB1gAhAwyzAgsgASAERwRAA0AgAS0AACIAQSBHBEACQAJAAkAgAEHIAGsOCwABswGzAbMBswGzAbMBswGzAQKzAQsgAUEBaiEBQdIAIQMMtwILIAFBAWohAUHTACEDDLYCCyABQQFqIQFB1AAhAwy1AgsgBCABQQFqIgFHDQALQeQAIQMMzAILQeQAIQMMywILA0AgAS0AAEHwwgBqLQAAIgBBAUcEQCAAQQJrDgOnAaYBpQGkAQsgBCABQQFqIgFHDQALQeYAIQMMygILIAFBAWogASAERw0CGkHnACEDDMkCCwNAIAEtAABB8MQAai0AACIAQQFHBEACQCAAQQJrDgSiAaEBoAEAnwELQdcAIQMMsQILIAQgAUEBaiIBRw0AC0HoACEDDMgCCyABIARGBEBB6QAhAwzIAgsCQCABLQAAIgBBCmsOGrcBmwGbAbQBmwGbAZsBmwGbAZsBmwGbAZsBmwGbAZsBmwGbAZsBmwGbAZsBpAGbAZsBAJkBCyABQQFqCyEBQQYhAwytAgsDQCABLQAAQfDGAGotAABBAUcNfSAEIAFBAWoiAUcNAAtB6gAhAwzFAgsgAUEBaiABIARHDQIaQesAIQMMxAILIAEgBEYEQEHsACEDDMQCCyABQQFqDAELIAEgBEYEQEHtACEDDMMCCyABQQFqCyEBQQQhAwyoAgsgASAERgRAQe4AIQMMwQILAkACQAJAIAEtAABB8MgAai0AAEEBaw4HkAGPAY4BAHwBAo0BCyABQQFqIQEMCwsgAUEBagyTAQtBACEDIAJBADYCHCACQZsSNgIQIAJBBzYCDCACIAFBAWo2AhQMwAILAkADQCABLQAAQfDIAGotAAAiAEEERwRAAkACQCAAQQFrDgeUAZMBkgGNAQAEAY0BC0HaACEDDKoCCyABQQFqIQFB3AAhAwypAgsgBCABQQFqIgFHDQALQe8AIQMMwAILIAFBAWoMkQELIAQgASIARgRAQfAAIQMMvwILIAAtAABBL0cNASAAQQFqIQEMBwsgBCABIgBGBEBB8QAhAwy+AgsgAC0AACIBQS9GBEAgAEEBaiEBQd0AIQMMpQILIAFBCmsiA0EWSw0AIAAhAUEBIAN0QYmAgAJxDfkBC0EAIQMgAkEANgIcIAIgADYCFCACQYwcNgIQIAJBBzYCDAy8AgsgASAERwRAIAFBAWohAUHeACEDDKMCC0HyACEDDLsCCyABIARGBEBB9AAhAwy7AgsCQCABLQAAQfDMAGotAABBAWsOA/cBcwCCAQtB4QAhAwyhAgsgASAERwRAA0AgAS0AAEHwygBqLQAAIgBBA0cEQAJAIABBAWsOAvkBAIUBC0HfACEDDKMCCyAEIAFBAWoiAUcNAAtB8wAhAwy6AgtB8wAhAwy5AgsgASAERwRAIAJBDzYCCCACIAE2AgRB4AAhAwygAgtB9QAhAwy4AgsgASAERgRAQfYAIQMMuAILIAJBDzYCCCACIAE2AgQLQQMhAwydAgsDQCABLQAAQSBHDY4CIAQgAUEBaiIBRw0AC0H3ACEDDLUCCyABIARGBEBB+AAhAwy1AgsgAS0AAEEgRw16IAFBAWohAQxbC0EAIQACQCACKAI4IgNFDQAgAygCOCIDRQ0AIAIgAxEAACEACyAADXgMgAILIAEgBEYEQEH6ACEDDLMCCyABLQAAQcwARw10IAFBAWohAUETDHYLQfsAIQMgASAERg2xAiACKAIAIgAgBCABa2ohBSABIABrQQVqIQYDQCABLQAAIABB8M4Aai0AAEcNcyAAQQVGDXUgAEEBaiEAIAQgAUEBaiIBRw0ACyACIAU2AgAMsQILIAEgBEYEQEH8ACEDDLECCwJAAkAgAS0AAEHDAGsODAB0dHR0dHR0dHR0AXQLIAFBAWohAUHmACEDDJgCCyABQQFqIQFB5wAhAwyXAgtB/QAhAyABIARGDa8CIAIoAgAiACAEIAFraiEFIAEgAGtBAmohBgJAA0AgAS0AACAAQe3PAGotAABHDXIgAEECRg0BIABBAWohACAEIAFBAWoiAUcNAAsgAiAFNgIADLACCyACQQA2AgAgBkEBaiEBQRAMcwtB/gAhAyABIARGDa4CIAIoAgAiACAEIAFraiEFIAEgAGtBBWohBgJAA0AgAS0AACAAQfbOAGotAABHDXEgAEEFRg0BIABBAWohACAEIAFBAWoiAUcNAAsgAiAFNgIADK8CCyACQQA2AgAgBkEBaiEBQRYMcgtB/wAhAyABIARGDa0CIAIoAgAiACAEIAFraiEFIAEgAGtBA2ohBgJAA0AgAS0AACAAQfzOAGotAABHDXAgAEEDRg0BIABBAWohACAEIAFBAWoiAUcNAAsgAiAFNgIADK4CCyACQQA2AgAgBkEBaiEBQQUMcQsgASAERgRAQYABIQMMrQILIAEtAABB2QBHDW4gAUEBaiEBQQgMcAsgASAERgRAQYEBIQMMrAILAkACQCABLQAAQc4Aaw4DAG8BbwsgAUEBaiEBQesAIQMMkwILIAFBAWohAUHsACEDDJICCyABIARGBEBBggEhAwyrAgsCQAJAIAEtAABByABrDggAbm5ubm5uAW4LIAFBAWohAUHqACEDDJICCyABQQFqIQFB7QAhAwyRAgtBgwEhAyABIARGDakCIAIoAgAiACAEIAFraiEFIAEgAGtBAmohBgJAA0AgAS0AACAAQYDPAGotAABHDWwgAEECRg0BIABBAWohACAEIAFBAWoiAUcNAAsgAiAFNgIADKoCCyACQQA2AgAgBkEBaiEBQQAMbQtBhAEhAyABIARGDagCIAIoAgAiACAEIAFraiEFIAEgAGtBBGohBgJAA0AgAS0AACAAQYPPAGotAABHDWsgAEEERg0BIABBAWohACAEIAFBAWoiAUcNAAsgAiAFNgIADKkCCyACQQA2AgAgBkEBaiEBQSMMbAsgASAERgRAQYUBIQMMqAILAkACQCABLQAAQcwAaw4IAGtra2trawFrCyABQQFqIQFB7wAhAwyPAgsgAUEBaiEBQfAAIQMMjgILIAEgBEYEQEGGASEDDKcCCyABLQAAQcUARw1oIAFBAWohAQxgC0GHASEDIAEgBEYNpQIgAigCACIAIAQgAWtqIQUgASAAa0EDaiEGAkADQCABLQAAIABBiM8Aai0AAEcNaCAAQQNGDQEgAEEBaiEAIAQgAUEBaiIBRw0ACyACIAU2AgAMpgILIAJBADYCACAGQQFqIQFBLQxpC0GIASEDIAEgBEYNpAIgAigCACIAIAQgAWtqIQUgASAAa0EIaiEGAkADQCABLQAAIABB0M8Aai0AAEcNZyAAQQhGDQEgAEEBaiEAIAQgAUEBaiIBRw0ACyACIAU2AgAMpQILIAJBADYCACAGQQFqIQFBKQxoCyABIARGBEBBiQEhAwykAgtBASABLQAAQd8ARw1nGiABQQFqIQEMXgtBigEhAyABIARGDaICIAIoAgAiACAEIAFraiEFIAEgAGtBAWohBgNAIAEtAAAgAEGMzwBqLQAARw1kIABBAUYN+gEgAEEBaiEAIAQgAUEBaiIBRw0ACyACIAU2AgAMogILQYsBIQMgASAERg2hAiACKAIAIgAgBCABa2ohBSABIABrQQJqIQYCQANAIAEtAAAgAEGOzwBqLQAARw1kIABBAkYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAyiAgsgAkEANgIAIAZBAWohAUECDGULQYwBIQMgASAERg2gAiACKAIAIgAgBCABa2ohBSABIABrQQFqIQYCQANAIAEtAAAgAEHwzwBqLQAARw1jIABBAUYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAyhAgsgAkEANgIAIAZBAWohAUEfDGQLQY0BIQMgASAERg2fAiACKAIAIgAgBCABa2ohBSABIABrQQFqIQYCQANAIAEtAAAgAEHyzwBqLQAARw1iIABBAUYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAygAgsgAkEANgIAIAZBAWohAUEJDGMLIAEgBEYEQEGOASEDDJ8CCwJAAkAgAS0AAEHJAGsOBwBiYmJiYgFiCyABQQFqIQFB+AAhAwyGAgsgAUEBaiEBQfkAIQMMhQILQY8BIQMgASAERg2dAiACKAIAIgAgBCABa2ohBSABIABrQQVqIQYCQANAIAEtAAAgAEGRzwBqLQAARw1gIABBBUYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAyeAgsgAkEANgIAIAZBAWohAUEYDGELQZABIQMgASAERg2cAiACKAIAIgAgBCABa2ohBSABIABrQQJqIQYCQANAIAEtAAAgAEGXzwBqLQAARw1fIABBAkYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAydAgsgAkEANgIAIAZBAWohAUEXDGALQZEBIQMgASAERg2bAiACKAIAIgAgBCABa2ohBSABIABrQQZqIQYCQANAIAEtAAAgAEGazwBqLQAARw1eIABBBkYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAycAgsgAkEANgIAIAZBAWohAUEV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JSIARQ0RIAJB5QA2AhwgAiABNgIUIAIgADYCDEEAIQMMtAELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0gIAJB0wA2AhwgAiABNgIUIAIgADYCDEEAIQMMswELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0iIAJB0gA2AhwgAiABNgIUIAIgADYCDEEAIQMMsgELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0OIAJB5QA2AhwgAiABNgIUIAIgADYCDEEAIQMMsQELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0dIAJB0wA2AhwgAiABNgIUIAIgADYCDEEAIQMMsAELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0fIAJB0gA2AhwgAiABNgIUIAIgADYCDEEAIQMMrwELIABBP0cNASABQQFqCyEBQQUhAwyUAQtBACEDIAJBADYCHCACIAE2AhQgAkH9EjYCECACQQc2AgwMrAELIAJBADYCHCACIAE2AhQgAkHcCDYCECACQQc2AgxBACEDDKsBCyACKAIEIQAgAkEANgIEIAIgACABECUiAEUNByACQeUANgIcIAIgATYCFCACIAA2AgxBACEDDKoBCyACKAIEIQAgAkEANgIEIAIgACABECUiAEUNFiACQdMANgIcIAIgATYCFCACIAA2AgxBACEDDKkBCyACKAIEIQAgAkEANgIEIAIgACABECUiAEUNGCACQdIANgIcIAIgATYCFCACIAA2AgxBACEDDKgBCyACQQA2AhwgAiABNgIUIAJBxgo2AhAgAkEHNgIMQQAhAwynAQsgAigCBCEAIAJBADYCBCACIAAgARAlIgBFDQMgAkHlADYCHCACIAE2AhQgAiAANgIMQQAhAwymAQsgAigCBCEAIAJBADYCBCACIAAgARAlIgBFDRIgAkHTADYCHCACIAE2AhQgAiAANgIMQQAhAwylAQsgAigCBCEAIAJBADYCBCACIAAgARAlIgBFDRQgAkHSADYCHCACIAE2AhQgAiAANgIMQQAhAwykAQsgAigCBCEAIAJBADYCBCACIAAgARAlIgBFDQAgAkHlADYCHCACIAE2AhQgAiAANgIMQQAhAwyjAQtB1QAhAwyJAQsgAEEVRwRAIAJBADYCHCACIAE2AhQgAkG5DTYCECACQRo2AgxB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AkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAIABB5ABrDvQDY2IAAWFhYWFhYQIDBAVhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhBgcICQoLDA0OD2FhYWFhEGFhYWFhYWFhYWFhEWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYRITFBUWFxgZGhthYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhHB0eHyAhIiMkJSYnKCkqKywtLi8wMTIzNDU2YTc4OTphYWFhYWFhYTthYWE8YWFhYT0+P2FhYWFhYWFhQGFhQWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYUJDREVGR0hJSktMTU5PUFFSU2FhYWFhYWFhVFVWV1hZWlthXF1hYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFeYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhX2BhC0HhJw8LQaQhDwtByywPC0H+MQ8LQcAkDwtBqyQPC0GNKA8LQeImDwtBgDAPC0G5Lw8LQdckDwtB7x8PC0HhHw8LQfofDwtB8iAPC0GoLw8LQa4yDwtBiDAPC0HsJw8LQYIiDwtBjh0PC0HQLg8LQcojDwtBxTIPC0HfHA8LQdIcDwtBxCAPC0HXIA8LQaIfDwtB7S4PC0GrMA8LQdQlDwtBzC4PC0H6Lg8LQfwrDwtB0jAPC0HxHQ8LQbsgDwtB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CABB3AgLii1JbnZhbGlkIGNoYXIgaW4gdXJsIHF1ZXJ5AFNwYW4gY2FsbGJhY2sgZXJyb3IgaW4gb25fYm9keQBDb250ZW50LUxlbmd0aCBvdmVyZmxvdwBDaHVuayBzaXplIG92ZXJmbG93AFJlc3BvbnNlIG92ZXJmbG93AEludmFsaWQgbWV0aG9kIGZvciBIVFRQL3gueCByZXF1ZXN0AEludmFsaWQgbWV0aG9kIGZvciBSVFNQL3gueCByZXF1ZXN0AEV4cGVjdGVkIFNPVVJDRSBtZXRob2QgZm9yIElDRS94LnggcmVxdWVzdABJbnZhbGlkIGNoYXIgaW4gdXJsIGZyYWdtZW50IHN0YXJ0AEV4cGVjdGVkIGRvdABTcGFuIGNhbGxiYWNrIGVycm9yIGluIG9uX3N0YXR1cwBJbnZhbGlkIHJlc3BvbnNlIHN0YXR1cwBJbnZhbGlkIGNoYXJhY3RlciBpbiBjaHVuayBleHRlbnNpb25zAFVzZXIgY2FsbGJhY2sgZXJyb3IAYG9uX3Jlc2V0YCBjYWxsYmFjayBlcnJvcgBgb25fY2h1bmtfaGVhZGVyYCBjYWxsYmFjayBlcnJvcgBgb25fbWVzc2FnZV9iZWdpbmAgY2FsbGJhY2sgZXJyb3IAYG9uX2NodW5rX2V4dGVuc2lvbl92YWx1ZWAgY2FsbGJhY2sgZXJyb3IAYG9uX3N0YXR1c19jb21wbGV0ZWAgY2FsbGJhY2sgZXJyb3IAYG9uX3ZlcnNpb25fY29tcGxldGVgIGNhbGxiYWNrIGVycm9yAGBvbl91cmxfY29tcGxldGVgIGNhbGxiYWNrIGVycm9yAGBvbl9jaHVua19jb21wbGV0ZWAgY2FsbGJhY2sgZXJyb3IAYG9uX2hlYWRlcl92YWx1ZV9jb21wbGV0ZWAgY2FsbGJhY2sgZXJyb3IAYG9uX21lc3NhZ2VfY29tcGxldGVgIGNhbGxiYWNrIGVycm9yAGBvbl9tZXRob2RfY29tcGxldGVgIGNhbGxiYWNrIGVycm9yAGBvbl9oZWFkZXJfZmllbGRfY29tcGxldGVgIGNhbGxiYWNrIGVycm9yAGBvbl9jaHVua19leHRlbnNpb25fbmFtZWAgY2FsbGJhY2sgZXJyb3IAVW5leHBlY3RlZCBjaGFyIGluIHVybCBzZXJ2ZXIASW52YWxpZCBoZWFkZXIgdmFsdWUgY2hhcgBJbnZhbGlkIGhlYWRlciBmaWVsZCBjaGFyAFNwYW4gY2FsbGJhY2sgZXJyb3IgaW4gb25fdmVyc2lvbgBJbnZhbGlkIG1pbm9yIHZlcnNpb24ASW52YWxpZCBtYWpvciB2ZXJzaW9uAEV4cGVjdGVkIHNwYWNlIGFmdGVyIHZlcnNpb24ARXhwZWN0ZWQgQ1JMRiBhZnRlciB2ZXJzaW9uAEludmFsaWQgSFRUUCB2ZXJzaW9uAEludmFsaWQgaGVhZGVyIHRva2VuAFNwYW4gY2FsbGJhY2sgZXJyb3IgaW4gb25fdXJsAEludmFsaWQgY2hhcmFjdGVycyBpbiB1cmwAVW5leHBlY3RlZCBzdGFydCBjaGFyIGluIHVybABEb3VibGUgQCBpbiB1cmwARW1wdHkgQ29udGVudC1MZW5ndGgASW52YWxpZCBjaGFyYWN0ZXIgaW4gQ29udGVudC1MZW5ndGgARHVwbGljYXRlIENvbnRlbnQtTGVuZ3RoAEludmFsaWQgY2hhciBpbiB1cmwgcGF0aABDb250ZW50LUxlbmd0aCBjYW4ndCBiZSBwcmVzZW50IHdpdGggVHJhbnNmZXItRW5jb2RpbmcASW52YWxpZCBjaGFyYWN0ZXIgaW4gY2h1bmsgc2l6ZQBTcGFuIGNhbGxiYWNrIGVycm9yIGluIG9uX2hlYWRlcl92YWx1ZQBTcGFuIGNhbGxiYWNrIGVycm9yIGluIG9uX2NodW5rX2V4dGVuc2lvbl92YWx1ZQBJbnZhbGlkIGNoYXJhY3RlciBpbiBjaHVuayBleHRlbnNpb25zIHZhbHVlAE1pc3NpbmcgZXhwZWN0ZWQgTEYgYWZ0ZXIgaGVhZGVyIHZhbHVlAEludmFsaWQgYFRyYW5zZmVyLUVuY29kaW5nYCBoZWFkZXIgdmFsdWUASW52YWxpZCBjaGFyYWN0ZXIgaW4gY2h1bmsgZXh0ZW5zaW9ucyBxdW90ZSB2YWx1ZQBJbnZhbGlkIGNoYXJhY3RlciBpbiBjaHVuayBleHRlbnNpb25zIHF1b3RlZCB2YWx1ZQBQYXVzZWQgYnkgb25faGVhZGVyc19jb21wbGV0ZQBJbnZhbGlkIEVPRiBzdGF0ZQBvbl9yZXNldCBwYXVzZQBvbl9jaHVua19oZWFkZXIgcGF1c2UAb25fbWVzc2FnZV9iZWdpbiBwYXVzZQBvbl9jaHVua19leHRlbnNpb25fdmFsdWUgcGF1c2UAb25fc3RhdHVzX2NvbXBsZXRlIHBhdXNlAG9uX3ZlcnNpb25fY29tcGxldGUgcGF1c2UAb25fdXJsX2NvbXBsZXRlIHBhdXNlAG9uX2NodW5rX2NvbXBsZXRlIHBhdXNlAG9uX2hlYWRlcl92YWx1ZV9jb21wbGV0ZSBwYXVzZQBvbl9tZXNzYWdlX2NvbXBsZXRlIHBhdXNlAG9uX21ldGhvZF9jb21wbGV0ZSBwYXVzZQBvbl9oZWFkZXJfZmllbGRfY29tcGxldGUgcGF1c2UAb25fY2h1bmtfZXh0ZW5zaW9uX25hbWUgcGF1c2UAVW5leHBlY3RlZCBzcGFjZSBhZnRlciBzdGFydCBsaW5lAFNwYW4gY2FsbGJhY2sgZXJyb3IgaW4gb25fY2h1bmtfZXh0ZW5zaW9uX25hbWUASW52YWxpZCBjaGFyYWN0ZXIgaW4gY2h1bmsgZXh0ZW5zaW9ucyBuYW1lAFBhdXNlIG9uIENPTk5FQ1QvVXBncmFkZQBQYXVzZSBvbiBQUkkvVXBncmFkZQBFeHBlY3RlZCBIVFRQLzIgQ29ubmVjdGlvbiBQcmVmYWNlAFNwYW4gY2FsbGJhY2sgZXJyb3IgaW4gb25fbWV0aG9kAEV4cGVjdGVkIHNwYWNlIGFmdGVyIG1ldGhvZABTcGFuIGNhbGxiYWNrIGVycm9yIGluIG9uX2hlYWRlcl9maWVsZABQYXVzZWQASW52YWxpZCB3b3JkIGVuY291bnRlcmVkAEludmFsaWQgbWV0aG9kIGVuY291bnRlcmVkAFVuZXhwZWN0ZWQgY2hhciBpbiB1cmwgc2NoZW1hAFJlcXVlc3QgaGFzIGludmFsaWQgYFRyYW5zZmVyLUVuY29kaW5nYABTV0lUQ0hfUFJPWFkAVVNFX1BST1hZAE1LQUNUSVZJVFkAVU5QUk9DRVNTQUJMRV9FTlRJVFkAQ09QWQBNT1ZFRF9QRVJNQU5FTlRMWQBUT09fRUFSTFkATk9USUZZAEZBSUxFRF9ERVBFTkRFTkNZAEJBRF9HQVRFV0FZAFBMQVkAUFVUAENIRUNLT1VUAEdBVEVXQVlfVElNRU9VVABSRVFVRVNUX1RJTUVPVVQATkVUV09SS19DT05ORUNUX1RJTUVPVVQAQ09OTkVDVElPTl9USU1FT1VUAExPR0lOX1RJTUVPVVQATkVUV09SS19SRUFEX1RJTUVPVVQAUE9TVABNSVNESVJFQ1RFRF9SRVFVRVNUAENMSUVOVF9DTE9TRURfUkVRVUVTVABDTElFTlRfQ0xPU0VEX0xPQURfQkFMQU5DRURfUkVRVUVTVABCQURfUkVRVUVTVABIVFRQX1JFUVVFU1RfU0VOVF9UT19IVFRQU19QT1JUAFJFUE9SVABJTV9BX1RFQVBPVABSRVNFVF9DT05URU5UAE5PX0NPTlRFTlQAUEFSVElBTF9DT05URU5UAEhQRV9JTlZBTElEX0NPTlNUQU5UAEhQRV9DQl9SRVNFVABHRVQASFBFX1NUUklDVABDT05GTElDVABURU1QT1JBUllfUkVESVJFQ1QAUEVSTUFORU5UX1JFRElSRUNUAENPTk5FQ1QATVVMVElfU1RBVFVTAEhQRV9JTlZBTElEX1NUQVRVUwBUT09fTUFOWV9SRVFVRVNUUwBFQVJMWV9ISU5UUwBVTkFWQUlMQUJMRV9GT1JfTEVHQUxfUkVBU09OUwBPUFRJT05TAFNXSVRDSElOR19QUk9UT0NPTFMAVkFSSUFOVF9BTFNPX05FR09USUFURVMATVVMVElQTEVfQ0hPSUNFUwBJTlRFUk5BTF9TRVJWRVJfRVJST1IAV0VCX1NFUlZFUl9VTktOT1dOX0VSUk9SAFJBSUxHVU5fRVJST1IASURFTlRJVFlfUFJPVklERVJfQVVUSEVOVElDQVRJT05fRVJST1IAU1NMX0NFUlRJRklDQVRFX0VSUk9SAElOVkFMSURfWF9GT1JXQVJERURfRk9SAFNFVF9QQVJBTUVURVIAR0VUX1BBUkFNRVRFUgBIUEVfVVNFUgBTRUVfT1RIRVIASFBFX0NCX0NIVU5LX0hFQURFUgBNS0NBTEVOREFSAFNFVFVQAFdFQl9TRVJWRVJfSVNfRE9XTgBURUFSRE9XTgBIUEVfQ0xPU0VEX0NPTk5FQ1RJT04ASEVVUklTVElDX0VYUElSQVRJT04ARElTQ09OTkVDVEVEX09QRVJBVElPTgBOT05fQVVUSE9SSVRBVElWRV9JTkZPUk1BVElPTgBIUEVfSU5WQUxJRF9WRVJTSU9OAEhQRV9DQl9NRVNTQUdFX0JFR0lOAFNJVEVfSVNfRlJPWkVOAEhQRV9JTlZBTElEX0hFQURFUl9UT0tFTgBJTlZBTElEX1RPS0VOAEZPUkJJRERFTgBFTkhBTkNFX1lPVVJfQ0FMTQBIUEVfSU5WQUxJRF9VUkwAQkxPQ0tFRF9CWV9QQVJFTlRBTF9DT05UUk9MAE1LQ09MAEFDTABIUEVfSU5URVJOQUwAUkVRVUVTVF9IRUFERVJfRklFTERTX1RPT19MQVJHRV9VTk9GRklDSUFMAEhQRV9PSwBVTkxJTksAVU5MT0NLAFBSSQBSRVRSWV9XSVRIAEhQRV9JTlZBTElEX0NPTlRFTlRfTEVOR1RIAEhQRV9VTkVYUEVDVEVEX0NPTlRFTlRfTEVOR1RIAEZMVVNIAFBST1BQQVRDSABNLVNFQVJDSABVUklfVE9PX0xPTkcAUFJPQ0VTU0lORwBNSVNDRUxMQU5FT1VTX1BFUlNJU1RFTlRfV0FSTklORwBNSVNDRUxMQU5FT1VTX1dBUk5JTkcASFBFX0lOVkFMSURfVFJBTlNGRVJfRU5DT0RJTkcARXhwZWN0ZWQgQ1JMRgBIUEVfSU5WQUxJRF9DSFVOS19TSVpFAE1PVkUAQ09OVElOVUUASFBFX0NCX1NUQVRVU19DT01QTEVURQBIUEVfQ0JfSEVBREVSU19DT01QTEVURQBIUEVfQ0JfVkVSU0lPTl9DT01QTEVURQBIUEVfQ0JfVVJMX0NPTVBMRVRFAEhQRV9DQl9DSFVOS19DT01QTEVURQBIUEVfQ0JfSEVBREVSX1ZBTFVFX0NPTVBMRVRFAEhQRV9DQl9DSFVOS19FWFRFTlNJT05fVkFMVUVfQ09NUExFVEUASFBFX0NCX0NIVU5LX0VYVEVOU0lPTl9OQU1FX0NPTVBMRVRFAEhQRV9DQl9NRVNTQUdFX0NPTVBMRVRFAEhQRV9DQl9NRVRIT0RfQ09NUExFVEUASFBFX0NCX0hFQURFUl9GSUVMRF9DT01QTEVURQBERUxFVEUASFBFX0lOVkFMSURfRU9GX1NUQVRFAElOVkFMSURfU1NMX0NFUlRJRklDQVRFAFBBVVNFAE5PX1JFU1BPTlNFAFVOU1VQUE9SVEVEX01FRElBX1RZUEUAR09ORQBOT1RfQUNDRVBUQUJMRQBTRVJWSUNFX1VOQVZBSUxBQkxFAFJBTkdFX05PVF9TQVRJU0ZJQUJMRQBPUklHSU5fSVNfVU5SRUFDSEFCTEUAUkVTUE9OU0VfSVNfU1RBTEUAUFVSR0UATUVSR0UAUkVRVUVTVF9IRUFERVJfRklFTERTX1RPT19MQVJHRQBSRVFVRVNUX0hFQURFUl9UT09fTEFSR0UAUEFZTE9BRF9UT09fTEFSR0UASU5TVUZGSUNJRU5UX1NUT1JBR0UASFBFX1BBVVNFRF9VUEdSQURFAEhQRV9QQVVTRURfSDJfVVBHUkFERQBTT1VSQ0UAQU5OT1VOQ0UAVFJBQ0UASFBFX1VORVhQRUNURURfU1BBQ0UAREVTQ1JJQkUAVU5TVUJTQ1JJQkUAUkVDT1JEAEhQRV9JTlZBTElEX01FVEhPRABOT1RfRk9VTkQAUFJPUEZJTkQAVU5CSU5EAFJFQklORABVTkFVVEhPUklaRUQATUVUSE9EX05PVF9BTExPV0VEAEhUVFBfVkVSU0lPTl9OT1RfU1VQUE9SVEVEAEFMUkVBRFlfUkVQT1JURUQAQUNDRVBURUQATk9UX0lNUExFTUVOVEVEAExPT1BfREVURUNURUQASFBFX0NSX0VYUEVDVEVEAEhQRV9MRl9FWFBFQ1RFRABDUkVBVEVEAElNX1VTRUQASFBFX1BBVVNFRABUSU1FT1VUX09DQ1VSRUQAUEFZTUVOVF9SRVFVSVJFRABQUkVDT05ESVRJT05fUkVRVUlSRUQAUFJPWFlfQVVUSEVOVElDQVRJT05fUkVRVUlSRUQATkVUV09SS19BVVRIRU5USUNBVElPTl9SRVFVSVJFRABMRU5HVEhfUkVRVUlSRUQAU1NMX0NFUlRJRklDQVRFX1JFUVVJUkVEAFVQR1JBREVfUkVRVUlSRUQAUEFHRV9FWFBJUkVEAFBSRUNPTkRJVElPTl9GQUlMRUQARVhQRUNUQVRJT05fRkFJTEVEAFJFVkFMSURBVElPTl9GQUlMRUQAU1NMX0hBTkRTSEFLRV9GQUlMRUQATE9DS0VEAFRSQU5TRk9STUFUSU9OX0FQUExJRUQATk9UX01PRElGSUVEAE5PVF9FWFRFTkRFRABCQU5EV0lEVEhfTElNSVRfRVhDRUVERUQAU0lURV9JU19PVkVSTE9BREVEAEhFQUQARXhwZWN0ZWQgSFRUUC8AAF4TAAAmEwAAMBAAAPAXAACdEwAAFRIAADkXAADwEgAAChAAAHUSAACtEgAAghMAAE8UAAB/EAAAoBUAACMUAACJEgAAixQAAE0VAADUEQAAzxQAABAYAADJFgAA3BYAAMERAADgFwAAuxQAAHQUAAB8FQAA5RQAAAgXAAAfEAAAZRUAAKMUAAAoFQAAAhUAAJkVAAAsEAAAixkAAE8PAADUDgAAahAAAM4QAAACFwAAiQ4AAG4TAAAcEwAAZhQAAFYXAADBEwAAzRMAAGwTAABoFwAAZhcAAF8XAAAiEwAAzg8AAGkOAADYDgAAYxYAAMsTAACqDgAAKBcAACYXAADFEwAAXRYAAOgRAABnEwAAZRMAAPIWAABzEwAAHRcAAPkWAADzEQAAzw4AAM4VAAAMEgAAsxEAAKURAABhEAAAMhcAALsTAEH5NQsBAQBBkDYL4AEBAQIBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQBB/TcLAQEAQZE4C14CAwICAgICAAACAgACAgACAgICAgICAgICAAQAAAAAAAICAgICAgICAgICAgICAgICAgICAgICAgICAAAAAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAAgACAEH9OQsBAQBBkToLXgIAAgICAgIAAAICAAICAAICAgICAgICAgIAAwAEAAAAAgICAgICAgICAgICAgICAgICAgICAgICAgIAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgACAAIAQfA7Cw1sb3NlZWVwLWFsaXZlAEGJPAsBAQBBoDwL4AEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQBBiT4LAQEAQaA+C+cBAQEBAQEBAQEBAQEBAgEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQFjaHVua2VkAEGwwAALXwEBAAEBAQEBAAABAQABAQABAQEBAQEBAQEBAAAAAAAAAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAAAAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAAQABAEGQwgALIWVjdGlvbmVudC1sZW5ndGhvbnJveHktY29ubmVjdGlvbgBBwMIACy1yYW5zZmVyLWVuY29kaW5ncGdyYWRlDQoNCg0KU00NCg0KVFRQL0NFL1RTUC8AQfnCAAsFAQIAAQMAQZDDAAvgAQQBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAEH5xAALBQECAAEDAEGQxQAL4AEEAQEFAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQBB+cYACwQBAAABAEGRxwAL3wEBAQABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAEH6yAALBAEAAAIAQZDJAAtfAwQAAAQEBAQEBAQEBAQEBQQEBAQEBAQEBAQEBAAEAAYHBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAAQABAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAAAAQAQfrKAAsEAQAAAQBBkMsACwEBAEGqywALQQIAAAAAAAADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwAAAAAAAAMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAEH6zAALBAEAAAEAQZDNAAsBAQBBms0ACwYCAAAAAAIAQbHNAAs6AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMAAAAAAAADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwBB8M4AC5YBTk9VTkNFRUNLT1VUTkVDVEVURUNSSUJFTFVTSEVURUFEU0VBUkNIUkdFQ1RJVklUWUxFTkRBUlZFT1RJRllQVElPTlNDSFNFQVlTVEFUQ0hHRU9SRElSRUNUT1JUUkNIUEFSQU1FVEVSVVJDRUJTQ1JJQkVBUkRPV05BQ0VJTkROS0NLVUJTQ1JJQkVIVFRQL0FEVFAv", "base64");
 }));
 //#endregion
 //#region node_modules/@vercel/blob/node_modules/undici/lib/llhttp/llhttp_simd-wasm.js
 var require_llhttp_simd_wasm = /* @__PURE__ */ __commonJSMin(((exports, module) => {
-	var { Buffer: Buffer$1 } = __require("node:buffer");
-	module.exports = Buffer$1.from("AGFzbQEAAAABJwdgAX8Bf2ADf39/AX9gAX8AYAJ/fwBgBH9/f38Bf2AAAGADf39/AALLAQgDZW52GHdhc21fb25faGVhZGVyc19jb21wbGV0ZQAEA2VudhV3YXNtX29uX21lc3NhZ2VfYmVnaW4AAANlbnYLd2FzbV9vbl91cmwAAQNlbnYOd2FzbV9vbl9zdGF0dXMAAQNlbnYUd2FzbV9vbl9oZWFkZXJfZmllbGQAAQNlbnYUd2FzbV9vbl9oZWFkZXJfdmFsdWUAAQNlbnYMd2FzbV9vbl9ib2R5AAEDZW52GHdhc21fb25fbWVzc2FnZV9jb21wbGV0ZQAAAy0sBQYAAAIAAAAAAAACAQIAAgICAAADAAAAAAMDAwMBAQEBAQEBAQEAAAIAAAAEBQFwARISBQMBAAIGCAF/AUGA1AQLB9EFIgZtZW1vcnkCAAtfaW5pdGlhbGl6ZQAIGV9faW5kaXJlY3RfZnVuY3Rpb25fdGFibGUBAAtsbGh0dHBfaW5pdAAJGGxsaHR0cF9zaG91bGRfa2VlcF9hbGl2ZQAvDGxsaHR0cF9hbGxvYwALBm1hbGxvYwAxC2xsaHR0cF9mcmVlAAwEZnJlZQAMD2xsaHR0cF9nZXRfdHlwZQANFWxsaHR0cF9nZXRfaHR0cF9tYWpvcgAOFWxsaHR0cF9nZXRfaHR0cF9taW5vcgAPEWxsaHR0cF9nZXRfbWV0aG9kABAWbGxodHRwX2dldF9zdGF0dXNfY29kZQAREmxsaHR0cF9nZXRfdXBncmFkZQASDGxsaHR0cF9yZXNldAATDmxsaHR0cF9leGVjdXRlABQUbGxodHRwX3NldHRpbmdzX2luaXQAFQ1sbGh0dHBfZmluaXNoABYMbGxodHRwX3BhdXNlABcNbGxodHRwX3Jlc3VtZQAYG2xsaHR0cF9yZXN1bWVfYWZ0ZXJfdXBncmFkZQAZEGxsaHR0cF9nZXRfZXJybm8AGhdsbGh0dHBfZ2V0X2Vycm9yX3JlYXNvbgAbF2xsaHR0cF9zZXRfZXJyb3JfcmVhc29uABwUbGxodHRwX2dldF9lcnJvcl9wb3MAHRFsbGh0dHBfZXJybm9fbmFtZQAeEmxsaHR0cF9tZXRob2RfbmFtZQAfEmxsaHR0cF9zdGF0dXNfbmFtZQAgGmxsaHR0cF9zZXRfbGVuaWVudF9oZWFkZXJzACEhbGxodHRwX3NldF9sZW5pZW50X2NodW5rZWRfbGVuZ3RoACIdbGxodHRwX3NldF9sZW5pZW50X2tlZXBfYWxpdmUAIyRsbGh0dHBfc2V0X2xlbmllbnRfdHJhbnNmZXJfZW5jb2RpbmcAJBhsbGh0dHBfbWVzc2FnZV9uZWVkc19lb2YALgkXAQBBAQsRAQIDBAUKBgcrLSwqKSglJyYK77MCLBYAQYjQACgCAARAAAtBiNAAQQE2AgALFAAgABAwIAAgAjYCOCAAIAE6ACgLFAAgACAALwEyIAAtAC4gABAvEAALHgEBf0HAABAyIgEQMCABQYAINgI4IAEgADoAKCABC48MAQd/AkAgAEUNACAAQQhrIgEgAEEEaygCACIAQXhxIgRqIQUCQCAAQQFxDQAgAEEDcUUNASABIAEoAgAiAGsiAUGc0AAoAgBJDQEgACAEaiEEAkACQEGg0AAoAgAgAUcEQCAAQf8BTQRAIABBA3YhAyABKAIIIgAgASgCDCICRgRAQYzQAEGM0AAoAgBBfiADd3E2AgAMBQsgAiAANgIIIAAgAjYCDAwECyABKAIYIQYgASABKAIMIgBHBEAgACABKAIIIgI2AgggAiAANgIMDAMLIAFBFGoiAygCACICRQRAIAEoAhAiAkUNAiABQRBqIQMLA0AgAyEHIAIiAEEUaiIDKAIAIgINACAAQRBqIQMgACgCECICDQALIAdBADYCAAwCCyAFKAIEIgBBA3FBA0cNAiAFIABBfnE2AgRBlNAAIAQ2AgAgBSAENgIAIAEgBEEBcjYCBAwDC0EAIQALIAZFDQACQCABKAIcIgJBAnRBvNIAaiIDKAIAIAFGBEAgAyAANgIAIAANAUGQ0ABBkNAAKAIAQX4gAndxNgIADAILIAZBEEEUIAYoAhAgAUYbaiAANgIAIABFDQELIAAgBjYCGCABKAIQIgIEQCAAIAI2AhAgAiAANgIYCyABQRRqKAIAIgJFDQAgAEEUaiACNgIAIAIgADYCGAsgASAFTw0AIAUoAgQiAEEBcUUNAAJAAkACQAJAIABBAnFFBEBBpNAAKAIAIAVGBEBBpNAAIAE2AgBBmNAAQZjQACgCACAEaiIANgIAIAEgAEEBcjYCBCABQaDQACgCAEcNBkGU0ABBADYCAEGg0ABBADYCAAwGC0Gg0AAoAgAgBUYEQEGg0AAgATYCAEGU0ABBlNAAKAIAIARqIgA2AgAgASAAQQFyNgIEIAAgAWogADYCAAwGCyAAQXhxIARqIQQgAEH/AU0EQCAAQQN2IQMgBSgCCCIAIAUoAgwiAkYEQEGM0ABBjNAAKAIAQX4gA3dxNgIADAULIAIgADYCCCAAIAI2AgwMBAsgBSgCGCEGIAUgBSgCDCIARwRAQZzQACgCABogACAFKAIIIgI2AgggAiAANgIMDAMLIAVBFGoiAygCACICRQRAIAUoAhAiAkUNAiAFQRBqIQMLA0AgAyEHIAIiAEEUaiIDKAIAIgINACAAQRBqIQMgACgCECICDQALIAdBADYCAAwCCyAFIABBfnE2AgQgASAEaiAENgIAIAEgBEEBcjYCBAwDC0EAIQALIAZFDQACQCAFKAIcIgJBAnRBvNIAaiIDKAIAIAVGBEAgAyAANgIAIAANAUGQ0ABBkNAAKAIAQX4gAndxNgIADAILIAZBEEEUIAYoAhAgBUYbaiAANgIAIABFDQELIAAgBjYCGCAFKAIQIgIEQCAAIAI2AhAgAiAANgIYCyAFQRRqKAIAIgJFDQAgAEEUaiACNgIAIAIgADYCGAsgASAEaiAENgIAIAEgBEEBcjYCBCABQaDQACgCAEcNAEGU0AAgBDYCAAwBCyAEQf8BTQRAIARBeHFBtNAAaiEAAn9BjNAAKAIAIgJBASAEQQN2dCIDcUUEQEGM0AAgAiADcjYCACAADAELIAAoAggLIgIgATYCDCAAIAE2AgggASAANgIMIAEgAjYCCAwBC0EfIQIgBEH///8HTQRAIARBJiAEQQh2ZyIAa3ZBAXEgAEEBdGtBPmohAgsgASACNgIcIAFCADcCECACQQJ0QbzSAGohAAJAQZDQACgCACIDQQEgAnQiB3FFBEAgACABNgIAQZDQACADIAdyNgIAIAEgADYCGCABIAE2AgggASABNgIMDAELIARBGSACQQF2a0EAIAJBH0cbdCECIAAoAgAhAAJAA0AgACIDKAIEQXhxIARGDQEgAkEddiEAIAJBAXQhAiADIABBBHFqQRBqIgcoAgAiAA0ACyAHIAE2AgAgASADNgIYIAEgATYCDCABIAE2AggMAQsgAygCCCIAIAE2AgwgAyABNgIIIAFBADYCGCABIAM2AgwgASAANgIIC0Gs0ABBrNAAKAIAQQFrIgBBfyAAGzYCAAsLBwAgAC0AKAsHACAALQAqCwcAIAAtACsLBwAgAC0AKQsHACAALwEyCwcAIAAtAC4LQAEEfyAAKAIYIQEgAC0ALSECIAAtACghAyAAKAI4IQQgABAwIAAgBDYCOCAAIAM6ACggACACOgAtIAAgATYCGAu74gECB38DfiABIAJqIQQCQCAAIgIoAgwiAA0AIAIoAgQEQCACIAE2AgQLIwBBEGsiCCQAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACfwJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAIAIoAhwiA0EBaw7dAdoBAdkBAgMEBQYHCAkKCwwNDtgBDxDXARES1gETFBUWFxgZGhvgAd8BHB0e1QEfICEiIyQl1AEmJygpKiss0wHSAS0u0QHQAS8wMTIzNDU2Nzg5Ojs8PT4/QEFCQ0RFRtsBR0hJSs8BzgFLzQFMzAFNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AAYEBggGDAYQBhQGGAYcBiAGJAYoBiwGMAY0BjgGPAZABkQGSAZMBlAGVAZYBlwGYAZkBmgGbAZwBnQGeAZ8BoAGhAaIBowGkAaUBpgGnAagBqQGqAasBrAGtAa4BrwGwAbEBsgGzAbQBtQG2AbcBywHKAbgByQG5AcgBugG7AbwBvQG+Ab8BwAHBAcIBwwHEAcUBxgEA3AELQQAMxgELQQ4MxQELQQ0MxAELQQ8MwwELQRAMwgELQRMMwQELQRQMwAELQRUMvwELQRYMvgELQRgMvQELQRkMvAELQRoMuwELQRsMugELQRwMuQELQR0MuAELQQgMtwELQR4MtgELQSAMtQELQR8MtAELQQcMswELQSEMsgELQSIMsQELQSMMsAELQSQMrwELQRIMrgELQREMrQELQSUMrAELQSYMqwELQScMqgELQSgMqQELQcMBDKgBC0EqDKcBC0ErDKYBC0EsDKUBC0EtDKQBC0EuDKMBC0EvDKIBC0HEAQyhAQtBMAygAQtBNAyfAQtBDAyeAQtBMQydAQtBMgycAQtBMwybAQtBOQyaAQtBNQyZAQtBxQEMmAELQQsMlwELQToMlgELQTYMlQELQQoMlAELQTcMkwELQTgMkgELQTwMkQELQTsMkAELQT0MjwELQQkMjgELQSkMjQELQT4MjAELQT8MiwELQcAADIoBC0HBAAyJAQtBwgAMiAELQcMADIcBC0HEAAyGAQtBxQAMhQELQcYADIQBC0EXDIMBC0HHAAyCAQtByAAMgQELQckADIABC0HKAAx/C0HLAAx+C0HNAAx9C0HMAAx8C0HOAAx7C0HPAAx6C0HQAAx5C0HRAAx4C0HSAAx3C0HTAAx2C0HUAAx1C0HWAAx0C0HVAAxzC0EGDHILQdcADHELQQUMcAtB2AAMbwtBBAxuC0HZAAxtC0HaAAxsC0HbAAxrC0HcAAxqC0EDDGkLQd0ADGgLQd4ADGcLQd8ADGYLQeEADGULQeAADGQLQeIADGMLQeMADGILQQIMYQtB5AAMYAtB5QAMXwtB5gAMXgtB5wAMXQtB6AAMXAtB6QAMWwtB6gAMWgtB6wAMWQtB7AAMWAtB7QAMVwtB7gAMVgtB7wAMVQtB8AAMVAtB8QAMUwtB8gAMUgtB8wAMUQtB9AAMUAtB9QAMTwtB9gAMTgtB9wAMTQtB+AAMTAtB+QAMSwtB+gAMSgtB+wAMSQtB/AAMSAtB/QAMRwtB/gAMRgtB/wAMRQtBgAEMRAtBgQEMQwtBggEMQgtBgwEMQQtBhAEMQAtBhQEMPwtBhgEMPgtBhwEMPQtBiAEMPAtBiQEMOwtBigEMOgtBiwEMOQtBjAEMOAtBjQEMNwtBjgEMNgtBjwEMNQtBkAEMNAtBkQEMMwtBkgEMMgtBkwEMMQtBlAEMMAtBlQEMLwtBlgEMLgtBlwEMLQtBmAEMLAtBmQEMKwtBmgEMKgtBmwEMKQtBnAEMKAtBnQEMJwtBngEMJgtBnwEMJQtBoAEMJAtBoQEMIwtBogEMIgtBowEMIQtBpAEMIAtBpQEMHwtBpgEMHgtBpwEMHQtBqAEMHAtBqQEMGwtBqgEMGgtBqwEMGQtBrAEMGAtBrQEMFwtBrgEMFgtBAQwVC0GvAQwUC0GwAQwTC0GxAQwSC0GzAQwRC0GyAQwQC0G0AQwPC0G1AQwOC0G2AQwNC0G3AQwMC0G4AQwLC0G5AQwKC0G6AQwJC0G7AQwIC0HGAQwHC0G8AQwGC0G9AQwFC0G+AQwEC0G/AQwDC0HAAQwCC0HCAQwBC0HBAQshAwNAAkACQAJAAkACQAJAAkACQAJAIAICfwJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJ/AkACQAJAAkACQAJAAkACQAJAAkACQAJAAkAgAgJ/AkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACfwJAAkACfwJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkAC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iQEhAwykAgtBASABLQAAQd8ARw1nGiABQQFqIQEMXgtBigEhAyABIARGDaICIAIoAgAiACAEIAFraiEFIAEgAGtBAWohBgNAIAEtAAAgAEGMzwBqLQAARw1kIABBAUYN+gEgAEEBaiEAIAQgAUEBaiIBRw0ACyACIAU2AgAMogILQYsBIQMgASAERg2hAiACKAIAIgAgBCABa2ohBSABIABrQQJqIQYCQANAIAEtAAAgAEGOzwBqLQAARw1kIABBAkYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAyiAgsgAkEANgIAIAZBAWohAUECDGULQYwBIQMgASAERg2gAiACKAIAIgAgBCABa2ohBSABIABrQQFqIQYCQANAIAEtAAAgAEHwzwBqLQAARw1jIABBAUYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAyhAgsgAkEANgIAIAZBAWohAUEfDGQLQY0BIQMgASAERg2fAiACKAIAIgAgBCABa2ohBSABIABrQQFqIQYCQANAIAEtAAAgAEHyzwBqLQAARw1iIABBAUYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAygAgsgAkEANgIAIAZBAWohAUEJDGMLIAEgBEYEQEGOASEDDJ8CCwJAAkAgAS0AAEHJAGsOBwBiYmJiYgFiCyABQQFqIQFB+AAhAwyGAgsgAUEBaiEBQfkAIQMMhQILQY8BIQMgASAERg2dAiACKAIAIgAgBCABa2ohBSABIABrQQVqIQYCQANAIAEtAAAgAEGRzwBqLQAARw1gIABBBUYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAyeAgsgAkEANgIAIAZBAWohAUEYDGELQZABIQMgASAERg2cAiACKAIAIgAgBCABa2ohBSABIABrQQJqIQYCQANAIAEtAAAgAEGXzwBqLQAARw1fIABBAkYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAydAgsgAkEANgIAIAZBAWohAUEXDGALQZEBIQMgASAERg2bAiACKAIAIgAgBCABa2ohBSABIABrQQZqIQYCQANAIAEtAAAgAEGazwBqLQAARw1eIABBBkYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAycAgsgAkEANgIAIAZBAWohAUEV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JSIARQ0RIAJB5QA2AhwgAiABNgIUIAIgADYCDEEAIQMMtAELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0gIAJB0wA2AhwgAiABNgIUIAIgADYCDEEAIQMMswELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0iIAJB0gA2AhwgAiABNgIUIAIgADYCDEEAIQMMsgELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0OIAJB5QA2AhwgAiABNgIUIAIgADYCDEEAIQMMsQELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0dIAJB0wA2AhwgAiABNgIUIAIgADYCDEEAIQMMsAELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0fIAJB0gA2AhwgAiABNgIUIAIgADYCDEEAIQMMrwELIABBP0cNASABQQFqCyEBQQUhAwyUAQtBACEDIAJBADYCHCACIAE2AhQgAkH9EjYCECACQQc2AgwMrAELIAJBADYCHCACIAE2AhQgAkHcCDYCECACQQc2AgxBACEDDKsBCyACKAIEIQAgAkEANgIEIAIgACABECUiAEUNByACQeUANgIcIAIgATYCFCACIAA2AgxBACEDDKoBCyACKAIEIQAgAkEANgIEIAIgACABECUiAEUNFiACQdMANgIcIAIgATYCFCACIAA2AgxBACEDDKkBCyACKAIEIQAgAkEANgIEIAIgACABECUiAEUNGCACQdIANgIcIAIgATYCFCACIAA2AgxBACEDDKgBCyACQQA2AhwgAiABNgIUIAJBxgo2AhAgAkEHNgIMQQAhAwynAQsgAigCBCEAIAJBADYCBCACIAAgARAlIgBFDQMgAkHlADYCHCACIAE2AhQgAiAANgIMQQAhAwymAQsgAigCBCEAIAJBADYCBCACIAAgARAlIgBFDRIgAkHTADYCHCACIAE2AhQgAiAANgIMQQAhAwylAQsgAigCBCEAIAJBADYCBCACIAAgARAlIgBFDRQgAkHSADYCHCACIAE2AhQgAiAANgIMQQAhAwykAQsgAigCBCEAIAJBADYCBCACIAAgARAlIgBFDQAgAkHlADYCHCACIAE2AhQgAiAANgIMQQAhAwyjAQtB1QAhAwyJAQsgAEEVRwRAIAJBADYCHCACIAE2AhQgAkG5DTYCECACQRo2AgxB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AkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAIABB5ABrDvQDY2IAAWFhYWFhYQIDBAVhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhBgcICQoLDA0OD2FhYWFhEGFhYWFhYWFhYWFhEWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYRITFBUWFxgZGhthYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhHB0eHyAhIiMkJSYnKCkqKywtLi8wMTIzNDU2YTc4OTphYWFhYWFhYTthYWE8YWFhYT0+P2FhYWFhYWFhQGFhQWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYUJDREVGR0hJSktMTU5PUFFSU2FhYWFhYWFhVFVWV1hZWlthXF1hYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFeYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhX2BhC0HhJw8LQaQhDwtByywPC0H+MQ8LQcAkDwtBqyQPC0GNKA8LQeImDwtBgDAPC0G5Lw8LQdckDwtB7x8PC0HhHw8LQfofDwtB8iAPC0GoLw8LQa4yDwtBiDAPC0HsJw8LQYIiDwtBjh0PC0HQLg8LQcojDwtBxTIPC0HfHA8LQdIcDwtBxCAPC0HXIA8LQaIfDwtB7S4PC0GrMA8LQdQlDwtBzC4PC0H6Lg8LQfwrDwtB0jAPC0HxHQ8LQbsgDwtB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AAADAEGUCAsFBAAAAAUAQaQICwkGAAAABwAAAAgAQdwIC4otSW52YWxpZCBjaGFyIGluIHVybCBxdWVyeQBTcGFuIGNhbGxiYWNrIGVycm9yIGluIG9uX2JvZHkAQ29udGVudC1MZW5ndGggb3ZlcmZsb3cAQ2h1bmsgc2l6ZSBvdmVyZmxvdwBSZXNwb25zZSBvdmVyZmxvdwBJbnZhbGlkIG1ldGhvZCBmb3IgSFRUUC94LnggcmVxdWVzdABJbnZhbGlkIG1ldGhvZCBmb3IgUlRTUC94LnggcmVxdWVzdABFeHBlY3RlZCBTT1VSQ0UgbWV0aG9kIGZvciBJQ0UveC54IHJlcXVlc3QASW52YWxpZCBjaGFyIGluIHVybCBmcmFnbWVudCBzdGFydABFeHBlY3RlZCBkb3QAU3BhbiBjYWxsYmFjayBlcnJvciBpbiBvbl9zdGF0dXMASW52YWxpZCByZXNwb25zZSBzdGF0dXMASW52YWxpZCBjaGFyYWN0ZXIgaW4gY2h1bmsgZXh0ZW5zaW9ucwBVc2VyIGNhbGxiYWNrIGVycm9yAGBvbl9yZXNldGAgY2FsbGJhY2sgZXJyb3IAYG9uX2NodW5rX2hlYWRlcmAgY2FsbGJhY2sgZXJyb3IAYG9uX21lc3NhZ2VfYmVnaW5gIGNhbGxiYWNrIGVycm9yAGBvbl9jaHVua19leHRlbnNpb25fdmFsdWVgIGNhbGxiYWNrIGVycm9yAGBvbl9zdGF0dXNfY29tcGxldGVgIGNhbGxiYWNrIGVycm9yAGBvbl92ZXJzaW9uX2NvbXBsZXRlYCBjYWxsYmFjayBlcnJvcgBgb25fdXJsX2NvbXBsZXRlYCBjYWxsYmFjayBlcnJvcgBgb25fY2h1bmtfY29tcGxldGVgIGNhbGxiYWNrIGVycm9yAGBvbl9oZWFkZXJfdmFsdWVfY29tcGxldGVgIGNhbGxiYWNrIGVycm9yAGBvbl9tZXNzYWdlX2NvbXBsZXRlYCBjYWxsYmFjayBlcnJvcgBgb25fbWV0aG9kX2NvbXBsZXRlYCBjYWxsYmFjayBlcnJvcgBgb25faGVhZGVyX2ZpZWxkX2NvbXBsZXRlYCBjYWxsYmFjayBlcnJvcgBgb25fY2h1bmtfZXh0ZW5zaW9uX25hbWVgIGNhbGxiYWNrIGVycm9yAFVuZXhwZWN0ZWQgY2hhciBpbiB1cmwgc2VydmVyAEludmFsaWQgaGVhZGVyIHZhbHVlIGNoYXIASW52YWxpZCBoZWFkZXIgZmllbGQgY2hhcgBTcGFuIGNhbGxiYWNrIGVycm9yIGluIG9uX3ZlcnNpb24ASW52YWxpZCBtaW5vciB2ZXJzaW9uAEludmFsaWQgbWFqb3IgdmVyc2lvbgBFeHBlY3RlZCBzcGFjZSBhZnRlciB2ZXJzaW9uAEV4cGVjdGVkIENSTEYgYWZ0ZXIgdmVyc2lvbgBJbnZhbGlkIEhUVFAgdmVyc2lvbgBJbnZhbGlkIGhlYWRlciB0b2tlbgBTcGFuIGNhbGxiYWNrIGVycm9yIGluIG9uX3VybABJbnZhbGlkIGNoYXJhY3RlcnMgaW4gdXJsAFVuZXhwZWN0ZWQgc3RhcnQgY2hhciBpbiB1cmwARG91YmxlIEAgaW4gdXJsAEVtcHR5IENvbnRlbnQtTGVuZ3RoAEludmFsaWQgY2hhcmFjdGVyIGluIENvbnRlbnQtTGVuZ3RoAER1cGxpY2F0ZSBDb250ZW50LUxlbmd0aABJbnZhbGlkIGNoYXIgaW4gdXJsIHBhdGgAQ29udGVudC1MZW5ndGggY2FuJ3QgYmUgcHJlc2VudCB3aXRoIFRyYW5zZmVyLUVuY29kaW5nAEludmFsaWQgY2hhcmFjdGVyIGluIGNodW5rIHNpemUAU3BhbiBjYWxsYmFjayBlcnJvciBpbiBvbl9oZWFkZXJfdmFsdWUAU3BhbiBjYWxsYmFjayBlcnJvciBpbiBvbl9jaHVua19leHRlbnNpb25fdmFsdWUASW52YWxpZCBjaGFyYWN0ZXIgaW4gY2h1bmsgZXh0ZW5zaW9ucyB2YWx1ZQBNaXNzaW5nIGV4cGVjdGVkIExGIGFmdGVyIGhlYWRlciB2YWx1ZQBJbnZhbGlkIGBUcmFuc2Zlci1FbmNvZGluZ2AgaGVhZGVyIHZhbHVlAEludmFsaWQgY2hhcmFjdGVyIGluIGNodW5rIGV4dGVuc2lvbnMgcXVvdGUgdmFsdWUASW52YWxpZCBjaGFyYWN0ZXIgaW4gY2h1bmsgZXh0ZW5zaW9ucyBxdW90ZWQgdmFsdWUAUGF1c2VkIGJ5IG9uX2hlYWRlcnNfY29tcGxldGUASW52YWxpZCBFT0Ygc3RhdGUAb25fcmVzZXQgcGF1c2UAb25fY2h1bmtfaGVhZGVyIHBhdXNlAG9uX21lc3NhZ2VfYmVnaW4gcGF1c2UAb25fY2h1bmtfZXh0ZW5zaW9uX3ZhbHVlIHBhdXNlAG9uX3N0YXR1c19jb21wbGV0ZSBwYXVzZQBvbl92ZXJzaW9uX2NvbXBsZXRlIHBhdXNlAG9uX3VybF9jb21wbGV0ZSBwYXVzZQBvbl9jaHVua19jb21wbGV0ZSBwYXVzZQBvbl9oZWFkZXJfdmFsdWVfY29tcGxldGUgcGF1c2UAb25fbWVzc2FnZV9jb21wbGV0ZSBwYXVzZQBvbl9tZXRob2RfY29tcGxldGUgcGF1c2UAb25faGVhZGVyX2ZpZWxkX2NvbXBsZXRlIHBhdXNlAG9uX2NodW5rX2V4dGVuc2lvbl9uYW1lIHBhdXNlAFVuZXhwZWN0ZWQgc3BhY2UgYWZ0ZXIgc3RhcnQgbGluZQBTcGFuIGNhbGxiYWNrIGVycm9yIGluIG9uX2NodW5rX2V4dGVuc2lvbl9uYW1lAEludmFsaWQgY2hhcmFjdGVyIGluIGNodW5rIGV4dGVuc2lvbnMgbmFtZQBQYXVzZSBvbiBDT05ORUNUL1VwZ3JhZGUAUGF1c2Ugb24gUFJJL1VwZ3JhZGUARXhwZWN0ZWQgSFRUUC8yIENvbm5lY3Rpb24gUHJlZmFjZQBTcGFuIGNhbGxiYWNrIGVycm9yIGluIG9uX21ldGhvZABFeHBlY3RlZCBzcGFjZSBhZnRlciBtZXRob2QAU3BhbiBjYWxsYmFjayBlcnJvciBpbiBvbl9oZWFkZXJfZmllbGQAUGF1c2VkAEludmFsaWQgd29yZCBlbmNvdW50ZXJlZABJbnZhbGlkIG1ldGhvZCBlbmNvdW50ZXJlZABVbmV4cGVjdGVkIGNoYXIgaW4gdXJsIHNjaGVtYQBSZXF1ZXN0IGhhcyBpbnZhbGlkIGBUcmFuc2Zlci1FbmNvZGluZ2AAU1dJVENIX1BST1hZAFVTRV9QUk9YWQBNS0FDVElWSVRZAFVOUFJPQ0VTU0FCTEVfRU5USVRZAENPUFkATU9WRURfUEVSTUFORU5UTFkAVE9PX0VBUkxZAE5PVElGWQBGQUlMRURfREVQRU5ERU5DWQBCQURfR0FURVdBWQBQTEFZAFBVVABDSEVDS09VVABHQVRFV0FZX1RJTUVPVVQAUkVRVUVTVF9USU1FT1VUAE5FVFdPUktfQ09OTkVDVF9USU1FT1VUAENPTk5FQ1RJT05fVElNRU9VVABMT0dJTl9USU1FT1VUAE5FVFdPUktfUkVBRF9USU1FT1VUAFBPU1QATUlTRElSRUNURURfUkVRVUVTVABDTElFTlRfQ0xPU0VEX1JFUVVFU1QAQ0xJRU5UX0NMT1NFRF9MT0FEX0JBTEFOQ0VEX1JFUVVFU1QAQkFEX1JFUVVFU1QASFRUUF9SRVFVRVNUX1NFTlRfVE9fSFRUUFNfUE9SVABSRVBPUlQASU1fQV9URUFQT1QAUkVTRVRfQ09OVEVOVABOT19DT05URU5UAFBBUlRJQUxfQ09OVEVOVABIUEVfSU5WQUxJRF9DT05TVEFOVABIUEVfQ0JfUkVTRVQAR0VUAEhQRV9TVFJJQ1QAQ09ORkxJQ1QAVEVNUE9SQVJZX1JFRElSRUNUAFBFUk1BTkVOVF9SRURJUkVDVABDT05ORUNUAE1VTFRJX1NUQVRVUwBIUEVfSU5WQUxJRF9TVEFUVVMAVE9PX01BTllfUkVRVUVTVFMARUFSTFlfSElOVFMAVU5BVkFJTEFCTEVfRk9SX0xFR0FMX1JFQVNPTlMAT1BUSU9OUwBTV0lUQ0hJTkdfUFJPVE9DT0xTAFZBUklBTlRfQUxTT19ORUdPVElBVEVTAE1VTFRJUExFX0NIT0lDRVMASU5URVJOQUxfU0VSVkVSX0VSUk9SAFdFQl9TRVJWRVJfVU5LTk9XTl9FUlJPUgBSQUlMR1VOX0VSUk9SAElERU5USVRZX1BST1ZJREVSX0FVVEhFTlRJQ0FUSU9OX0VSUk9SAFNTTF9DRVJUSUZJQ0FURV9FUlJPUgBJTlZBTElEX1hfRk9SV0FSREVEX0ZPUgBTRVRfUEFSQU1FVEVSAEdFVF9QQVJBTUVURVIASFBFX1VTRVIAU0VFX09USEVSAEhQRV9DQl9DSFVOS19IRUFERVIATUtDQUxFTkRBUgBTRVRVUABXRUJfU0VSVkVSX0lTX0RPV04AVEVBUkRPV04ASFBFX0NMT1NFRF9DT05ORUNUSU9OAEhFVVJJU1RJQ19FWFBJUkFUSU9OAERJU0NPTk5FQ1RFRF9PUEVSQVRJT04ATk9OX0FVVEhPUklUQVRJVkVfSU5GT1JNQVRJT04ASFBFX0lOVkFMSURfVkVSU0lPTgBIUEVfQ0JfTUVTU0FHRV9CRUdJTgBTSVRFX0lTX0ZST1pFTgBIUEVfSU5WQUxJRF9IRUFERVJfVE9LRU4ASU5WQUxJRF9UT0tFTgBGT1JCSURERU4ARU5IQU5DRV9ZT1VSX0NBTE0ASFBFX0lOVkFMSURfVVJMAEJMT0NLRURfQllfUEFSRU5UQUxfQ09OVFJPTABNS0NPTABBQ0wASFBFX0lOVEVSTkFMAFJFUVVFU1RfSEVBREVSX0ZJRUxEU19UT09fTEFSR0VfVU5PRkZJQ0lBTABIUEVfT0sAVU5MSU5LAFVOTE9DSwBQUkkAUkVUUllfV0lUSABIUEVfSU5WQUxJRF9DT05URU5UX0xFTkdUSABIUEVfVU5FWFBFQ1RFRF9DT05URU5UX0xFTkdUSABGTFVTSABQUk9QUEFUQ0gATS1TRUFSQ0gAVVJJX1RPT19MT05HAFBST0NFU1NJTkcATUlTQ0VMTEFORU9VU19QRVJTSVNURU5UX1dBUk5JTkcATUlTQ0VMTEFORU9VU19XQVJOSU5HAEhQRV9JTlZBTElEX1RSQU5TRkVSX0VOQ09ESU5HAEV4cGVjdGVkIENSTEYASFBFX0lOVkFMSURfQ0hVTktfU0laRQBNT1ZFAENPTlRJTlVFAEhQRV9DQl9TVEFUVVNfQ09NUExFVEUASFBFX0NCX0hFQURFUlNfQ09NUExFVEUASFBFX0NCX1ZFUlNJT05fQ09NUExFVEUASFBFX0NCX1VSTF9DT01QTEVURQBIUEVfQ0JfQ0hVTktfQ09NUExFVEUASFBFX0NCX0hFQURFUl9WQUxVRV9DT01QTEVURQBIUEVfQ0JfQ0hVTktfRVhURU5TSU9OX1ZBTFVFX0NPTVBMRVRFAEhQRV9DQl9DSFVOS19FWFRFTlNJT05fTkFNRV9DT01QTEVURQBIUEVfQ0JfTUVTU0FHRV9DT01QTEVURQBIUEVfQ0JfTUVUSE9EX0NPTVBMRVRFAEhQRV9DQl9IRUFERVJfRklFTERfQ09NUExFVEUAREVMRVRFAEhQRV9JTlZBTElEX0VPRl9TVEFURQBJTlZBTElEX1NTTF9DRVJUSUZJQ0FURQBQQVVTRQBOT19SRVNQT05TRQBVTlNVUFBPUlRFRF9NRURJQV9UWVBFAEdPTkUATk9UX0FDQ0VQVEFCTEUAU0VSVklDRV9VTkFWQUlMQUJMRQBSQU5HRV9OT1RfU0FUSVNGSUFCTEUAT1JJR0lOX0lTX1VOUkVBQ0hBQkxFAFJFU1BPTlNFX0lTX1NUQUxFAFBVUkdFAE1FUkdFAFJFUVVFU1RfSEVBREVSX0ZJRUxEU19UT09fTEFSR0UAUkVRVUVTVF9IRUFERVJfVE9PX0xBUkdFAFBBWUxPQURfVE9PX0xBUkdFAElOU1VGRklDSUVOVF9TVE9SQUdFAEhQRV9QQVVTRURfVVBHUkFERQBIUEVfUEFVU0VEX0gyX1VQR1JBREUAU09VUkNFAEFOTk9VTkNFAFRSQUNFAEhQRV9VTkVYUEVDVEVEX1NQQUNFAERFU0NSSUJFAFVOU1VCU0NSSUJFAFJFQ09SRABIUEVfSU5WQUxJRF9NRVRIT0QATk9UX0ZPVU5EAFBST1BGSU5EAFVOQklORABSRUJJTkQAVU5BVVRIT1JJWkVEAE1FVEhPRF9OT1RfQUxMT1dFRABIVFRQX1ZFUlNJT05fTk9UX1NVUFBPUlRFRABBTFJFQURZX1JFUE9SVEVEAEFDQ0VQVEVEAE5PVF9JTVBMRU1FTlRFRABMT09QX0RFVEVDVEVEAEhQRV9DUl9FWFBFQ1RFRABIUEVfTEZfRVhQRUNURUQAQ1JFQVRFRABJTV9VU0VEAEhQRV9QQVVTRUQAVElNRU9VVF9PQ0NVUkVEAFBBWU1FTlRfUkVRVUlSRUQAUFJFQ09ORElUSU9OX1JFUVVJUkVEAFBST1hZX0FVVEhFTlRJQ0FUSU9OX1JFUVVJUkVEAE5FVFdPUktfQVVUSEVOVElDQVRJT05fUkVRVUlSRUQATEVOR1RIX1JFUVVJUkVEAFNTTF9DRVJUSUZJQ0FURV9SRVFVSVJFRABVUEdSQURFX1JFUVVJUkVEAFBBR0VfRVhQSVJFRABQUkVDT05ESVRJT05fRkFJTEVEAEVYUEVDVEFUSU9OX0ZBSUxFRABSRVZBTElEQVRJT05fRkFJTEVEAFNTTF9IQU5EU0hBS0VfRkFJTEVEAExPQ0tFRABUUkFOU0ZPUk1BVElPTl9BUFBMSUVEAE5PVF9NT0RJRklFRABOT1RfRVhURU5ERUQAQkFORFdJRFRIX0xJTUlUX0VYQ0VFREVEAFNJVEVfSVNfT1ZFUkxPQURFRABIRUFEAEV4cGVjdGVkIEhUVFAvAABeEwAAJhMAADAQAADwFwAAnRMAABUSAAA5FwAA8BIAAAoQAAB1EgAArRIAAIITAABPFAAAfxAAAKAVAAAjFAAAiRIAAIsUAABNFQAA1BEAAM8UAAAQGAAAyRYAANwWAADBEQAA4BcAALsUAAB0FAAAfBUAAOUUAAAIFwAAHxAAAGUVAACjFAAAKBUAAAIVAACZFQAALBAAAIsZAABPDwAA1A4AAGoQAADOEAAAAhcAAIkOAABuEwAAHBMAAGYUAABWFwAAwRMAAM0TAABsEwAAaBcAAGYXAABfFwAAIhMAAM4PAABpDgAA2A4AAGMWAADLEwAAqg4AACgXAAAmFwAAxRMAAF0WAADoEQAAZxMAAGUTAADyFgAAcxMAAB0XAAD5FgAA8xEAAM8OAADOFQAADBIAALMRAAClEQAAYRAAADIXAAC7EwBB+TULAQEAQZA2C+ABAQECAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAQf03CwEBAEGROAteAgMCAgICAgAAAgIAAgIAAgICAgICAgICAgAEAAAAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgAAAAICAgICAgICAgICAgICAgICAgICAgICAgICAgICAAIAAgBB/TkLAQEAQZE6C14CAAICAgICAAACAgACAgACAgICAgICAgICAAMABAAAAAICAgICAgICAgICAgICAgICAgICAgICAgICAAAAAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAAgACAEHwOwsNbG9zZWVlcC1hbGl2ZQBBiTwLAQEAQaA8C+ABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAQYk+CwEBAEGgPgvnAQEBAQEBAQEBAQEBAQIBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBY2h1bmtlZABBsMAAC18BAQABAQEBAQAAAQEAAQEAAQEBAQEBAQEBAQAAAAAAAAABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQAAAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAEAAQBBkMIACyFlY3Rpb25lbnQtbGVuZ3Rob25yb3h5LWNvbm5lY3Rpb24AQcDCAAstcmFuc2Zlci1lbmNvZGluZ3BncmFkZQ0KDQoNClNNDQoNClRUUC9DRS9UU1AvAEH5wgALBQECAAEDAEGQwwAL4AEEAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQBB+cQACwUBAgABAwBBkMUAC+ABBAEBBQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAQfnGAAsEAQAAAQBBkccAC98BAQEAAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQBB+sgACwQBAAACAEGQyQALXwMEAAAEBAQEBAQEBAQEBAUEBAQEBAQEBAQEBAQABAAGBwQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAEAAQABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQAAAAEAEH6ygALBAEAAAEAQZDLAAsBAQBBqssAC0ECAAAAAAAAAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMAAAAAAAADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwBB+swACwQBAAABAEGQzQALAQEAQZrNAAsGAgAAAAACAEGxzQALOgMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAAAAAAAAAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMAQfDOAAuWAU5PVU5DRUVDS09VVE5FQ1RFVEVDUklCRUxVU0hFVEVBRFNFQVJDSFJHRUNUSVZJVFlMRU5EQVJWRU9USUZZUFRJT05TQ0hTRUFZU1RBVENIR0VPUkRJUkVDVE9SVFJDSFBBUkFNRVRFUlVSQ0VCU0NSSUJFQVJET1dOQUNFSU5ETktDS1VCU0NSSUJFSFRUUC9BRFRQLw==", "base64");
+	var { Buffer: Buffer$2 } = __require("node:buffer");
+	module.exports = Buffer$2.from("AGFzbQEAAAABJwdgAX8Bf2ADf39/AX9gAX8AYAJ/fwBgBH9/f38Bf2AAAGADf39/AALLAQgDZW52GHdhc21fb25faGVhZGVyc19jb21wbGV0ZQAEA2VudhV3YXNtX29uX21lc3NhZ2VfYmVnaW4AAANlbnYLd2FzbV9vbl91cmwAAQNlbnYOd2FzbV9vbl9zdGF0dXMAAQNlbnYUd2FzbV9vbl9oZWFkZXJfZmllbGQAAQNlbnYUd2FzbV9vbl9oZWFkZXJfdmFsdWUAAQNlbnYMd2FzbV9vbl9ib2R5AAEDZW52GHdhc21fb25fbWVzc2FnZV9jb21wbGV0ZQAAAy0sBQYAAAIAAAAAAAACAQIAAgICAAADAAAAAAMDAwMBAQEBAQEBAQEAAAIAAAAEBQFwARISBQMBAAIGCAF/AUGA1AQLB9EFIgZtZW1vcnkCAAtfaW5pdGlhbGl6ZQAIGV9faW5kaXJlY3RfZnVuY3Rpb25fdGFibGUBAAtsbGh0dHBfaW5pdAAJGGxsaHR0cF9zaG91bGRfa2VlcF9hbGl2ZQAvDGxsaHR0cF9hbGxvYwALBm1hbGxvYwAxC2xsaHR0cF9mcmVlAAwEZnJlZQAMD2xsaHR0cF9nZXRfdHlwZQANFWxsaHR0cF9nZXRfaHR0cF9tYWpvcgAOFWxsaHR0cF9nZXRfaHR0cF9taW5vcgAPEWxsaHR0cF9nZXRfbWV0aG9kABAWbGxodHRwX2dldF9zdGF0dXNfY29kZQAREmxsaHR0cF9nZXRfdXBncmFkZQASDGxsaHR0cF9yZXNldAATDmxsaHR0cF9leGVjdXRlABQUbGxodHRwX3NldHRpbmdzX2luaXQAFQ1sbGh0dHBfZmluaXNoABYMbGxodHRwX3BhdXNlABcNbGxodHRwX3Jlc3VtZQAYG2xsaHR0cF9yZXN1bWVfYWZ0ZXJfdXBncmFkZQAZEGxsaHR0cF9nZXRfZXJybm8AGhdsbGh0dHBfZ2V0X2Vycm9yX3JlYXNvbgAbF2xsaHR0cF9zZXRfZXJyb3JfcmVhc29uABwUbGxodHRwX2dldF9lcnJvcl9wb3MAHRFsbGh0dHBfZXJybm9fbmFtZQAeEmxsaHR0cF9tZXRob2RfbmFtZQAfEmxsaHR0cF9zdGF0dXNfbmFtZQAgGmxsaHR0cF9zZXRfbGVu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PgtBhwEMPQtBiAEMPAtBiQEMOwtBigEMOgtBiwEMOQtBjAEMOAtBjQEMNwtBjgEMNgtBjwEMNQtBkAEMNAtBkQEMMwtBkgEMMgtBkwEMMQtBlAEMMAtBlQEMLwtBlgEMLgtBlwEMLQtBmAEMLAtBmQEMKwtBmgEMKgtBmwEMKQtBnAEMKAtBnQEMJwtBngEMJgtBnwEMJQtBoAEMJAtBoQEMIwtBogEMIgtBowEMIQtBpAEMIAtBpQEMHwtBpgEMHgtBpwEMHQtBqAEMHAtBqQEMGwtBqgEMGgtBqwEMGQtBrAEMGAtBrQEMFwtBrgEMFgtBAQwVC0GvAQwUC0GwAQwTC0GxAQwSC0GzAQwRC0GyAQwQC0G0AQwPC0G1AQwOC0G2AQwNC0G3AQwMC0G4AQwLC0G5AQwKC0G6AQwJC0G7AQwIC0HGAQwHC0G8AQwGC0G9AQwFC0G+AQwEC0G/AQwDC0HAAQwCC0HCAQwBC0HBAQshAwNAAkACQAJAAkACQAJAAkACQAJAIAICfwJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJ/AkACQAJAAkACQAJAAkACQAJAAkACQAJAAkAgAgJ/AkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACfwJAAkACfwJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkAC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iQEhAwykAgtBASABLQAAQd8ARw1nGiABQQFqIQEMXgtBigEhAyABIARGDaICIAIoAgAiACAEIAFraiEFIAEgAGtBAWohBgNAIAEtAAAgAEGMzwBqLQAARw1kIABBAUYN+gEgAEEBaiEAIAQgAUEBaiIBRw0ACyACIAU2AgAMogILQYsBIQMgASAERg2hAiACKAIAIgAgBCABa2ohBSABIABrQQJqIQYCQANAIAEtAAAgAEGOzwBqLQAARw1kIABBAkYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAyiAgsgAkEANgIAIAZBAWohAUECDGULQYwBIQMgASAERg2gAiACKAIAIgAgBCABa2ohBSABIABrQQFqIQYCQANAIAEtAAAgAEHwzwBqLQAARw1jIABBAUYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAyhAgsgAkEANgIAIAZBAWohAUEfDGQLQY0BIQMgASAERg2fAiACKAIAIgAgBCABa2ohBSABIABrQQFqIQYCQANAIAEtAAAgAEHyzwBqLQAARw1iIABBAUYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAygAgsgAkEANgIAIAZBAWohAUEJDGMLIAEgBEYEQEGOASEDDJ8CCwJAAkAgAS0AAEHJAGsOBwBiYmJiYgFiCyABQQFqIQFB+AAhAwyGAgsgAUEBaiEBQfkAIQMMhQILQY8BIQMgASAERg2dAiACKAIAIgAgBCABa2ohBSABIABrQQVqIQYCQANAIAEtAAAgAEGRzwBqLQAARw1gIABBBUYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAyeAgsgAkEANgIAIAZBAWohAUEYDGELQZABIQMgASAERg2cAiACKAIAIgAgBCABa2ohBSABIABrQQJqIQYCQANAIAEtAAAgAEGXzwBqLQAARw1fIABBAkYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAydAgsgAkEANgIAIAZBAWohAUEXDGALQZEBIQMgASAERg2bAiACKAIAIgAgBCABa2ohBSABIABrQQZqIQYCQANAIAEtAAAgAEGazwBqLQAARw1eIABBBkYNASAAQQFqIQAgBCABQQFqIgFHDQALIAIgBTYCAAycAgsgAkEANgIAIAZBAWohAUEV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JSIARQ0RIAJB5QA2AhwgAiABNgIUIAIgADYCDEEAIQMMtAELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0gIAJB0wA2AhwgAiABNgIUIAIgADYCDEEAIQMMswELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0iIAJB0gA2AhwgAiABNgIUIAIgADYCDEEAIQMMsgELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0OIAJB5QA2AhwgAiABNgIUIAIgADYCDEEAIQMMsQELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0dIAJB0wA2AhwgAiABNgIUIAIgADYCDEEAIQMMsAELIAIoAgQhACACQQA2AgQgAiAAIAEQJSIARQ0fIAJB0gA2AhwgAiABNgIUIAIgADYCDEEAIQMMrwELIABBP0cNASABQQFqCyEBQQUhAwyUAQtBACEDIAJBADYCHCACIAE2AhQgAkH9EjYCECACQQc2AgwMrAELIAJBADYCHCACIAE2AhQgAkHcCDYCECACQQc2AgxBACEDDKsBCyACKAIEIQAgAkEANgIEIAIgACABECUiAEUNByACQeUANgIcIAIgATYCFCACIAA2AgxBACEDDKoBCyACKAIEIQAgAkEANgIEIAIgACABECUiAEUNFiACQdMANgIcIAIgATYCFCACIAA2AgxBACEDDKkBCyACKAIEIQAgAkEANgIEIAIgACABECUiAEUNGCACQdIANgIcIAIgATYCFCACIAA2AgxBACEDDKgBCyACQQA2AhwgAiABNgIUIAJBxgo2AhAgAkEHNgIMQQAhAwynAQsgAigCBCEAIAJBADYCBCACIAAgARAlIgBFDQMgAkHlADYCHCACIAE2AhQgAiAANgIMQQAhAwymAQsgAigCBCEAIAJBADYCBCACIAAgARAlIgBFDRIgAkHTADYCHCACIAE2AhQgAiAANgIMQQAhAwylAQsgAigCBCEAIAJBADYCBCACIAAgARAlIgBFDRQgAkHSADYCHCACIAE2AhQgAiAANgIMQQAhAwykAQsgAigCBCEAIAJBADYCBCACIAAgARAlIgBFDQAgAkHlADYCHCACIAE2AhQgAiAANgIMQQAhAwyjAQtB1QAhAwyJAQsgAEEVRwRAIAJBADYCHCACIAE2AhQgAkG5DTYCECACQRo2AgxB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AkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAIABB5ABrDvQDY2IAAWFhYWFhYQIDBAVhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhBgcICQoLDA0OD2FhYWFhEGFhYWFhYWFhYWFhEWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYRITFBUWFxgZGhthYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhHB0eHyAhIiMkJSYnKCkqKywtLi8wMTIzNDU2YTc4OTphYWFhYWFhYTthYWE8YWFhYT0+P2FhYWFhYWFhQGFhQWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYUJDREVGR0hJSktMTU5PUFFSU2FhYWFhYWFhVFVWV1hZWlthXF1hYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFeYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhX2BhC0HhJw8LQaQhDwtByywPC0H+MQ8LQcAkDwtBqyQPC0GNKA8LQeImDwtBgDAPC0G5Lw8LQdckDwtB7x8PC0HhHw8LQfofDwtB8iAPC0GoLw8LQa4yDwtBiDAPC0HsJw8LQYIiDwtBjh0PC0HQLg8LQcojDwtBxTIPC0HfHA8LQdIcDwtBxCAPC0HXIA8LQaIfDwtB7S4PC0GrMA8LQdQlDwtBzC4PC0H6Lg8LQfwrDwtB0jAPC0HxHQ8LQbsgDwtB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AAADAEGUCAsFBAAAAAUAQaQICwkGAAAABwAAAAgAQdwIC4otSW52YWxpZCBjaGFyIGluIHVybCBxdWVyeQBTcGFuIGNhbGxiYWNrIGVycm9yIGluIG9uX2JvZHkAQ29udGVudC1MZW5ndGggb3ZlcmZsb3cAQ2h1bmsgc2l6ZSBvdmVyZmxvdwBSZXNwb25zZSBvdmVyZmxvdwBJbnZhbGlkIG1ldGhvZCBmb3IgSFRUUC94LnggcmVxdWVzdABJbnZhbGlkIG1ldGhvZCBmb3IgUlRTUC94LnggcmVxdWVzdABFeHBlY3RlZCBTT1VSQ0UgbWV0aG9kIGZvciBJQ0UveC54IHJlcXVlc3QASW52YWxpZCBjaGFyIGluIHVybCBmcmFnbWVudCBzdGFydABFeHBlY3RlZCBkb3QAU3BhbiBjYWxsYmFjayBlcnJvciBpbiBvbl9zdGF0dXMASW52YWxpZCByZXNwb25zZSBzdGF0dXMASW52YWxpZCBjaGFyYWN0ZXIgaW4gY2h1bmsgZXh0ZW5zaW9ucwBVc2VyIGNhbGxiYWNrIGVycm9yAGBvbl9yZXNldGAgY2FsbGJhY2sgZXJyb3IAYG9uX2NodW5rX2hlYWRlcmAgY2FsbGJhY2sgZXJyb3IAYG9uX21lc3NhZ2VfYmVnaW5gIGNhbGxiYWNrIGVycm9yAGBvbl9jaHVua19leHRlbnNpb25fdmFsdWVgIGNhbGxiYWNrIGVycm9yAGBvbl9zdGF0dXNfY29tcGxldGVgIGNhbGxiYWNrIGVycm9yAGBvbl92ZXJzaW9uX2NvbXBsZXRlYCBjYWxsYmFjayBlcnJvcgBgb25fdXJsX2NvbXBsZXRlYCBjYWxsYmFjayBlcnJvcgBgb25fY2h1bmtfY29tcGxldGVgIGNhbGxiYWNrIGVycm9yAGBvbl9oZWFkZXJfdmFsdWVfY29tcGxldGVgIGNhbGxiYWNrIGVycm9yAGBvbl9tZXNzYWdlX2NvbXBsZXRlYCBjYWxsYmFjayBlcnJvcgBgb25fbWV0aG9kX2NvbXBsZXRlYCBjYWxsYmFjayBlcnJvcgBgb25faGVhZGVyX2ZpZWxkX2NvbXBsZXRlYCBjYWxsYmFjayBlcnJvcgBgb25fY2h1bmtfZXh0ZW5zaW9uX25hbWVgIGNhbGxiYWNrIGVycm9yAFVuZXhwZWN0ZWQgY2hhciBpbiB1cmwgc2VydmVyAEludmFsaWQgaGVhZGVyIHZhbHVlIGNoYXIASW52YWxpZCBoZWFkZXIgZmllbGQgY2hhcgBTcGFuIGNhbGxiYWNrIGVycm9yIGluIG9uX3ZlcnNpb24ASW52YWxpZCBtaW5vciB2ZXJzaW9uAEludmFsaWQgbWFqb3IgdmVyc2lvbgBFeHBlY3RlZCBzcGFjZSBhZnRlciB2ZXJzaW9uAEV4cGVjdGVkIENSTEYgYWZ0ZXIgdmVyc2lvbgBJbnZhbGlkIEhUVFAgdmVyc2lvbgBJbnZhbGlkIGhlYWRlciB0b2tlbgBTcGFuIGNhbGxiYWNrIGVycm9yIGluIG9uX3VybABJbnZhbGlkIGNoYXJhY3RlcnMgaW4gdXJsAFVuZXhwZWN0ZWQgc3RhcnQgY2hhciBpbiB1cmwARG91YmxlIEAgaW4gdXJsAEVtcHR5IENvbnRlbnQtTGVuZ3RoAEludmFsaWQgY2hhcmFjdGVyIGluIENvbnRlbnQtTGVuZ3RoAER1cGxpY2F0ZSBDb250ZW50LUxlbmd0aABJbnZhbGlkIGNoYXIgaW4gdXJsIHBhdGgAQ29udGVudC1MZW5ndGggY2FuJ3QgYmUgcHJlc2VudCB3aXRoIFRyYW5zZmVyLUVuY29kaW5nAEludmFsaWQgY2hhcmFjdGVyIGluIGNodW5rIHNpemUAU3BhbiBjYWxsYmFjayBlcnJvciBpbiBvbl9oZWFkZXJfdmFsdWUAU3BhbiBjYWxsYmFjayBlcnJvciBpbiBvbl9jaHVua19leHRlbnNpb25fdmFsdWUASW52YWxpZCBjaGFyYWN0ZXIgaW4gY2h1bmsgZXh0ZW5zaW9ucyB2YWx1ZQBNaXNzaW5nIGV4cGVjdGVkIExGIGFmdGVyIGhlYWRlciB2YWx1ZQBJbnZhbGlkIGBUcmFuc2Zlci1FbmNvZGluZ2AgaGVhZGVyIHZhbHVlAEludmFsaWQgY2hhcmFjdGVyIGluIGNodW5rIGV4dGVuc2lvbnMgcXVvdGUgdmFsdWUASW52YWxpZCBjaGFyYWN0ZXIgaW4gY2h1bmsgZXh0ZW5zaW9ucyBxdW90ZWQgdmFsdWUAUGF1c2VkIGJ5IG9uX2hlYWRlcnNfY29tcGxldGUASW52YWxpZCBFT0Ygc3RhdGUAb25fcmVzZXQgcGF1c2UAb25fY2h1bmtfaGVhZGVyIHBhdXNlAG9uX21lc3NhZ2VfYmVnaW4gcGF1c2UAb25fY2h1bmtfZXh0ZW5zaW9uX3ZhbHVlIHBhdXNlAG9uX3N0YXR1c19jb21wbGV0ZSBwYXVzZQBvbl92ZXJzaW9uX2NvbXBsZXRlIHBhdXNlAG9uX3VybF9jb21wbGV0ZSBwYXVzZQBvbl9jaHVua19jb21wbGV0ZSBwYXVzZQBvbl9oZWFkZXJfdmFsdWVfY29tcGxldGUgcGF1c2UAb25fbWVzc2FnZV9jb21wbGV0ZSBwYXVzZQBvbl9tZXRob2RfY29tcGxldGUgcGF1c2UAb25faGVhZGVyX2ZpZWxkX2NvbXBsZXRlIHBhdXNlAG9uX2NodW5rX2V4dGVuc2lvbl9uYW1lIHBhdXNlAFVuZXhwZWN0ZWQgc3BhY2UgYWZ0ZXIgc3RhcnQgbGluZQBTcGFuIGNhbGxiYWNrIGVycm9yIGluIG9uX2NodW5rX2V4dGVuc2lvbl9uYW1lAEludmFsaWQgY2hhcmFjdGVyIGluIGNodW5rIGV4dGVuc2lvbnMgbmFtZQBQYXVzZSBvbiBDT05ORUNUL1VwZ3JhZGUAUGF1c2Ugb24gUFJJL1VwZ3JhZGUARXhwZWN0ZWQgSFRUUC8yIENvbm5lY3Rpb24gUHJlZmFjZQBTcGFuIGNhbGxiYWNrIGVycm9yIGluIG9uX21ldGhvZABFeHBlY3RlZCBzcGFjZSBhZnRlciBtZXRob2QAU3BhbiBjYWxsYmFjayBlcnJvciBpbiBvbl9oZWFkZXJfZmllbGQAUGF1c2VkAEludmFsaWQgd29yZCBlbmNvdW50ZXJlZABJbnZhbGlkIG1ldGhvZCBlbmNvdW50ZXJlZABVbmV4cGVjdGVkIGNoYXIgaW4gdXJsIHNjaGVtYQBSZXF1ZXN0IGhhcyBpbnZhbGlkIGBUcmFuc2Zlci1FbmNvZGluZ2AAU1dJVENIX1BST1hZAFVTRV9QUk9YWQBNS0FDVElWSVRZAFVOUFJPQ0VTU0FCTEVfRU5USVRZAENPUFkATU9WRURfUEVSTUFORU5UTFkAVE9PX0VBUkxZAE5PVElGWQBGQUlMRURfREVQRU5ERU5DWQBCQURfR0FURVdBWQBQTEFZAFBVVABDSEVDS09VVABHQVRFV0FZX1RJTUVPVVQAUkVRVUVTVF9USU1FT1VUAE5FVFdPUktfQ09OTkVDVF9USU1FT1VUAENPTk5FQ1RJT05fVElNRU9VVABMT0dJTl9USU1FT1VUAE5FVFdPUktfUkVBRF9USU1FT1VUAFBPU1QATUlTRElSRUNURURfUkVRVUVTVABDTElFTlRfQ0xPU0VEX1JFUVVFU1QAQ0xJRU5UX0NMT1NFRF9MT0FEX0JBTEFOQ0VEX1JFUVVFU1QAQkFEX1JFUVVFU1QASFRUUF9SRVFVRVNUX1NFTlRfVE9fSFRUUFNfUE9SVABSRVBPUlQASU1fQV9URUFQT1QAUkVTRVRfQ09OVEVOVABOT19DT05URU5UAFBBUlRJQUxfQ09OVEVOVABIUEVfSU5WQUxJRF9DT05TVEFOVABIUEVfQ0JfUkVTRVQAR0VUAEhQRV9TVFJJQ1QAQ09ORkxJQ1QAVEVNUE9SQVJZX1JFRElSRUNUAFBFUk1BTkVOVF9SRURJUkVDVABDT05ORUNUAE1VTFRJX1NUQVRVUwBIUEVfSU5WQUxJRF9TVEFUVVMAVE9PX01BTllfUkVRVUVTVFMARUFSTFlfSElOVFMAVU5BVkFJTEFCTEVfRk9SX0xFR0FMX1JFQVNPTlMAT1BUSU9OUwBTV0lUQ0hJTkdfUFJPVE9DT0xTAFZBUklBTlRfQUxTT19ORUdPVElBVEVTAE1VTFRJUExFX0NIT0lDRVMASU5URVJOQUxfU0VSVkVSX0VSUk9SAFdFQl9TRVJWRVJfVU5LTk9XTl9FUlJPUgBSQUlMR1VOX0VSUk9SAElERU5USVRZX1BST1ZJREVSX0FVVEhFTlRJQ0FUSU9OX0VSUk9SAFNTTF9DRVJUSUZJQ0FURV9FUlJPUgBJTlZBTElEX1hfRk9SV0FSREVEX0ZPUgBTRVRfUEFSQU1FVEVSAEdFVF9QQVJBTUVURVIASFBFX1VTRVIAU0VFX09USEVSAEhQRV9DQl9DSFVOS19IRUFERVIATUtDQUxFTkRBUgBTRVRVUABXRUJfU0VSVkVSX0lTX0RPV04AVEVBUkRPV04ASFBFX0NMT1NFRF9DT05ORUNUSU9OAEhFVVJJU1RJQ19FWFBJUkFUSU9OAERJU0NPTk5FQ1RFRF9PUEVSQVRJT04ATk9OX0FVVEhPUklUQVRJVkVfSU5GT1JNQVRJT04ASFBFX0lOVkFMSURfVkVSU0lPTgBIUEVfQ0JfTUVTU0FHRV9CRUdJTgBTSVRFX0lTX0ZST1pFTgBIUEVfSU5WQUxJRF9IRUFERVJfVE9LRU4ASU5WQUxJRF9UT0tFTgBGT1JCSURERU4ARU5IQU5DRV9ZT1VSX0NBTE0ASFBFX0lOVkFMSURfVVJMAEJMT0NLRURfQllfUEFSRU5UQUxfQ09OVFJPTABNS0NPTABBQ0wASFBFX0lOVEVSTkFMAFJFUVVFU1RfSEVBREVSX0ZJRUxEU19UT09fTEFSR0VfVU5PRkZJQ0lBTABIUEVfT0sAVU5MSU5LAFVOTE9DSwBQUkkAUkVUUllfV0lUSABIUEVfSU5WQUxJRF9DT05URU5UX0xFTkdUSABIUEVfVU5FWFBFQ1RFRF9DT05URU5UX0xFTkdUSABGTFVTSABQUk9QUEFUQ0gATS1TRUFSQ0gAVVJJX1RPT19MT05HAFBST0NFU1NJTkcATUlTQ0VMTEFORU9VU19QRVJTSVNURU5UX1dBUk5JTkcATUlTQ0VMTEFORU9VU19XQVJOSU5HAEhQRV9JTlZBTElEX1RSQU5TRkVSX0VOQ09ESU5HAEV4cGVjdGVkIENSTEYASFBFX0lOVkFMSURfQ0hVTktfU0laRQBNT1ZFAENPTlRJTlVFAEhQRV9DQl9TVEFUVVNfQ09NUExFVEUASFBFX0NCX0hFQURFUlNfQ09NUExFVEUASFBFX0NCX1ZFUlNJT05fQ09NUExFVEUASFBFX0NCX1VSTF9DT01QTEVURQBIUEVfQ0JfQ0hVTktfQ09NUExFVEUASFBFX0NCX0hFQURFUl9WQUxVRV9DT01QTEVURQBIUEVfQ0JfQ0hVTktfRVhURU5TSU9OX1ZBTFVFX0NPTVBMRVRFAEhQRV9DQl9DSFVOS19FWFRFTlNJT05fTkFNRV9DT01QTEVURQBIUEVfQ0JfTUVTU0FHRV9DT01QTEVURQBIUEVfQ0JfTUVUSE9EX0NPTVBMRVRFAEhQRV9DQl9IRUFERVJfRklFTERfQ09NUExFVEUAREVMRVRFAEhQRV9JTlZBTElEX0VPRl9TVEFURQBJTlZBTElEX1NTTF9DRVJUSUZJQ0FURQBQQVVTRQBOT19SRVNQT05TRQBVTlNVUFBPUlRFRF9NRURJQV9UWVBFAEdPTkUATk9UX0FDQ0VQVEFCTEUAU0VSVklDRV9VTkFWQUlMQUJMRQBSQU5HRV9OT1RfU0FUSVNGSUFCTEUAT1JJR0lOX0lTX1VOUkVBQ0hBQkxFAFJFU1BPTlNFX0lTX1NUQUxFAFBVUkdFAE1FUkdFAFJFUVVFU1RfSEVBREVSX0ZJRUxEU19UT09fTEFSR0UAUkVRVUVTVF9IRUFERVJfVE9PX0xBUkdFAFBBWUxPQURfVE9PX0xBUkdFAElOU1VGRklDSUVOVF9TVE9SQUdFAEhQRV9QQVVTRURfVVBHUkFERQBIUEVfUEFVU0VEX0gyX1VQR1JBREUAU09VUkNFAEFOTk9VTkNFAFRSQUNFAEhQRV9VTkVYUEVDVEVEX1NQQUNFAERFU0NSSUJFAFVOU1VCU0NSSUJFAFJFQ09SRABIUEVfSU5WQUxJRF9NRVRIT0QATk9UX0ZPVU5EAFBST1BGSU5EAFVOQklORABSRUJJTkQAVU5BVVRIT1JJWkVEAE1FVEhPRF9OT1RfQUxMT1dFRABIVFRQX1ZFUlNJT05fTk9UX1NVUFBPUlRFRABBTFJFQURZX1JFUE9SVEVEAEFDQ0VQVEVEAE5PVF9JTVBMRU1FTlRFRABMT09QX0RFVEVDVEVEAEhQRV9DUl9FWFBFQ1RFRABIUEVfTEZfRVhQRUNURUQAQ1JFQVRFRABJTV9VU0VEAEhQRV9QQVVTRUQAVElNRU9VVF9PQ0NVUkVEAFBBWU1FTlRfUkVRVUlSRUQAUFJFQ09ORElUSU9OX1JFUVVJUkVEAFBST1hZX0FVVEhFTlRJQ0FUSU9OX1JFUVVJUkVEAE5FVFdPUktfQVVUSEVOVElDQVRJT05fUkVRVUlSRUQATEVOR1RIX1JFUVVJUkVEAFNTTF9DRVJUSUZJQ0FURV9SRVFVSVJFRABVUEdSQURFX1JFUVVJUkVEAFBBR0VfRVhQSVJFRABQUkVDT05ESVRJT05fRkFJTEVEAEVYUEVDVEFUSU9OX0ZBSUxFRABSRVZBTElEQVRJT05fRkFJTEVEAFNTTF9IQU5EU0hBS0VfRkFJTEVEAExPQ0tFRABUUkFOU0ZPUk1BVElPTl9BUFBMSUVEAE5PVF9NT0RJRklFRABOT1RfRVhURU5ERUQAQkFORFdJRFRIX0xJTUlUX0VYQ0VFREVEAFNJVEVfSVNfT1ZFUkxPQURFRABIRUFEAEV4cGVjdGVkIEhUVFAvAABeEwAAJhMAADAQAADwFwAAnRMAABUSAAA5FwAA8BIAAAoQAAB1EgAArRIAAIITAABPFAAAfxAAAKAVAAAjFAAAiRIAAIsUAABNFQAA1BEAAM8UAAAQGAAAyRYAANwWAADBEQAA4BcAALsUAAB0FAAAfBUAAOUUAAAIFwAAHxAAAGUVAACjFAAAKBUAAAIVAACZFQAALBAAAIsZAABPDwAA1A4AAGoQAADOEAAAAhcAAIkOAABuEwAAHBMAAGYUAABWFwAAwRMAAM0TAABsEwAAaBcAAGYXAABfFwAAIhMAAM4PAABpDgAA2A4AAGMWAADLEwAAqg4AACgXAAAmFwAAxRMAAF0WAADoEQAAZxMAAGUTAADyFgAAcxMAAB0XAAD5FgAA8xEAAM8OAADOFQAADBIAALMRAAClEQAAYRAAADIXAAC7EwBB+TULAQEAQZA2C+ABAQECAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAQf03CwEBAEGROAteAgMCAgICAgAAAgIAAgIAAgICAgICAgICAgAEAAAAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgAAAAICAgICAgICAgICAgICAgICAgICAgICAgICAgICAAIAAgBB/TkLAQEAQZE6C14CAAICAgICAAACAgACAgACAgICAgICAgICAAMABAAAAAICAgICAgICAgICAgICAgICAgICAgICAgICAAAAAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAAgACAEHwOwsNbG9zZWVlcC1hbGl2ZQBBiTwLAQEAQaA8C+ABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAQYk+CwEBAEGgPgvnAQEBAQEBAQEBAQEBAQIBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBY2h1bmtlZABBsMAAC18BAQABAQEBAQAAAQEAAQEAAQEBAQEBAQEBAQAAAAAAAAABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQAAAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAEAAQBBkMIACyFlY3Rpb25lbnQtbGVuZ3Rob25yb3h5LWNvbm5lY3Rpb24AQcDCAAstcmFuc2Zlci1lbmNvZGluZ3BncmFkZQ0KDQoNClNNDQoNClRUUC9DRS9UU1AvAEH5wgALBQECAAEDAEGQwwAL4AEEAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQBB+cQACwUBAgABAwBBkMUAC+ABBAEBBQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAQfnGAAsEAQAAAQBBkccAC98BAQEAAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQBB+sgACwQBAAACAEGQyQALXwMEAAAEBAQEBAQEBAQEBAUEBAQEBAQEBAQEBAQABAAGBwQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAEAAQABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQAAAAEAEH6ygALBAEAAAEAQZDLAAsBAQBBqssAC0ECAAAAAAAAAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMAAAAAAAADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwBB+swACwQBAAABAEGQzQALAQEAQZrNAAsGAgAAAAACAEGxzQALOgMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAAAAAAAAAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMAQfDOAAuWAU5PVU5DRUVDS09VVE5FQ1RFVEVDUklCRUxVU0hFVEVBRFNFQVJDSFJHRUNUSVZJVFlMRU5EQVJWRU9USUZZUFRJT05TQ0hTRUFZU1RBVENIR0VPUkRJUkVDVE9SVFJDSFBBUkFNRVRFUlVSQ0VCU0NSSUJFQVJET1dOQUNFSU5ETktDS1VCU0NSSUJFSFRUUC9BRFRQLw==", "base64");
 }));
 //#endregion
 //#region node_modules/@vercel/blob/node_modules/undici/lib/web/fetch/constants.js
@@ -80653,6 +84502,39 @@ async function get(urlOrPathname, options) {
 		}
 	};
 }
+async function list(options) {
+	var _a;
+	const searchParams = new URLSearchParams();
+	if (options == null ? void 0 : options.limit) searchParams.set("limit", options.limit.toString());
+	if (options == null ? void 0 : options.prefix) searchParams.set("prefix", options.prefix);
+	if (options == null ? void 0 : options.cursor) searchParams.set("cursor", options.cursor);
+	if (options == null ? void 0 : options.mode) searchParams.set("mode", options.mode);
+	const response = await requestApi(`?${searchParams.toString()}`, {
+		method: "GET",
+		signal: options == null ? void 0 : options.abortSignal
+	}, options);
+	if ((options == null ? void 0 : options.mode) === "folded") return {
+		folders: (_a = response.folders) != null ? _a : [],
+		cursor: response.cursor,
+		hasMore: response.hasMore,
+		blobs: response.blobs.map(mapBlobResult)
+	};
+	return {
+		cursor: response.cursor,
+		hasMore: response.hasMore,
+		blobs: response.blobs.map(mapBlobResult)
+	};
+}
+function mapBlobResult(blobResult) {
+	return {
+		url: blobResult.url,
+		downloadUrl: blobResult.downloadUrl,
+		pathname: blobResult.pathname,
+		size: blobResult.size,
+		uploadedAt: new Date(blobResult.uploadedAt),
+		etag: blobResult.etag
+	};
+}
 var put = createPutMethod({ allowedOptions: [
 	"cacheControlMaxAge",
 	"addRandomSuffix",
@@ -80695,6 +84577,7 @@ var OFFICIAL_BINDINGS = {
 	head,
 	get,
 	del,
+	list,
 	isNotFound(error) {
 		return error instanceof BlobNotFoundError;
 	}
@@ -80717,7 +84600,8 @@ var OfficialVercelPrivateBlobClient = class {
 			const result = await this.#bindings.head(pathname, { token });
 			return Object.freeze({
 				pathname: result.pathname,
-				size: result.size
+				size: result.size,
+				uploadedAtMs: result.uploadedAt.getTime()
 			});
 		} catch (error) {
 			if (this.#bindings.isNotFound(error)) return null;
@@ -80736,6 +84620,22 @@ var OfficialVercelPrivateBlobClient = class {
 	}
 	del(pathname, token) {
 		return this.#bindings.del(pathname, { token });
+	}
+	async list(prefix, token, cursor, limit) {
+		const result = await this.#bindings.list({
+			token,
+			prefix,
+			...cursor === null ? {} : { cursor },
+			limit
+		});
+		return Object.freeze({
+			blobs: Object.freeze(result.blobs.map((blob) => Object.freeze({
+				pathname: blob.pathname,
+				uploadedAtMs: blob.uploadedAt.getTime()
+			}))),
+			cursor: result.cursor ?? null,
+			hasMore: result.hasMore
+		});
 	}
 };
 //#endregion
@@ -80784,13 +84684,151 @@ var PostgresAuthoritativeClock = class {
 		this.#database = database;
 	}
 	async synchronize() {
-		const result = await this.#database.query("SELECT extract(epoch FROM clock_timestamp()) * 1000 AS now_ms");
+		const result = await this.#database.query("SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint AS now_ms");
 		this.#serverNowMs = safeInteger$1(result.rows[0]?.now_ms);
 		return this.#serverNowMs;
 	}
 	now() {
 		if (this.#serverNowMs === null) persistentError("DATABASE_FAILURE");
 		return this.#serverNowMs;
+	}
+};
+var PostgresDeletionLifecycleProbe = class {
+	database;
+	constructor(database) {
+		this.database = database;
+	}
+	async capacityReleased(taskId) {
+		if (!OPAQUE_ID$1.test(taskId)) persistentError("CONFIGURATION_INVALID");
+		const value = (await this.database.query(`SELECT NOT EXISTS (
+         SELECT 1 FROM compute_capacity_slots WHERE task_id = $1
+       ) AS capacity_released`, [taskId])).rows[0]?.capacity_released;
+		if (typeof value !== "boolean") persistentError("DATABASE_FAILURE");
+		return value;
+	}
+	async terminationObserved(taskId) {
+		if (!OPAQUE_ID$1.test(taskId)) persistentError("CONFIGURATION_INVALID");
+		const value = (await this.database.query(`SELECT EXISTS (
+         SELECT 1 FROM compute_jobs AS j
+         JOIN compute_termination_reconciliation_receipts AS receipt
+           ON receipt.task_ref = j.task_ref
+         WHERE j.task_id = $1
+           AND receipt.receipt->>'terminationObserved' = 'true'
+       ) AS termination_observed`, [taskId])).rows[0]?.termination_observed;
+		if (typeof value !== "boolean") persistentError("DATABASE_FAILURE");
+		return value;
+	}
+};
+/**
+* Selects a bounded temporal work page using PostgreSQL server time. A
+* database-backed singleton lease prevents multiple API runtimes from
+* repeatedly selecting the same page while the previous holder is healthy;
+* row locks isolate concurrent maintenance statements without requiring a
+* host-local clock or a full-table repository list.
+*/
+var PostgresTemporalDueSource = class {
+	#database;
+	#holderId;
+	#leaseDurationMs;
+	#batchSize;
+	constructor(database, input) {
+		if (!(database instanceof PostgresDatabase) || !OPAQUE_ID$1.test(input.holderId)) persistentError("CONFIGURATION_INVALID");
+		this.#leaseDurationMs = input.leaseDurationMs ?? 5e3;
+		this.#batchSize = input.batchSize ?? 100;
+		if (!Number.isSafeInteger(this.#leaseDurationMs) || this.#leaseDurationMs < 1e3 || this.#leaseDurationMs > 6e4 || !Number.isSafeInteger(this.#batchSize) || this.#batchSize < 1 || this.#batchSize > 500) persistentError("CONFIGURATION_INVALID");
+		this.#database = database;
+		this.#holderId = input.holderId;
+	}
+	async claimDue() {
+		return this.#database.transaction(async (sql) => {
+			const lease = await sql.query(`INSERT INTO compute_scheduler_leases
+           (lease_name, holder_id, lease_epoch, expires_at, updated_at)
+         VALUES ('temporal-control-v1', $1, 1,
+           clock_timestamp() + ($2::bigint * interval '1 millisecond'),
+           clock_timestamp())
+         ON CONFLICT (lease_name) DO UPDATE SET
+           holder_id = EXCLUDED.holder_id,
+           lease_epoch = compute_scheduler_leases.lease_epoch + 1,
+           expires_at = EXCLUDED.expires_at,
+           updated_at = clock_timestamp()
+         WHERE compute_scheduler_leases.holder_id = EXCLUDED.holder_id
+            OR compute_scheduler_leases.expires_at <= clock_timestamp()
+         RETURNING lease_epoch`, [this.#holderId, this.#leaseDurationMs]);
+			if (lease.rowCount === 0) return Object.freeze([]);
+			if (lease.rowCount !== 1) persistentError("DATABASE_FAILURE");
+			const leaseEpoch = safeInteger$1(lease.rows[0]?.lease_epoch);
+			const taskLimit = this.#batchSize === 1 ? leaseEpoch % 2 === 0 ? 1 : 0 : Math.ceil(this.#batchSize / 2);
+			const httpLimit = this.#batchSize - taskLimit;
+			const work = (taskLimit === 0 ? {
+				rows: [],
+				rowCount: 0
+			} : await sql.query(`SELECT j.task_id FROM compute_jobs AS j
+         WHERE (
+           (j.state IN ('queued','leased','starting','running','cancelling')
+             AND j.deadline_at <= clock_timestamp())
+           OR (j.state <> 'deleted' AND j.expires_at <= clock_timestamp())
+           OR (j.state = 'deleting' AND NOT EXISTS (
+             SELECT 1 FROM compute_capacity_slots AS s WHERE s.task_id = j.task_id
+           ))
+         )
+         ORDER BY LEAST(j.deadline_at, j.expires_at), j.task_id
+         FOR UPDATE OF j SKIP LOCKED
+         LIMIT $1`, [taskLimit])).rows.map((row) => {
+				if (typeof row.task_id !== "string" || !OPAQUE_ID$1.test(row.task_id)) persistentError("DATABASE_FAILURE");
+				return Object.freeze({
+					kind: "task",
+					id: row.task_id
+				});
+			});
+			if (httpLimit > 0) {
+				const deletions = await sql.query(`SELECT h.job_id,
+             CASE
+               WHEN h.record ? 'deleteRequestedAtMs' OR NOT EXISTS (
+                 SELECT 1 FROM compute_jobs AS core
+                 WHERE core.task_id = h.record->>'coreTaskId'
+               ) THEN 'http-deletion'
+               ELSE 'http-reconcile'
+             END AS work_kind
+           FROM compute_http_jobs AS h
+           WHERE NOT (h.record ? 'inputDeletedAtMs')
+             AND (
+               h.record ? 'deleteRequestedAtMs'
+               OR (
+                 h.record->>'taskKind' = 'longitudinal-analysis-v2'
+                 AND h.record ? 'coreTaskId'
+                 AND (
+                   (
+                     jsonb_typeof(h.record->'createdAtMs') = 'number'
+                     AND (h.record->>'createdAtMs')::bigint + 60000 <=
+                       floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint
+                     AND NOT EXISTS (
+                       SELECT 1 FROM compute_jobs AS core
+                       WHERE core.task_id = h.record->>'coreTaskId'
+                     )
+                   )
+                   OR EXISTS (
+                     SELECT 1 FROM compute_jobs AS core
+                     WHERE core.task_id = h.record->>'coreTaskId'
+                       AND core.state IN (
+                         'succeeded','failed','cancelled','timed_out','expired','deleted'
+                       )
+                   )
+                 )
+               )
+             )
+           ORDER BY h.updated_at, h.job_id
+           FOR UPDATE OF h SKIP LOCKED
+           LIMIT $1`, [httpLimit]);
+				for (const row of deletions.rows) {
+					if (typeof row.job_id !== "string" || !OPAQUE_ID$1.test(row.job_id) || row.work_kind !== "http-deletion" && row.work_kind !== "http-reconcile") persistentError("DATABASE_FAILURE");
+					work.push(Object.freeze({
+						kind: row.work_kind,
+						id: row.job_id
+					}));
+				}
+			}
+			return Object.freeze(work);
+		});
 	}
 };
 function safeInteger$1(value) {
@@ -80810,6 +84848,34 @@ function firstRecord(result) {
 function dateFromMs(milliseconds) {
 	if (!Number.isSafeInteger(milliseconds) || milliseconds < 0) persistentError("DATABASE_CONFLICT");
 	return new Date(milliseconds).toISOString();
+}
+async function persistExactTerminationReceipt(sql, receipt, providerReceiptId, observation) {
+	const inserted = await sql.query(`INSERT INTO compute_termination_reconciliation_receipts
+       (task_ref, lease_epoch, fencing_epoch, reconciled_at, source,
+         provider_receipt_id, observation, receipt)
+     VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb)
+     ON CONFLICT DO NOTHING`, [
+		receipt.taskRef,
+		receipt.leaseEpoch,
+		receipt.fencingEpoch,
+		dateFromMs(receipt.reconciledAtMs),
+		receipt.source,
+		providerReceiptId,
+		observation === null ? null : JSON.stringify(observation),
+		JSON.stringify(receipt)
+	]);
+	if (inserted.rowCount === 1) return;
+	if (inserted.rowCount !== 0) persistentError("RECOVERY_CONFLICT");
+	const existing = await sql.query(`SELECT source, provider_receipt_id, observation, receipt
+     FROM compute_termination_reconciliation_receipts
+     WHERE task_ref = $1 AND lease_epoch = $2 AND fencing_epoch = $3
+     FOR UPDATE`, [
+		receipt.taskRef,
+		receipt.leaseEpoch,
+		receipt.fencingEpoch
+	]);
+	const observed = existing.rows[0];
+	if (existing.rowCount !== 1 || observed === void 0 || observed.source !== receipt.source || observed.provider_receipt_id !== providerReceiptId || canonicalStringify$2(observed.observation) !== canonicalStringify$2(observation) || canonicalStringify$2(observed.receipt) !== canonicalStringify$2(receipt)) persistentError("RECOVERY_CONFLICT");
 }
 var PostgresComputeTaskRepository = class {
 	#database;
@@ -80871,6 +84937,15 @@ var PostgresComputeTaskRepository = class {
            updated_at = $6, deadline_at = $7, expires_at = $8, record = $9::jsonb
        WHERE task_id = $1 AND revision = $2
          AND task_ref = $10 AND request_fingerprint = $11
+         AND (
+           claim_fencing_epoch IS NULL OR EXISTS (
+             SELECT 1 FROM compute_capacity_slots fenced
+             WHERE fenced.slot_number = compute_jobs.claim_slot_number
+               AND fenced.task_id = compute_jobs.task_id
+               AND fenced.fencing_epoch = compute_jobs.claim_fencing_epoch
+               AND fenced.lease_epoch = compute_jobs.lease_epoch
+           )
+         )
        RETURNING record`, [
 			taskId,
 			expectedRevision,
@@ -81113,7 +85188,8 @@ var PostgresDistributedLeaseCoordinator = class {
 		await this.#database.transaction(async (sql) => {
 			await sql.query(`INSERT INTO compute_capacity_slots (slot_number, enabled)
          SELECT value, true FROM generate_series(1, $1::integer) AS value
-         ON CONFLICT (slot_number) DO UPDATE SET enabled = true`, [limit]);
+         ON CONFLICT (slot_number) DO UPDATE SET enabled =
+           (compute_capacity_slots.quarantined_at IS NULL)`, [limit]);
 			const disabled = await sql.query(`UPDATE compute_capacity_slots SET enabled = false
          WHERE slot_number > $1 AND holder_id IS NULL`, [limit]);
 			if ((await sql.query(`SELECT slot_number FROM compute_capacity_slots
@@ -81126,7 +85202,7 @@ var PostgresDistributedLeaseCoordinator = class {
 		return this.#database.transaction(async (sql) => {
 			const nowMs = safeInteger$1((await sql.query("SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint AS now_ms")).rows[0]?.now_ms);
 			const slot = (await sql.query(`SELECT slot_number, fencing_epoch FROM compute_capacity_slots
-         WHERE enabled = true AND (holder_id IS NULL OR expires_at <= clock_timestamp())
+         WHERE enabled = true AND holder_id IS NULL
          ORDER BY slot_number FOR UPDATE SKIP LOCKED LIMIT 1`)).rows[0];
 			if (slot === void 0) return null;
 			const job = (await sql.query(`SELECT task_id, record FROM compute_jobs
@@ -81156,15 +85232,18 @@ var PostgresDistributedLeaseCoordinator = class {
 				updatedAtMs: nowMs
 			});
 			const fencingEpoch = safeInteger$1(slot.fencing_epoch) + 1;
-			await sql.query(`UPDATE compute_jobs SET state = 'leased', revision = $2, lease_epoch = $3,
-           updated_at = $4, record = $5::jsonb WHERE task_id = $1`, [
+			const jobUpdate = await sql.query(`UPDATE compute_jobs SET state = 'leased', revision = $2, lease_epoch = $3,
+           updated_at = $4, record = $5::jsonb, claim_slot_number = $6,
+           claim_fencing_epoch = $7 WHERE task_id = $1`, [
 				taskId,
 				next.revision,
 				next.leaseEpoch,
 				dateFromMs(nowMs),
-				JSON.stringify(next)
+				JSON.stringify(next),
+				slot.slot_number,
+				fencingEpoch
 			]);
-			await sql.query(`UPDATE compute_capacity_slots SET fencing_epoch = $2, holder_id = $3,
+			const slotUpdate = await sql.query(`UPDATE compute_capacity_slots SET fencing_epoch = $2, holder_id = $3,
            task_id = $4, lease_id = $5, lease_epoch = $6,
            heartbeat_at = $7, expires_at = $8 WHERE slot_number = $1`, [
 				slot.slot_number,
@@ -81176,6 +85255,7 @@ var PostgresDistributedLeaseCoordinator = class {
 				dateFromMs(nowMs),
 				dateFromMs(lease.expiresAtMs)
 			]);
+			if (jobUpdate.rowCount !== 1 || slotUpdate.rowCount !== 1) persistentError("RECOVERY_CONFLICT");
 			return Object.freeze({
 				version: PERSISTENT_LEASE_CLAIM_VERSION,
 				slot: slot.slot_number,
@@ -81213,19 +85293,20 @@ var PostgresDistributedLeaseCoordinator = class {
 				revision: record.revision + 1,
 				updatedAtMs: nowMs
 			});
-			await sql.query(`UPDATE compute_jobs SET revision = $2, updated_at = $3, record = $4::jsonb
+			const jobUpdate = await sql.query(`UPDATE compute_jobs SET revision = $2, updated_at = $3, record = $4::jsonb
          WHERE task_id = $1`, [
 				claim.taskId,
 				next.revision,
 				dateFromMs(nowMs),
 				JSON.stringify(next)
 			]);
-			await sql.query(`UPDATE compute_capacity_slots SET heartbeat_at = $2, expires_at = $3
+			const slotUpdate = await sql.query(`UPDATE compute_capacity_slots SET heartbeat_at = $2, expires_at = $3
          WHERE slot_number = $1`, [
 				claim.slot,
 				dateFromMs(nowMs),
 				dateFromMs(expiresAtMs)
 			]);
+			if (jobUpdate.rowCount !== 1 || slotUpdate.rowCount !== 1) persistentError("RECOVERY_CONFLICT");
 			return Object.freeze({
 				...claim,
 				lease,
@@ -81234,26 +85315,220 @@ var PostgresDistributedLeaseCoordinator = class {
 		});
 	}
 	async release(claim) {
-		return (await this.#database.query(`UPDATE compute_capacity_slots
-       SET holder_id = NULL, task_id = NULL, lease_id = NULL, lease_epoch = NULL,
+		return this.#database.transaction(async (sql) => {
+			const locked = await sql.query(`SELECT slot_number FROM compute_capacity_slots
+         WHERE slot_number = $1 AND fencing_epoch = $2 AND holder_id = $3
+           AND task_id = $4 AND lease_id = $5 AND lease_epoch = $6
+         FOR UPDATE`, [
+				claim.slot,
+				claim.fencingEpoch,
+				claim.holderId,
+				claim.taskId,
+				claim.lease.leaseId,
+				claim.lease.epoch
+			]);
+			if (locked.rowCount === 0) return false;
+			if (locked.rowCount !== 1) persistentError("DATABASE_FAILURE");
+			const job = await sql.query(`UPDATE compute_jobs SET claim_slot_number = NULL,
+           claim_fencing_epoch = NULL
+         WHERE task_id = $1 AND claim_slot_number = $2
+           AND claim_fencing_epoch = $3 AND lease_epoch = $4`, [
+				claim.taskId,
+				claim.slot,
+				claim.fencingEpoch,
+				claim.lease.epoch
+			]);
+			const slot = await sql.query(`UPDATE compute_capacity_slots
+         SET holder_id = NULL, task_id = NULL, lease_id = NULL, lease_epoch = NULL,
            heartbeat_at = NULL, expires_at = NULL
-       WHERE slot_number = $1 AND fencing_epoch = $2 AND holder_id = $3
-         AND task_id = $4 AND lease_id = $5 AND lease_epoch = $6`, [
-			claim.slot,
-			claim.fencingEpoch,
-			claim.holderId,
-			claim.taskId,
-			claim.lease.leaseId,
-			claim.lease.epoch
-		])).rowCount === 1;
+         WHERE slot_number = $1 AND fencing_epoch = $2 AND holder_id = $3
+           AND task_id = $4 AND lease_id = $5 AND lease_epoch = $6`, [
+				claim.slot,
+				claim.fencingEpoch,
+				claim.holderId,
+				claim.taskId,
+				claim.lease.leaseId,
+				claim.lease.epoch
+			]);
+			if (job.rowCount !== 1 || slot.rowCount !== 1) persistentError("RECOVERY_CONFLICT");
+			return true;
+		});
+	}
+	async reconcileObservedTermination(claim) {
+		return this.#database.transaction(async (sql) => {
+			const row = (await sql.query(`SELECT s.slot_number, s.fencing_epoch, s.task_id, s.lease_epoch, j.record
+         FROM compute_capacity_slots s
+         JOIN compute_jobs j ON j.task_id = s.task_id
+         WHERE s.slot_number = $1 AND s.fencing_epoch = $2
+           AND s.holder_id = $3 AND s.task_id = $4
+           AND s.lease_id = $5 AND s.lease_epoch = $6
+         FOR UPDATE OF s, j`, [
+				claim.slot,
+				claim.fencingEpoch,
+				claim.holderId,
+				claim.taskId,
+				claim.lease.leaseId,
+				claim.lease.epoch
+			])).rows[0];
+			if (row === void 0) return false;
+			assertCoreRecord(row.record);
+			if (row.record.execution !== void 0 || ![
+				"succeeded",
+				"failed",
+				"cancelled",
+				"timed_out",
+				"expired",
+				"deleting",
+				"deleted"
+			].includes(row.record.state)) persistentError("RECOVERY_CONFLICT");
+			const reconciledAtMs = safeInteger$1((await sql.query("SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint AS now_ms")).rows[0]?.now_ms);
+			await persistExactTerminationReceipt(sql, Object.freeze({
+				version: TERMINATION_RECONCILIATION_RECEIPT_VERSION,
+				taskRef: row.record.taskRef,
+				leaseEpoch: claim.lease.epoch,
+				fencingEpoch: claim.fencingEpoch,
+				reconciledAtMs,
+				terminationObserved: true,
+				capacityReleased: true,
+				source: "owning-worker"
+			}), null, null);
+			const job = await sql.query(`UPDATE compute_jobs SET claim_slot_number = NULL,
+           claim_fencing_epoch = NULL
+         WHERE task_id = $1 AND claim_slot_number = $2
+           AND claim_fencing_epoch = $3 AND lease_epoch = $4`, [
+				claim.taskId,
+				claim.slot,
+				claim.fencingEpoch,
+				claim.lease.epoch
+			]);
+			const slot = await sql.query(`UPDATE compute_capacity_slots
+         SET holder_id = NULL, task_id = NULL, lease_id = NULL,
+           lease_epoch = NULL, heartbeat_at = NULL, expires_at = NULL
+         WHERE slot_number = $1 AND fencing_epoch = $2
+           AND holder_id = $3 AND task_id = $4`, [
+				claim.slot,
+				claim.fencingEpoch,
+				claim.holderId,
+				claim.taskId
+			]);
+			if (job.rowCount !== 1 || slot.rowCount !== 1) persistentError("RECOVERY_CONFLICT");
+			return true;
+		});
+	}
+	async reconcileQuarantinedClaim(input) {
+		if (!Number.isSafeInteger(input.slot) || input.slot < 1 || !Number.isSafeInteger(input.recoveryFencingEpoch) || input.recoveryFencingEpoch < 1 || input.observation.version !== "3dena.external-termination-observation.v1" || !OPAQUE_ID$1.test(input.observation.taskId) || !OPAQUE_ID$1.test(input.observation.executionId) || input.observation.childId !== null && !OPAQUE_ID$1.test(input.observation.childId) || !Number.isSafeInteger(input.observation.observedAtMs) || input.observation.observedAtMs < 0 || !OPAQUE_ID$1.test(input.observation.providerReceiptId) || ![
+			"completed",
+			"crashed",
+			"terminated",
+			"launch_rejected"
+		].includes(input.observation.kind)) persistentError("CONFIGURATION_INVALID");
+		return this.#database.transaction(async (sql) => {
+			const isolatedEpoch = input.recoveryFencingEpoch + 1;
+			const row = (await sql.query(`SELECT s.slot_number, s.fencing_epoch, s.task_id, s.lease_epoch, j.record
+         FROM compute_capacity_slots s
+         JOIN compute_jobs j ON j.task_id = s.task_id
+         WHERE s.slot_number = $1 AND s.fencing_epoch = $2
+           AND s.task_id = $3 AND s.quarantined_at IS NOT NULL
+         FOR UPDATE OF s, j`, [
+				input.slot,
+				isolatedEpoch,
+				input.observation.taskId
+			])).rows[0];
+			if (row === void 0) persistentError("RECOVERY_CONFLICT");
+			assertCoreRecord(row.record);
+			const execution = row.record.execution;
+			if (execution?.executionId !== input.observation.executionId || input.observation.childId !== null && execution.childId !== input.observation.childId) persistentError("RECOVERY_CONFLICT");
+			const mutable = withoutKeys(row.record, [
+				"lease",
+				"execution",
+				"pendingStopOutcome"
+			]);
+			let target;
+			if (input.observation.observedAtMs >= row.record.request.expiresAtMs) {
+				target = "expired";
+				delete mutable.result;
+				delete mutable.failure;
+			} else if (input.observation.observedAtMs >= row.record.request.deadlineAtMs) {
+				target = "timed_out";
+				delete mutable.result;
+				delete mutable.failure;
+			} else if (row.record.pendingStopOutcome === "deleted") {
+				target = "deleting";
+				delete mutable.result;
+				delete mutable.failure;
+			} else if (row.record.pendingStopOutcome !== void 0 && row.record.pendingStopOutcome !== "queued") {
+				target = row.record.pendingStopOutcome;
+				delete mutable.result;
+				if (target !== "failed") delete mutable.failure;
+			} else if (input.observation.kind === "completed" && row.record.result !== void 0) {
+				target = "succeeded";
+				delete mutable.failure;
+			} else if (input.observation.kind === "launch_rejected" || input.observation.kind === "crashed") {
+				target = "failed";
+				delete mutable.result;
+				mutable.failure = {
+					code: input.observation.kind === "launch_rejected" ? "PROCESS_START_FAILED" : "PROCESS_CRASHED",
+					atMs: input.observation.observedAtMs
+				};
+			} else {
+				target = "queued";
+				delete mutable.result;
+				delete mutable.failure;
+			}
+			const next = cloneFrozen$2({
+				...mutable,
+				state: target,
+				revision: row.record.revision + 1,
+				updatedAtMs: input.observation.observedAtMs
+			});
+			assertCoreRecord(next);
+			const receipt = Object.freeze({
+				version: TERMINATION_RECONCILIATION_RECEIPT_VERSION,
+				taskRef: row.record.taskRef,
+				leaseEpoch: safeInteger$1(row.lease_epoch),
+				fencingEpoch: isolatedEpoch,
+				reconciledAtMs: input.observation.observedAtMs,
+				terminationObserved: true,
+				capacityReleased: true,
+				source: "external-quarantine-reconcile"
+			});
+			await persistExactTerminationReceipt(sql, receipt, input.observation.providerReceiptId, input.observation);
+			const job = await sql.query(`UPDATE compute_jobs SET state = $2, revision = $3, updated_at = $4,
+           record = $5::jsonb, claim_slot_number = NULL,
+           claim_fencing_epoch = NULL
+         WHERE task_id = $1 AND claim_slot_number = $6
+           AND claim_fencing_epoch = $7`, [
+				input.observation.taskId,
+				next.state,
+				next.revision,
+				dateFromMs(next.updatedAtMs),
+				JSON.stringify(next),
+				input.slot,
+				input.recoveryFencingEpoch
+			]);
+			const slot = await sql.query(`UPDATE compute_capacity_slots SET enabled = true,
+           holder_id = NULL, task_id = NULL, lease_id = NULL,
+           lease_epoch = NULL, heartbeat_at = NULL, expires_at = NULL,
+           quarantined_at = NULL, quarantine_receipt = NULL
+         WHERE slot_number = $1 AND fencing_epoch = $2
+           AND task_id = $3 AND quarantined_at IS NOT NULL`, [
+				input.slot,
+				isolatedEpoch,
+				input.observation.taskId
+			]);
+			if (job.rowCount !== 1 || slot.rowCount !== 1) persistentError("RECOVERY_CONFLICT");
+			return receipt;
+		});
 	}
 	async recoverExpiredClaims() {
 		return this.#database.transaction(async (sql) => {
 			const nowMs = safeInteger$1((await sql.query("SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint AS now_ms")).rows[0]?.now_ms);
-			const slots = await sql.query(`SELECT s.slot_number, s.fencing_epoch, s.task_id, s.lease_epoch, j.record
+			const slots = await sql.query(`SELECT s.slot_number, s.fencing_epoch, s.task_id, s.lease_epoch,
+           s.quarantined_at, j.record
          FROM compute_capacity_slots s
          JOIN compute_jobs j ON j.task_id = s.task_id
-         WHERE s.holder_id IS NOT NULL AND s.expires_at <= clock_timestamp()
+         WHERE s.holder_id IS NOT NULL AND s.quarantined_at IS NULL
+           AND s.expires_at <= clock_timestamp()
          ORDER BY s.expires_at, s.slot_number
          FOR UPDATE OF s, j SKIP LOCKED LIMIT $1`, [this.#recoveryBatchSize]);
 			const receipts = [];
@@ -81263,6 +85538,43 @@ var PostgresDistributedLeaseCoordinator = class {
 				const previousEpoch = safeInteger$1(slot.lease_epoch);
 				const fencingEpoch = safeInteger$1(slot.fencing_epoch);
 				if (slot.record.lease?.epoch !== previousEpoch) persistentError("RECOVERY_CONFLICT");
+				if (slot.record.execution !== void 0 || [
+					"starting",
+					"running",
+					"cancelling"
+				].includes(slot.record.state)) {
+					const receipt = Object.freeze({
+						version: RECOVERY_RECEIPT_VERSION_V2,
+						taskRef: slot.record.taskRef,
+						previousLeaseEpoch: previousEpoch,
+						fencingEpoch,
+						disposition: "quarantined",
+						recoveredAtMs: nowMs,
+						terminationObserved: false,
+						capacityReleased: false,
+						isolated: true
+					});
+					if ((await sql.query(`UPDATE compute_capacity_slots
+             SET enabled = false, fencing_epoch = fencing_epoch + 1,
+               quarantined_at = $2, quarantine_receipt = $3::jsonb
+             WHERE slot_number = $1 AND quarantined_at IS NULL`, [
+						slot.slot_number,
+						dateFromMs(nowMs),
+						JSON.stringify(receipt)
+					])).rowCount !== 1) persistentError("RECOVERY_CONFLICT");
+					await sql.query(`INSERT INTO compute_recovery_receipts
+               (task_ref, previous_lease_epoch, fencing_epoch, recovered_at, disposition, receipt)
+             VALUES ($1,$2,$3,$4,$5,$6::jsonb) ON CONFLICT DO NOTHING`, [
+						receipt.taskRef,
+						previousEpoch,
+						fencingEpoch,
+						dateFromMs(nowMs),
+						receipt.disposition,
+						JSON.stringify(receipt)
+					]);
+					receipts.push(receipt);
+					continue;
+				}
 				const target = recoveryState(slot.record, nowMs);
 				const mutable = withoutKeys(slot.record, [
 					"lease",
@@ -81278,24 +85590,72 @@ var PostgresDistributedLeaseCoordinator = class {
 					updatedAtMs: nowMs
 				});
 				assertCoreRecord(next);
-				await sql.query(`UPDATE compute_jobs SET state = $2, revision = $3, updated_at = $4,
-             record = $5::jsonb WHERE task_id = $1`, [
+				const jobUpdate = await sql.query(`UPDATE compute_jobs SET state = $2, revision = $3, updated_at = $4,
+             record = $5::jsonb, claim_slot_number = NULL,
+             claim_fencing_epoch = NULL WHERE task_id = $1
+               AND claim_slot_number = $6 AND claim_fencing_epoch = $7
+               AND lease_epoch = $8`, [
 					slot.task_id,
 					next.state,
 					next.revision,
 					dateFromMs(nowMs),
-					JSON.stringify(next)
+					JSON.stringify(next),
+					slot.slot_number,
+					fencingEpoch,
+					previousEpoch
 				]);
-				await sql.query(`UPDATE compute_capacity_slots
+				const slotUpdate = await sql.query(`UPDATE compute_capacity_slots
            SET holder_id = NULL, task_id = NULL, lease_id = NULL, lease_epoch = NULL,
-             heartbeat_at = NULL, expires_at = NULL WHERE slot_number = $1`, [slot.slot_number]);
+             heartbeat_at = NULL, expires_at = NULL
+           WHERE slot_number = $1 AND fencing_epoch = $2 AND task_id = $3
+             AND lease_epoch = $4`, [
+					slot.slot_number,
+					fencingEpoch,
+					slot.task_id,
+					previousEpoch
+				]);
+				if (jobUpdate.rowCount !== 1 || slotUpdate.rowCount !== 1) persistentError("RECOVERY_CONFLICT");
+				const terminationObserved = [
+					"succeeded",
+					"failed",
+					"cancelled",
+					"timed_out",
+					"expired",
+					"deleting",
+					"deleted"
+				].includes(slot.record.state);
+				if (terminationObserved) {
+					const terminationReceipt = Object.freeze({
+						version: TERMINATION_RECONCILIATION_RECEIPT_VERSION,
+						taskRef: slot.record.taskRef,
+						leaseEpoch: previousEpoch,
+						fencingEpoch,
+						reconciledAtMs: nowMs,
+						terminationObserved: true,
+						capacityReleased: true,
+						source: "expired-claim-recovery"
+					});
+					await sql.query(`INSERT INTO compute_termination_reconciliation_receipts
+               (task_ref, lease_epoch, fencing_epoch, reconciled_at, source, receipt)
+             VALUES ($1,$2,$3,$4,$5,$6::jsonb) ON CONFLICT DO NOTHING`, [
+						terminationReceipt.taskRef,
+						terminationReceipt.leaseEpoch,
+						terminationReceipt.fencingEpoch,
+						dateFromMs(terminationReceipt.reconciledAtMs),
+						terminationReceipt.source,
+						JSON.stringify(terminationReceipt)
+					]);
+				}
 				const receipt = Object.freeze({
-					version: RECOVERY_RECEIPT_VERSION,
+					version: RECOVERY_RECEIPT_VERSION_V2,
 					taskRef: slot.record.taskRef,
 					previousLeaseEpoch: previousEpoch,
 					fencingEpoch,
 					disposition: target.disposition,
-					recoveredAtMs: nowMs
+					recoveredAtMs: nowMs,
+					terminationObserved,
+					capacityReleased: true,
+					isolated: false
 				});
 				await sql.query(`INSERT INTO compute_recovery_receipts
              (task_ref, previous_lease_epoch, fencing_epoch, recovered_at, disposition, receipt)
@@ -81375,14 +85735,13 @@ function safeInteger(value) {
 	if (!Number.isSafeInteger(parsed) || Number(parsed) < 0) persistentError("DATABASE_FAILURE");
 	return Number(parsed);
 }
-function sha256(bytes) {
+function sha256$1(bytes) {
 	return createHash("sha256").update(bytes).digest("hex");
 }
 /**
 * Append-only publication index and exact-byte resolver for derived tasks.
-* It accepts raw ENA results only; derived results can never recursively pose
-* as a model source. Prepared exchange sources require their separately
-* reviewed import registry and remain fail-closed here.
+* It accepts only primary raw ENA or prepared-exchange import results; derived
+* results can never recursively pose as a scientific source.
 */
 var PostgresPublishedSourceResultRegistry = class {
 	#database;
@@ -81444,7 +85803,7 @@ var PostgresPublishedSourceResultRegistry = class {
 		const expiresAtMs = safeInteger(row.expires_at_ms);
 		if (publishedAtMs > input.nowMs || expiresAtMs <= input.nowMs) return null;
 		const [head, bytes] = await Promise.all([this.#objectStore.head(descriptor.key), this.#objectStore.get(descriptor.key)]);
-		if (head === null || bytes === null || head.sha256 !== descriptor.sha256 || head.byteLength !== descriptor.byteLength || bytes.byteLength !== descriptor.byteLength || sha256(bytes) !== descriptor.sha256) return null;
+		if (head === null || bytes === null || head.sha256 !== descriptor.sha256 || head.byteLength !== descriptor.byteLength || bytes.byteLength !== descriptor.byteLength || sha256$1(bytes) !== descriptor.sha256) return null;
 		let parsed;
 		try {
 			parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
@@ -81456,7 +85815,7 @@ var PostgresPublishedSourceResultRegistry = class {
 			"owner",
 			"taskKind",
 			"envelope"
-		]) || parsed.version !== "3dena.compute-scientific-result-artifact.v1" || parsed.taskKind !== "ena-model") return null;
+		]) || parsed.version !== "3dena.compute-scientific-result-artifact.v1" || parsed.taskKind !== "ena-model" && parsed.taskKind !== "prepared-import") return null;
 		const envelope = parsed.envelope;
 		try {
 			assertAnalysisResultEnvelopeV1(envelope);
@@ -81464,10 +85823,15 @@ var PostgresPublishedSourceResultRegistry = class {
 			return null;
 		}
 		const validated = envelope;
-		if (validated.taskKind !== "ena-model" || validated.result.schemaVersion !== "3dena.analysis-result.v1" || validated.owner.datasetHash !== input.activatedDatasetSha256 || validated.owner.specHash !== row.spec_hash || validated.owner.taskId !== row.task_id || validated.evidence.buildId !== input.requiredBuildId || validated.provenance.buildId !== input.requiredBuildId || validated.provenance.resultHash !== input.sourceResultHash || await hashAnalysisValueV1(validated.result) !== input.sourceResultHash) return null;
+		const rawJena = validated.taskKind === "ena-model";
+		if (validated.taskKind !== "ena-model" && validated.taskKind !== "prepared-import" || (rawJena ? validated.result.schemaVersion !== "3dena.analysis-result.v1" || validated.provenance.sourceKind !== "raw-jena" || validated.provenance.jenaExecuted !== true : validated.result.schemaVersion !== "3dena.prepared-space-result.v1" || validated.provenance.sourceKind !== "prepared-exchange" || validated.provenance.jenaExecuted !== false) || validated.owner.datasetHash !== input.activatedDatasetSha256 || validated.owner.specHash !== row.spec_hash || validated.owner.taskId !== row.task_id || validated.evidence.buildId !== input.requiredBuildId || validated.provenance.buildId !== input.requiredBuildId || validated.provenance.resultHash !== input.sourceResultHash || await hashAnalysisValueV1(validated.result) !== input.sourceResultHash) return null;
 		return {
-			source: {
+			source: rawJena ? {
 				sourceKind: "raw-jena",
+				hash: input.sourceResultHash,
+				result: validated.result
+			} : {
+				sourceKind: "prepared-exchange",
 				hash: input.sourceResultHash,
 				result: validated.result
 			},
@@ -81480,75 +85844,287 @@ var PostgresPublishedSourceResultRegistry = class {
 };
 //#endregion
 //#region packages/compute-service-persistent/src/vercel-blob.ts
+function positiveInteger(value) {
+	const parsed = typeof value === "string" ? Number(value) : value;
+	if (!Number.isSafeInteger(parsed) || Number(parsed) < 1) persistentError("DATABASE_FAILURE");
+	return Number(parsed);
+}
+function objectLease(row) {
+	if (typeof row.object_ref !== "string" || !/^[a-f0-9]{64}$/u.test(row.object_ref) || typeof row.object_key !== "string" || typeof row.pathname !== "string" || typeof row.sha256 !== "string" || !/^[a-f0-9]{64}$/u.test(row.sha256) || ![
+		"intent",
+		"available",
+		"deleting",
+		"deleted"
+	].includes(String(row.state))) persistentError("DATABASE_FAILURE");
+	const byteLength = typeof row.byte_length === "string" ? Number(row.byte_length) : row.byte_length;
+	if (!Number.isSafeInteger(byteLength) || Number(byteLength) < 0) persistentError("DATABASE_FAILURE");
+	return Object.freeze({
+		objectRef: row.object_ref,
+		objectKey: row.object_key,
+		pathname: row.pathname,
+		sha256: row.sha256,
+		byteLength: Number(byteLength),
+		generation: positiveInteger(row.generation),
+		fencingEpoch: positiveInteger(row.fencing_epoch),
+		state: row.state
+	});
+}
+function generationPathname(basePathname, generation) {
+	return generation === 1 ? basePathname : `${basePathname}.g${generation}`;
+}
+async function lockNamespace(sql, namespace) {
+	await sql.query(`INSERT INTO compute_blob_namespace_locks (namespace, fencing_epoch, updated_at)
+     VALUES ($1, 1, clock_timestamp()) ON CONFLICT (namespace) DO NOTHING`, [namespace]);
+	if ((await sql.query(`SELECT fencing_epoch FROM compute_blob_namespace_locks
+     WHERE namespace = $1 FOR UPDATE`, [namespace])).rowCount !== 1) persistentError("DATABASE_FAILURE");
+}
 var PostgresObjectLedger = class {
-	#database;
+	database;
 	constructor(database) {
-		this.#database = database;
+		this.database = database;
 	}
-	async register(input) {
-		if ((await this.#database.query(`INSERT INTO compute_objects (
-        object_ref, object_key, pathname, sha256, byte_length, created_at, delete_after
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7)
-       ON CONFLICT (object_ref) DO NOTHING`, [
-			input.objectRef,
-			input.objectKey,
-			input.pathname,
-			input.sha256,
-			input.byteLength,
-			new Date(input.createdAtMs).toISOString(),
-			new Date(input.deleteAfterMs).toISOString()
-		])).rowCount === 0) {
-			const row = (await this.#database.query(`SELECT object_key, pathname, sha256, byte_length FROM compute_objects
-         WHERE object_ref = $1`, [input.objectRef])).rows[0];
-			if (row?.object_key !== input.objectKey || row.pathname !== input.pathname || row.sha256 !== input.sha256 || Number(row.byte_length) !== input.byteLength) persistentError("IMMUTABLE_OBJECT_CONFLICT");
-		}
-	}
-	async due(beforeMs, limit) {
-		return (await this.#database.query(`SELECT object_key FROM compute_objects
-       WHERE deleted_at IS NULL AND delete_after <= $1
-       ORDER BY delete_after, object_ref LIMIT $2`, [new Date(beforeMs).toISOString(), limit])).rows.map((row) => {
-			if (typeof row.object_key !== "string") persistentError("DATABASE_FAILURE");
-			return row.object_key;
+	async beginPut(input) {
+		return this.database.transaction(async (sql) => {
+			await lockNamespace(sql, input.namespace);
+			const found = await sql.query(`SELECT object_ref, object_key, pathname, sha256, byte_length,
+           generation, fencing_epoch, state
+         FROM compute_objects WHERE object_ref = $1 FOR UPDATE`, [input.objectRef]);
+			if (found.rows[0] === void 0) {
+				const pathname = generationPathname(input.pathname, 1);
+				if ((await sql.query(`SELECT 1 FROM compute_blob_orphan_intents
+           WHERE pathname = $1 AND state = 'deleting' FOR UPDATE`, [pathname])).rowCount !== 0) persistentError("IMMUTABLE_OBJECT_CONFLICT");
+				const inserted = await sql.query(`INSERT INTO compute_objects (
+             object_ref, object_key, pathname, sha256, byte_length,
+             created_at, delete_after, generation, fencing_epoch, state,
+             intent_at, available_at, deleting_at, deleted_at, deletion_receipt
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,1,1,'intent',$6,NULL,NULL,NULL,NULL)
+           RETURNING object_ref, object_key, pathname, sha256, byte_length,
+             generation, fencing_epoch, state`, [
+					input.objectRef,
+					input.objectKey,
+					pathname,
+					input.sha256,
+					input.byteLength,
+					new Date(input.createdAtMs).toISOString(),
+					new Date(input.deleteAfterMs).toISOString()
+				]);
+				if (inserted.rowCount !== 1 || inserted.rows[0] === void 0) persistentError("DATABASE_FAILURE");
+				return objectLease(inserted.rows[0]);
+			}
+			const row = found.rows[0];
+			const current = objectLease(row);
+			const expectedCurrentPathname = generationPathname(input.pathname, current.generation);
+			if (current.objectKey !== input.objectKey || current.pathname !== expectedCurrentPathname || current.sha256 !== input.sha256 || current.byteLength !== input.byteLength) persistentError("IMMUTABLE_OBJECT_CONFLICT");
+			if (current.state === "deleting") persistentError("IMMUTABLE_OBJECT_CONFLICT");
+			if (current.state !== "deleted") return current;
+			const nextGeneration = current.generation + 1;
+			if (!Number.isSafeInteger(nextGeneration)) persistentError("DATABASE_FAILURE");
+			const nextPathname = generationPathname(input.pathname, nextGeneration);
+			if ((await sql.query(`SELECT 1 FROM compute_blob_orphan_intents
+         WHERE pathname = $1 AND state = 'deleting' FOR UPDATE`, [nextPathname])).rowCount !== 0) persistentError("IMMUTABLE_OBJECT_CONFLICT");
+			const reactivated = await sql.query(`UPDATE compute_objects SET generation = generation + 1,
+           fencing_epoch = fencing_epoch + 1, state = 'intent',
+           created_at = $2, delete_after = $3, intent_at = $2,
+           available_at = NULL, deleting_at = NULL, deleted_at = NULL,
+           deletion_receipt = NULL, pathname = $6
+         WHERE object_ref = $1 AND generation = $4 AND fencing_epoch = $5
+           AND state = 'deleted'
+         RETURNING object_ref, object_key, pathname, sha256, byte_length,
+           generation, fencing_epoch, state`, [
+				input.objectRef,
+				new Date(input.createdAtMs).toISOString(),
+				new Date(input.deleteAfterMs).toISOString(),
+				current.generation,
+				current.fencingEpoch,
+				nextPathname
+			]);
+			if (reactivated.rowCount !== 1 || reactivated.rows[0] === void 0) persistentError("DATABASE_CONFLICT");
+			return objectLease(reactivated.rows[0]);
 		});
 	}
-	async attest(receipt) {
-		await this.#database.transaction(async (sql) => {
+	async markAvailable(lease, atMs) {
+		if ((await this.database.query(`UPDATE compute_objects SET state = 'available', available_at = $4
+       WHERE object_ref = $1 AND generation = $2 AND fencing_epoch = $3
+         AND state = 'intent'`, [
+			lease.objectRef,
+			lease.generation,
+			lease.fencingEpoch,
+			new Date(atMs).toISOString()
+		])).rowCount === 1) return;
+		const found = await this.database.query(`SELECT object_ref, object_key, pathname, sha256, byte_length,
+         generation, fencing_epoch, state FROM compute_objects WHERE object_ref = $1`, [lease.objectRef]);
+		const current = found.rows[0] === void 0 ? null : objectLease(found.rows[0]);
+		if (current?.generation !== lease.generation || current.fencingEpoch !== lease.fencingEpoch || current.state !== "available") persistentError("DATABASE_CONFLICT");
+	}
+	async resolve(objectKey) {
+		const found = await this.database.query(`SELECT object_ref, object_key, pathname, sha256, byte_length,
+         generation, fencing_epoch, state
+       FROM compute_objects WHERE object_key = $1`, [objectKey]);
+		if (found.rowCount === 0) return null;
+		if (found.rowCount !== 1 || found.rows[0] === void 0) persistentError("DATABASE_FAILURE");
+		return objectLease(found.rows[0]);
+	}
+	async beginDelete(objectKey, requestedAtMs) {
+		return this.database.transaction(async (sql) => {
+			const found = await sql.query(`SELECT object_ref, object_key, pathname, sha256, byte_length,
+           generation, fencing_epoch, state
+         FROM compute_objects WHERE object_key = $1 FOR UPDATE`, [objectKey]);
+			if (found.rows[0] === void 0) return null;
+			const current = objectLease(found.rows[0]);
+			if (current.state === "deleted") return null;
+			if (current.state === "deleting") return current;
+			const updated = await sql.query(`UPDATE compute_objects SET state = 'deleting',
+           fencing_epoch = fencing_epoch + 1, deleting_at = $4
+         WHERE object_ref = $1 AND generation = $2 AND fencing_epoch = $3
+           AND state IN ('intent','available')
+         RETURNING object_ref, object_key, pathname, sha256, byte_length,
+           generation, fencing_epoch, state`, [
+				current.objectRef,
+				current.generation,
+				current.fencingEpoch,
+				new Date(requestedAtMs).toISOString()
+			]);
+			if (updated.rowCount !== 1 || updated.rows[0] === void 0) persistentError("DATABASE_CONFLICT");
+			return objectLease(updated.rows[0]);
+		});
+	}
+	async completeDelete(lease, receipt) {
+		await this.database.transaction(async (sql) => {
 			await sql.query(`INSERT INTO compute_deletion_receipts
            (object_ref, requested_at, completed_at, receipt)
-         VALUES ($1,$2,$3,$4::jsonb)`, [
+         VALUES ($1,$2,$3,$4::jsonb) ON CONFLICT DO NOTHING`, [
 				receipt.objectRef,
 				new Date(receipt.requestedAtMs).toISOString(),
 				new Date(receipt.completedAtMs).toISOString(),
 				JSON.stringify(receipt)
 			]);
-			await sql.query(`UPDATE compute_objects SET deleted_at = $2, deletion_receipt = $3::jsonb
-         WHERE object_ref = $1 AND deleted_at IS NULL`, [
-				receipt.objectRef,
+			if ((await sql.query(`UPDATE compute_objects SET state = 'deleted', deleted_at = $4,
+           deletion_receipt = $5::jsonb
+         WHERE object_ref = $1 AND generation = $2 AND fencing_epoch = $3
+           AND state = 'deleting'`, [
+				lease.objectRef,
+				lease.generation,
+				lease.fencingEpoch,
 				new Date(receipt.completedAtMs).toISOString(),
 				JSON.stringify(receipt)
-			]);
+			])).rowCount === 1) return;
+			const found = await sql.query(`SELECT object_ref, object_key, pathname, sha256, byte_length,
+           generation, fencing_epoch, state FROM compute_objects
+         WHERE object_ref = $1 FOR UPDATE`, [lease.objectRef]);
+			const current = found.rows[0] === void 0 ? null : objectLease(found.rows[0]);
+			if (current?.generation !== lease.generation || current.fencingEpoch !== lease.fencingEpoch || current.state !== "deleted") persistentError("DATABASE_CONFLICT");
 		});
+	}
+	async due(beforeMs, limit) {
+		const result = await this.database.query(`SELECT object_key FROM compute_objects
+       WHERE state = 'deleting'
+          OR (state IN ('intent','available') AND delete_after <= $1)
+       ORDER BY delete_after, object_ref LIMIT $2`, [new Date(beforeMs).toISOString(), limit]);
+		return Object.freeze(result.rows.map((row) => {
+			if (typeof row.object_key !== "string") persistentError("DATABASE_FAILURE");
+			return row.object_key;
+		}));
+	}
+	async beginOrphanDelete(input) {
+		return this.database.transaction(async (sql) => {
+			await lockNamespace(sql, input.namespace);
+			const known = await sql.query(`SELECT state FROM compute_objects WHERE pathname = $1 FOR UPDATE`, [input.pathname]);
+			if (known.rows[0] !== void 0 && known.rows[0].state !== "deleted") return null;
+			const existing = await sql.query(`SELECT generation, fencing_epoch, state,
+           extract(epoch FROM provider_uploaded_at) * 1000 AS provider_uploaded_at_ms,
+           extract(epoch FROM discovered_at) * 1000 AS discovered_at_ms
+         FROM compute_blob_orphan_intents WHERE pathname = $1 FOR UPDATE`, [input.pathname]);
+			let generation = 1;
+			let fencingEpoch = 1;
+			let discoveredAtMs = input.discoveredAtMs;
+			const row = existing.rows[0];
+			if (row === void 0) {
+				if ((await sql.query(`INSERT INTO compute_blob_orphan_intents (
+             pathname, namespace, object_ref, generation, fencing_epoch,
+             state, provider_uploaded_at, discovered_at
+           ) VALUES ($1,$2,$3,1,1,'deleting',$4,$5)`, [
+					input.pathname,
+					input.namespace,
+					sha256Text$2(input.pathname),
+					new Date(input.providerUploadedAtMs).toISOString(),
+					new Date(input.discoveredAtMs).toISOString()
+				])).rowCount !== 1) persistentError("DATABASE_FAILURE");
+			} else if (row.state === "deleting") {
+				generation = positiveInteger(row.generation);
+				fencingEpoch = positiveInteger(row.fencing_epoch);
+				if (Number(row.provider_uploaded_at_ms) !== input.providerUploadedAtMs) persistentError("DATABASE_CONFLICT");
+				discoveredAtMs = Number(row.discovered_at_ms);
+			} else if (row.state === "deleted") {
+				generation = positiveInteger(row.generation) + 1;
+				fencingEpoch = positiveInteger(row.fencing_epoch) + 1;
+				if ((await sql.query(`UPDATE compute_blob_orphan_intents SET generation = $2,
+             fencing_epoch = $3, state = 'deleting', provider_uploaded_at = $4,
+             discovered_at = $5, completed_at = NULL, receipt = NULL
+           WHERE pathname = $1 AND state = 'deleted'`, [
+					input.pathname,
+					generation,
+					fencingEpoch,
+					new Date(input.providerUploadedAtMs).toISOString(),
+					new Date(input.discoveredAtMs).toISOString()
+				])).rowCount !== 1) persistentError("DATABASE_CONFLICT");
+			} else persistentError("DATABASE_FAILURE");
+			return Object.freeze({
+				objectRef: sha256Text$2(input.pathname),
+				namespace: input.namespace,
+				pathname: input.pathname,
+				generation,
+				fencingEpoch,
+				providerUploadedAtMs: input.providerUploadedAtMs,
+				discoveredAtMs
+			});
+		});
+	}
+	async completeOrphanDelete(lease, receipt) {
+		if ((await this.database.query(`UPDATE compute_blob_orphan_intents SET state = 'deleted',
+         completed_at = $4, receipt = $5::jsonb
+       WHERE pathname = $1 AND generation = $2 AND fencing_epoch = $3
+         AND state = 'deleting'`, [
+			lease.pathname,
+			lease.generation,
+			lease.fencingEpoch,
+			new Date(receipt.completedAtMs).toISOString(),
+			JSON.stringify(receipt)
+		])).rowCount === 1) return;
+		const row = (await this.database.query(`SELECT generation, fencing_epoch, state FROM compute_blob_orphan_intents
+       WHERE pathname = $1`, [lease.pathname])).rows[0];
+		if (positiveInteger(row?.generation) !== lease.generation || positiveInteger(row?.fencing_epoch) !== lease.fencingEpoch || row?.state !== "deleted") persistentError("DATABASE_CONFLICT");
+	}
+	async dueOrphanDeletes(namespace, limit) {
+		const result = await this.database.query(`SELECT object_ref, pathname, generation, fencing_epoch,
+         extract(epoch FROM provider_uploaded_at) * 1000 AS provider_uploaded_at_ms,
+         extract(epoch FROM discovered_at) * 1000 AS discovered_at_ms
+       FROM compute_blob_orphan_intents
+       WHERE namespace = $1 AND state = 'deleting'
+       ORDER BY discovered_at, pathname LIMIT $2`, [namespace, limit]);
+		return Object.freeze(result.rows.map((row) => {
+			if (typeof row.object_ref !== "string" || typeof row.pathname !== "string" || !Number.isSafeInteger(Number(row.provider_uploaded_at_ms)) || !Number.isSafeInteger(Number(row.discovered_at_ms))) persistentError("DATABASE_FAILURE");
+			return Object.freeze({
+				objectRef: row.object_ref,
+				namespace,
+				pathname: row.pathname,
+				generation: positiveInteger(row.generation),
+				fencingEpoch: positiveInteger(row.fencing_epoch),
+				providerUploadedAtMs: Number(row.provider_uploaded_at_ms),
+				discoveredAtMs: Number(row.discovered_at_ms)
+			});
+		}));
 	}
 };
 var MAX_RETENTION_MS = 864e5;
 var DEFAULT_SWEEP_RETENTION_MS = 828e5;
 var VercelPrivateBlobObjectStore = class {
-	#client;
-	#token;
-	#namespace;
-	#clock;
-	#ledger;
+	options;
 	#retentionMs;
 	constructor(options) {
-		if (!isRecord$3(options.client) || typeof options.client.put !== "function" || typeof options.client.head !== "function" || typeof options.client.download !== "function" || typeof options.client.del !== "function" || typeof options.token !== "string" || options.token.length < 16 || typeof options.namespace !== "string" || !/^[a-z0-9][a-z0-9-]{0,62}$/u.test(options.namespace)) persistentError("CONFIGURATION_INVALID");
-		const retention = options.retentionMs ?? DEFAULT_SWEEP_RETENTION_MS;
-		if (!Number.isSafeInteger(retention) || retention < 1 || retention > MAX_RETENTION_MS) persistentError("CONFIGURATION_INVALID");
-		this.#client = options.client;
-		this.#token = options.token;
-		this.#namespace = options.namespace;
-		this.#clock = options.clock;
-		this.#ledger = options.ledger;
-		this.#retentionMs = retention;
+		this.options = options;
+		if (!isRecord$3(options.client) || typeof options.client.put !== "function" || typeof options.client.head !== "function" || typeof options.client.download !== "function" || typeof options.client.del !== "function" || typeof options.token !== "string" || options.token.length < 16 || !/^[a-z0-9][a-z0-9-]{0,62}$/u.test(options.namespace)) persistentError("CONFIGURATION_INVALID");
+		this.#retentionMs = options.retentionMs ?? DEFAULT_SWEEP_RETENTION_MS;
+		if (!Number.isSafeInteger(this.#retentionMs) || this.#retentionMs < 1 || this.#retentionMs > MAX_RETENTION_MS) persistentError("CONFIGURATION_INVALID");
 	}
 	async putImmutable(key, bytes) {
 		assertObjectKey$1(key);
@@ -81559,19 +86135,34 @@ var VercelPrivateBlobObjectStore = class {
 			sha256: sha256Bytes$2(snapshot),
 			byteLength: snapshot.byteLength
 		});
-		const pathname = this.#pathname(key);
+		const basePathname = this.#pathname(key);
+		const now = this.options.clock.now();
+		const lease = await this.options.ledger.beginPut({
+			namespace: this.options.namespace,
+			objectRef: sha256Text$2(key),
+			objectKey: key,
+			pathname: basePathname,
+			sha256: descriptor.sha256,
+			byteLength: descriptor.byteLength,
+			createdAtMs: now,
+			deleteAfterMs: now + this.#retentionMs
+		});
+		this.#assertLease(lease, descriptor, basePathname);
+		const pathname = lease.pathname;
 		const existing = await this.#read(pathname);
 		if (existing !== null) {
 			if (!bytesEqual(existing, snapshot)) persistentError("IMMUTABLE_OBJECT_CONFLICT");
-			await this.#register(descriptor, pathname);
+			await this.#assertProviderObject(pathname, snapshot);
+			await this.#markAvailableOrRollback(lease);
 			return Object.freeze({
 				created: false,
 				descriptor
 			});
 		}
+		if (lease.state === "available") persistentError("OBJECT_INTEGRITY_FAILURE");
 		try {
-			if ((await this.#client.put(pathname, snapshot, {
-				token: this.#token,
+			if ((await this.options.client.put(pathname, snapshot, {
+				token: this.options.token,
 				access: "private",
 				addRandomSuffix: false,
 				allowOverwrite: false,
@@ -81581,16 +86172,15 @@ var VercelPrivateBlobObjectStore = class {
 		} catch {
 			const raced = await this.#read(pathname);
 			if (raced === null || !bytesEqual(raced, snapshot)) persistentError("IMMUTABLE_OBJECT_CONFLICT");
-			await this.#register(descriptor, pathname);
+			await this.#assertProviderObject(pathname, snapshot);
+			await this.#markAvailableOrRollback(lease);
 			return Object.freeze({
 				created: false,
 				descriptor
 			});
 		}
-		const readback = await this.#read(pathname);
-		const observedHead = await this.#client.head(pathname, this.#token);
-		if (readback === null || !bytesEqual(readback, snapshot) || observedHead === null || observedHead.pathname !== pathname || observedHead.size !== snapshot.byteLength) persistentError("OBJECT_INTEGRITY_FAILURE");
-		await this.#register(descriptor, pathname);
+		await this.#assertProviderObject(pathname, snapshot);
+		await this.#markAvailableOrRollback(lease);
 		return Object.freeze({
 			created: true,
 			descriptor
@@ -81598,90 +86188,309 @@ var VercelPrivateBlobObjectStore = class {
 	}
 	async head(key) {
 		assertObjectKey$1(key);
-		const pathname = this.#pathname(key);
-		const metadata = await this.#client.head(pathname, this.#token);
-		if (metadata === null) return null;
-		const bytes = await this.#read(pathname);
-		if (bytes === null || metadata.pathname !== pathname || metadata.size !== bytes.byteLength) persistentError("OBJECT_INTEGRITY_FAILURE");
+		const available = await this.#readAvailable(key);
+		if (available === null) return null;
 		return Object.freeze({
 			key,
-			sha256: sha256Bytes$2(bytes),
-			byteLength: bytes.byteLength
+			sha256: available.lease.sha256,
+			byteLength: available.lease.byteLength
 		});
 	}
 	async get(key) {
 		assertObjectKey$1(key);
-		return this.#read(this.#pathname(key));
+		const available = await this.#readAvailable(key);
+		return available === null ? null : Uint8Array.from(available.bytes);
 	}
 	async delete(key) {
 		assertObjectKey$1(key);
-		const pathname = this.#pathname(key);
-		const existed = await this.#client.head(pathname, this.#token) !== null;
-		const requestedAtMs = this.#clock.now();
+		const requestedAtMs = this.options.clock.now();
+		const lease = await this.options.ledger.beginDelete(key, requestedAtMs);
+		if (lease === null) {
+			const current = await this.options.ledger.resolve(key);
+			if (current !== null && current.state === "deleted") await this.#deleteDeletedGeneration(current);
+			return false;
+		}
+		this.#assertLease(lease, {
+			key,
+			sha256: lease.sha256,
+			byteLength: lease.byteLength
+		}, this.#pathname(key));
+		const pathname = lease.pathname;
+		const existed = await this.options.client.head(pathname, this.options.token) !== null;
 		try {
-			await this.#client.del(pathname, this.#token);
+			await this.options.client.del(pathname, this.options.token);
 		} catch {
 			persistentError("OBJECT_STORE_FAILURE");
 		}
-		const headAbsent = await this.#client.head(pathname, this.#token) === null;
+		const headAbsent = await this.options.client.head(pathname, this.options.token) === null;
 		const getAbsent = await this.#read(pathname) === null;
 		if (!headAbsent || !getAbsent) persistentError("OBJECT_DELETION_NOT_OBSERVED");
-		const receipt = Object.freeze({
+		await this.options.ledger.completeDelete(lease, Object.freeze({
 			version: OBJECT_DELETION_PROBE_VERSION,
 			objectRef: sha256Text$2(key),
 			requestedAtMs,
-			completedAtMs: this.#clock.now(),
+			completedAtMs: this.options.clock.now(),
 			headAbsent: true,
 			getAbsent: true
-		});
-		await this.#ledger.attest(receipt);
+		}));
 		return existed;
+	}
+	async #markAvailableOrRollback(lease) {
+		try {
+			await this.options.ledger.markAvailable(lease, this.options.clock.now());
+			return;
+		} catch (error) {
+			let current;
+			try {
+				current = await this.options.ledger.resolve(lease.objectKey);
+			} catch {
+				throw error;
+			}
+			if (current !== null && current.generation === lease.generation && current.fencingEpoch === lease.fencingEpoch && current.pathname === lease.pathname) {
+				if (current.state === "available") return;
+				if (current.state === "intent") throw error;
+			}
+			await this.#rollbackStalePut(lease);
+			throw error;
+		}
+	}
+	async #rollbackStalePut(lease) {
+		const discoveredAtMs = this.options.clock.now();
+		const providerObject = await this.options.client.head(lease.pathname, this.options.token);
+		if (providerObject === null) return;
+		if (!Number.isSafeInteger(providerObject.uploadedAtMs) || providerObject.uploadedAtMs < 0) persistentError("OBJECT_INTEGRITY_FAILURE");
+		const orphan = await this.options.ledger.beginOrphanDelete({
+			namespace: this.options.namespace,
+			pathname: lease.pathname,
+			providerUploadedAtMs: providerObject.uploadedAtMs,
+			discoveredAtMs
+		});
+		await this.options.client.del(lease.pathname, this.options.token);
+		const [head, bytes] = await Promise.all([this.options.client.head(lease.pathname, this.options.token), this.#read(lease.pathname)]);
+		if (head !== null || bytes !== null) persistentError("OBJECT_DELETION_NOT_OBSERVED");
+		if (orphan !== null) await this.options.ledger.completeOrphanDelete(orphan, Object.freeze({
+			version: ORPHAN_RECONCILIATION_RECEIPT_VERSION,
+			objectRef: orphan.objectRef,
+			providerUploadedAtMs: orphan.providerUploadedAtMs,
+			discoveredAtMs: orphan.discoveredAtMs,
+			completedAtMs: this.options.clock.now(),
+			ledgerAbsent: true,
+			headAbsent: true,
+			getAbsent: true
+		}));
+	}
+	async #deleteDeletedGeneration(lease) {
+		const [head, bytes] = await Promise.all([this.options.client.head(lease.pathname, this.options.token), this.#read(lease.pathname)]);
+		if (head === null && bytes === null) return;
+		if (head === null || bytes === null) persistentError("OBJECT_INTEGRITY_FAILURE");
+		await this.#rollbackStalePut(lease);
+	}
+	async #readAvailable(key) {
+		for (let attempt = 0; attempt < 2; attempt += 1) {
+			const lease = await this.options.ledger.resolve(key);
+			if (lease === null || lease.state !== "available") return null;
+			this.#assertLease(lease, {
+				key,
+				sha256: lease.sha256,
+				byteLength: lease.byteLength
+			}, this.#pathname(key));
+			const [metadata, bytes] = await Promise.all([this.options.client.head(lease.pathname, this.options.token), this.#read(lease.pathname)]);
+			if (metadata !== null && bytes !== null && metadata.pathname === lease.pathname && metadata.size === lease.byteLength && bytes.byteLength === lease.byteLength && sha256Bytes$2(bytes) === lease.sha256) return Object.freeze({
+				lease,
+				bytes
+			});
+			const current = await this.options.ledger.resolve(key);
+			if (current === null || current.state !== "available") return null;
+			if (current.generation !== lease.generation || current.fencingEpoch !== lease.fencingEpoch || current.pathname !== lease.pathname) continue;
+			persistentError("OBJECT_INTEGRITY_FAILURE");
+		}
+		persistentError("OBJECT_INTEGRITY_FAILURE");
+	}
+	#assertLease(lease, descriptor, basePathname) {
+		if (lease.objectRef !== sha256Text$2(descriptor.key) || lease.objectKey !== descriptor.key || lease.sha256 !== descriptor.sha256 || lease.byteLength !== descriptor.byteLength || lease.pathname !== generationPathname(basePathname, lease.generation)) persistentError("OBJECT_INTEGRITY_FAILURE");
+	}
+	async #assertProviderObject(pathname, expected) {
+		const [bytes, head] = await Promise.all([this.#read(pathname), this.options.client.head(pathname, this.options.token)]);
+		if (bytes === null || !bytesEqual(bytes, expected) || head === null || head.pathname !== pathname || head.size !== expected.byteLength) persistentError("OBJECT_INTEGRITY_FAILURE");
 	}
 	async #read(pathname) {
 		try {
-			const value = await this.#client.download(pathname, this.#token);
+			const value = await this.options.client.download(pathname, this.options.token);
 			return value === null ? null : Uint8Array.from(value);
 		} catch {
 			persistentError("OBJECT_STORE_FAILURE");
 		}
 	}
 	#pathname(key) {
-		return `${this.#namespace}/${sha256Text$2(key).slice(0, 2)}/${sha256Text$2(key)}`;
-	}
-	async #register(descriptor, pathname) {
-		const now = this.#clock.now();
-		await this.#ledger.register({
-			objectRef: sha256Text$2(descriptor.key),
-			objectKey: descriptor.key,
-			pathname,
-			sha256: descriptor.sha256,
-			byteLength: descriptor.byteLength,
-			createdAtMs: now,
-			deleteAfterMs: now + this.#retentionMs
-		});
+		const ref = sha256Text$2(key);
+		return `${this.options.namespace}/${ref.slice(0, 2)}/${ref}`;
 	}
 };
 var PersistentObjectRetentionSweeper = class {
-	#store;
-	#ledger;
-	#clock;
+	input;
 	#batchSize;
+	#onObjectFailure;
 	constructor(input) {
-		this.#store = input.store;
-		this.#ledger = input.ledger;
-		this.#clock = input.clock;
+		this.input = input;
 		this.#batchSize = input.batchSize ?? 100;
+		this.#onObjectFailure = input.onObjectFailure ?? (() => void 0);
 		if (!Number.isSafeInteger(this.#batchSize) || this.#batchSize < 1 || this.#batchSize > 1e3) persistentError("CONFIGURATION_INVALID");
 	}
-	/** The ledger delete_after should be at most 23h so retries finish before 24h. */
 	async sweep() {
-		const keys = await this.#ledger.due(this.#clock.now(), this.#batchSize);
+		const keys = await this.input.ledger.due(this.input.clock.now(), this.#batchSize);
 		const deleted = [];
-		for (const key of keys) {
-			await this.#store.delete(key);
+		for (const key of keys) try {
+			await this.input.store.delete(key);
 			deleted.push(sha256Text$2(key));
+		} catch {
+			this.#onObjectFailure(key);
 		}
 		return Object.freeze(deleted);
+	}
+};
+var VercelBlobOrphanReconciliationSweeper = class {
+	input;
+	#prefix;
+	#minimumAgeMs;
+	#batchSize;
+	#onObjectFailure;
+	constructor(input) {
+		this.input = input;
+		if (typeof input.token !== "string" || input.token.length < 16 || !/^[a-z0-9][a-z0-9-]{0,62}$/u.test(input.namespace)) persistentError("CONFIGURATION_INVALID");
+		this.#minimumAgeMs = input.minimumAgeMs ?? 36e5;
+		this.#batchSize = input.batchSize ?? 100;
+		if (!Number.isSafeInteger(this.#minimumAgeMs) || this.#minimumAgeMs < 1 || !Number.isSafeInteger(this.#batchSize) || this.#batchSize < 1 || this.#batchSize > 1e3) persistentError("CONFIGURATION_INVALID");
+		this.#prefix = `${input.namespace}/`;
+		this.#onObjectFailure = input.onObjectFailure ?? (() => void 0);
+	}
+	async sweep() {
+		const receipts = [];
+		const attempted = /* @__PURE__ */ new Set();
+		for (const lease of await this.input.ledger.dueOrphanDeletes(this.input.namespace, this.#batchSize)) {
+			attempted.add(lease.pathname);
+			try {
+				receipts.push(await this.#reconcile(lease));
+			} catch {
+				this.#onObjectFailure(lease.pathname);
+			}
+		}
+		let cursor = null;
+		do {
+			const page = await this.input.client.list(this.#prefix, this.input.token, cursor, this.#batchSize);
+			if (page.blobs.some((blob) => !blob.pathname.startsWith(this.#prefix))) persistentError("OBJECT_INTEGRITY_FAILURE");
+			for (const blob of page.blobs) {
+				if (attempted.has(blob.pathname)) continue;
+				try {
+					const discoveredAtMs = this.input.clock.now();
+					if (!Number.isSafeInteger(blob.uploadedAtMs) || blob.uploadedAtMs < 0 || discoveredAtMs - blob.uploadedAtMs < this.#minimumAgeMs) continue;
+					const lease = await this.input.ledger.beginOrphanDelete({
+						namespace: this.input.namespace,
+						pathname: blob.pathname,
+						providerUploadedAtMs: blob.uploadedAtMs,
+						discoveredAtMs
+					});
+					if (lease === null) continue;
+					receipts.push(await this.#reconcile(lease));
+				} catch {
+					this.#onObjectFailure(blob.pathname);
+				}
+			}
+			if (page.hasMore && (page.cursor === null || page.cursor === cursor)) persistentError("OBJECT_STORE_FAILURE");
+			cursor = page.hasMore ? page.cursor : null;
+		} while (cursor !== null);
+		return Object.freeze(receipts);
+	}
+	async #reconcile(lease) {
+		await this.input.client.del(lease.pathname, this.input.token);
+		const headAbsent = await this.input.client.head(lease.pathname, this.input.token) === null;
+		const getAbsent = await this.input.client.download(lease.pathname, this.input.token) === null;
+		if (!headAbsent || !getAbsent) persistentError("OBJECT_DELETION_NOT_OBSERVED");
+		const receipt = Object.freeze({
+			version: ORPHAN_RECONCILIATION_RECEIPT_VERSION,
+			objectRef: lease.objectRef,
+			providerUploadedAtMs: lease.providerUploadedAtMs,
+			discoveredAtMs: lease.discoveredAtMs,
+			completedAtMs: this.input.clock.now(),
+			ledgerAbsent: true,
+			headAbsent: true,
+			getAbsent: true
+		});
+		await this.input.ledger.completeOrphanDelete(lease, receipt);
+		return receipt;
+	}
+};
+//#endregion
+//#region packages/compute-service-persistent/src/temporal-sweeper.ts
+function delay$1(milliseconds, signal) {
+	return new Promise((resolve) => {
+		if (signal.aborted) return resolve();
+		const timer = setTimeout(settle, milliseconds);
+		function settle() {
+			clearTimeout(timer);
+			signal.removeEventListener("abort", settle);
+			resolve();
+		}
+		signal.addEventListener("abort", settle, { once: true });
+	});
+}
+async function runPersistentTemporalSweepLoop(input) {
+	if (!Number.isSafeInteger(input.intervalMs) || input.intervalMs < 1) throw new TypeError("Temporal sweep interval must be a positive safe integer.");
+	const beforeCycle = input.beforeCycle ?? (async () => void 0);
+	const onCycleFailure = input.onCycleFailure ?? (() => void 0);
+	while (!input.signal.aborted) {
+		try {
+			await beforeCycle();
+			await input.sweeper.sweep();
+		} catch {
+			onCycleFailure();
+		}
+		if (!input.signal.aborted) await delay$1(input.intervalMs, input.signal);
+	}
+}
+/**
+* Executes only the bounded work page selected by PostgreSQL server time. One
+* poison task/job is isolated and cannot prevent the rest of the page from
+* receiving deadline, TTL, or durable deletion reconciliation.
+*/
+var PersistentTemporalTaskSweeper = class {
+	#source;
+	#core;
+	#reconcileHttpDeletion;
+	#reconcileHttpJob;
+	#onTaskFailure;
+	constructor(input) {
+		this.#source = input.source;
+		this.#core = input.core;
+		this.#reconcileHttpDeletion = input.reconcileHttpDeletion ?? (async () => false);
+		this.#reconcileHttpJob = input.reconcileHttpJob ?? (async () => false);
+		this.#onTaskFailure = input.onTaskFailure ?? (() => void 0);
+	}
+	async sweep() {
+		const work = await this.#source.claimDue();
+		let finalizedOrUpdated = 0;
+		let failed = 0;
+		for (const item of work) try {
+			if (item.kind === "http-deletion") {
+				if (await this.#reconcileHttpDeletion(item.id)) finalizedOrUpdated += 1;
+				continue;
+			}
+			if (item.kind === "http-reconcile") {
+				if (await this.#reconcileHttpJob(item.id)) finalizedOrUpdated += 1;
+				continue;
+			}
+			const before = await this.#core.getTask(item.id);
+			if (before === null) throw new TypeError("Due task is missing.");
+			const after = before.state === "deleting" ? (await this.#core.deleteTask(item.id)).record : await this.#core.sweepTask(item.id);
+			if (after.revision !== before.revision || after.state !== before.state) finalizedOrUpdated += 1;
+		} catch {
+			failed += 1;
+			this.#onTaskFailure();
+		}
+		return Object.freeze({
+			examined: work.length,
+			finalizedOrUpdated,
+			failed
+		});
 	}
 };
 //#endregion
@@ -81694,6 +86503,18 @@ var FINAL_STATES = /* @__PURE__ */ new Set([
 	"expired",
 	"deleted"
 ]);
+/**
+* API/control-plane adapter: the core CAS is the durable stop intent. The API
+* process never claims that it signalled a child owned by another runtime; the
+* owning worker observes the persisted `cancelling` record and dispatches the
+* real termination request through its local supervisor.
+*/
+var DurableControlPlaneProcessSupervisor = class {
+	async spawn(_context, _control) {
+		throw new TypeError("The durable control plane cannot launch scientific children.");
+	}
+	async requestTermination(_childId, _reason) {}
+};
 function abortableDelay(milliseconds, signal) {
 	return new Promise((resolve) => {
 		if (signal.aborted) return resolve();
@@ -81716,6 +86537,7 @@ var PersistentComputeWorker = class {
 	#pollIntervalMs;
 	#nextLeaseId;
 	#beforeCycle;
+	#onCycleFailure;
 	constructor(options) {
 		if (!/^[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$/u.test(options.holderId) || !Number.isSafeInteger(options.leaseDurationMs) || options.leaseDurationMs < 1 || !Number.isSafeInteger(options.heartbeatIntervalMs) || options.heartbeatIntervalMs < 10 || options.heartbeatIntervalMs * 3 >= options.leaseDurationMs) persistentError("CONFIGURATION_INVALID");
 		this.#holderId = options.holderId;
@@ -81726,38 +86548,81 @@ var PersistentComputeWorker = class {
 		this.#pollIntervalMs = options.pollIntervalMs ?? 250;
 		this.#nextLeaseId = options.nextLeaseId ?? (() => `lease-${randomUUID()}`);
 		this.#beforeCycle = options.beforeCycle ?? (async () => true);
+		this.#onCycleFailure = options.onCycleFailure ?? (() => void 0);
 	}
 	async run(signal) {
 		while (!signal.aborted && !await this.#ready()) await abortableDelay(this.#pollIntervalMs, signal);
 		if (signal.aborted) return;
-		await this.#coordinator.recoverExpiredClaims();
-		while (!signal.aborted) if (!await this.tick(signal)) await abortableDelay(this.#pollIntervalMs, signal);
+		while (!signal.aborted) {
+			let didWork = false;
+			try {
+				didWork = await this.tick(signal);
+			} catch {
+				this.#onCycleFailure("cycle");
+			}
+			if (!didWork) await abortableDelay(this.#pollIntervalMs, signal);
+		}
 	}
 	async tick(signal) {
 		if (signal.aborted) return false;
 		if (!await this.#ready()) return false;
-		let claim = await this.#coordinator.claimNext({
-			holderId: this.#holderId,
-			leaseId: this.#nextLeaseId(),
-			durationMs: this.#leaseDurationMs
-		});
+		try {
+			await this.#coordinator.recoverExpiredClaims();
+		} catch {
+			this.#onCycleFailure("recovery");
+			return false;
+		}
+		let claim;
+		try {
+			claim = await this.#coordinator.claimNext({
+				holderId: this.#holderId,
+				leaseId: this.#nextLeaseId(),
+				durationMs: this.#leaseDurationMs
+			});
+		} catch {
+			this.#onCycleFailure("claim");
+			return false;
+		}
 		if (claim === null) return false;
+		let capacityReleased = false;
 		try {
 			await this.#core.executeTask(claim.taskId, claim.lease);
-			claim = await this.#watch(claim, signal);
+			const watched = await this.#watch(claim, signal);
+			claim = watched.claim;
+			capacityReleased = watched.capacityReleased;
 			return true;
 		} finally {
 			const record = await this.#core.getTask(claim.taskId);
-			if (record !== null && FINAL_STATES.has(record.state)) await this.#coordinator.release(claim);
+			if (!capacityReleased && record !== null && FINAL_STATES.has(record.state)) {
+				if (!await this.#releaseObserved(claim)) persistentError("RECOVERY_CONFLICT");
+			}
 		}
 	}
 	async #watch(initial, signal) {
 		let claim = initial;
 		let cancellationRequested = false;
 		while (true) {
-			const record = await this.#core.getTask(claim.taskId);
-			if (record === null) persistentError("RECOVERY_CONFLICT");
-			if (FINAL_STATES.has(record.state)) return claim;
+			let record;
+			try {
+				record = await this.#core.sweepTask(claim.taskId);
+			} catch {
+				this.#onCycleFailure("task");
+				await abortableDelay(this.#pollIntervalMs, signal);
+				continue;
+			}
+			if (FINAL_STATES.has(record.state)) return {
+				claim,
+				capacityReleased: false
+			};
+			if (record.state === "deleting") {
+				if (!await this.#releaseObserved(claim)) persistentError("RECOVERY_CONFLICT");
+				await this.#core.deleteTask(claim.taskId);
+				return {
+					claim,
+					capacityReleased: true
+				};
+			}
+			if (record.state === "cancelling" && (record.pendingStopOutcome === "cancelled" || record.pendingStopOutcome === "deleted")) await this.#core.cancelTask(claim.taskId);
 			if (signal.aborted) {
 				if (!cancellationRequested) {
 					cancellationRequested = true;
@@ -81766,17 +86631,46 @@ var PersistentComputeWorker = class {
 				}
 			}
 			await abortableDelay(this.#heartbeatIntervalMs, signal);
-			const afterDelay = await this.#core.getTask(claim.taskId);
-			if (afterDelay === null) persistentError("RECOVERY_CONFLICT");
-			if (FINAL_STATES.has(afterDelay.state)) return claim;
+			let afterDelay;
+			try {
+				afterDelay = await this.#core.sweepTask(claim.taskId);
+			} catch {
+				this.#onCycleFailure("task");
+				await abortableDelay(this.#pollIntervalMs, signal);
+				continue;
+			}
+			if (FINAL_STATES.has(afterDelay.state)) return {
+				claim,
+				capacityReleased: false
+			};
+			if (afterDelay.state === "deleting") {
+				if (!await this.#releaseObserved(claim)) persistentError("RECOVERY_CONFLICT");
+				await this.#core.deleteTask(claim.taskId);
+				return {
+					claim,
+					capacityReleased: true
+				};
+			}
+			if (afterDelay.state === "cancelling") {
+				if (afterDelay.pendingStopOutcome === "cancelled" || afterDelay.pendingStopOutcome === "deleted") await this.#core.cancelTask(claim.taskId);
+				continue;
+			}
 			if (signal.aborted) continue;
 			if (!await this.#ready()) {
 				await this.#core.cancelTask(claim.taskId);
 				cancellationRequested = true;
 				continue;
 			}
-			claim = await this.#coordinator.heartbeat(claim, this.#leaseDurationMs);
+			try {
+				claim = await this.#coordinator.heartbeat(claim, this.#leaseDurationMs);
+			} catch {
+				this.#onCycleFailure("heartbeat");
+				await abortableDelay(this.#pollIntervalMs, signal);
+			}
 		}
+	}
+	async #releaseObserved(claim) {
+		return this.#coordinator.reconcileObservedTermination === void 0 ? this.#coordinator.release(claim) : this.#coordinator.reconcileObservedTermination(claim);
 	}
 	async #ready() {
 		try {
@@ -81832,22 +86726,17 @@ var RandomComputeHttpIdFactory = class {
 		return `${namespace}-${randomUUID()}`;
 	}
 };
-var ApiFailClosedProcessSupervisor = class {
-	async spawn(_context, _control) {
-		throw new TypeError("The API process cannot launch scientific children.");
-	}
-	async requestTermination(_childId, _reason) {
-		throw new TypeError("The API process owns no scientific child.");
-	}
-};
 var FlyArtifactUrlIssuer = class {
 	#baseUrl;
 	constructor(baseUrl) {
 		this.#baseUrl = new URL(baseUrl);
 		if (this.#baseUrl.protocol !== "https:" || this.#baseUrl.username !== "" || this.#baseUrl.password !== "" || this.#baseUrl.search !== "" || this.#baseUrl.hash !== "") throw new TypeError("PUBLIC_COMPUTE_BASE_URL must be an HTTPS URL without credentials.");
 	}
-	async createUploadTarget() {
-		throw new TypeError("Legacy direct job upload is disabled in persistent production mode.");
+	async createUploadTarget(input) {
+		return Object.freeze({
+			objectKey: `compute-inputs/${input.jobId}/dataset.bin`,
+			uploadUrl: new URL(`/v1/jobs/${encodeURIComponent(input.jobId)}/content`, this.#baseUrl).toString()
+		});
 	}
 	async createResultReference(input) {
 		return Object.freeze({
@@ -81873,23 +86762,93 @@ async function verifyCapacity(database, expected) {
 		return false;
 	}
 }
+function ownerMatches(left, right) {
+	return isRecord(left) && hasExactKeys$1(left, [
+		"contractVersion",
+		"datasetHash",
+		"specHash",
+		"runId",
+		"taskId"
+	]) && canonicalStringify$2(left) === canonicalStringify$2(right);
+}
+function analysisOwnerMatches(left, right) {
+	return isRecord(left) && hasExactKeys$1(left, [
+		"contractVersion",
+		"datasetHash",
+		"specHash",
+		"runId",
+		"taskId"
+	]) && left.contractVersion === "3dena.contract.v1" && left.datasetHash === right.datasetHash && left.specHash === right.specHash && left.runId === right.runId && left.taskId === right.taskId;
+}
+function sha256(bytes) {
+	return createHash("sha256").update(bytes).digest("hex");
+}
+/**
+* Final publication fence used by the production worker runtime. Artifact
+* bytes and their immutable scientific binding are validated before the core
+* is allowed to record success; a malformed artifact can therefore never
+* create a contradictory successful core record.
+*/
 var CoreScientificResultPublisher = class {
 	core;
 	clock;
 	objectStore;
 	sourceResults;
 	buildId;
+	approvedLongitudinalBuild;
 	version = SCIENTIFIC_RESULT_PUBLISHER_VERSION;
-	constructor(core, clock, objectStore, sourceResults, buildId) {
+	constructor(core, clock, objectStore, sourceResults, buildId, approvedLongitudinalBuild) {
 		this.core = core;
 		this.clock = clock;
 		this.objectStore = objectStore;
 		this.sourceResults = sourceResults;
 		this.buildId = buildId;
+		this.approvedLongitudinalBuild = approvedLongitudinalBuild;
 	}
 	async publish(request, signal) {
 		if (signal.aborted) throw new TypeError("Scientific publication was cancelled.");
 		await this.clock.synchronize();
+		const task = await this.core.getTask(request.owner.taskId);
+		if (task === null || !ownerMatches(request.owner, task.request.owner)) throw new TypeError("Scientific publication owner is invalid.");
+		const bytes = await this.objectStore.get(request.object.key);
+		if (bytes === null || bytes.byteLength !== request.object.byteLength || sha256(bytes) !== request.object.sha256) throw new TypeError("Published result bytes are unavailable.");
+		let parsed;
+		try {
+			parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+		} catch {
+			throw new TypeError("Published result artifact is invalid.");
+		}
+		if (!isRecord(parsed)) throw new TypeError("Published result artifact is invalid.");
+		let sourceEnvelope;
+		if (parsed.version === "3dena.compute-scientific-longitudinal-result-artifact.v2") {
+			const bundle = parsed.bundle;
+			if (!hasExactKeys$1(parsed, [
+				"version",
+				"owner",
+				"taskKind",
+				"requestHash",
+				"bundle"
+			]) || parsed.taskKind !== "longitudinal-analysis-v2" || task.request.taskKind !== "longitudinal-analysis-v2" || !ownerMatches(parsed.owner, task.request.owner) || typeof parsed.requestHash !== "string" || !LOWER_SHA256$1.test(parsed.requestHash) || !isRecord(bundle)) throw new TypeError("Published longitudinal result artifact is invalid.");
+			try {
+				await verifyLongitudinalAnalysisBundleV2(bundle);
+			} catch {
+				throw new TypeError("Published longitudinal result artifact is invalid.");
+			}
+			const typed = bundle;
+			const expectedBuild = this.approvedLongitudinalBuild;
+			if (typed.identity.datasetHash !== task.request.owner.datasetHash || typed.identity.specHash !== task.request.owner.specHash || typed.identity.runId !== task.request.owner.runId || typed.identity.requestHash !== parsed.requestHash || typed.execution.target !== "persistent-compute-service" || typed.execution.jenaVersion !== expectedBuild.jenaVersion || typed.execution.jenaCommit !== expectedBuild.jenaCommit || typed.execution.jenaTarballIntegrity !== expectedBuild.jenaTarballIntegrity || typed.execution.sdkVersion !== expectedBuild.sdkVersion || typed.execution.buildId !== expectedBuild.buildId) throw new TypeError("Published longitudinal result binding is invalid.");
+		} else {
+			if (!hasExactKeys$1(parsed, [
+				"version",
+				"owner",
+				"taskKind",
+				"envelope"
+			]) || parsed.version !== "3dena.compute-scientific-result-artifact.v1" || parsed.taskKind !== task.request.taskKind || !analysisOwnerMatches(parsed.owner, task.request.owner) || !isRecord(parsed.envelope)) throw new TypeError("Published result artifact is invalid.");
+			assertAnalysisResultEnvelopeV1(parsed.envelope);
+			sourceEnvelope = parsed.envelope;
+			if (sourceEnvelope.taskKind !== task.request.taskKind || !analysisOwnerMatches(sourceEnvelope.owner, task.request.owner)) throw new TypeError("Published result binding is invalid.");
+		}
+		if (signal.aborted) throw new TypeError("Scientific publication was cancelled.");
 		const record = await this.core.publishResult(request.owner.taskId, request.lease, request.object);
 		const publication = record.result;
 		if (publication === void 0 || signal.aborted) throw new TypeError("Scientific publication was not durably recorded.");
@@ -81903,16 +86862,10 @@ var CoreScientificResultPublisher = class {
 			object: structuredClone(request.object),
 			publishedAtMs: publication.publishedAtMs
 		});
-		const bytes = await this.objectStore.get(request.object.key);
-		if (bytes === null || bytes.byteLength !== request.object.byteLength) throw new TypeError("Published result bytes are unavailable.");
-		const parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-		if (!isRecord(parsed) || parsed.version !== "3dena.compute-scientific-result-artifact.v1" || !isRecord(parsed.envelope)) throw new TypeError("Published result artifact is invalid.");
-		assertAnalysisResultEnvelopeV1(parsed.envelope);
-		const envelope = parsed.envelope;
-		if (envelope.taskKind === "ena-model") {
+		if (sourceEnvelope?.taskKind === "ena-model" || sourceEnvelope?.taskKind === "prepared-import") {
 			const index = {
-				sourceResultHash: envelope.provenance.resultHash,
-				owner: envelope.owner,
+				sourceResultHash: sourceEnvelope.provenance.resultHash,
+				owner: sourceEnvelope.owner,
 				buildId: this.buildId,
 				object: request.object,
 				publishedAtMs: publication.publishedAtMs,
@@ -81946,10 +86899,10 @@ async function createCommonRuntime(config) {
 		ledger
 	});
 	const registry = new PostgresBuildApprovalRegistry(database, await loadPublicKeys(config.publicKeysPath));
-	const migration = {
-		version: config.manifest.migrationVersion,
-		sha256: config.manifest.migrationSha256
-	};
+	const migration = config.manifest.migrationManifest.map((entry) => ({
+		version: entry.version,
+		sha256: entry.sha256
+	}));
 	const readiness = new BuildApprovalReadinessProbe({
 		registry,
 		expected: config.expectedBuild,
@@ -81976,6 +86929,13 @@ async function createCommonRuntime(config) {
 		auditSink: new PostgresComputeAuditSink(database),
 		sweeper: new PersistentObjectRetentionSweeper({
 			store: objectStore,
+			ledger,
+			clock
+		}),
+		orphanSweeper: new VercelBlobOrphanReconciliationSweeper({
+			client: blobClient,
+			token: config.blobToken,
+			namespace: config.blobNamespace,
 			ledger,
 			clock
 		})
@@ -82060,6 +87020,7 @@ async function retentionLoop(common, signal) {
 		try {
 			await common.clock.synchronize();
 			await common.sweeper.sweep();
+			await common.orphanSweeper.sweep();
 		} catch {
 			process.stderr.write("COMPUTE_RETENTION_SWEEP_FAILED\n");
 		}
@@ -82071,12 +87032,13 @@ async function runApiRuntime(config, signal) {
 	const core = new ComputeServiceCore({
 		repository: new PostgresComputeTaskRepository(common.database),
 		objectStore: common.objectStore,
-		processSupervisor: new ApiFailClosedProcessSupervisor(),
+		processSupervisor: new DurableControlPlaneProcessSupervisor(),
 		auditSink: common.auditSink,
 		clock: common.clock,
 		idFactory: new RandomComputeIdFactory(),
 		maxConcurrency: 1,
-		maxLeaseDurationMs: 12e4
+		maxLeaseDurationMs: 12e4,
+		deferProcessOwnedDeletionCompletion: true
 	});
 	const capabilityCodec = new HmacComputeHttpCapabilityCodec(config.capabilityHmacSecret);
 	const router = new ComputeV1HttpRouter({
@@ -82108,10 +87070,13 @@ async function runApiRuntime(config, signal) {
 				capabilityCodec,
 				clock: common.clock
 			}),
-			sourceResults: common.sourceResults
+			sourceResults: common.sourceResults,
+			deletionLifecycle: new PostgresDeletionLifecycleProbe(common.database)
 		},
 		allowedOrigins: config.allowedOrigins,
-		buildIdentity: config.publicBuildIdentity
+		buildIdentity: config.publicBuildIdentity,
+		approvedLongitudinalBuild: config.approvedLongitudinalBuild,
+		longitudinalServiceTokenSha256: config.longitudinalServiceTokenSha256
 	});
 	const server = createServer({
 		maxHeaderSize: MAX_REQUEST_HEADER_BYTES,
@@ -82144,11 +87109,33 @@ async function runApiRuntime(config, signal) {
 	signal.addEventListener("abort", stop, { once: true });
 	if (signal.aborted) stop();
 	const retention = retentionLoop(common, signal);
+	const temporal = runPersistentTemporalSweepLoop({
+		sweeper: new PersistentTemporalTaskSweeper({
+			source: new PostgresTemporalDueSource(common.database, {
+				holderId: config.holderId,
+				leaseDurationMs: 5e3,
+				batchSize: 100
+			}),
+			core,
+			reconcileHttpDeletion: (jobId) => router.reconcileDurableDeletion(jobId),
+			reconcileHttpJob: async (jobId) => {
+				await router.reconcileJob(jobId);
+				return true;
+			},
+			onTaskFailure: () => process.stderr.write("COMPUTE_TEMPORAL_TASK_SWEEP_FAILED\n")
+		}),
+		signal,
+		intervalMs: 1e3,
+		beforeCycle: async () => {
+			await common.clock.synchronize();
+		},
+		onCycleFailure: () => process.stderr.write("COMPUTE_TEMPORAL_SWEEP_FAILED\n")
+	});
 	try {
 		await closed;
 	} finally {
 		signal.removeEventListener("abort", stop);
-		await retention;
+		await Promise.all([retention, temporal]);
 		await core.settleBackground();
 		await common.pool.end();
 	}
@@ -82192,9 +87179,10 @@ async function runWorkerRuntime(config, signal) {
 		clock: common.clock,
 		idFactory: new RandomComputeIdFactory(),
 		maxConcurrency: 1,
-		maxLeaseDurationMs: 12e4
+		maxLeaseDurationMs: 12e4,
+		deferProcessOwnedDeletionCompletion: true
 	});
-	publisher = new CoreScientificResultPublisher(core, common.clock, common.objectStore, common.sourceResults, config.expectedBuild.flyBuildId);
+	publisher = new CoreScientificResultPublisher(core, common.clock, common.objectStore, common.sourceResults, config.expectedBuild.flyBuildId, config.approvedLongitudinalBuild);
 	const worker = new PersistentComputeWorker({
 		holderId: config.holderId,
 		core,
@@ -82213,7 +87201,6 @@ async function runWorkerRuntime(config, signal) {
 		await common.pool.end();
 	}
 }
-Object.freeze([ANALYSIS_CONTRACT_VERSION_V1, COMPUTE_HTTP_CONTRACT_VERSION].sort());
 //#endregion
 //#region packages/compute-service-persistent/src/runtime-entry.ts
 var role = process.argv[2];
