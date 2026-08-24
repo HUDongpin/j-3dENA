@@ -912,23 +912,31 @@ test("mocked remote service closes ENA, all six source-bound derived analyses, f
     }
     if (path === `/v1/jobs/${JOB_ID}` && method === "DELETE") {
       await fulfillJson(route, {
-        schemaVersion: "3dena.job-deletion-receipt.v1",
+        schemaVersion: "3dena.job-deletion-receipt.v2",
         jobId: JOB_ID,
         cancelled: false,
         inputDeleted: true,
         resultDeleted: true,
         deletedAt: "2026-08-21T00:02:00.000Z",
+        intentAccepted: true,
+        termination: "observed",
+        capacity: "released",
+        objects: "deleted",
       });
       return;
     }
     if (path === `/v1/jobs/${DERIVED_JOB_ID}` && method === "DELETE") {
       await fulfillJson(route, {
-        schemaVersion: "3dena.job-deletion-receipt.v1",
+        schemaVersion: "3dena.job-deletion-receipt.v2",
         jobId: DERIVED_JOB_ID,
         cancelled: false,
         inputDeleted: true,
         resultDeleted: true,
         deletedAt: "2026-08-21T00:02:00.000Z",
+        intentAccepted: true,
+        termination: "observed",
+        capacity: "released",
+        objects: "deleted",
       });
       return;
     }
@@ -1259,23 +1267,31 @@ test("mocked remote service preserves exact prepared bytes through parser activa
     }
     if (path === `/v1/jobs/${PREPARED_JOB_ID}` && method === "DELETE") {
       await fulfillJson(route, {
-        schemaVersion: "3dena.job-deletion-receipt.v1",
+        schemaVersion: "3dena.job-deletion-receipt.v2",
         jobId: PREPARED_JOB_ID,
         cancelled: false,
         inputDeleted: true,
         resultDeleted: true,
         deletedAt: "2026-08-21T00:03:00.000Z",
+        intentAccepted: true,
+        termination: "observed",
+        capacity: "released",
+        objects: "deleted",
       });
       return;
     }
     if (path === `/v1/jobs/${DERIVED_JOB_ID}` && method === "DELETE") {
       await fulfillJson(route, {
-        schemaVersion: "3dena.job-deletion-receipt.v1",
+        schemaVersion: "3dena.job-deletion-receipt.v2",
         jobId: DERIVED_JOB_ID,
         cancelled: false,
         inputDeleted: true,
         resultDeleted: true,
         deletedAt: "2026-08-21T00:02:00.000Z",
+        intentAccepted: true,
+        termination: "observed",
+        capacity: "released",
+        objects: "deleted",
       });
       return;
     }

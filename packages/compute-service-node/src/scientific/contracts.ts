@@ -3,7 +3,14 @@ import type {
   AnalysisResultEnvelopeV1,
   AnalysisTaskResultV1,
   AnalysisTaskV1,
+  LongitudinalAnalysisBundleV2,
+  LongitudinalExecutionRequestV2,
 } from "@3dena/analysis";
+import {
+  LONGITUDINAL_COMPUTE_STORED_INPUT_VERSION_V2,
+  LONGITUDINAL_COMPUTE_TASK_KIND_V2,
+  type ScientificStoredLongitudinalInputV2 as HttpScientificStoredLongitudinalInputV2,
+} from "@3dena/compute-service-http";
 import type {
   ImmutableObjectDescriptor,
   LeaseTokenV1,
@@ -17,10 +24,18 @@ export const SCIENTIFIC_EXECUTION_INPUT_VERSION =
   "3dena.compute-scientific-execution-input.v1" as const;
 export const SCIENTIFIC_STORED_INPUT_VERSION =
   "3dena.compute-scientific-stored-input.v1" as const;
+export const SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION =
+  "3dena.compute-scientific-longitudinal-execution-input.v2" as const;
+export const SCIENTIFIC_STORED_LONGITUDINAL_INPUT_VERSION =
+  LONGITUDINAL_COMPUTE_STORED_INPUT_VERSION_V2;
+export const SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2 =
+  LONGITUDINAL_COMPUTE_TASK_KIND_V2;
 export const SCIENTIFIC_WORKER_LAUNCH_VERSION =
   "3dena.compute-scientific-worker-launch.v1" as const;
 export const SCIENTIFIC_RESULT_ARTIFACT_VERSION =
   "3dena.compute-scientific-result-artifact.v1" as const;
+export const SCIENTIFIC_LONGITUDINAL_RESULT_ARTIFACT_VERSION =
+  "3dena.compute-scientific-longitudinal-result-artifact.v2" as const;
 export const SCIENTIFIC_ARTIFACT_PUT_REQUEST_VERSION =
   "3dena.compute-scientific-artifact-put-request.v1" as const;
 export const SCIENTIFIC_ARTIFACT_PUT_ACK_VERSION =
@@ -62,6 +77,30 @@ export interface ScientificStoredInputV1 {
   readonly task: AnalysisTaskV1;
 }
 
+/**
+ * Exact HTTP-owned durable V2 longitudinal wrapper. Its analysis-contract
+ * owner is verified field-by-field against the immutable compute request's
+ * compute-contract owner before the provider creates the worker-only compute
+ * owner. The deadline remains an exact fence, and the caller-supplied
+ * execution target is normalized by the worker.
+ */
+export type ScientificStoredLongitudinalInputV2 =
+  HttpScientificStoredLongitudinalInputV2;
+
+export interface ScientificLongitudinalExecutionInputV2 {
+  readonly version: typeof SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION;
+  readonly kind: typeof SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2;
+  readonly source: ImmutableObjectDescriptor;
+  readonly owner: ComputeTaskOwnerV1;
+  readonly deadlineAtMs: number;
+  readonly requestHash: string;
+  readonly request: LongitudinalExecutionRequestV2;
+}
+
+export type ScientificWorkerExecutionInput =
+  | ScientificExecutionInputV1
+  | ScientificLongitudinalExecutionInputV2;
+
 export interface ScientificWorkerPublicationBindingV1 {
   readonly executionId: string;
   readonly resultObjectKey: string;
@@ -71,7 +110,7 @@ export interface ScientificWorkerPublicationBindingV1 {
 
 export interface ScientificWorkerLaunchPayloadV1 {
   readonly version: typeof SCIENTIFIC_WORKER_LAUNCH_VERSION;
-  readonly input: ScientificExecutionInputV1;
+  readonly input: ScientificWorkerExecutionInput;
   readonly publication: ScientificWorkerPublicationBindingV1;
 }
 
@@ -81,6 +120,18 @@ export interface ScientificResultArtifactV1 {
   readonly taskKind: AnalysisTaskV1["kind"];
   readonly envelope: AnalysisResultEnvelopeV1<AnalysisTaskResultV1>;
 }
+
+export interface ScientificLongitudinalResultArtifactV2 {
+  readonly version: typeof SCIENTIFIC_LONGITUDINAL_RESULT_ARTIFACT_VERSION;
+  readonly owner: ComputeTaskOwnerV1;
+  readonly taskKind: typeof SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2;
+  readonly requestHash: string;
+  readonly bundle: LongitudinalAnalysisBundleV2;
+}
+
+export type ScientificWorkerResultArtifact =
+  | ScientificResultArtifactV1
+  | ScientificLongitudinalResultArtifactV2;
 
 export interface ScientificArtifactPutRequestV1 {
   readonly version: typeof SCIENTIFIC_ARTIFACT_PUT_REQUEST_VERSION;
@@ -159,7 +210,7 @@ export interface ScientificInputProviderV1 {
   load(
     context: ProcessLaunchContextV1,
     signal: AbortSignal,
-  ): Promise<ScientificExecutionInputV1>;
+  ): Promise<ScientificWorkerExecutionInput>;
 }
 
 export interface ScientificJsonInputProviderOptionsV1 {

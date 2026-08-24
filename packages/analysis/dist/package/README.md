@@ -31,9 +31,11 @@ must inspect each result's versioned provenance and evidence scope.
 The supported runtime root exports are exactly:
 
 - `inspectDataset(bytes, options)`
+- `adaptFittedJenaTrajectoryResultV2(input)`
 - `executeAnalysisTask(dataset, task)`
 - `assertAnalysisExecutionDatasetV2(value)`
 - `assertAnalysisResultEnvelopeV1(value)`
+- `assertLongitudinalExecutionRequestV2(value)`
 - `assertTrajectoryRunSpecV2(value)`
 - `assertLongitudinalAnalysisBundleV2(value)`
 - `verifyLongitudinalAnalysisBundleV2(value)`
@@ -42,10 +44,11 @@ The supported runtime root exports are exactly:
 - `compileTrajectoryPlotlySpec(bundle, displaySpec)`
 - `createExportBundle(result, options)`
 - `executeLongitudinalAnalysisV2(input)`
+- `getAnalysisBuildIdentityV2()`
 - `hashAnalysisValueV1(value)`
 
 No `@3dena/*` internal subpath is a public compatibility promise. Versioned
-contract and result types remain type-only root exports. The two runtime
+contract and result types remain type-only root exports. The runtime
 validators and the discriminated JSON Schemas under `schemas/` are the stable
 untrusted-data boundary for execution datasets and result envelopes.
 

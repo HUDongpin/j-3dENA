@@ -89,6 +89,19 @@ export interface AnalysisDeletionReceiptV1 {
   deletedAt: string;
 }
 
+export interface AnalysisDeletionReceiptV2 {
+  schemaVersion: "3dena.job-deletion-receipt.v2";
+  jobId: string;
+  cancelled: boolean;
+  inputDeleted: boolean;
+  resultDeleted: boolean;
+  deletedAt: string | null;
+  readonly intentAccepted: true;
+  readonly termination: "not_required" | "pending" | "observed";
+  readonly capacity: "not_reserved" | "held" | "released";
+  readonly objects: "pending" | "deleted";
+}
+
 export interface AnalysisComputeBuildInfoV1 {
   schemaVersion: "3dena.compute-build-info.v1";
   approvalManifestSha256: string;
@@ -105,6 +118,10 @@ export interface AnalysisClientConfig {
   fetch?: typeof fetch;
   /** Client-side request deadline; the scientific task retains its own deadline. */
   requestTimeoutMilliseconds?: number;
+  /** Delay between stable-key V2 deletion reconciliation requests. */
+  deletionPollIntervalMilliseconds?: number;
+  /** Total time allowed for the durable deletion lifecycle to close. */
+  deletionCompletionTimeoutMilliseconds?: number;
 }
 
 export interface AnalysisClientV1 {
@@ -115,6 +132,18 @@ export interface AnalysisClientV1 {
   getResult(reference: AnalysisJobReferenceV1): Promise<AnalysisJobResultReferenceV1>;
   deleteJob(reference: AnalysisJobReferenceV1, idempotencyKey: string): Promise<AnalysisDeletionReceiptV1>;
   getBuildInfo(): Promise<AnalysisComputeBuildInfoV1>;
+}
+
+/**
+ * Additive durable-deletion client contract. Keeping these methods out of V1
+ * preserves source compatibility for existing V1-only client implementations.
+ */
+export interface AnalysisClientV2 extends AnalysisClientV1 {
+  deleteJobV2(reference: AnalysisJobReferenceV1, idempotencyKey: string): Promise<AnalysisDeletionReceiptV2>;
+  deleteJobUntilComplete(
+    reference: AnalysisJobReferenceV1,
+    idempotencyKey: string,
+  ): Promise<AnalysisDeletionReceiptV2>;
 }
 
 export class AnalysisClientError extends Error {
@@ -318,6 +347,47 @@ function deletionReceipt(value: unknown): AnalysisDeletionReceiptV1 {
   };
 }
 
+function deletionReceiptV2(value: unknown): AnalysisDeletionReceiptV2 {
+  const item = record(value, "response");
+  exact(item, ["schemaVersion", "jobId", "cancelled", "inputDeleted", "resultDeleted", "deletedAt", "intentAccepted", "termination", "capacity", "objects"], "response");
+  if (item.schemaVersion !== "3dena.job-deletion-receipt.v2") {
+    clientError("INVALID_RESPONSE", "Unsupported deletion lifecycle receipt schema.");
+  }
+  for (const field of ["cancelled", "inputDeleted", "resultDeleted"] as const) {
+    if (typeof item[field] !== "boolean") {
+      clientError("INVALID_RESPONSE", `response.${field} must be boolean.`);
+    }
+  }
+  if (item.intentAccepted !== true ||
+      !["not_required", "pending", "observed"].includes(String(item.termination)) ||
+      !["not_reserved", "held", "released"].includes(String(item.capacity)) ||
+      !["pending", "deleted"].includes(String(item.objects))) {
+    clientError("INVALID_RESPONSE", "Deletion lifecycle receipt is invalid.");
+  }
+  const deletedAt = item.deletedAt === null
+    ? null
+    : timestamp(item.deletedAt, "response.deletedAt");
+  if ((item.objects === "deleted") !==
+      (item.inputDeleted === true && item.resultDeleted === true && deletedAt !== null)) {
+    clientError("INVALID_RESPONSE", "Deletion object facts are contradictory.");
+  }
+  if (item.termination === "pending" && item.capacity !== "held") {
+    clientError("INVALID_RESPONSE", "Pending termination must retain capacity.");
+  }
+  return {
+    schemaVersion: "3dena.job-deletion-receipt.v2",
+    jobId: stringValue(item.jobId, "response.jobId"),
+    cancelled: item.cancelled as boolean,
+    inputDeleted: item.inputDeleted as boolean,
+    resultDeleted: item.resultDeleted as boolean,
+    deletedAt,
+    intentAccepted: true,
+    termination: item.termination as AnalysisDeletionReceiptV2["termination"],
+    capacity: item.capacity as AnalysisDeletionReceiptV2["capacity"],
+    objects: item.objects as AnalysisDeletionReceiptV2["objects"],
+  };
+}
+
 function buildInfo(value: unknown): AnalysisComputeBuildInfoV1 {
   const item = record(value, "response");
   exact(item, ["schemaVersion", "approvalManifestSha256", "releaseId", "gitCommit", "flyImageDigest", "flyBuildId", "role", "contractVersions"], "response");
@@ -355,19 +425,32 @@ function normalizeBaseUrl(value: string): URL {
 }
 
 /** Creates the capability-token remote client used by the public Web product. */
-export function createAnalysisClient(config: AnalysisClientConfig): AnalysisClientV1 {
+export function createAnalysisClient(config: AnalysisClientConfig): AnalysisClientV2 {
   if (!config || typeof config !== "object" || Array.isArray(config)) clientError("INVALID_CLIENT_CONFIG", "Client config must be an object.");
   const baseUrl = normalizeBaseUrl(config.baseUrl);
   const fetchImplementation = config.fetch ?? globalThis.fetch;
   if (typeof fetchImplementation !== "function") clientError("INVALID_CLIENT_CONFIG", "A Fetch implementation is required.");
   const timeout = config.requestTimeoutMilliseconds ?? 30_000;
   if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 300_000) clientError("INVALID_CLIENT_CONFIG", "requestTimeoutMilliseconds must be in [1, 300000].");
+  const deletionPollInterval = config.deletionPollIntervalMilliseconds ?? 250;
+  const deletionCompletionTimeout =
+    config.deletionCompletionTimeoutMilliseconds ?? 60_000;
+  if (!Number.isSafeInteger(deletionPollInterval) || deletionPollInterval < 1 ||
+      deletionPollInterval > 10_000 || !Number.isSafeInteger(deletionCompletionTimeout) ||
+      deletionCompletionTimeout < deletionPollInterval ||
+      deletionCompletionTimeout > 300_000) {
+    clientError("INVALID_CLIENT_CONFIG", "Deletion polling configuration is invalid.");
+  }
 
   const basePath = baseUrl.pathname === "/" ? "" : baseUrl.pathname.replace(/\/+$/u, "");
   const url = (path: string): string => new URL(`${basePath}${path}`, baseUrl.origin).toString();
-  const headers = (reference?: AnalysisJobReferenceV1, idempotencyKey?: string): Headers => {
+  const headers = (
+    reference?: AnalysisJobReferenceV1,
+    idempotencyKey?: string,
+    accept = "application/json",
+  ): Headers => {
     const output = new Headers({
-      accept: "application/json",
+      accept,
       "content-type": "application/json",
       "x-3dena-contract-version": ANALYSIS_CONTRACT_VERSION_V1,
     });
@@ -380,6 +463,29 @@ export function createAnalysisClient(config: AnalysisClientConfig): AnalysisClie
       output.set("idempotency-key", idempotencyKey);
     }
     return output;
+  };
+  const waitForDeletionPoll = (): Promise<void> =>
+    new Promise((resolve) => setTimeout(resolve, deletionPollInterval));
+  const deleteV2 = async (
+    reference: AnalysisJobReferenceV1,
+    idempotencyKey: string,
+  ): Promise<AnalysisDeletionReceiptV2> => {
+    validateReference(reference);
+    const result = deletionReceiptV2(await invoke(
+      `/v1/jobs/${encodeURIComponent(reference.jobId)}`,
+      {
+        method: "DELETE",
+        headers: headers(
+          reference,
+          idempotencyKey,
+          "application/vnd.3dena.job-deletion-receipt.v2+json",
+        ),
+      },
+    ));
+    if (result.jobId !== reference.jobId) {
+      clientError("INVALID_RESPONSE", "Deletion receipt identity does not match the requested job.");
+    }
+    return result;
   };
   const invoke = async (path: string, init: RequestInit): Promise<unknown> => {
     const controller = new AbortController();
@@ -485,6 +591,28 @@ export function createAnalysisClient(config: AnalysisClientConfig): AnalysisClie
       const result = deletionReceipt(await invoke(`/v1/jobs/${encodeURIComponent(reference.jobId)}`, { method: "DELETE", headers: headers(reference, idempotencyKey) }));
       if (result.jobId !== reference.jobId) clientError("INVALID_RESPONSE", "Deletion receipt identity does not match the requested job.");
       return result;
+    },
+    async deleteJobV2(reference: AnalysisJobReferenceV1, idempotencyKey: string) {
+      return deleteV2(reference, idempotencyKey);
+    },
+    async deleteJobUntilComplete(
+      reference: AnalysisJobReferenceV1,
+      idempotencyKey: string,
+    ) {
+      const startedAt = Date.now();
+      while (true) {
+        const receipt = await deleteV2(reference, idempotencyKey);
+        if (receipt.termination !== "pending" && receipt.capacity !== "held" &&
+            receipt.objects === "deleted" && receipt.inputDeleted &&
+            receipt.resultDeleted && receipt.deletedAt !== null) return receipt;
+        if (Date.now() - startedAt >= deletionCompletionTimeout) {
+          throw new AnalysisClientError(
+            "DELETION_RECONCILIATION_TIMEOUT",
+            "Compute deletion did not reach a fully observed durable state.",
+          );
+        }
+        await waitForDeletionPoll();
+      }
     },
     async getBuildInfo() {
       return buildInfo(await invoke("/build-info", { method: "GET", headers: headers() }));

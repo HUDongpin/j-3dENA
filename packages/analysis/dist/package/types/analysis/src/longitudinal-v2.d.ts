@@ -165,16 +165,21 @@ export interface LongitudinalNetworkOverlayV2 {
     sourceRows: number;
     participantPeriods: number;
     effectiveParticipantN: number | null;
-    nodes: Array<{
-        code: string;
-        coordinates: [number, number, number];
-        weight: number;
-    }>;
     edges: Array<{
         id: string;
         sourceIndex: number;
         targetIndex: number;
         weight: number;
+    }>;
+}
+/** Fitted jENA code positions in the selected immutable rotation dimensions. */
+export interface LongitudinalCodeGeometryV2 {
+    schemaVersion: "3dena.longitudinal-code-geometry.v2";
+    dimensions: [string, string, string];
+    nodes: Array<{
+        index: number;
+        code: string;
+        coordinates: [number, number, number];
     }>;
 }
 export type LongitudinalEvidenceStatusV2 = "IMPLEMENTED_UNVERIFIED" | "PARITY_CANDIDATE" | "PRODUCTION_CANDIDATE" | "PRODUCTION_READY";
@@ -184,6 +189,7 @@ export interface LongitudinalAnalysisBundleV2 {
         datasetHash: string;
         specHash: string;
         sourceResultHash: string;
+        requestHash: string;
         resultHash: string;
         runId: string;
         jenaBuildId: string;
@@ -198,6 +204,7 @@ export interface LongitudinalAnalysisBundleV2 {
     inference: LongitudinalInferenceResultV2[];
     pathComparisons: LongitudinalPathComparisonV2[];
     bootstrap: LongitudinalBootstrapResultV2[];
+    codeGeometry: LongitudinalCodeGeometryV2;
     networkOverlays: LongitudinalNetworkOverlayV2[];
     diagnostics: Array<{
         code: string;
@@ -273,6 +280,9 @@ export interface TrajectoryDisplaySpecV2 {
             y: number;
             z: number;
         };
+        projection?: {
+            type: "perspective" | "orthographic";
+        };
     } | null;
     style: {
         participantSize: number;
@@ -323,6 +333,19 @@ export declare function verifyLongitudinalAnalysisBundleV2(bundle: unknown): Pro
  * any scientific task.
  */
 export declare function compileTrajectoryPlotlySpec(bundle: LongitudinalAnalysisBundleV2, displaySpec: TrajectoryDisplaySpecV2): TrajectoryPlotlySpecV2;
+/**
+ * Strict, side-effect-free boundary validation for browser, HTTP and durable
+ * worker callers. Scientific source-hash verification remains asynchronous and
+ * is performed by `executeLongitudinalAnalysisV2` before any result is emitted.
+ */
+export declare function assertLongitudinalExecutionRequestV2(value: unknown, path?: string): asserts value is LongitudinalExecutionRequestV2;
+/**
+ * Canonical binding for every scientific input field. The transport target is
+ * deliberately excluded because the server owns it and it cannot change the
+ * scientific task; build metadata, tasks, seeds and repetition plans remain
+ * bound.
+ */
+export declare function hashLongitudinalExecutionRequestV2(request: unknown): Promise<string>;
 /**
  * Executes the display-independent base path against one immutable fitted
  * jENA result. Inference and bootstrap tasks are added to the same envelope by

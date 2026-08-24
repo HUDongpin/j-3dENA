@@ -3,13 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ANALYSIS_CONTRACT_VERSION_V1,
   analyzeRows,
-  type AnalysisClientV1,
+  type AnalysisClientV2,
   type AnalysisResultEnvelopeV1,
   type EnaModelTaskV1,
 } from "@3dena/analysis";
 import {
   RemoteAnalysisRuntimeError,
   cancelRemoteAnalysis,
+  deleteRemoteJobData,
   runRemoteAnalysis,
   type RemoteExecutionBinding,
 } from "./remote-analysis-runtime";
@@ -145,7 +146,7 @@ function artifactBytes(): Uint8Array<ArrayBuffer> {
   }));
 }
 
-function clientFor(bytes: Uint8Array<ArrayBuffer>): AnalysisClientV1 {
+function clientFor(bytes: Uint8Array<ArrayBuffer>): AnalysisClientV2 {
   const digest = createHash("sha256").update(bytes).digest("hex");
   let statusReadCount = 0;
   return {
@@ -204,6 +205,30 @@ function clientFor(bytes: Uint8Array<ArrayBuffer>): AnalysisClientV1 {
       inputDeleted: true,
       resultDeleted: true,
       deletedAt: new Date().toISOString(),
+    } as const)),
+    deleteJobV2: vi.fn(async () => ({
+      schemaVersion: "3dena.job-deletion-receipt.v2",
+      jobId: binding.reference.jobId,
+      cancelled: true,
+      inputDeleted: true,
+      resultDeleted: true,
+      deletedAt: new Date().toISOString(),
+      intentAccepted: true,
+      termination: "observed",
+      capacity: "released",
+      objects: "deleted",
+    } as const)),
+    deleteJobUntilComplete: vi.fn(async () => ({
+      schemaVersion: "3dena.job-deletion-receipt.v2",
+      jobId: binding.reference.jobId,
+      cancelled: true,
+      inputDeleted: true,
+      resultDeleted: true,
+      deletedAt: new Date().toISOString(),
+      intentAccepted: true,
+      termination: "observed",
+      capacity: "released",
+      objects: "deleted",
     } as const)),
     getBuildInfo: vi.fn(async () => ({
       schemaVersion: "3dena.compute-build-info.v1" as const,
@@ -286,18 +311,24 @@ describe("remote analysis runtime", () => {
     })).rejects.toMatchObject({ code: "RESULT_RECEIPT_MISMATCH" });
   });
 
-  it("does not call cancellation complete without a full deletion receipt", async () => {
+  it("does not claim cancellation when durable deletion polling cannot reach final facts", async () => {
     const client = clientFor(artifactBytes());
-    vi.mocked(client.deleteJob).mockResolvedValueOnce({
-      schemaVersion: "3dena.job-deletion-receipt.v1",
-      jobId: binding.reference.jobId,
-      cancelled: true,
-      inputDeleted: true,
-      resultDeleted: false,
-      deletedAt: new Date().toISOString(),
-    });
+    vi.mocked(client.deleteJobUntilComplete).mockRejectedValueOnce(
+      new Error("durable deletion remains pending"),
+    );
     await expect(cancelRemoteAnalysis(client, binding.reference)).rejects.toBeInstanceOf(
       RemoteAnalysisRuntimeError,
     );
+  });
+
+  it("reuses one deterministic deletion operation key after a lost response retry", async () => {
+    const client = clientFor(artifactBytes());
+    await deleteRemoteJobData(client, binding.reference);
+    await deleteRemoteJobData(client, binding.reference);
+
+    const calls = vi.mocked(client.deleteJobUntilComplete).mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.[1]).toMatch(/^delete-v2-[a-f0-9]{64}$/u);
+    expect(calls[1]?.[1]).toBe(calls[0]?.[1]);
   });
 });

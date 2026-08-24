@@ -10,7 +10,7 @@ import {
 import {
   ANALYSIS_CONTRACT_VERSION_V1,
   createAnalysisClient,
-  type AnalysisClientV1,
+  type AnalysisClientV2,
   type AnalysisTaskV1,
 } from "@3dena/analysis";
 import type {
@@ -99,7 +99,7 @@ const REMOTE_TASK_OPTIONS = Object.freeze([
 interface RemoteAnalysisWorkspaceProps {
   readonly webBuildId?: string;
   readonly policy: WebExecutionPolicy;
-  readonly client?: AnalysisClientV1;
+  readonly client?: AnalysisClientV2;
   readonly workflow?: RemoteDatasetWorkflowAdapter;
 }
 
@@ -188,11 +188,11 @@ export function RemoteAnalysisWorkspace({
   const generationRef = useRef(0);
   const requestAbortRef = useRef<AbortController | null>(null);
   const activeJobRef = useRef<{
-    client: AnalysisClientV1;
+    client: AnalysisClientV2;
     reference: Parameters<typeof cancelRemoteAnalysis>[1];
   } | null>(null);
   const sourceJobRef = useRef<{
-    client: AnalysisClientV1;
+    client: AnalysisClientV2;
     reference: Parameters<typeof deleteRemoteJobData>[1];
   } | null>(null);
   const workflowIdRef = useRef<string | null>(null);

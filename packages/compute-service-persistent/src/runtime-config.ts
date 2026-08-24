@@ -1,33 +1,48 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import type { ComputeHttpBuildIdentityV1 } from "@3dena/compute-service-http";
+import type {
+  ApprovedLongitudinalExecutionBuildV2,
+  ComputeHttpBuildIdentityV1,
+} from "@3dena/compute-service-http";
 
 import type { ExpectedRuntimeBuildV1 } from "./contracts";
-import { hasExactKeys, isRecord, LOWER_SHA256, OPAQUE_ID } from "./util";
+import {
+  canonicalStringify,
+  hasExactKeys,
+  isRecord,
+  LOWER_SHA256,
+  OPAQUE_ID,
+  sha256Text,
+} from "./util";
 
 const GIT_COMMIT = /^[a-f0-9]{40}$/u;
 const IMAGE_DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const VERSION = /^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u;
 const RUNTIME_MANIFEST_FIELDS = [
   "schemaVersion",
-  "migrationVersion",
-  "migrationSha256",
+  "migrationManifest",
+  "migrationManifestSha256",
   "contractVersions",
   "runtimeDependencies",
+  "approvedLongitudinalBuild",
   "runtimeBundleSha256",
   "scientificWorkerBundleSha256",
 ] as const;
 
 export interface ComputeRuntimeBuildManifestV1 {
-  readonly schemaVersion: "3dena.compute-runtime-build-manifest.v1";
-  readonly migrationVersion: string;
-  readonly migrationSha256: string;
+  readonly schemaVersion: "3dena.compute-runtime-build-manifest.v3";
+  readonly migrationManifest: readonly Readonly<{
+    readonly sha256: string;
+    readonly version: string;
+  }>[];
+  readonly migrationManifestSha256: string;
   readonly contractVersions: readonly string[];
   readonly runtimeDependencies: Readonly<{
     "@vercel/blob": "2.8.0";
     pg: "8.22.0";
   }>;
+  readonly approvedLongitudinalBuild: ApprovedLongitudinalExecutionBuildV2;
   readonly runtimeBundleSha256: string;
   readonly scientificWorkerBundleSha256: string;
 }
@@ -38,6 +53,7 @@ export interface ComputeRuntimeConfigurationV1 {
   readonly blobToken: string;
   readonly blobNamespace: string;
   readonly capabilityHmacSecret: string;
+  readonly longitudinalServiceTokenSha256: string;
   readonly publicBaseUrl: string;
   readonly allowedOrigins: readonly string[];
   readonly publicKeysPath: string;
@@ -48,6 +64,7 @@ export interface ComputeRuntimeConfigurationV1 {
   readonly manifest: ComputeRuntimeBuildManifestV1;
   readonly expectedBuild: ExpectedRuntimeBuildV1;
   readonly publicBuildIdentity: ComputeHttpBuildIdentityV1;
+  readonly approvedLongitudinalBuild: ApprovedLongitudinalExecutionBuildV2;
 }
 
 function exactEnvironment(
@@ -69,6 +86,21 @@ function positiveInteger(value: string, name: string, maximum: number): number {
   return parsed;
 }
 
+function rootHttpsBaseUrl(value: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new TypeError("PUBLIC_COMPUTE_BASE_URL is invalid.");
+  }
+  if (parsed.protocol !== "https:" || parsed.username !== "" ||
+      parsed.password !== "" || parsed.pathname !== "/" ||
+      parsed.search !== "" || parsed.hash !== "") {
+    throw new TypeError("PUBLIC_COMPUTE_BASE_URL must be one root HTTPS origin.");
+  }
+  return parsed.origin;
+}
+
 function assertVersions(value: unknown, path: string): asserts value is string[] {
   if (!Array.isArray(value) || value.length < 1 ||
       value.some((entry) => typeof entry !== "string" || !VERSION.test(entry)) ||
@@ -78,19 +110,49 @@ function assertVersions(value: unknown, path: string): asserts value is string[]
   }
 }
 
+function isMigrationManifest(
+  value: unknown,
+): value is Array<{ sha256: string; version: string }> {
+  return Array.isArray(value) && value.length > 0 &&
+    value.every((entry) => isRecord(entry) &&
+      hasExactKeys(entry, ["sha256", "version"]) &&
+      typeof entry.version === "string" && VERSION.test(entry.version) &&
+      typeof entry.sha256 === "string" && LOWER_SHA256.test(entry.sha256)) &&
+    new Set(value.map((entry) => entry.version)).size === value.length &&
+    [...value].sort((left, right) => left.version.localeCompare(right.version))
+      .every((entry, index) => entry.version === value[index]?.version);
+}
+
 export function assertComputeRuntimeBuildManifestV1(
   value: unknown,
 ): asserts value is ComputeRuntimeBuildManifestV1 {
   if (!isRecord(value) || !hasExactKeys(value, RUNTIME_MANIFEST_FIELDS) ||
-      value.schemaVersion !== "3dena.compute-runtime-build-manifest.v1" ||
-      typeof value.migrationVersion !== "string" || !VERSION.test(value.migrationVersion) ||
-      typeof value.migrationSha256 !== "string" || !LOWER_SHA256.test(value.migrationSha256) ||
+      value.schemaVersion !== "3dena.compute-runtime-build-manifest.v3" ||
+      !isMigrationManifest(value.migrationManifest) ||
+      typeof value.migrationManifestSha256 !== "string" ||
+        !LOWER_SHA256.test(value.migrationManifestSha256) ||
+      sha256Text(canonicalStringify(value.migrationManifest)) !==
+        value.migrationManifestSha256 ||
       typeof value.runtimeBundleSha256 !== "string" || !LOWER_SHA256.test(value.runtimeBundleSha256) ||
       typeof value.scientificWorkerBundleSha256 !== "string" || !LOWER_SHA256.test(value.scientificWorkerBundleSha256) ||
       !isRecord(value.runtimeDependencies) ||
       !hasExactKeys(value.runtimeDependencies, ["@vercel/blob", "pg"]) ||
       value.runtimeDependencies["@vercel/blob"] !== "2.8.0" ||
-      value.runtimeDependencies.pg !== "8.22.0") {
+      value.runtimeDependencies.pg !== "8.22.0" ||
+      !isRecord(value.approvedLongitudinalBuild) ||
+      !hasExactKeys(value.approvedLongitudinalBuild, [
+        "jenaVersion", "jenaCommit", "jenaTarballIntegrity", "sdkVersion", "buildId",
+      ]) ||
+      typeof value.approvedLongitudinalBuild.jenaVersion !== "string" ||
+        !VERSION.test(value.approvedLongitudinalBuild.jenaVersion) ||
+      typeof value.approvedLongitudinalBuild.jenaCommit !== "string" ||
+        !GIT_COMMIT.test(value.approvedLongitudinalBuild.jenaCommit) ||
+      typeof value.approvedLongitudinalBuild.jenaTarballIntegrity !== "string" ||
+        !/^sha512-[A-Za-z0-9+/]+={0,2}$/u.test(value.approvedLongitudinalBuild.jenaTarballIntegrity) ||
+      typeof value.approvedLongitudinalBuild.sdkVersion !== "string" ||
+        !VERSION.test(value.approvedLongitudinalBuild.sdkVersion) ||
+      typeof value.approvedLongitudinalBuild.buildId !== "string" ||
+        !OPAQUE_ID.test(value.approvedLongitudinalBuild.buildId)) {
     throw new TypeError("Runtime build manifest is invalid.");
   }
   assertVersions(value.contractVersions, "manifest.contractVersions");
@@ -139,9 +201,9 @@ export async function loadComputeRuntimeConfiguration(
     vercelBuildId: exactEnvironment(environment, "VERCEL_BUILD_ID", OPAQUE_ID),
     flyImageDigest,
     flyBuildId,
-    migrationVersion: manifest.migrationVersion,
-    migrationSha256: manifest.migrationSha256,
+    migrationManifestSha256: manifest.migrationManifestSha256,
     contractVersions: [...manifest.contractVersions],
+    ...manifest.approvedLongitudinalBuild,
   });
   return Object.freeze({
     role,
@@ -149,7 +211,14 @@ export async function loadComputeRuntimeConfiguration(
     blobToken: exactEnvironment(environment, "BLOB_READ_WRITE_TOKEN"),
     blobNamespace: exactEnvironment(environment, "BLOB_NAMESPACE", /^[a-z0-9][a-z0-9-]{0,62}$/u),
     capabilityHmacSecret: exactEnvironment(environment, "CAPABILITY_HMAC_SECRET"),
-    publicBaseUrl: exactEnvironment(environment, "PUBLIC_COMPUTE_BASE_URL", /^https:\/\//u),
+    longitudinalServiceTokenSha256: exactEnvironment(
+      environment,
+      "LONGITUDINAL_SERVICE_TOKEN_SHA256",
+      LOWER_SHA256,
+    ),
+    publicBaseUrl: rootHttpsBaseUrl(
+      exactEnvironment(environment, "PUBLIC_COMPUTE_BASE_URL", /^https:\/\//u),
+    ),
     allowedOrigins: Object.freeze([...allowedOrigins]),
     publicKeysPath: exactEnvironment(environment, "BUILD_APPROVAL_PUBLIC_KEYS_PATH"),
     workerEntryPath: exactEnvironment(environment, "SCIENTIFIC_WORKER_ENTRY_PATH"),
@@ -162,6 +231,7 @@ export async function loadComputeRuntimeConfiguration(
     ),
     manifest,
     expectedBuild,
+    approvedLongitudinalBuild: Object.freeze({ ...manifest.approvedLongitudinalBuild }),
     publicBuildIdentity: Object.freeze({
       approvalManifestSha256,
       releaseId,

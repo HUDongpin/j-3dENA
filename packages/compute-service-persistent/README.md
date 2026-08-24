@@ -10,6 +10,12 @@ architecture candidate, not evidence of a deployed Neon/Fly/Vercel service.
   rows, distributed capacity slots, append-only progress events, recovery and
   deletion receipts, transient object custody rows, and an append-only signed
   build-approval registry.
+- `migrations/0002_persistent_control_plane.sql` is the append-only control-plane
+  expansion for exact attempt fencing, quarantine/termination receipts,
+  singleton server-time scheduling, and generation-fenced Blob lifecycle rows.
+- `migrations/0003_build_approval_v3.sql` append-only widens the approval JSON
+  constraint to the signed V3 scientific-build identity while retaining read
+  compatibility for historical V1/V2 approval rows.
 - `PostgresComputeTaskRepository` and
   `PostgresComputeHttpJobRepository` preserve create idempotency and revision
   compare-and-set semantics. `PostgresComputeHttpEventBroker` uses a durable
@@ -27,9 +33,12 @@ architecture candidate, not evidence of a deployed Neon/Fly/Vercel service.
   full-byte readback and SHA-256 verification, opaque content-derived
   pathnames, and both HEAD and GET absence probes before deletion attestation.
   Its default ledger deadline is 23 hours so deletion retries start before the
-  24-hour hard limit.
+  24-hour hard limit. Provider writes and deletes are fenced by durable
+  `intent -> available -> deleting -> deleted` transitions; orphan deletion
+  also records a retryable intent before provider mutation.
 - `BuildApprovalV1` binds the exact web/compute/package/dependency/migration
-  identity. Ed25519 signatures are verified before activation. Readiness is
+  identity, including jENA version/commit/tarball SRI and the trajectory SDK
+  version/build ID. Ed25519 signatures are verified before activation. Readiness is
   false for missing, mismatched, revoked, invalid, or dependency-failed builds.
   The HTTP control plane now also checks readiness before every capability-
   scoped `/v1/jobs` operation, so it cannot execute while `/readyz` is red.
@@ -46,6 +55,13 @@ database secrets in the parent, and pass only locale/runtime controls to the
 scientific child. Startup verifies the exact migration, active signed build
 approval, configured capacity rows, Blob credential reachability, and bundle
 hashes before readiness or work.
+
+Dedicated `POST /v2/longitudinal-jobs` creation additionally requires the
+`x-3dena-service-token` header. The compute runtime stores only its SHA-256 in
+the protected `LONGITUDINAL_SERVICE_TOKEN_SHA256` environment variable; a
+trusted Open ENA server-side caller owns the plaintext token. Browser `Origin`
+is not authentication, and unverified authorization text is excluded from the
+rate-limit key.
 
 Build the immutable three-file container input from the reviewed explicit
 input without signing or activating anything:

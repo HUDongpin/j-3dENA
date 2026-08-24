@@ -23,6 +23,7 @@ const REQUIRED_CONTRACT_VERSIONS = Object.freeze([
   "3dena.compute-prepared-import-http.v1",
   "3dena.compute-source-result-job-http.v1",
   "3dena.contract.v1",
+  "3dena.longitudinal-compute-submission.v2",
 ]);
 const NODE_BUILTINS = new Set([
   ...builtinModules,
@@ -55,15 +56,46 @@ function sha256(bytes) {
 }
 
 const input = JSON.parse(await readFile(resolve(inputPath), "utf8"));
-exact(input, ["schemaVersion", "migrationPath", "migrationVersion", "contractVersions"], "input");
-if (input.schemaVersion !== "3dena.compute-runtime-build-input.v1" ||
-    !/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u.test(input.migrationVersion) ||
+exact(input, ["schemaVersion", "migrations", "contractVersions", "approvedLongitudinalBuild"], "input");
+exact(input.approvedLongitudinalBuild, [
+  "jenaVersion", "jenaCommit", "jenaTarballIntegrity", "sdkVersion", "buildId",
+], "input.approvedLongitudinalBuild");
+if (input.schemaVersion !== "3dena.compute-runtime-build-input.v3" ||
+    !Array.isArray(input.migrations) || input.migrations.length < 1 ||
     !Array.isArray(input.contractVersions) || input.contractVersions.length < 1 ||
     input.contractVersions.some((value) => typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u.test(value)) ||
     new Set(input.contractVersions).size !== input.contractVersions.length ||
     [...input.contractVersions].sort().some((value, index) => value !== input.contractVersions[index]) ||
     input.contractVersions.length !== REQUIRED_CONTRACT_VERSIONS.length ||
-    input.contractVersions.some((value, index) => value !== REQUIRED_CONTRACT_VERSIONS[index])) {
+    input.contractVersions.some((value, index) => value !== REQUIRED_CONTRACT_VERSIONS[index]) ||
+    typeof input.approvedLongitudinalBuild.jenaVersion !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u.test(input.approvedLongitudinalBuild.jenaVersion) ||
+    typeof input.approvedLongitudinalBuild.jenaCommit !== "string" ||
+      !/^[a-f0-9]{40}$/u.test(input.approvedLongitudinalBuild.jenaCommit) ||
+    typeof input.approvedLongitudinalBuild.jenaTarballIntegrity !== "string" ||
+      !/^sha512-[A-Za-z0-9+/]+={0,2}$/u.test(input.approvedLongitudinalBuild.jenaTarballIntegrity) ||
+    typeof input.approvedLongitudinalBuild.sdkVersion !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u.test(input.approvedLongitudinalBuild.sdkVersion) ||
+    typeof input.approvedLongitudinalBuild.buildId !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$/u.test(input.approvedLongitudinalBuild.buildId)) {
+  throw new Error("runtime build input is invalid");
+}
+const migrationManifest = [];
+for (const [index, migration] of input.migrations.entries()) {
+  exact(migration, ["path", "version"], `input.migrations[${index}]`);
+  if (typeof migration.path !== "string" || migration.path.trim() === "" ||
+      typeof migration.version !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u.test(migration.version)) {
+    throw new Error("runtime build input is invalid");
+  }
+  migrationManifest.push({
+    sha256: sha256(await readFile(resolve(migration.path))),
+    version: migration.version,
+  });
+}
+if (new Set(migrationManifest.map((entry) => entry.version)).size !== migrationManifest.length ||
+    [...migrationManifest].sort((left, right) => left.version.localeCompare(right.version))
+      .some((entry, index) => entry.version !== migrationManifest[index].version)) {
   throw new Error("runtime build input is invalid");
 }
 
@@ -72,7 +104,6 @@ if (packageManifest.dependencies?.pg !== "8.22.0" ||
     packageManifest.dependencies?.["@vercel/blob"] !== "2.8.0") {
   throw new Error("reviewed runtime dependency pins are missing");
 }
-const migrationBytes = await readFile(resolve(input.migrationPath));
 const temporaryRoot = await mkdtemp(join(tmpdir(), "3dena-compute-runtime-"));
 
 const aliases = {
@@ -88,12 +119,13 @@ const aliases = {
   "@3dena/trajectory": resolve(repositoryRoot, "packages/trajectory/src/index.ts"),
 };
 
-async function bundle(entry, fileName, outDir) {
+async function bundle(entry, fileName, outDir, define = {}) {
   await build({
     appType: "custom",
     configFile: false,
     root: repositoryRoot,
     logLevel: "warn",
+    define,
     resolve: { alias: aliases, conditions: ["node", "import", "default"] },
     ssr: { noExternal: true, target: "node" },
     build: {
@@ -114,15 +146,34 @@ async function bundle(entry, fileName, outDir) {
 try {
   const runtimeDirectory = join(temporaryRoot, "runtime");
   const workerDirectory = join(temporaryRoot, "worker");
+  const scientificBuildDefines = {
+    __THREEDENA_JENA_VERSION__: JSON.stringify(
+      input.approvedLongitudinalBuild.jenaVersion,
+    ),
+    __THREEDENA_JENA_COMMIT__: JSON.stringify(
+      input.approvedLongitudinalBuild.jenaCommit,
+    ),
+    __THREEDENA_JENA_TARBALL_INTEGRITY__: JSON.stringify(
+      input.approvedLongitudinalBuild.jenaTarballIntegrity,
+    ),
+    __THREEDENA_SDK_VERSION__: JSON.stringify(
+      input.approvedLongitudinalBuild.sdkVersion,
+    ),
+    __THREEDENA_BUILD_ID__: JSON.stringify(
+      input.approvedLongitudinalBuild.buildId,
+    ),
+  };
   await bundle(
     resolve(packageDirectory, "src/runtime-entry.ts"),
     "compute-runtime.mjs",
     runtimeDirectory,
+    scientificBuildDefines,
   );
   await bundle(
     resolve(repositoryRoot, "packages/compute-service-node/src/scientific/worker-entry.ts"),
     "scientific-worker-entry.mjs",
     workerDirectory,
+    scientificBuildDefines,
   );
   const runtimePath = join(runtimeDirectory, "compute-runtime.mjs");
   const workerPath = join(workerDirectory, "scientific-worker-entry.mjs");
@@ -132,11 +183,12 @@ try {
     throw new Error("runtime bundle is empty");
   }
   const manifest = {
-    schemaVersion: "3dena.compute-runtime-build-manifest.v1",
-    migrationVersion: input.migrationVersion,
-    migrationSha256: sha256(migrationBytes),
+    schemaVersion: "3dena.compute-runtime-build-manifest.v3",
+    migrationManifest,
+    migrationManifestSha256: sha256(Buffer.from(canonical(migrationManifest), "utf8")),
     contractVersions: input.contractVersions,
     runtimeDependencies: { "@vercel/blob": "2.8.0", pg: "8.22.0" },
+    approvedLongitudinalBuild: input.approvedLongitudinalBuild,
     runtimeBundleSha256: sha256(runtimeBytes),
     scientificWorkerBundleSha256: sha256(workerBytes),
   };

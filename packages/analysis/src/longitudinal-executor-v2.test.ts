@@ -10,7 +10,9 @@ import {
 } from "./task-executor";
 import {
   assertLongitudinalAnalysisBundleV2,
+  assertLongitudinalExecutionRequestV2,
   executeLongitudinalAnalysisV2,
+  type LongitudinalAnalysisBundleV2,
   type LongitudinalExecutionRequestV2,
   type OrderedTrajectoryPeriodV2,
   type TrajectoryBootstrapTaskV2,
@@ -159,7 +161,93 @@ async function execution(
   };
 }
 
+async function rehashLongitudinalBundleV2(
+  source: LongitudinalAnalysisBundleV2,
+): Promise<LongitudinalAnalysisBundleV2> {
+  const bundle = structuredClone(source);
+  const {
+    resultHash: _resultHash,
+    runId: _runId,
+    requestHash: _requestHash,
+    ...scientificIdentity
+  } = bundle.identity;
+  const { target: _target, ...scientificExecution } = bundle.execution;
+  bundle.identity.resultHash = await hashAnalysisValueV1({
+    schemaVersion: bundle.schemaVersion,
+    identity: scientificIdentity,
+    runSpec: bundle.runSpec,
+    model: bundle.model,
+    paths: bundle.paths,
+    inference: bundle.inference,
+    pathComparisons: bundle.pathComparisons,
+    bootstrap: bundle.bootstrap,
+    codeGeometry: bundle.codeGeometry,
+    networkOverlays: bundle.networkOverlays,
+    diagnostics: bundle.diagnostics,
+    scientificExecution,
+  });
+  return bundle;
+}
+
 describe("longitudinal analysis V2 executor", () => {
+  it("strictly validates the durable execution boundary without running scientific work", async () => {
+    const { input, result } = await execution("persistent-compute-service");
+
+    expect(() => assertLongitudinalExecutionRequestV2(input)).not.toThrow();
+    expect(() => assertLongitudinalExecutionRequestV2({ ...input, unknown: true })).toThrow(/unknown field/u);
+    expect(() => assertLongitudinalExecutionRequestV2({
+      ...input,
+      execution: { ...input.execution, unknown: true },
+    })).toThrow(/unknown field/u);
+    expect(() => assertLongitudinalExecutionRequestV2({
+      ...input,
+      inferenceTask: undefined,
+    })).toThrow(/must be an object/u);
+
+    const groups = result.trajectory!.groupOrder.map(({ canonical }) => canonical) as [string, string];
+    const wrongPermutationSeed: TrajectoryInferenceTaskV2 = {
+      schemaVersion: "3dena.trajectory-inference-task.v2",
+      kind: "trajectory-inference-v2",
+      datasetHash: DATASET_HASH,
+      specHash: SPEC_HASH,
+      sourceResultHash: input.pathTask.runSpec.sourceResultHash,
+      runId: input.pathTask.runId,
+      adjustment: "holm",
+      requests: [{
+        kind: "path-comparison",
+        design: "independent",
+        groups,
+        repetitions: 50,
+        seed: input.execution.seed + 1,
+        samePhysicalEntityConfirmed: false,
+      }],
+    };
+    expect(() => assertLongitudinalExecutionRequestV2({
+      ...input,
+      inferenceTask: wrongPermutationSeed,
+    })).toThrow(/must equal execution\.seed/u);
+
+    const wrongBootstrapSeed: TrajectoryBootstrapTaskV2 = {
+      schemaVersion: "3dena.trajectory-bootstrap-task.v2",
+      kind: "trajectory-bootstrap-v2",
+      datasetHash: DATASET_HASH,
+      specHash: SPEC_HASH,
+      sourceResultHash: input.pathTask.runSpec.sourceResultHash,
+      runId: input.pathTask.runId,
+      repetitions: 50,
+      confidenceLevel: 0.8,
+      seed: input.execution.seed + 1,
+      resamplingDesign: "within-group",
+      explicitStrataField: null,
+      interval: "pointwise-percentile-linear-type7",
+      rotationPolicy: "fixed-same-fit-projection",
+    };
+    expect(() => assertLongitudinalExecutionRequestV2({
+      ...input,
+      bootstrapTask: wrongBootstrapSeed,
+    })).toThrow(/must equal execution\.seed/u);
+  });
+
   it("binds one fitted jENA result to all groups, full-space metrics, gaps and a deterministic scientific result hash", async () => {
     const browser = await execution("browser-worker");
     const node = await execution("node-service");
@@ -258,7 +346,21 @@ describe("longitudinal analysis V2 executor", () => {
       interval: "pointwise-percentile-linear-type7",
       rotationPolicy: "fixed-same-fit-projection",
     };
-    const taskInput: LongitudinalExecutionRequestV2 = { ...input, inferenceTask, bootstrapTask };
+    const networkOverlayTask: TrajectoryNetworkOverlayTaskV2 = {
+      schemaVersion: "3dena.trajectory-network-overlay-task.v2",
+      kind: "trajectory-network-overlay-v2",
+      datasetHash: DATASET_HASH,
+      specHash: SPEC_HASH,
+      sourceResultHash: input.pathTask.runSpec.sourceResultHash,
+      runId: input.pathTask.runId,
+      requests: [{ periodCanonical: periods[1]!, groupCanonical: null }],
+    };
+    const taskInput: LongitudinalExecutionRequestV2 = {
+      ...input,
+      inferenceTask,
+      bootstrapTask,
+      networkOverlayTask,
+    };
     const first = await executeLongitudinalAnalysisV2(taskInput);
     const second = await executeLongitudinalAnalysisV2(structuredClone(taskInput));
 
@@ -291,6 +393,116 @@ describe("longitudinal analysis V2 executor", () => {
     expect(first.identity.resultHash).toBe(second.identity.resultHash);
     expect(first.pathComparisons).toEqual(second.pathComparisons);
     expect(first.bootstrap).toEqual(second.bootstrap);
+    expect(first.networkOverlays).toHaveLength(1);
+
+    const nestedUnknownMutations: Array<{
+      readonly label: string;
+      readonly mutate: (candidate: LongitudinalAnalysisBundleV2) => void;
+    }> = [
+      {
+        label: "trajectory path",
+        mutate(candidate) {
+          (candidate.paths[0]!.dynamics.periods[0] as unknown as Record<string, unknown>).unknown = true;
+        },
+      },
+      {
+        label: "rank inference",
+        mutate(candidate) {
+          (candidate.inference[0]!.rows[0] as Record<string, unknown>).unknown = true;
+        },
+      },
+      {
+        label: "path comparison",
+        mutate(candidate) {
+          (candidate.pathComparisons[0]!.result.tests[0] as unknown as Record<string, unknown>).unknown = true;
+        },
+      },
+      {
+        label: "bootstrap interval",
+        mutate(candidate) {
+          const interval = candidate.bootstrap[0]!.speedIntervals[1]!.selected;
+          if (interval === null) throw new Error("Expected a finite speed interval fixture.");
+          (interval as unknown as Record<string, unknown>).unknown = true;
+        },
+      },
+      {
+        label: "fitted code geometry",
+        mutate(candidate) {
+          (candidate.codeGeometry.nodes[0] as unknown as Record<string, unknown>).unknown = true;
+        },
+      },
+      {
+        label: "mean network",
+        mutate(candidate) {
+          (candidate.networkOverlays[0]!.edges[0] as unknown as Record<string, unknown>).unknown = true;
+        },
+      },
+    ];
+    for (const { label, mutate } of nestedUnknownMutations) {
+      const candidate = structuredClone(first);
+      mutate(candidate);
+      const rehashed = await rehashLongitudinalBundleV2(candidate);
+      expect(rehashed.identity.resultHash, label).not.toBe(first.identity.resultHash);
+      expect(() => assertLongitudinalAnalysisBundleV2(rehashed), label).toThrow(/unknown field/u);
+      expect(
+        ajv.validate(CONTRACT_SCHEMAS_V1.longitudinalAnalysisBundleV2.$id, rehashed),
+        `${label}: ${JSON.stringify(ajv.errors)}`,
+      ).toBe(false);
+      await expect(verifyLongitudinalAnalysisBundleV2(rehashed), label).rejects.not.toMatchObject({
+        code: "LONGITUDINAL_RESULT_HASH_MISMATCH",
+      });
+    }
+
+    const invalidNetworkIndex = structuredClone(first);
+    invalidNetworkIndex.networkOverlays[0]!.edges[0]!.targetIndex = invalidNetworkIndex.codeGeometry.nodes.length;
+    const rehashedInvalidNetworkIndex = await rehashLongitudinalBundleV2(invalidNetworkIndex);
+    expect(
+      ajv.validate(CONTRACT_SCHEMAS_V1.longitudinalAnalysisBundleV2.$id, rehashedInvalidNetworkIndex),
+      JSON.stringify(ajv.errors),
+    ).toBe(true);
+    expect(() => assertLongitudinalAnalysisBundleV2(rehashedInvalidNetworkIndex)).toThrow(/distinct fitted code nodes/u);
+
+    const semanticTamperCases: Array<{
+      readonly label: string;
+      readonly mutate: (candidate: LongitudinalAnalysisBundleV2) => void;
+      readonly expected: RegExp;
+    }> = [
+      {
+        label: "inference family completeness",
+        mutate(candidate) {
+          candidate.inference[0]!.familySize += 1;
+        },
+        expected: /familySize/u,
+      },
+      {
+        label: "permutation seed binding",
+        mutate(candidate) {
+          candidate.pathComparisons[0]!.seed += 1;
+        },
+        expected: /permutation seed/u,
+      },
+      {
+        label: "bootstrap finite status",
+        mutate(candidate) {
+          candidate.bootstrap[0]!.status = "not-estimable";
+          candidate.bootstrap[0]!.notEstimableReason = "tampered-status";
+        },
+        expected: /finite-replicate threshold/u,
+      },
+    ];
+    for (const { label, mutate, expected } of semanticTamperCases) {
+      const candidate = structuredClone(first);
+      mutate(candidate);
+      const rehashed = await rehashLongitudinalBundleV2(candidate);
+      expect(
+        ajv.validate(CONTRACT_SCHEMAS_V1.longitudinalAnalysisBundleV2.$id, rehashed),
+        `${label}: ${JSON.stringify(ajv.errors)}`,
+      ).toBe(true);
+      expect(() => assertLongitudinalAnalysisBundleV2(rehashed), label).toThrow(expected);
+      await expect(verifyLongitudinalAnalysisBundleV2(rehashed), label).rejects.not.toMatchObject({
+        code: "LONGITUDINAL_RESULT_HASH_MISMATCH",
+      });
+    }
   });
 
   it("disables unconfirmed paired designs instead of silently degrading them", async () => {
@@ -414,6 +626,8 @@ describe("longitudinal analysis V2 executor", () => {
     expect(bundle.bootstrap.flatMap((entry) => entry.result.resampling.strata)).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: expect.objectContaining({ display: "Global participants" }), unitCount: 2 }),
     ]));
+    expect(() => assertLongitudinalAnalysisBundleV2(bundle)).not.toThrow();
+    await expect(verifyLongitudinalAnalysisBundleV2(bundle)).resolves.toBeUndefined();
   });
 
   it("computes time-scoped mean-network overlays from the same fitted line weights and jENA node geometry", async () => {
@@ -451,9 +665,39 @@ describe("longitudinal analysis V2 executor", () => {
       sourceRows: 2,
       participantPeriods: 2,
     });
-    expect(bundle.networkOverlays.every((overlay) => overlay.nodes.length === result.nodes.length)).toBe(true);
+    expect(bundle.codeGeometry.nodes).toHaveLength(result.nodes.length);
     expect(bundle.networkOverlays.every((overlay) => overlay.edges.length === result.edges.length)).toBe(true);
-    expect(bundle.networkOverlays[0]!.nodes[0]!.coordinates).toEqual(
+    expect(bundle.codeGeometry.nodes[0]!.coordinates).toEqual(
+      input.pathTask.runSpec.selectedDimensions.map((dimension) => (
+        result.nodes[0]!.fullCoordinates[result.dimensions.indexOf(dimension)]
+      )),
+    );
+  });
+
+  it("preserves fitted jENA code geometry when an expected gap has no mean network", async () => {
+    const { input, result } = await execution("browser-worker", ["T1", "T3"]);
+    const emptyPeriod = result.trajectory!.timeOrder.find((period) => period.display === "T2")!;
+    const networkOverlayTask: TrajectoryNetworkOverlayTaskV2 = {
+      schemaVersion: "3dena.trajectory-network-overlay-task.v2",
+      kind: "trajectory-network-overlay-v2",
+      datasetHash: DATASET_HASH,
+      specHash: SPEC_HASH,
+      sourceResultHash: input.pathTask.runSpec.sourceResultHash,
+      runId: input.pathTask.runId,
+      requests: [{ periodCanonical: emptyPeriod.canonical, groupCanonical: null }],
+    };
+
+    const bundle = await executeLongitudinalAnalysisV2({ ...input, networkOverlayTask });
+    const overlay = bundle.networkOverlays[0]!;
+    expect(overlay).toMatchObject({
+      status: "not-estimable",
+      reason: "no-observed-participant-period-network",
+      sourceRows: 0,
+      participantPeriods: 0,
+      edges: [],
+    });
+    expect(bundle.codeGeometry.nodes.map(({ code }) => code)).toEqual(result.nodes.map(({ code }) => code));
+    expect(bundle.codeGeometry.nodes[0]!.coordinates).toEqual(
       input.pathTask.runSpec.selectedDimensions.map((dimension) => (
         result.nodes[0]!.fullCoordinates[result.dimensions.indexOf(dimension)]
       )),

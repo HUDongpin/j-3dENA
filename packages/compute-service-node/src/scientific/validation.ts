@@ -1,9 +1,13 @@
 import {
   ANALYSIS_CONTRACT_VERSION_V1,
   ANALYSIS_EXECUTION_DATASET_VERSION_V2,
+  assertLongitudinalExecutionRequestV2,
+  getAnalysisBuildIdentityV2,
+  hashLongitudinalExecutionRequestV2,
   assertAnalysisTaskV1,
   assertDatasetReceiptV1,
   type AnalysisExecutionDataset,
+  type LongitudinalExecutionRequestV2,
 } from "@3dena/analysis";
 import {
   COMPUTE_LEASE_VERSION,
@@ -20,6 +24,8 @@ import {
   SCIENTIFIC_ARTIFACT_PUT_ACK_VERSION,
   SCIENTIFIC_ARTIFACT_PUT_REQUEST_VERSION,
   SCIENTIFIC_EXECUTION_INPUT_VERSION,
+  SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION,
+  SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2,
   SCIENTIFIC_PUBLICATION_ACK_VERSION,
   SCIENTIFIC_PUBLICATION_RECEIPT_VERSION,
   SCIENTIFIC_PUBLICATION_REQUEST_VERSION,
@@ -29,12 +35,14 @@ import {
   type ScientificArtifactPutAckV1,
   type ScientificArtifactPutRequestV1,
   type ScientificExecutionInputV1,
+  type ScientificLongitudinalExecutionInputV2,
   type ScientificPublicationAckV1,
   type ScientificPublicationReceiptV1,
   type ScientificPublicationRequestV1,
   type ScientificWorkerFailureCodeV1,
   type ScientificWorkerFailureV1,
   type ScientificWorkerLaunchPayloadV1,
+  type ScientificWorkerExecutionInput,
 } from "./contracts";
 import { scientificWorkerError } from "./errors";
 
@@ -70,6 +78,48 @@ function nonEmptyString(value: unknown): value is string {
 
 function safeNonNegativeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+
+export function bindPersistentLongitudinalRequestV2(
+  request: unknown,
+): LongitudinalExecutionRequestV2 {
+  try {
+    assertLongitudinalExecutionRequestV2(request);
+  } catch {
+    scientificWorkerError("INVALID_EXECUTION_INPUT");
+  }
+  const build = getAnalysisBuildIdentityV2();
+  if (process.env.NODE_ENV === "production" && !build.bound) {
+    scientificWorkerError("INVALID_EXECUTION_INPUT");
+  }
+  for (const field of ["jenaVersion", "jenaCommit", "jenaTarballIntegrity", "sdkVersion", "buildId"] as const) {
+    if (request.execution[field] !== build[field]) {
+      scientificWorkerError("INVALID_EXECUTION_INPUT");
+    }
+  }
+  return structuredClone({
+    ...request,
+    execution: {
+      ...request.execution,
+      target: "persistent-compute-service" as const,
+      jenaVersion: build.jenaVersion,
+      jenaCommit: build.jenaCommit,
+      jenaTarballIntegrity: build.jenaTarballIntegrity,
+      sdkVersion: build.sdkVersion,
+      buildId: build.buildId,
+    },
+  });
+}
+
+export async function bindAndHashPersistentLongitudinalRequestV2(
+  request: unknown,
+): Promise<{ request: LongitudinalExecutionRequestV2; requestHash: string }> {
+  const bound = bindPersistentLongitudinalRequestV2(request);
+  try {
+    return { request: bound, requestHash: await hashLongitudinalExecutionRequestV2(bound) };
+  } catch {
+    scientificWorkerError("INVALID_EXECUTION_INPUT");
+  }
 }
 
 export function assertObjectDescriptor(
@@ -192,10 +242,74 @@ function assertDataset(value: unknown): asserts value is AnalysisExecutionDatase
   }
 }
 
+function assertLongitudinalRequestShape(
+  value: unknown,
+): asserts value is ScientificLongitudinalExecutionInputV2["request"] {
+  try {
+    assertLongitudinalExecutionRequestV2(value);
+  } catch {
+    scientificWorkerError("INVALID_EXECUTION_INPUT");
+  }
+}
+
+export function assertScientificLongitudinalExecutionInput(
+  value: unknown,
+  context?: ProcessLaunchContextV1,
+): asserts value is ScientificLongitudinalExecutionInputV2 {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "version",
+      "kind",
+      "source",
+      "owner",
+      "deadlineAtMs",
+      "requestHash",
+      "request",
+    ]) ||
+    value.version !== SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION ||
+    value.kind !== SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2 ||
+    !safeNonNegativeInteger(value.deadlineAtMs) ||
+    typeof value.requestHash !== "string" ||
+    !SHA256.test(value.requestHash)
+  ) scientificWorkerError("INVALID_EXECUTION_INPUT");
+  try {
+    assertObjectDescriptor(value.source);
+    assertComputeOwner(value.owner);
+    assertLongitudinalRequestShape(value.request);
+  } catch {
+    scientificWorkerError("INVALID_EXECUTION_INPUT");
+  }
+  const request = value.request;
+  if (
+    value.owner.datasetHash !== request.pathTask.datasetHash ||
+    value.owner.datasetHash !== request.dataset.receipt.sha256 ||
+    value.owner.specHash !== request.pathTask.specHash ||
+    value.owner.specHash !== request.dataset.specHash ||
+    value.owner.runId !== request.pathTask.runId ||
+    request.dataset.sourceResult?.hash !==
+      request.pathTask.runSpec.sourceResultHash
+  ) scientificWorkerError("INVALID_EXECUTION_INPUT");
+  if (
+    context !== undefined &&
+    (!descriptorsEqual(value.source, context.request.input) ||
+      !ownersEqual(value.owner, context.owner) ||
+      context.request.taskKind !== SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2 ||
+      context.request.deadlineAtMs !== value.deadlineAtMs)
+  ) scientificWorkerError("INVALID_EXECUTION_INPUT");
+}
+
 export function assertScientificExecutionInput(
   value: unknown,
   context?: ProcessLaunchContextV1,
-): asserts value is ScientificExecutionInputV1 {
+): asserts value is ScientificWorkerExecutionInput {
+  if (
+    isRecord(value) &&
+    value.version === SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION
+  ) {
+    assertScientificLongitudinalExecutionInput(value, context);
+    return;
+  }
   if (
     !isRecord(value) ||
     !hasExactKeys(value, ["version", "source", "dataset", "task"]) ||

@@ -231,6 +231,8 @@ export interface ComputeServiceCoreOptions {
   readonly maxConcurrency: number;
   readonly maxLeaseDurationMs?: number;
   readonly maxProcessLaunchDurationMs?: number;
+  /** Persistent runtimes release the distributed fence before provider deletion. */
+  readonly deferProcessOwnedDeletionCompletion?: boolean;
 }
 
 export interface ClaimTaskOptions {
@@ -249,6 +251,7 @@ export class ComputeServiceCore {
   readonly #capacity: ObservedTerminationCapacity;
   readonly #maxLeaseDurationMs: number;
   readonly #maxProcessLaunchDurationMs: number;
+  readonly #deferProcessOwnedDeletionCompletion: boolean;
   readonly #background = new Set<Promise<void>>();
   readonly #operationalFailures = new BoundedOperationalFailureJournal();
   readonly #executeOperations = new Map<
@@ -293,6 +296,8 @@ export class ComputeServiceCore {
     );
     this.#maxLeaseDurationMs = maxLeaseDurationMs;
     this.#maxProcessLaunchDurationMs = maxProcessLaunchDurationMs;
+    this.#deferProcessOwnedDeletionCompletion =
+      options.deferProcessOwnedDeletionCompletion ?? false;
   }
 
   capacitySnapshot(): CapacitySnapshot {
@@ -1229,7 +1234,8 @@ export class ComputeServiceCore {
           next,
         );
         if (!changed.applied) continue;
-        if (changed.record.state === "deleting") {
+        if (changed.record.state === "deleting" &&
+            !this.#deferProcessOwnedDeletionCompletion) {
           return (await this.#completeDeletion(taskId)).record;
         }
         if (changed.record.state !== "queued") {
@@ -1386,7 +1392,8 @@ export class ComputeServiceCore {
     if (deleteResultObjects) {
       await this.#objectStore.delete(resultObjectKey);
     }
-    if (finalized.state === "deleting") {
+    if (finalized.state === "deleting" &&
+        !this.#deferProcessOwnedDeletionCompletion) {
       await this.#completeDeletion(taskId);
     } else if (finalized.state !== "queued") {
       await this.#emit(finalized, "task_terminal", {

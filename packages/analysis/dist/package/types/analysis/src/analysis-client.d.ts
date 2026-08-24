@@ -67,6 +67,18 @@ export interface AnalysisDeletionReceiptV1 {
     resultDeleted: boolean;
     deletedAt: string;
 }
+export interface AnalysisDeletionReceiptV2 {
+    schemaVersion: "3dena.job-deletion-receipt.v2";
+    jobId: string;
+    cancelled: boolean;
+    inputDeleted: boolean;
+    resultDeleted: boolean;
+    deletedAt: string | null;
+    readonly intentAccepted: true;
+    readonly termination: "not_required" | "pending" | "observed";
+    readonly capacity: "not_reserved" | "held" | "released";
+    readonly objects: "pending" | "deleted";
+}
 export interface AnalysisComputeBuildInfoV1 {
     schemaVersion: "3dena.compute-build-info.v1";
     approvalManifestSha256: string;
@@ -82,6 +94,10 @@ export interface AnalysisClientConfig {
     fetch?: typeof fetch;
     /** Client-side request deadline; the scientific task retains its own deadline. */
     requestTimeoutMilliseconds?: number;
+    /** Delay between stable-key V2 deletion reconciliation requests. */
+    deletionPollIntervalMilliseconds?: number;
+    /** Total time allowed for the durable deletion lifecycle to close. */
+    deletionCompletionTimeoutMilliseconds?: number;
 }
 export interface AnalysisClientV1 {
     createJob(request: CreateAnalysisJobRequestV1, idempotencyKey: string): Promise<AnalysisJobCapabilityV1>;
@@ -92,6 +108,14 @@ export interface AnalysisClientV1 {
     deleteJob(reference: AnalysisJobReferenceV1, idempotencyKey: string): Promise<AnalysisDeletionReceiptV1>;
     getBuildInfo(): Promise<AnalysisComputeBuildInfoV1>;
 }
+/**
+ * Additive durable-deletion client contract. Keeping these methods out of V1
+ * preserves source compatibility for existing V1-only client implementations.
+ */
+export interface AnalysisClientV2 extends AnalysisClientV1 {
+    deleteJobV2(reference: AnalysisJobReferenceV1, idempotencyKey: string): Promise<AnalysisDeletionReceiptV2>;
+    deleteJobUntilComplete(reference: AnalysisJobReferenceV1, idempotencyKey: string): Promise<AnalysisDeletionReceiptV2>;
+}
 export declare class AnalysisClientError extends Error {
     readonly code: string;
     readonly status: number | null;
@@ -99,5 +123,5 @@ export declare class AnalysisClientError extends Error {
     constructor(code: string, message: string, status?: number | null, requestId?: string | null);
 }
 /** Creates the capability-token remote client used by the public Web product. */
-export declare function createAnalysisClient(config: AnalysisClientConfig): AnalysisClientV1;
+export declare function createAnalysisClient(config: AnalysisClientConfig): AnalysisClientV2;
 //# sourceMappingURL=analysis-client.d.ts.map

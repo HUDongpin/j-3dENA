@@ -1657,6 +1657,177 @@ const TRAJECTORY_RUN_SPEC_V2_SCHEMA = {
 const TRAJECTORY_V2_TASK_BINDING_PROPERTIES = {
   datasetHash: HASH_SCHEMA, specHash: HASH_SCHEMA, sourceResultHash: HASH_SCHEMA, runId: NON_EMPTY_STRING_SCHEMA,
 } as const;
+const LONGITUDINAL_NULLABLE_NUMBER_SCHEMA = {
+  oneOf: [{ type: "null" }, { type: "number" }],
+} as const;
+const LONGITUDINAL_NULLABLE_PROBABILITY_SCHEMA = {
+  oneOf: [{ type: "null" }, { type: "number", minimum: 0, maximum: 1 }],
+} as const;
+const LONGITUDINAL_NULLABLE_POSITIVE_INTEGER_SCHEMA = {
+  oneOf: [{ type: "null" }, SAFE_POSITIVE_INTEGER_SCHEMA],
+} as const;
+const LONGITUDINAL_RANK_TIES_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["groups", "observations", "correctionSum"],
+  properties: {
+    groups: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+    observations: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+    correctionSum: { type: "number", minimum: 0 },
+  },
+} as const;
+const LONGITUDINAL_RANK_EXACT_TAIL_SCHEMA = {
+  oneOf: [
+    { type: "null" },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["extremeAssignmentCount", "totalAssignmentCount", "inclusive", "midP"],
+      properties: {
+        extremeAssignmentCount: { type: "string", pattern: "^(?:0|[1-9][0-9]*)$" },
+        totalAssignmentCount: { type: "string", pattern: "^(?:0|[1-9][0-9]*)$" },
+        inclusive: { const: true },
+        midP: { const: false },
+      },
+    },
+  ],
+} as const;
+const LONGITUDINAL_PAIRED_IDENTITY_AUDIT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["earlier", "later", "overlap", "earlierOnly", "laterOnly", "samePhysicalEntityConfirmed"],
+  properties: {
+    earlier: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+    later: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+    overlap: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+    earlierOnly: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+    laterOnly: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+    samePhysicalEntityConfirmed: { const: true },
+  },
+} as const;
+const LONGITUDINAL_REPEATED_IDENTITY_AUDIT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["totalEntities", "completeBlocks", "excludedIncomplete", "samePhysicalEntityConfirmed"],
+  properties: {
+    totalEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+    completeBlocks: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+    excludedIncomplete: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+    samePhysicalEntityConfirmed: { const: true },
+  },
+} as const;
+const LONGITUDINAL_RANK_ROW_COMMON_REQUIRED = [
+  "memberId", "test", "design", "estimand", "axis", "axisIndex", "status", "reason",
+  "effect", "statistic", "pRaw", "method", "ties", "zeros", "exactTail", "familyId",
+  "familySize", "pHolm", "holmRank", "holmMultiplier",
+] as const;
+const LONGITUDINAL_RANK_ROW_COMMON_PROPERTIES = {
+  memberId: NON_EMPTY_STRING_SCHEMA,
+  estimand: NON_EMPTY_STRING_SCHEMA,
+  axis: NON_EMPTY_STRING_SCHEMA,
+  axisIndex: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+  status: { enum: ["available", "not-estimable"] },
+  reason: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+  effect: LONGITUDINAL_NULLABLE_NUMBER_SCHEMA,
+  statistic: LONGITUDINAL_NULLABLE_NUMBER_SCHEMA,
+  pRaw: LONGITUDINAL_NULLABLE_PROBABILITY_SCHEMA,
+  method: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
+  ties: LONGITUDINAL_RANK_TIES_SCHEMA,
+  zeros: { oneOf: [{ type: "null" }, SAFE_NON_NEGATIVE_INTEGER_SCHEMA] },
+  exactTail: LONGITUDINAL_RANK_EXACT_TAIL_SCHEMA,
+  familyId: NON_EMPTY_STRING_SCHEMA,
+  familySize: SAFE_POSITIVE_INTEGER_SCHEMA,
+  pHolm: LONGITUDINAL_NULLABLE_PROBABILITY_SCHEMA,
+  holmRank: LONGITUDINAL_NULLABLE_POSITIVE_INTEGER_SCHEMA,
+  holmMultiplier: LONGITUDINAL_NULLABLE_POSITIVE_INTEGER_SCHEMA,
+} as const;
+const LONGITUDINAL_INFERENCE_ROW_SCHEMA = {
+  oneOf: [
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["memberId", "sideAEntities", "sideBEntities", "overlappingEntities", "pairedCompleteEntities", "sideAOnly", "sideBOnly", "excludedIncompleteOverlap", "samePhysicalEntityConfirmed"],
+      properties: {
+        memberId: { const: "identity-overlap-audit" },
+        sideAEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+        sideBEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+        overlappingEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+        pairedCompleteEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+        sideAOnly: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+        sideBOnly: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+        excludedIncompleteOverlap: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+        samePhysicalEntityConfirmed: { const: true },
+      },
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [...LONGITUDINAL_RANK_ROW_COMMON_REQUIRED, "periodCanonical", "nPrimary", "nSecondary"],
+      properties: {
+        ...LONGITUDINAL_RANK_ROW_COMMON_PROPERTIES,
+        test: { const: "mann-whitney" },
+        design: { const: "independent" },
+        periodCanonical: NON_EMPTY_STRING_SCHEMA,
+        nPrimary: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+        nSecondary: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+      },
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [...LONGITUDINAL_RANK_ROW_COMMON_REQUIRED, "earlierPeriodCanonical", "laterPeriodCanonical", "n", "identityOverlapAudit"],
+      properties: {
+        ...LONGITUDINAL_RANK_ROW_COMMON_PROPERTIES,
+        test: { const: "wilcoxon-signed-rank" },
+        design: { const: "paired" },
+        earlierPeriodCanonical: NON_EMPTY_STRING_SCHEMA,
+        laterPeriodCanonical: NON_EMPTY_STRING_SCHEMA,
+        n: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+        identityOverlapAudit: LONGITUDINAL_PAIRED_IDENTITY_AUDIT_SCHEMA,
+      },
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [...LONGITUDINAL_RANK_ROW_COMMON_REQUIRED, "selectedPeriodCanonicals", "n", "identityOverlapAudit"],
+      properties: {
+        ...LONGITUDINAL_RANK_ROW_COMMON_PROPERTIES,
+        test: { const: "friedman" },
+        design: { const: "repeated" },
+        selectedPeriodCanonicals: { type: "array", minItems: 3, uniqueItems: true, items: NON_EMPTY_STRING_SCHEMA },
+        n: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+        identityOverlapAudit: LONGITUDINAL_REPEATED_IDENTITY_AUDIT_SCHEMA,
+      },
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [...LONGITUDINAL_RANK_ROW_COMMON_REQUIRED, "earlierPeriodCanonical", "laterPeriodCanonical", "n", "identityOverlapAudit"],
+      properties: {
+        ...LONGITUDINAL_RANK_ROW_COMMON_PROPERTIES,
+        test: { const: "wilcoxon-signed-rank" },
+        design: { const: "repeated-posthoc" },
+        earlierPeriodCanonical: NON_EMPTY_STRING_SCHEMA,
+        laterPeriodCanonical: NON_EMPTY_STRING_SCHEMA,
+        n: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+        identityOverlapAudit: LONGITUDINAL_REPEATED_IDENTITY_AUDIT_SCHEMA,
+      },
+    },
+  ],
+} as const;
+const LONGITUDINAL_BOOTSTRAP_INTERVAL_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["estimate", "lower", "upper", "finiteReplicates", "requiredFiniteReplicates", "totalReplicates"],
+  properties: {
+    estimate: { type: "number" },
+    lower: { type: "number" },
+    upper: { type: "number" },
+    finiteReplicates: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
+    requiredFiniteReplicates: SAFE_POSITIVE_INTEGER_SCHEMA,
+    totalReplicates: SAFE_POSITIVE_INTEGER_SCHEMA,
+  },
+} as const;
 const PREPARED_MAPPING_TASK_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -1871,29 +2042,55 @@ export const CONTRACT_SCHEMAS_V1 = Object.freeze({
       displayedGroups: { type: "array", uniqueItems: true, items: NON_EMPTY_STRING_SCHEMA },
       traces: { type: "object", additionalProperties: false, required: ["participants", "individualPaths", "centroids", "paths", "directionArrows", "uncertainty", "networkOverlay", "labels"], properties: Object.fromEntries(["participants", "individualPaths", "centroids", "paths", "directionArrows", "uncertainty", "networkOverlay", "codeNodes", "labels"].map((field) => [field, { type: "boolean" }])) },
       axisFlips: { type: "array", minItems: 3, maxItems: 3, items: { type: "boolean" } },
-      camera: { oneOf: [{ type: "null" }, { type: "object", additionalProperties: false, required: ["eye", "center", "up"], properties: Object.fromEntries(["eye", "center", "up"].map((field) => [field, { type: "object", additionalProperties: false, required: ["x", "y", "z"], properties: { x: { type: "number" }, y: { type: "number" }, z: { type: "number" } } }])) }] },
+      camera: {
+        oneOf: [
+          { type: "null" },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["eye", "center", "up"],
+            properties: {
+              ...Object.fromEntries(["eye", "center", "up"].map((field) => [field, { type: "object", additionalProperties: false, required: ["x", "y", "z"], properties: { x: { type: "number" }, y: { type: "number" }, z: { type: "number" } } }])),
+              projection: {
+                type: "object",
+                additionalProperties: false,
+                required: ["type"],
+                properties: { type: { enum: ["perspective", "orthographic"] } },
+              },
+            },
+          },
+        ],
+      },
       style: { type: "object", additionalProperties: false, required: ["participantSize", "participantOpacity", "centroidSize", "pathWidth"], properties: { participantSize: { type: "number", exclusiveMinimum: 0 }, participantOpacity: { type: "number", minimum: 0, maximum: 1 }, centroidSize: { type: "number", exclusiveMinimum: 0 }, pathWidth: { type: "number", exclusiveMinimum: 0 } } },
     },
   }),
   longitudinalAnalysisBundleV2: Object.freeze({
     $id: "https://3dena.com/schemas/longitudinal-analysis-bundle.v2.json",
     type: "object", additionalProperties: false,
-    required: ["schemaVersion", "identity", "runSpec", "model", "paths", "inference", "pathComparisons", "bootstrap", "networkOverlays", "diagnostics", "execution"],
+    required: ["schemaVersion", "identity", "runSpec", "model", "paths", "inference", "pathComparisons", "bootstrap", "codeGeometry", "networkOverlays", "diagnostics", "execution"],
     properties: {
       schemaVersion: { const: "3dena.longitudinal-analysis-bundle.v2" },
-      identity: { type: "object", additionalProperties: false, required: ["datasetHash", "specHash", "sourceResultHash", "resultHash", "runId", "jenaBuildId"], properties: { datasetHash: HASH_SCHEMA, specHash: HASH_SCHEMA, sourceResultHash: HASH_SCHEMA, resultHash: HASH_SCHEMA, runId: NON_EMPTY_STRING_SCHEMA, jenaBuildId: NON_EMPTY_STRING_SCHEMA } },
+      identity: { type: "object", additionalProperties: false, required: ["datasetHash", "specHash", "sourceResultHash", "requestHash", "resultHash", "runId", "jenaBuildId"], properties: { datasetHash: HASH_SCHEMA, specHash: HASH_SCHEMA, sourceResultHash: HASH_SCHEMA, requestHash: HASH_SCHEMA, resultHash: HASH_SCHEMA, runId: NON_EMPTY_STRING_SCHEMA, jenaBuildId: NON_EMPTY_STRING_SCHEMA } },
       runSpec: { $ref: "https://3dena.com/schemas/trajectory-run-spec.v2.json" },
       model: { type: "object", additionalProperties: false, required: ["type", "fullRotationDimensions", "selectedDimensions"], properties: { type: { enum: ["SeparateTrajectory", "AccumulatedTrajectory"] }, fullRotationDimensions: { type: "array", minItems: 3, uniqueItems: true, items: NON_EMPTY_STRING_SCHEMA }, selectedDimensions: { type: "array", minItems: 3, maxItems: 3, uniqueItems: true, items: NON_EMPTY_STRING_SCHEMA } } },
       paths: { type: "array", minItems: 1, items: { type: "object", additionalProperties: false, required: ["group", "dynamics"], properties: { group: { type: "object", additionalProperties: false, required: ["canonical", "display"], properties: { canonical: NON_EMPTY_STRING_SCHEMA, display: NON_EMPTY_STRING_SCHEMA } }, dynamics: RESULT_VARIANT_SCHEMAS_V1.trajectory } } },
-      inference: { type: "array", items: { type: "object", additionalProperties: false, required: ["request", "status", "familyId", "familySize", "rows", "reason"], properties: { request: { $ref: "https://3dena.com/schemas/trajectory-inference-task.v2.json#/properties/requests/items" }, status: { enum: ["available", "not-estimable", "disabled"] }, familyId: NON_EMPTY_STRING_SCHEMA, familySize: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, rows: { type: "array", items: { type: "object" } }, reason: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] } } } },
+      inference: { type: "array", items: { type: "object", additionalProperties: false, required: ["request", "status", "familyId", "familySize", "rows", "reason"], properties: { request: { $ref: "https://3dena.com/schemas/trajectory-inference-task.v2.json#/properties/requests/items" }, status: { enum: ["available", "not-estimable", "disabled"] }, familyId: NON_EMPTY_STRING_SCHEMA, familySize: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, rows: { type: "array", items: LONGITUDINAL_INFERENCE_ROW_SCHEMA }, reason: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] } } } },
       pathComparisons: { type: "array", items: { type: "object", additionalProperties: false, required: ["groups", "design", "seed", "planHash", "identityOverlapAudit", "result"], properties: { groups: { type: "array", minItems: 2, maxItems: 2, uniqueItems: true, items: NON_EMPTY_STRING_SCHEMA }, design: { enum: ["independent", "paired"] }, seed: { type: "integer", minimum: 0, maximum: 4_294_967_295 }, planHash: HASH_SCHEMA, identityOverlapAudit: { oneOf: [{ type: "null" }, { type: "object", additionalProperties: false, required: ["sideAEntities", "sideBEntities", "overlappingEntities", "pairedCompleteEntities", "sideAOnly", "sideBOnly", "excludedIncompleteOverlap", "samePhysicalEntityConfirmed"], properties: { sideAEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, sideBEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, overlappingEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, pairedCompleteEntities: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, sideAOnly: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, sideBOnly: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, excludedIncompleteOverlap: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, samePhysicalEntityConfirmed: { const: true } } }] }, result: RESULT_VARIANT_SCHEMAS_V1["trajectory-comparison"] } } },
-      bootstrap: { type: "array", items: { type: "object", additionalProperties: false, required: ["groupCanonical", "status", "notEstimableReason", "seed", "planHash", "finiteReplicates", "requiredFiniteReplicates", "totalReplicates", "confidenceLevel", "requestedResamplingDesign", "resolvedResamplingDesign", "resamplingAlgorithm", "intervalContract", "rotationPolicy", "speedIntervals", "result"], properties: { groupCanonical: NON_EMPTY_STRING_SCHEMA, status: { enum: ["available", "not-estimable"] }, notEstimableReason: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] }, seed: { type: "integer", minimum: 0, maximum: 4_294_967_295 }, planHash: HASH_SCHEMA, finiteReplicates: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, requiredFiniteReplicates: SAFE_POSITIVE_INTEGER_SCHEMA, totalReplicates: SAFE_POSITIVE_INTEGER_SCHEMA, confidenceLevel: { type: "number", exclusiveMinimum: 0, exclusiveMaximum: 1 }, requestedResamplingDesign: { enum: ["auto", "global-participant", "within-group", "explicit-strata"] }, resolvedResamplingDesign: { enum: ["global-participant", "within-group", "explicit-strata"] }, resamplingAlgorithm: { enum: ["participant-complete-history-mulberry32-uint32-v1", "global-participant-complete-history-mulberry32-uint32-v2"] }, intervalContract: { const: "pointwise-percentile-linear-type7" }, rotationPolicy: { const: "fixed-same-fit-projection" }, speedIntervals: { type: "array", items: { type: "object", additionalProperties: false, required: ["periodCanonical", "selected", "full"], properties: { periodCanonical: NON_EMPTY_STRING_SCHEMA, selected: { oneOf: [{ type: "null" }, { type: "object" }] }, full: { oneOf: [{ type: "null" }, { type: "object" }] } } } }, result: RESULT_VARIANT_SCHEMAS_V1.bootstrap } } },
+      bootstrap: { type: "array", items: { type: "object", additionalProperties: false, required: ["groupCanonical", "status", "notEstimableReason", "seed", "planHash", "finiteReplicates", "requiredFiniteReplicates", "totalReplicates", "confidenceLevel", "requestedResamplingDesign", "resolvedResamplingDesign", "resamplingAlgorithm", "intervalContract", "rotationPolicy", "speedIntervals", "result"], properties: { groupCanonical: NON_EMPTY_STRING_SCHEMA, status: { enum: ["available", "not-estimable"] }, notEstimableReason: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] }, seed: { type: "integer", minimum: 0, maximum: 4_294_967_295 }, planHash: HASH_SCHEMA, finiteReplicates: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, requiredFiniteReplicates: SAFE_POSITIVE_INTEGER_SCHEMA, totalReplicates: SAFE_POSITIVE_INTEGER_SCHEMA, confidenceLevel: { type: "number", exclusiveMinimum: 0, exclusiveMaximum: 1 }, requestedResamplingDesign: { enum: ["auto", "global-participant", "within-group", "explicit-strata"] }, resolvedResamplingDesign: { enum: ["global-participant", "within-group", "explicit-strata"] }, resamplingAlgorithm: { enum: ["participant-complete-history-mulberry32-uint32-v1", "global-participant-complete-history-mulberry32-uint32-v2"] }, intervalContract: { const: "pointwise-percentile-linear-type7" }, rotationPolicy: { const: "fixed-same-fit-projection" }, speedIntervals: { type: "array", items: { type: "object", additionalProperties: false, required: ["periodCanonical", "selected", "full"], properties: { periodCanonical: NON_EMPTY_STRING_SCHEMA, selected: { oneOf: [{ type: "null" }, LONGITUDINAL_BOOTSTRAP_INTERVAL_SCHEMA] }, full: { oneOf: [{ type: "null" }, LONGITUDINAL_BOOTSTRAP_INTERVAL_SCHEMA] } } } }, result: RESULT_VARIANT_SCHEMAS_V1.bootstrap } } },
+      codeGeometry: {
+        type: "object", additionalProperties: false, required: ["schemaVersion", "dimensions", "nodes"],
+        properties: {
+          schemaVersion: { const: "3dena.longitudinal-code-geometry.v2" },
+          dimensions: { type: "array", minItems: 3, maxItems: 3, uniqueItems: true, items: NON_EMPTY_STRING_SCHEMA },
+          nodes: { type: "array", minItems: 1, items: { type: "object", additionalProperties: false, required: ["index", "code", "coordinates"], properties: { index: SAFE_NON_NEGATIVE_INTEGER_SCHEMA, code: NON_EMPTY_STRING_SCHEMA, coordinates: { type: "array", minItems: 3, maxItems: 3, items: { type: "number" } } } } },
+        },
+      },
       networkOverlays: {
         type: "array",
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["status", "reason", "groupCanonical", "periodCanonical", "dimensions", "estimand", "sourceRows", "participantPeriods", "effectiveParticipantN", "nodes", "edges"],
+            required: ["status", "reason", "groupCanonical", "periodCanonical", "dimensions", "estimand", "sourceRows", "participantPeriods", "effectiveParticipantN", "edges"],
           properties: {
             status: { enum: ["available", "not-estimable"] },
             reason: { oneOf: [{ type: "null" }, NON_EMPTY_STRING_SCHEMA] },
@@ -1904,13 +2101,6 @@ export const CONTRACT_SCHEMAS_V1 = Object.freeze({
             sourceRows: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
             participantPeriods: SAFE_NON_NEGATIVE_INTEGER_SCHEMA,
             effectiveParticipantN: { oneOf: [{ type: "null" }, { type: "number", exclusiveMinimum: 0 }] },
-            nodes: {
-              type: "array",
-              items: {
-                type: "object", additionalProperties: false, required: ["code", "coordinates", "weight"],
-                properties: { code: NON_EMPTY_STRING_SCHEMA, coordinates: { type: "array", minItems: 3, maxItems: 3, items: { type: "number" } }, weight: { type: "number", minimum: 0 } },
-              },
-            },
             edges: {
               type: "array",
               items: {
@@ -1922,7 +2112,7 @@ export const CONTRACT_SCHEMAS_V1 = Object.freeze({
         },
       },
       diagnostics: { type: "array", items: { type: "object", additionalProperties: false, required: ["code", "severity", "message"], properties: { code: NON_EMPTY_STRING_SCHEMA, severity: { enum: ["error", "warning", "info"] }, message: NON_EMPTY_STRING_SCHEMA, path: NON_EMPTY_STRING_SCHEMA } } },
-      execution: { type: "object", additionalProperties: false, required: ["target", "jenaVersion", "jenaCommit", "jenaTarballIntegrity", "sdkVersion", "buildId", "seed", "permutationPlanHashes", "resamplingPlanHashes", "evidenceStatus"], properties: { target: { enum: ["browser-worker", "persistent-compute-service", "node-service"] }, jenaVersion: NON_EMPTY_STRING_SCHEMA, jenaCommit: NON_EMPTY_STRING_SCHEMA, jenaTarballIntegrity: NON_EMPTY_STRING_SCHEMA, sdkVersion: NON_EMPTY_STRING_SCHEMA, buildId: NON_EMPTY_STRING_SCHEMA, seed: { type: "integer", minimum: 0, maximum: 4_294_967_295 }, permutationPlanHashes: { type: "array", uniqueItems: true, items: HASH_SCHEMA }, resamplingPlanHashes: { type: "array", uniqueItems: true, items: HASH_SCHEMA }, evidenceStatus: { enum: ["IMPLEMENTED_UNVERIFIED", "PARITY_CANDIDATE", "PRODUCTION_CANDIDATE", "PRODUCTION_READY"] } } },
+      execution: { type: "object", additionalProperties: false, required: ["target", "jenaVersion", "jenaCommit", "jenaTarballIntegrity", "sdkVersion", "buildId", "seed", "permutationPlanHashes", "resamplingPlanHashes", "evidenceStatus"], properties: { target: { enum: ["browser-worker", "persistent-compute-service", "node-service"] }, jenaVersion: NON_EMPTY_STRING_SCHEMA, jenaCommit: NON_EMPTY_STRING_SCHEMA, jenaTarballIntegrity: NON_EMPTY_STRING_SCHEMA, sdkVersion: NON_EMPTY_STRING_SCHEMA, buildId: NON_EMPTY_STRING_SCHEMA, seed: { type: "integer", minimum: 0, maximum: 4_294_967_295 }, permutationPlanHashes: { type: "array", items: HASH_SCHEMA }, resamplingPlanHashes: { type: "array", items: HASH_SCHEMA }, evidenceStatus: { enum: ["IMPLEMENTED_UNVERIFIED", "PARITY_CANDIDATE", "PRODUCTION_CANDIDATE", "PRODUCTION_READY"] } } },
     },
   }),
   analysisSpec: Object.freeze({

@@ -87,8 +87,9 @@ async function scientificBundle(): Promise<LongitudinalAnalysisBundleV2> {
     datasetHash: HASH_B,
     specHash: HASH_C,
     sourceResultHash: HASH_A,
+    requestHash: "d".repeat(64),
     runId: "run-export-v2",
-    jenaBuildId: "jena-js@0.7.0-ona.0+90790856:fixture-build",
+    jenaBuildId: "jena-js@0.7.0-ona.0+90790856f00bdef63dbd27fc3a5b502e8cffe65f:fixture-build",
   };
   const core = {
     schemaVersion: "3dena.longitudinal-analysis-bundle.v2" as const,
@@ -108,6 +109,14 @@ async function scientificBundle(): Promise<LongitudinalAnalysisBundleV2> {
     inference: [],
     pathComparisons: [],
     bootstrap: [],
+    codeGeometry: {
+      schemaVersion: "3dena.longitudinal-code-geometry.v2" as const,
+      dimensions: ["SVD1", "SVD2", "SVD3"] as [string, string, string],
+      nodes: [
+        { index: 0, code: "RE", coordinates: [-0.5, 0.1, 0.2] as [number, number, number] },
+        { index: 1, code: "IN", coordinates: [0.4, -0.2, 0.3] as [number, number, number] },
+      ],
+    },
     networkOverlays: [],
     diagnostics: [],
     scientificExecution: {
@@ -132,6 +141,7 @@ async function scientificBundle(): Promise<LongitudinalAnalysisBundleV2> {
     inference: [],
     pathComparisons: [],
     bootstrap: [],
+    codeGeometry: core.codeGeometry,
     networkOverlays: [],
     diagnostics: [],
     execution: { target: "browser-worker", ...core.scientificExecution },
@@ -162,7 +172,6 @@ describe("longitudinal V2 export bundle", () => {
       "analysis.json",
       "plotly-spec.json",
       "provenance-manifest.json",
-      "trajectory-bootstrap.csv",
       "trajectory-inference.csv",
       "trajectory-metadata.csv",
       "trajectory-path.csv",

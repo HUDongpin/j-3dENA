@@ -3,29 +3,36 @@ import type { Serializable } from "node:child_process";
 
 import {
   executeAnalysisTask,
+  executeLongitudinalAnalysisV2,
   type AnalysisResultEnvelopeV1,
   type AnalysisTaskResultV1,
+  type LongitudinalAnalysisBundleV2,
 } from "@3dena/analysis";
 
 import { NODE_COMPUTE_IPC_PROTOCOL_VERSION } from "../contracts";
 import {
   HARD_MAX_SCIENTIFIC_ARTIFACT_BYTES,
   SCIENTIFIC_ARTIFACT_PUT_REQUEST_VERSION,
+  SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION,
+  SCIENTIFIC_LONGITUDINAL_RESULT_ARTIFACT_VERSION,
+  SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2,
   SCIENTIFIC_PUBLICATION_REQUEST_VERSION,
   SCIENTIFIC_RESULT_ARTIFACT_VERSION,
   SCIENTIFIC_WORKER_FAILURE_VERSION,
   SCIENTIFIC_WORKER_PROTOCOL_VERSION,
   type ScientificArtifactPutAckV1,
   type ScientificArtifactPutRequestV1,
+  type ScientificLongitudinalResultArtifactV2,
+  type ScientificLongitudinalExecutionInputV2,
   type ScientificPublicationAckV1,
   type ScientificPublicationRequestV1,
-  type ScientificResultArtifactV1,
   type ScientificWorkerFailureCodeV1,
   type ScientificWorkerLaunchPayloadV1,
 } from "./contracts";
 import {
   assertArtifactPutAck,
   assertBaseLaunchMessage,
+  bindAndHashPersistentLongitudinalRequestV2,
   assertPublicationAck,
   isRecord,
 } from "./validation";
@@ -91,11 +98,38 @@ function classifyExecutionFailure(
       error !== null &&
       "name" in error &&
       ((error as { name?: unknown }).name === "AnalysisValidationError" ||
-        (error as { name?: unknown }).name === "AnalysisTaskExecutionError"))
+        (error as { name?: unknown }).name === "AnalysisTaskExecutionError" ||
+        (error as { name?: unknown }).name === "LongitudinalExecutionErrorV2"))
   ) {
     return "INVALID_INPUT";
   }
   return "EXECUTION_FAILED";
+}
+
+/**
+ * Pure durable-V2 worker operation used by the child-process protocol and by
+ * the cross-package HTTP-bytes integration test. It deliberately repeats the
+ * server build/request binding immediately before scientific execution.
+ */
+export async function executeScientificLongitudinalInputV2(
+  input: ScientificLongitudinalExecutionInputV2,
+): Promise<ScientificLongitudinalResultArtifactV2> {
+  const bound = await bindAndHashPersistentLongitudinalRequestV2(input.request);
+  if (bound.requestHash !== input.requestHash) {
+    throw new TypeError("LONGITUDINAL_REQUEST_HASH_MISMATCH");
+  }
+  const bundle: LongitudinalAnalysisBundleV2 =
+    await executeLongitudinalAnalysisV2(bound.request);
+  if (bundle.identity.requestHash !== bound.requestHash) {
+    throw new TypeError("LONGITUDINAL_RESULT_REQUEST_BINDING_MISMATCH");
+  }
+  return {
+    version: SCIENTIFIC_LONGITUDINAL_RESULT_ARTIFACT_VERSION,
+    owner: { ...input.owner },
+    taskKind: SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2,
+    requestHash: bound.requestHash,
+    bundle,
+  };
 }
 
 export function startScientificWorkerProcess(): void {
@@ -236,27 +270,43 @@ export function startScientificWorkerProcess(): void {
   const execute = async (): Promise<void> => {
     if (launch === undefined) return;
     const { input, publication } = launch;
-    let envelope: AnalysisResultEnvelopeV1<AnalysisTaskResultV1>;
-    try {
-      envelope = await executeAnalysisTask(input.dataset, input.task);
-    } catch (error) {
-      await fail(
-        classifyExecutionFailure(error, input.task.deadlineEpochMilliseconds),
-      );
+    const deadlineAtMs = input.version === SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION
+      ? input.deadlineAtMs
+      : input.task.deadlineEpochMilliseconds;
+    if (Date.now() >= deadlineAtMs) {
+      await fail("DEADLINE_EXCEEDED");
       return;
     }
-    if (Date.now() >= input.task.deadlineEpochMilliseconds) {
+    let artifact:
+      | ScientificLongitudinalResultArtifactV2
+      | {
+          readonly version: typeof SCIENTIFIC_RESULT_ARTIFACT_VERSION;
+          readonly owner: AnalysisResultEnvelopeV1<AnalysisTaskResultV1>["owner"];
+          readonly taskKind: AnalysisResultEnvelopeV1<AnalysisTaskResultV1>["taskKind"];
+          readonly envelope: AnalysisResultEnvelopeV1<AnalysisTaskResultV1>;
+        };
+    try {
+      if (input.version === SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION) {
+        artifact = await executeScientificLongitudinalInputV2(input);
+      } else {
+        const envelope = await executeAnalysisTask(input.dataset, input.task);
+        artifact = {
+          version: SCIENTIFIC_RESULT_ARTIFACT_VERSION,
+          owner: { ...envelope.owner },
+          taskKind: envelope.taskKind,
+          envelope,
+        };
+      }
+    } catch (error) {
+      await fail(classifyExecutionFailure(error, deadlineAtMs));
+      return;
+    }
+    if (Date.now() >= deadlineAtMs) {
       await fail("DEADLINE_EXCEEDED");
       return;
     }
     let bytes: Uint8Array;
     try {
-      const artifact: ScientificResultArtifactV1 = {
-        version: SCIENTIFIC_RESULT_ARTIFACT_VERSION,
-        owner: { ...envelope.owner },
-        taskKind: envelope.taskKind,
-        envelope,
-      };
       bytes = new TextEncoder().encode(`${canonicalJson(artifact)}\n`);
     } catch {
       await fail("EXECUTION_FAILED");
@@ -284,11 +334,11 @@ export function startScientificWorkerProcess(): void {
     try {
       await awaitArtifactAck(
         artifactRequest,
-        input.task.deadlineEpochMilliseconds,
+        deadlineAtMs,
       );
     } catch {
       await fail(
-        Date.now() >= input.task.deadlineEpochMilliseconds
+        Date.now() >= deadlineAtMs
           ? "DEADLINE_EXCEEDED"
           : "ARTIFACT_STORE_FAILED",
       );
@@ -306,11 +356,11 @@ export function startScientificWorkerProcess(): void {
     try {
       await awaitPublicationAck(
         publicationRequest,
-        input.task.deadlineEpochMilliseconds,
+        deadlineAtMs,
       );
     } catch {
       await fail(
-        Date.now() >= input.task.deadlineEpochMilliseconds
+        Date.now() >= deadlineAtMs
           ? "DEADLINE_EXCEEDED"
           : "PUBLICATION_FAILED",
       );

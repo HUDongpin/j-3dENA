@@ -7,8 +7,12 @@ import { promisify } from "node:util";
 
 import { describe, expect, it } from "vitest";
 
-import { buildApprovalManifestSha256 } from "./build-approval";
+import {
+  assertBuildApprovalCandidate,
+  buildApprovalManifestSha256,
+} from "./build-approval";
 import type { BuildApprovalCandidateV1 } from "./contracts";
+import { migrationManifestSha256 } from "../deploy/migrate.mjs";
 
 const execute = promisify(execFile);
 
@@ -17,7 +21,7 @@ describe("build approval candidate CLI", () => {
     const directory = await mkdtemp(join(tmpdir(), "3dena-build-candidate-"));
     try {
       const artifactNames = [
-        "analysisTarball", "jenaTarball", "lockfile", "sbom", "schemaBundle", "migration",
+        "analysisTarball", "jenaTarball", "lockfile", "sbom", "schemaBundle",
       ] as const;
       const artifacts: Record<string, string> = {};
       for (const name of artifactNames) {
@@ -27,6 +31,14 @@ describe("build approval candidate CLI", () => {
       }
       const input = join(directory, "input.json");
       const output = join(directory, "output.json");
+      const migrationOne = join(directory, "0001.sql");
+      const migrationTwo = join(directory, "0002.sql");
+      await writeFile(migrationOne, "first migration");
+      await writeFile(migrationTwo, "second migration");
+      const migrations = [
+        { version: "0001-persistent-compute", path: migrationOne },
+        { version: "0002-persistent-control-plane", path: migrationTwo },
+      ];
       await writeFile(input, JSON.stringify({
         releaseId: "release-cli-test",
         environment: "production",
@@ -35,9 +47,11 @@ describe("build approval candidate CLI", () => {
         vercelBuildId: "vercel-cli-test",
         flyImageDigest: `sha256:${"b".repeat(64)}`,
         flyBuildId: "fly-cli-test",
-        jenaVersion: "0.6.3",
+        jenaVersion: "0.7.0-ona.0",
         jenaCommit: "c".repeat(40),
-        migrationVersion: "0001-persistent-compute",
+        sdkVersion: "0.2.0-implemented-unverified.1",
+        buildId: "approved-cli-scientific-build-1",
+        migrations,
         contractVersions: ["3dena.compute-http.v1", "3dena.contract.v1"],
         implementationActorIds: ["implementation-actor-1"],
         artifacts,
@@ -54,6 +68,7 @@ describe("build approval candidate CLI", () => {
         signatureBase64?: unknown;
       };
       expect(receipt.signatureBase64).toBeUndefined();
+      expect(() => assertBuildApprovalCandidate(receipt.candidate)).not.toThrow();
       expect(receipt.approvalManifestSha256).toBe(
         buildApprovalManifestSha256(receipt.candidate),
       );
@@ -63,13 +78,18 @@ describe("build approval candidate CLI", () => {
         ["lockfileSha256", "lockfile"],
         ["sbomSha256", "sbom"],
         ["schemaBundleSha256", "schemaBundle"],
-        ["migrationSha256", "migration"],
       ] as const) {
         const expected = createHash("sha256")
           .update(await readFile(artifacts[name]!))
           .digest("hex");
         expect(receipt.candidate[field]).toBe(expected);
       }
+      expect(receipt.candidate.migrationManifestSha256).toBe(
+        migrationManifestSha256(await Promise.all(migrations.map(async (entry) => ({
+          version: entry.version,
+          sha256: createHash("sha256").update(await readFile(entry.path)).digest("hex"),
+        })))),
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

@@ -84,9 +84,10 @@ const bundle = (): LongitudinalAnalysisBundleV2 => ({
     datasetHash: HASH_B,
     specHash: HASH_C,
     sourceResultHash: HASH_A,
+    requestHash: HASH_D,
     resultHash: HASH_D,
     runId: "run-trajectory-v2",
-    jenaBuildId: "jena-js@0.7.0-ona.0+94ea851",
+    jenaBuildId: "jena-js@0.7.0-ona.0+94ea8519b6b2742b791924bc449e1b795135c5a0:test-build",
   },
   runSpec: runSpec(),
   model: {
@@ -101,6 +102,14 @@ const bundle = (): LongitudinalAnalysisBundleV2 => ({
   inference: [],
   pathComparisons: [],
   bootstrap: [],
+  codeGeometry: {
+    schemaVersion: "3dena.longitudinal-code-geometry.v2",
+    dimensions: ["SVD1", "SVD2", "SVD3"],
+    nodes: [
+      { index: 0, code: "RE", coordinates: [-0.5, 0.1, 0.2] },
+      { index: 1, code: "IN", coordinates: [0.4, -0.2, 0.3] },
+    ],
+  },
   networkOverlays: [],
   diagnostics: [],
   execution: {
@@ -160,6 +169,91 @@ describe("trajectory V2 contract", () => {
 });
 
 describe("dedicated trajectory Plotly compiler", () => {
+  it("preserves an orthographic Plotly camera projection without changing the scientific result", () => {
+    const scientific = bundle();
+    const spec = displaySpec("3d");
+    spec.camera = {
+      eye: { x: 0, y: 0, z: 2.5 },
+      center: { x: 0, y: 0, z: 0 },
+      up: { x: 0, y: 1, z: 0 },
+      projection: { type: "orthographic" },
+    };
+
+    const plot = compileTrajectoryPlotlySpec(scientific, spec);
+    const scene = plot.layout.scene as { camera?: unknown };
+
+    expect(scene.camera).toEqual(spec.camera);
+    expect(plot.resultHash).toBe(scientific.identity.resultHash);
+  });
+
+  it("gives every distinct 3D camera a deterministic scene UI revision", () => {
+    const scientific = bundle();
+    const before = structuredClone(scientific);
+    const base = {
+      eye: { x: 1.35, y: 1.35, z: 1.2 },
+      center: { x: 0, y: 0, z: 0 },
+      up: { x: 0, y: 0, z: 1 },
+      projection: { type: "perspective" as const },
+    };
+    const cameras: NonNullable<TrajectoryDisplaySpecV2["camera"]>[] = [
+      base,
+      { ...base, eye: { ...base.eye, x: 0 } },
+      { ...base, center: { ...base.center, y: 0.25 } },
+      { ...base, up: { ...base.up, z: -1 } },
+      { ...base, projection: { type: "orthographic" } },
+    ];
+    const compiled = cameras.map((camera) => {
+      const spec = displaySpec("3d");
+      spec.camera = camera;
+      const plot = compileTrajectoryPlotlySpec(scientific, spec);
+      expect(plot.resultHash).toBe(scientific.identity.resultHash);
+      return plot;
+    });
+    const revisions = compiled.map((plot) => (plot.layout.scene as { uirevision?: unknown }).uirevision);
+    const repeated = displaySpec("3d");
+    repeated.camera = structuredClone(base);
+    const repeatedRevision = (compileTrajectoryPlotlySpec(scientific, repeated).layout.scene as { uirevision?: unknown }).uirevision;
+    const twoDimensional = displaySpec("xy");
+    twoDimensional.camera = base;
+    const twoDimensionalPlot = compileTrajectoryPlotlySpec(scientific, twoDimensional);
+
+    expect(revisions.every((revision) => typeof revision === "string")).toBe(true);
+    expect(new Set(revisions)).toHaveLength(cameras.length);
+    expect(repeatedRevision).toBe(revisions[0]);
+    expect(new Set(compiled.map((plot) => plot.layout.uirevision))).toHaveLength(1);
+    expect(twoDimensionalPlot.layout.scene).toBeUndefined();
+    expect(twoDimensionalPlot.layout.uirevision).toBe(`${scientific.identity.resultHash}:xy`);
+    expect(twoDimensionalPlot.resultHash).toBe(scientific.identity.resultHash);
+    expect(scientific).toEqual(before);
+  });
+
+  it("keeps existing V2 cameras without an explicit projection readable", () => {
+    const spec = displaySpec("3d");
+    spec.camera = {
+      eye: { x: 1.35, y: 1.35, z: 1.2 },
+      center: { x: 0, y: 0, z: 0 },
+      up: { x: 0, y: 0, z: 1 },
+    };
+
+    const plot = compileTrajectoryPlotlySpec(bundle(), spec);
+    const scene = plot.layout.scene as { camera?: unknown };
+    expect(scene.camera).toEqual(spec.camera);
+  });
+
+  it("rejects unsupported Plotly camera projection types", () => {
+    const invalid = {
+      ...displaySpec("3d"),
+      camera: {
+        eye: { x: 0, y: 0, z: 2.5 },
+        center: { x: 0, y: 0, z: 0 },
+        up: { x: 0, y: 1, z: 0 },
+        projection: { type: "fisheye" },
+      },
+    } as unknown as TrajectoryDisplaySpecV2;
+
+    expect(() => compileTrajectoryPlotlySpec(bundle(), invalid)).toThrow(/camera\.projection\.type/i);
+  });
+
   it("compiles 3D axes, points, centroids, paths, arrows and explicit gaps without changing the bundle", () => {
     const scientific = bundle();
     const before = structuredClone(scientific);
@@ -181,8 +275,9 @@ describe("dedicated trajectory Plotly compiler", () => {
     expect(trajectory.connectgaps).toBe(false);
     expect(trajectory).toMatchObject({ line: { color: "#000000" } });
     expect(individualPath).toMatchObject({ line: { color: "#000000" } });
-    expect(trajectory).toMatchObject({ marker: { symbol: "square" } });
-    expect(trajectory).not.toMatchObject({ marker: { color: "#000000" } });
+    expect(trajectory.mode).toBe("lines");
+    expect(trajectory).not.toHaveProperty("marker");
+    expect(centroid).toMatchObject({ marker: { symbol: "square" } });
     expect(individualPath).not.toMatchObject({ marker: { color: "#000000" } });
     expect(participant).not.toMatchObject({ marker: { color: "#000000" } });
     expect(centroid).not.toMatchObject({ marker: { color: "#000000" } });
@@ -212,16 +307,12 @@ describe("dedicated trajectory Plotly compiler", () => {
       status: "available",
       reason: null,
       groupCanonical: null,
-      periodCanonical: "T1",
+      periodCanonical: "time:T1",
       dimensions: ["SVD1", "SVD2", "SVD3"],
       estimand: "equal-participant",
       sourceRows: 2,
       participantPeriods: 2,
       effectiveParticipantN: 2,
-      nodes: [
-        { code: "RE", coordinates: [-0.5, 0.1, 0.2], weight: 0.5 },
-        { code: "IN", coordinates: [0.4, -0.2, 0.3], weight: 0.5 },
-      ],
       edges: [{ id: "RE-IN", sourceIndex: 0, targetIndex: 1, weight: 0.5 }],
     }];
     const codesOnly = displaySpec("3d");
@@ -232,6 +323,10 @@ describe("dedicated trajectory Plotly compiler", () => {
     const threeCodeNodes = three.data.filter((trace) => trace.meta.role === "network-node");
     expect(threeCodeNodes).toHaveLength(1);
     expect(threeCodeNodes[0]!.text).toEqual(["RE", "IN"]);
+    expect(threeCodeNodes[0]).toMatchObject({
+      textfont: { color: "#0f172a", size: 13 },
+      marker: { size: 7, symbol: "circle-open", color: "#ffffff" },
+    });
     expect(three.data.filter((trace) => trace.meta.role === "network-edge")).toHaveLength(0);
 
     const twoCodesOnly = structuredClone(codesOnly);
@@ -245,6 +340,50 @@ describe("dedicated trajectory Plotly compiler", () => {
     const edgePlot = compileTrajectoryPlotlySpec(scientific, withEdges);
     expect(edgePlot.data.filter((trace) => trace.meta.role === "network-node")).toHaveLength(1);
     expect(edgePlot.data.filter((trace) => trace.meta.role === "network-edge")).toHaveLength(1);
+  });
+
+  it("shows fitted ENA codes by default for legacy V2 display specs without codeNodes", () => {
+    const scientific = bundle();
+    const legacy = displaySpec("3d");
+    delete legacy.traces.codeNodes;
+    legacy.traces.networkOverlay = false;
+
+    const legacyPlot = compileTrajectoryPlotlySpec(scientific, legacy);
+    expect(legacyPlot.data.filter((trace) => trace.meta.role === "network-node")).toHaveLength(1);
+
+    const explicitlyHidden = structuredClone(legacy);
+    explicitlyHidden.traces.codeNodes = false;
+    const hiddenPlot = compileTrajectoryPlotlySpec(scientific, explicitlyHidden);
+    expect(hiddenPlot.data.filter((trace) => trace.meta.role === "network-node")).toHaveLength(0);
+  });
+
+  it("keeps fitted ENA codes when a mean network is not estimable or its group is hidden", () => {
+    const scientific = bundle();
+    scientific.networkOverlays = [{
+      status: "not-estimable",
+      reason: "no-observed-participant-period-network",
+      groupCanonical: "group:A",
+      periodCanonical: "time:T2",
+      dimensions: ["SVD1", "SVD2", "SVD3"],
+      estimand: "equal-participant",
+      sourceRows: 0,
+      participantPeriods: 0,
+      effectiveParticipantN: null,
+      edges: [],
+    }];
+    const hiddenGroup = displaySpec("3d");
+    hiddenGroup.displayedGroups = ["group:hidden"];
+    hiddenGroup.traces.codeNodes = true;
+    hiddenGroup.traces.networkOverlay = true;
+
+    for (const projection of ["3d", "xy"] as const) {
+      const current = structuredClone(hiddenGroup);
+      current.projection = projection;
+      const plot = compileTrajectoryPlotlySpec(scientific, current);
+      expect(plot.data.filter((trace) => trace.meta.role === "network-node")).toHaveLength(1);
+      expect(plot.data.find((trace) => trace.meta.role === "network-node")?.text).toEqual(["RE", "IN"]);
+      expect(plot.data.filter((trace) => trace.meta.role === "network-edge")).toHaveLength(0);
+    }
   });
 
   it("keeps bootstrap intervals numerical while trajectory plots render no CI in 3D or projected 2D", async () => {
@@ -285,7 +424,7 @@ describe("dedicated trajectory Plotly compiler", () => {
       seed: 2026,
       planHash: HASH_A,
       finiteReplicates: 20,
-      requiredFiniteReplicates: 16,
+      requiredFiniteReplicates: 20,
       totalReplicates: 20,
       confidenceLevel: 0.5,
       requestedResamplingDesign: "within-group",
@@ -296,6 +435,7 @@ describe("dedicated trajectory Plotly compiler", () => {
       speedIntervals: uncertainty.periods.map((period) => ({ periodCanonical: period.time.canonical, selected: period.selectedStepDistance, full: period.fullStepDistance })),
       result: uncertainty,
     }];
+    scientific.execution.resamplingPlanHashes = [HASH_A];
 
     const three = compileTrajectoryPlotlySpec(scientific, displaySpec("3d"));
     const threeUncertainty = three.data.find((trace) => trace.meta.role === "uncertainty");
