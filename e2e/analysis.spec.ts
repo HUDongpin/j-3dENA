@@ -57,20 +57,23 @@ test("small CSV runs in a Worker and renders an owned Plotly result", async ({
     "data-product-status",
     "IMPLEMENTED_UNVERIFIED",
   );
+  // This suite executes workspace source, not the reviewed packed facade.
+  // Its scientific build identity is deliberately unbound and must not be
+  // promoted to a scoped parity claim merely because the fixture hashes match.
   await expect(result).toHaveAttribute(
     "data-evidence-status",
-    "PARITY_CANDIDATE",
+    "IMPLEMENTED_UNVERIFIED",
   );
   await expect(result).toHaveAttribute(
     "data-evidence-scope",
-    "3dena.small-raw-evidence-scope.v2",
+    "unscoped-local-result",
   );
   await expect(result).toHaveAttribute(
     "data-evidence-build-id",
-    /^(?!local-development$).+/u,
+    "unbound-build",
   );
   await expect(page.getByTestId(testIds.rawEvidenceStatus)).toContainText(
-    "Only this exact fixture, specification, explicit build identity",
+    "It carries no parity-candidate claim",
   );
 
   expect(
@@ -205,7 +208,7 @@ test("changing analysis configuration invalidates and re-owns the result", async
   const first = await expectOwnedResult(page);
   await expect(page.getByTestId(testIds.result)).toHaveAttribute(
     "data-evidence-status",
-    "PARITY_CANDIDATE",
+    "IMPLEMENTED_UNVERIFIED",
   );
 
   const windowSize = page.getByTestId(testIds.windowSize);

@@ -93,6 +93,9 @@ jobs:
       - name: Test exact-image scan evidence contracts
         run: npm run test:container-scan-evidence:unit
 
+      - name: Test CodeQL scanning scope contract
+        run: npm run test:codeql-scope:unit
+
       - name: Generate complete deterministic production dependency SBOM
         run: |
           mkdir -p output

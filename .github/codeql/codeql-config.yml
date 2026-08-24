@@ -1,0 +1,6 @@
+# Generated distribution bundles are reproduced from the reviewed source tree
+# and third-party dependencies. Scan the source and build scripts instead of
+# reporting the same dependency code again from committed release evidence.
+paths-ignore:
+  - "packages/analysis/dist/**"
+  - "output/**"
