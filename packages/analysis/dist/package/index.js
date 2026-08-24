@@ -36753,7 +36753,7 @@ var init_build_identity = __esmMin((() => {
 		jenaCommit: injected("90790856f00bdef63dbd27fc3a5b502e8cffe65f", "development-unbound"),
 		jenaTarballIntegrity: injected("sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==", "development-unbound"),
 		sdkVersion: injected("0.2.0", "development-unbound"),
-		buildId: injected("c1af632ff84b71dc65791f3ff3a587fe74527db5", "development-unbound"),
+		buildId: injected("137496d7bc5a0a5041fc65b2d78584b43de82afe", "development-unbound"),
 		bound: true
 	});
 }));
@@ -40541,6 +40541,8 @@ var AXIS_COLORS$1 = [
 	"#16a34a"
 ];
 var TRAJECTORY_LINE_COLOR$1 = "#000000";
+var DIRECTION_ARROW_TIP_PROGRESS = .5;
+var DIRECTION_ARROW_TAIL_PROGRESS = .35;
 function hashString$1(value) {
 	let hash = 0;
 	for (let index = 0; index < value.length; index += 1) hash = Math.imul(hash, 31) + value.charCodeAt(index) >>> 0;
@@ -40806,16 +40808,16 @@ function compileTrajectoryPlotlySpec(bundle, displaySpec) {
 			const current = dynamics.periods[index].selectedCentroid;
 			if (previous === null || current === null || dynamics.periods[index].selected3d.stepDistance === null) continue;
 			if (dimension === 3) {
-				const currentProjected = projectedFields([current], "3d", displaySpec.axisFlips);
+				const midpointProjected = projectedFields([current.map((value, axisIndex) => previous[axisIndex] + (value - previous[axisIndex]) * DIRECTION_ARROW_TIP_PROGRESS)], "3d", displaySpec.axisFlips);
 				const delta = current.map((value, axisIndex) => {
 					const raw = value - previous[axisIndex];
 					return displaySpec.axisFlips[axisIndex] ? -raw : raw;
 				});
 				data.push({
 					type: "cone",
-					x: currentProjected.x,
-					y: currentProjected.y,
-					z: currentProjected.z,
+					x: midpointProjected.x,
+					y: midpointProjected.y,
+					z: midpointProjected.z,
 					u: [delta[0]],
 					v: [delta[1]],
 					w: [delta[2]],
@@ -40834,7 +40836,8 @@ function compileTrajectoryPlotlySpec(bundle, displaySpec) {
 				});
 			} else {
 				const indexes = projectionIndexes(displaySpec.projection);
-				const projected = projectedFields([previous, current], displaySpec.projection, displaySpec.axisFlips);
+				const arrowPoint = (progress) => current.map((value, axisIndex) => previous[axisIndex] + (value - previous[axisIndex]) * progress);
+				const projected = projectedFields([arrowPoint(DIRECTION_ARROW_TAIL_PROGRESS), arrowPoint(DIRECTION_ARROW_TIP_PROGRESS)], displaySpec.projection, displaySpec.axisFlips);
 				const dx = (current[indexes[0]] - previous[indexes[0]]) * (displaySpec.axisFlips[indexes[0]] ? -1 : 1);
 				const dy = (current[indexes[1]] - previous[indexes[1]]) * (displaySpec.axisFlips[indexes[1]] ? -1 : 1);
 				const angle = 90 - Math.atan2(dy, dx) * 180 / Math.PI;
