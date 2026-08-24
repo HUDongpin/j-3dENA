@@ -164,7 +164,10 @@ describe("longitudinal analysis V2 executor", () => {
     const browser = await execution("browser-worker");
     const node = await execution("node-service");
     const browserBundle = await executeLongitudinalAnalysisV2(browser.input);
-    const nodeBundle = await executeLongitudinalAnalysisV2(node.input);
+    const nodeBundle = await executeLongitudinalAnalysisV2({
+      ...node.input,
+      pathTask: { ...node.input.pathTask, runId: "operational-run-created-later" },
+    });
 
     expect(browserBundle.schemaVersion).toBe("3dena.longitudinal-analysis-bundle.v2");
     expect(browserBundle.paths).toHaveLength(2);
@@ -173,6 +176,7 @@ describe("longitudinal analysis V2 executor", () => {
     expect(browserBundle.paths.every(({ dynamics }) => dynamics.periods[2]!.selected3d.stepDistance === null)).toBe(true);
     expect(browserBundle.identity.resultHash).toMatch(/^[a-f0-9]{64}$/);
     expect(browserBundle.identity.resultHash).toBe(nodeBundle.identity.resultHash);
+    expect(browserBundle.identity.runId).not.toBe(nodeBundle.identity.runId);
     expect(browserBundle.paths).toEqual(nodeBundle.paths);
     expect(browserBundle.execution.target).toBe("browser-worker");
     expect(nodeBundle.execution.target).toBe("node-service");

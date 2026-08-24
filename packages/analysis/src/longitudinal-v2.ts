@@ -610,11 +610,15 @@ export function assertLongitudinalAnalysisBundleV2(
 }
 
 function scientificCoreFromBundleV2(bundle: LongitudinalAnalysisBundleV2) {
-  const { resultHash: _resultHash, ...identity } = bundle.identity;
+  const {
+    resultHash: _resultHash,
+    runId: _runId,
+    ...scientificIdentity
+  } = bundle.identity;
   const { target: _target, ...scientificExecution } = bundle.execution;
   return {
     schemaVersion: bundle.schemaVersion,
-    identity,
+    identity: scientificIdentity,
     runSpec: bundle.runSpec,
     model: bundle.model,
     paths: bundle.paths,
@@ -627,7 +631,11 @@ function scientificCoreFromBundleV2(bundle: LongitudinalAnalysisBundleV2) {
   };
 }
 
-/** Recomputes the canonical scientific hash; execution target is intentionally display/transport provenance only. */
+/**
+ * Recomputes the canonical scientific hash. Execution target and the
+ * operational run ID remain transport/audit provenance and are intentionally
+ * excluded, so identical science is stable across retries and execution paths.
+ */
 export async function verifyLongitudinalAnalysisBundleV2(bundle: unknown): Promise<void> {
   assertLongitudinalAnalysisBundleV2(bundle);
   const actual = await hashAnalysisValueV1(scientificCoreFromBundleV2(bundle));
@@ -2313,14 +2321,20 @@ export async function executeLongitudinalAnalysisV2(
   const derivedBootstrap = await runBootstrapV2(input.bootstrapTask, pathTask, contexts);
   const derivedNetworks = runNetworkOverlaysV2(input.networkOverlayTask, pathTask, source);
   const jenaBuildId = `jena-js@${input.execution.jenaVersion}+${input.execution.jenaCommit}:${input.execution.buildId}`;
+  const bundleIdentity = {
+    datasetHash: pathTask.datasetHash,
+    specHash: pathTask.specHash,
+    sourceResultHash: source.hash,
+    runId: pathTask.runId,
+    jenaBuildId,
+  };
   const scientificCore = {
     schemaVersion: LONGITUDINAL_BUNDLE_VERSION_V2,
     identity: {
-      datasetHash: pathTask.datasetHash,
-      specHash: pathTask.specHash,
-      sourceResultHash: source.hash,
-      runId: pathTask.runId,
-      jenaBuildId,
+      datasetHash: bundleIdentity.datasetHash,
+      specHash: bundleIdentity.specHash,
+      sourceResultHash: bundleIdentity.sourceResultHash,
+      jenaBuildId: bundleIdentity.jenaBuildId,
     },
     runSpec: structuredClone(pathTask.runSpec),
     model: {
@@ -2355,7 +2369,7 @@ export async function executeLongitudinalAnalysisV2(
   const resultHash = await hashAnalysisValueV1(scientificCore);
   return deepFreeze({
     schemaVersion: LONGITUDINAL_BUNDLE_VERSION_V2,
-    identity: { ...scientificCore.identity, resultHash },
+    identity: { ...bundleIdentity, resultHash },
     runSpec: scientificCore.runSpec,
     model: scientificCore.model,
     paths: scientificCore.paths,
