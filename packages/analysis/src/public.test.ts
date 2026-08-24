@@ -1,6 +1,124 @@
 import { describe, expect, it } from "vitest";
+import { analyzeTrajectoryDynamicsV1, type TrajectoryIdentityV1 } from "@3dena/trajectory";
 
 import * as publicFacade from "./public";
+import type { LongitudinalAnalysisBundleV2, TrajectoryDisplaySpecV2 } from "./public";
+
+const identity = (name: string, value: string): TrajectoryIdentityV1 => ({
+  components: [{ name, type: "string", value }],
+});
+
+function legacyOverlayBundle(): LongitudinalAnalysisBundleV2 {
+  const periods = ["T1", "T2"];
+  const dynamics = analyzeTrajectoryDynamicsV1({
+    schemaVersion: "3dena.trajectory-dynamics-input.v1",
+    namespace: "group-a",
+    dimensions: ["SVD1", "SVD2", "SVD3"],
+    selectedDimensions: ["SVD1", "SVD2", "SVD3"],
+    periods: periods.map((value, index) => ({
+      time: identity("Time", value),
+      value: { type: "numeric-v1" as const, value: index, unit: "ordered-period" },
+    })),
+    cohortPolicy: "available",
+    estimand: { kind: "equal-participant-v1" },
+    points: periods.map((value, index) => ({
+      participant: identity("Student", "P1"),
+      time: identity("Time", value),
+      coordinates: [index, index + 1, index + 2],
+    })),
+  });
+  return {
+    schemaVersion: "3dena.longitudinal-analysis-bundle.v2",
+    identity: {
+      datasetHash: "a".repeat(64),
+      specHash: "b".repeat(64),
+      sourceResultHash: "c".repeat(64),
+      requestHash: "d".repeat(64),
+      resultHash: "e".repeat(64),
+      runId: "public-boundary-test",
+      jenaBuildId: "jena-js@0.7.0-ona.0+94ea8519b6b2742b791924bc449e1b795135c5a0:test-build",
+    },
+    runSpec: {
+      schemaVersion: "3dena.trajectory-run-spec.v2",
+      sourceResultHash: "c".repeat(64),
+      participantColumns: ["Student"],
+      timeColumn: "Time",
+      groupColumn: "Condition",
+      orderedPeriods: periods.map((value, index) => ({
+        identity: identity("Time", value),
+        sourceTimeCanonical: `time:${value}`,
+        displayLabel: value,
+        expected: true,
+        value: { type: "ordered-index-v2" as const, index },
+      })),
+      selectedDimensions: ["SVD1", "SVD2", "SVD3"],
+      cohortPolicy: "available",
+      missingValuePolicy: "complete-analytical-rows",
+      estimand: { kind: "equal-participant" },
+    },
+    model: {
+      type: "SeparateTrajectory",
+      fullRotationDimensions: ["SVD1", "SVD2", "SVD3"],
+      selectedDimensions: ["SVD1", "SVD2", "SVD3"],
+    },
+    paths: [{ group: { canonical: "group:A", display: "Group A" }, dynamics }],
+    inference: [],
+    pathComparisons: [],
+    bootstrap: [],
+    codeGeometry: {
+      schemaVersion: "3dena.longitudinal-code-geometry.v2",
+      dimensions: ["SVD1", "SVD2", "SVD3"],
+      nodes: [
+        { index: 0, code: "RE", coordinates: [-0.5, 0.1, 0.2] },
+        { index: 1, code: "IN", coordinates: [0.4, -0.2, 0.3] },
+      ],
+    },
+    networkOverlays: [{
+      status: "available",
+      reason: null,
+      groupCanonical: null,
+      periodCanonical: "time:T1",
+      dimensions: ["SVD1", "SVD2", "SVD3"],
+      estimand: "equal-participant",
+      sourceRows: 1,
+      participantPeriods: 1,
+      effectiveParticipantN: 1,
+      edges: [{ id: "RE-IN", sourceIndex: 0, targetIndex: 1, weight: 0.5 }],
+    }],
+    diagnostics: [],
+    execution: {
+      target: "browser-worker",
+      jenaVersion: "0.7.0-ona.0",
+      jenaCommit: "94ea8519b6b2742b791924bc449e1b795135c5a0",
+      jenaTarballIntegrity: "sha512-fixture",
+      sdkVersion: "0.2.0",
+      buildId: "test-build",
+      seed: 2026,
+      permutationPlanHashes: [],
+      resamplingPlanHashes: [],
+      evidenceStatus: "IMPLEMENTED_UNVERIFIED",
+    },
+  };
+}
+
+const legacyOverlayDisplay: TrajectoryDisplaySpecV2 = {
+  schemaVersion: "3dena.trajectory-display-spec.v2",
+  projection: "3d",
+  displayedGroups: [],
+  traces: {
+    participants: false,
+    individualPaths: false,
+    centroids: true,
+    paths: true,
+    directionArrows: true,
+    uncertainty: false,
+    networkOverlay: true,
+    labels: true,
+  },
+  axisFlips: [false, false, false],
+  camera: null,
+  style: { participantSize: 5, participantOpacity: 0.5, centroidSize: 10, pathWidth: 4 },
+};
 
 describe("public npm facade", () => {
   it("exposes the reviewed runtime functions plus strict dataset and result validators", () => {
@@ -24,5 +142,23 @@ describe("public npm facade", () => {
       "verifyLongitudinalAnalysisBundleV2",
     ]);
     for (const value of Object.values(publicFacade)) expect(typeof value).toBe("function");
+  });
+
+  it("fails closed on legacy trajectory network overlays while preserving fitted code references", () => {
+    const bundle = legacyOverlayBundle();
+    const before = structuredClone(bundle);
+    const spec = publicFacade.compileTrajectoryPlotlySpec(bundle, legacyOverlayDisplay);
+    const overlayDisabled = structuredClone(legacyOverlayDisplay);
+    overlayDisabled.traces.networkOverlay = false;
+    const withoutLegacyOverlay = publicFacade.compileTrajectoryPlotlySpec(bundle, overlayDisabled);
+
+    expect(spec.data.filter((trace) => trace.meta.role === "network-node")).toHaveLength(1);
+    expect(spec.data.find((trace) => trace.meta.role === "network-node")?.text).toEqual(["RE", "IN"]);
+    expect(spec.data.map((trace) => trace.meta.role)).not.toContain("network-edge");
+    expect(spec).toEqual(withoutLegacyOverlay);
+    expect(spec.resultHash).toBe(before.identity.resultHash);
+    expect(bundle.networkOverlays).toEqual(before.networkOverlays);
+    expect(bundle.identity.resultHash).toBe(before.identity.resultHash);
+    expect(bundle).toEqual(before);
   });
 });

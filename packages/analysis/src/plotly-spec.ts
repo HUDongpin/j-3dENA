@@ -9,6 +9,7 @@ export type PlotlyTraceRoleV1 =
   | "node"
   | "network-edge"
   | "centroid"
+  /** @deprecated Historical V1 readback only; compilePlotlySpec no longer emits this role. */
   | "trajectory"
   | "axis-shaft"
   | "axis-arrowhead";
@@ -96,7 +97,6 @@ interface NormalizedDisplay {
 
 const COLORS = ["#2563eb", "#a16207", "#7c3aed", "#0f766e", "#be123c", "#475569"] as const;
 const AXIS_COLORS = ["#b91c1c", "#1d4ed8", "#15803d"] as const;
-const TRAJECTORY_LINE_COLOR = "#000000";
 
 function reject(code: string, path: string, message: string): never {
   throw new PlotlySpecCompilationError(code, path, message);
@@ -284,27 +284,6 @@ function centroidTraces(display: NormalizedDisplay, spec: DisplaySpecV1): Plotly
   }, { role: "centroid", groupCanonical: canonical }));
 }
 
-function trajectoryTraces(display: NormalizedDisplay, spec: DisplaySpecV1): PlotlyTraceV1[] {
-  const centroids = new Map(display.centroids.map((centroid) => [centroid.index, centroid]));
-  return display.paths.map((path) => {
-    const coordinates = path.centroidIndexes.map((index) => index === null ? null : centroids.get(index)?.coordinates ?? null);
-    const fields: Record<string, unknown> = {
-      x: coordinates.map((point) => point?.[0] ?? null),
-      y: coordinates.map((point) => point?.[1] ?? null),
-      ...(spec.plotDimension === 3 ? { z: coordinates.map((point) => point?.[2] ?? null) } : {}),
-    };
-    return trace(spec.plotDimension, {
-      mode: "lines+markers",
-      name: `${path.groupDisplay} trajectory`,
-      ...fields,
-      connectgaps: false,
-      line: { color: TRAJECTORY_LINE_COLOR, width: spec.style.trajectoryWidth },
-      marker: { color: groupColor(path.groupCanonical), size: Math.max(4, spec.style.pointSize - 1), symbol: "square" },
-      hovertemplate: `${path.groupDisplay}<extra></extra>`,
-    }, { role: "trajectory", groupCanonical: path.groupCanonical });
-  });
-}
-
 function axisTraces(display: NormalizedDisplay, spec: DisplaySpecV1): PlotlyTraceV1[] {
   const coordinates = [
     ...display.points.map((point) => point.coordinates),
@@ -369,7 +348,10 @@ export function compilePlotlySpec(
   if (displaySpec.traces.network) data.push(...edgeTraces(display, displaySpec));
   if (displaySpec.traces.points) data.push(...pointTraces(display, displaySpec));
   if (displaySpec.traces.nodes) data.push(nodeTrace(display, displaySpec));
-  if (displaySpec.traces.trajectory) data.push(...trajectoryTraces(display, displaySpec));
+  // `traces.trajectory` remains accepted so saved V1 DisplaySpecs stay
+  // readable, but the generic ENA presenter deliberately ignores it. A
+  // trajectory must be compiled through `compileTrajectoryPlotlySpec`, which
+  // enforces the mutually exclusive trajectory visual grammar.
   if (displaySpec.traces.centroids) data.push(...centroidTraces(display, displaySpec));
   const axis = (title: string) => ({ title, showgrid: displaySpec.showGrid, zeroline: displaySpec.showZeroLines });
   const layout: Record<string, unknown> = {

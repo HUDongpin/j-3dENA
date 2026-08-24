@@ -276,6 +276,16 @@ sets `traces.uncertainty` to `true`. Visual confidence intervals remain part of
 the separate static 3D ENA group-comparison grammar; they are not trajectory
 marks.
 
+The two public Plotly compilers also enforce a strict presenter boundary.
+`compilePlotlySpec()` renders ordinary ENA points, code nodes, centroids, and
+network edges, but never trajectory paths or direction marks; the legacy V1
+`traces.trajectory` field remains readable and is ignored. Conversely,
+`compileTrajectoryPlotlySpec()` renders fitted code reference nodes,
+participant-period points, centroid squares, paths, and direction arrows, but
+never ENA mean-network edges; the legacy V2 `traces.networkOverlay` field
+remains readable and is ignored. Immutable `networkOverlays` scientific data
+is preserved in the longitudinal bundle and formal exports.
+
 ### Result adapters
 
 `adaptAnalysisResultTrajectorySeries()` and

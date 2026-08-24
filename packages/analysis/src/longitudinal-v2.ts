@@ -332,6 +332,7 @@ export interface TrajectoryDisplaySpecV2 {
     paths: boolean;
     directionArrows: boolean;
     uncertainty: boolean;
+    /** Legacy saved-display field; accepted on read but ignored by the trajectory presenter. */
     networkOverlay: boolean;
     /** Show fitted ENA code reference nodes without requiring mean-network edges. */
     codeNodes?: boolean;
@@ -360,6 +361,7 @@ export type TrajectoryPlotlyTraceRoleV2 =
   | "direction-arrow"
   | "uncertainty"
   | "network-node"
+  /** @deprecated Historical V2 readback only; compileTrajectoryPlotlySpec no longer emits this role. */
   | "network-edge"
   | "axis-shaft"
   | "axis-arrowhead";
@@ -1387,8 +1389,8 @@ export function compileTrajectoryPlotlySpec(
   // `codeNodes` was added after the original V2 display contract. An omitted
   // field therefore means "show fitted ENA codes" so legacy saved display
   // specs keep the scientific reference geometry visible. Only an explicit
-  // `false` hides the nodes (unless mean-network edges require their anchors).
-  if (displaySpec.traces.codeNodes !== false || displaySpec.traces.networkOverlay) {
+  // `false` hides the nodes.
+  if (displaySpec.traces.codeNodes !== false) {
     // Fitted code geometry is a global reference frame. It does not become
     // unavailable merely because one period/group has no estimable mean
     // network, and display-level group filtering must not hide the axes'
@@ -1405,27 +1407,12 @@ export function compileTrajectoryPlotlySpec(
         marker: { size: 7, symbol: "circle-open", color: "#ffffff", line: { color: "#0f172a", width: 2 } },
       }));
     }
-    if (displaySpec.traces.networkOverlay) {
-      const overlays = bundle.networkOverlays.filter((overlay) => (
-        overlay.status === "available"
-        && (overlay.groupCanonical === null || selectedGroups.size === 0 || selectedGroups.has(overlay.groupCanonical))
-      ));
-      for (const overlay of overlays) {
-      for (const edge of overlay.edges) {
-        const source = bundle.codeGeometry.nodes[edge.sourceIndex];
-        const target = bundle.codeGeometry.nodes[edge.targetIndex];
-        if (!source || !target) continue;
-        data.push(trace(dimension, resultHash, "network-edge", {
-          mode: "lines",
-          name: edge.id,
-          ...projectedFields([source.coordinates, target.coordinates], displaySpec.projection, displaySpec.axisFlips),
-          line: { width: Math.max(0.75, Math.abs(edge.weight) * 5), color: edge.weight < 0 ? "#be123c" : "#64748b" },
-          showlegend: false,
-        }, { ...(overlay.groupCanonical ? { groupCanonical: overlay.groupCanonical } : {}) }));
-      }
-      }
-    }
   }
+
+  // `traces.networkOverlay` remains accepted solely for V2 saved-display read
+  // compatibility. Dedicated trajectory presentation is fail-closed: even a
+  // legacy `true` value never renders ENA mean-network edges. The immutable
+  // `bundle.networkOverlays` evidence remains available to read back/export.
 
   const axisTitle = (index: number) => `${displaySpec.axisFlips[index] ? "−" : ""}${bundle.model.selectedDimensions[index]}`;
   const layout: Record<string, unknown> = {

@@ -143,6 +143,7 @@ export interface DisplaySpecV1 {
     nodes: boolean;
     network: boolean;
     centroids: boolean;
+    /** Legacy saved-display field; accepted on read but ignored by the generic ENA presenter. */
     trajectory: boolean;
     uncertainty: boolean;
   };

@@ -57,6 +57,19 @@ function display(overrides: Partial<DisplaySpecV1> = {}): DisplaySpecV1 {
 }
 
 describe("compilePlotlySpec", () => {
+  it("ignores legacy trajectory display flags while preserving the ordinary ENA plot", () => {
+    const result = analyzeRows(rawInput());
+    const spec = compilePlotlySpec(result, display({
+      traces: { ...display().traces, network: true, trajectory: true },
+    }));
+
+    expect(spec.data.some((trace) => trace.meta.role === "network-edge")).toBe(true);
+    expect(spec.data.some((trace) => trace.meta.role === "participant")).toBe(true);
+    expect(spec.data.some((trace) => trace.meta.role === "node")).toBe(true);
+    expect(spec.data.some((trace) => trace.meta.role === "centroid")).toBe(true);
+    expect(spec.data.filter((trace) => trace.meta.role.startsWith("trajectory"))).toHaveLength(0);
+  });
+
   it("compiles structural 3D roles and arbitrary retained axes without mutating the result", () => {
     const result = analyzeRows(rawInput());
     const before = structuredClone(result);
@@ -65,18 +78,11 @@ describe("compilePlotlySpec", () => {
 
     expect(spec.schemaVersion).toBe("3dena.plotly-spec.v1");
     expect(roles).toEqual(expect.arrayContaining([
-      "axis-shaft", "axis-arrowhead", "network-edge", "participant", "node", "trajectory", "centroid",
+      "axis-shaft", "axis-arrowhead", "network-edge", "participant", "node", "centroid",
     ]));
+    expect(roles).not.toContain("trajectory");
     expect(spec.data.filter((trace) => trace.meta.role === "axis-shaft").map((trace) => trace.meta.axis)).toEqual(["SVD4", "SVD5", "SVD6"]);
     expect(spec.data.filter((trace) => trace.meta.role === "axis-arrowhead")).toHaveLength(3);
-    expect(spec.data.filter((trace) => trace.meta.role === "trajectory")).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          line: { color: "#000000", width: 4 },
-          marker: expect.not.objectContaining({ color: "#000000" }),
-        }),
-      ]),
-    );
     expect(spec.layout).toMatchObject({
       uirevision: "3dena-camera-v1",
       scene: {
@@ -102,7 +108,7 @@ describe("compilePlotlySpec", () => {
     }));
 
     expect(spec.data.filter((trace) => trace.meta.role === "participant").map((trace) => trace.meta.groupCanonical)).toEqual([group.canonical]);
-    expect(spec.data.filter((trace) => trace.meta.role === "trajectory").map((trace) => trace.meta.groupCanonical)).toEqual([group.canonical]);
+    expect(spec.data.map((trace) => trace.meta.role)).not.toContain("trajectory");
     expect(spec.data.filter((trace) => trace.meta.role === "network-edge")).toHaveLength(0);
     expect(result.points).toHaveLength(formalPointCount);
   });
