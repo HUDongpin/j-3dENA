@@ -29,7 +29,7 @@ function inspect(root) {
   return inspectProductionBoundary({ root, requireInstalledTree: false });
 }
 
-test("passes a browser-only production tree", () => {
+test("passes a TypeScript-only production source tree", () => {
   const result = inspect(fixture());
   assert.equal(result.ok, true, JSON.stringify(result.findings, null, 2));
 });
@@ -98,6 +98,79 @@ test("rejects direct R executable invocation in a production package script", ()
   );
 });
 
+test("rejects quoted assignments and nested shell R commands without backtracking", () => {
+  const root = fixture();
+  writeFileSync(
+    join(root, "apps", "web", "package.json"),
+    JSON.stringify({
+      private: true,
+      dependencies: { react: "19.2.4" },
+      scripts: {
+        direct: 'env R_LIBS_USER="/opt/legacy libraries" R --vanilla service.R',
+        nested: "bash -c 'env R_PROFILE=legacy R --quiet service.R'",
+      },
+    }),
+  );
+  const result = inspect(root);
+  assert.equal(result.ok, false);
+  assert.deepEqual(
+    result.findings
+      .filter(({ rule }) => rule === "direct-r-executable")
+      .map(({ path }) => path)
+      .sort(),
+    [
+      "apps/web/package.json#scripts.direct",
+      "apps/web/package.json#scripts.nested",
+    ],
+  );
+});
+
+test("rejects direct and nested R commands in production shell files", () => {
+  const root = fixture();
+  writeFileSync(
+    join(root, "apps", "web", "src", "start.sh"),
+    [
+      "#!/bin/sh",
+      'env R_PROFILE="legacy profile" R --vanilla service.R',
+      "bash -c 'R --quiet service.R'",
+      "",
+    ].join("\n"),
+  );
+  const result = inspect(root);
+  assert.equal(result.ok, false);
+  assert.deepEqual(
+    result.findings
+      .filter(
+        ({ path, rule }) =>
+          path === "apps/web/src/start.sh" && rule === "direct-r-executable",
+      )
+      .map(({ line }) => line),
+    [2, 3],
+  );
+});
+
+test(
+  "scans adversarial quoted shell assignments in linear time",
+  { timeout: 2_000 },
+  () => {
+    const root = fixture();
+    const assignments = Array.from(
+      { length: 2_000 },
+      (_, index) => `VALUE_${index}="quoted-${index}"`,
+    ).join(" ");
+    writeFileSync(
+      join(root, "apps", "web", "package.json"),
+      JSON.stringify({
+        private: true,
+        dependencies: { react: "19.2.4" },
+        scripts: { inspect: `env ${assignments} Report --version` },
+      }),
+    );
+    const result = inspect(root);
+    assert.equal(result.ok, true, JSON.stringify(result.findings, null, 2));
+  },
+);
+
 test("allows historical prose in docs, oracle-r, and parity text", () => {
   const root = fixture();
   mkdirSync(join(root, "docs"), { recursive: true });
@@ -127,6 +200,28 @@ test("rejects native R fixtures even inside parity contracts", () => {
   const result = inspect(root);
   assert.equal(result.ok, false);
   assert.ok(result.findings.some(({ rule }) => rule === "native-r-file"));
+});
+
+test("rejects custody-excluded Class 1 prepared artifacts in public and parity trees", () => {
+  const root = fixture();
+  mkdirSync(join(root, "apps", "web", "public", "data"), { recursive: true });
+  mkdirSync(join(root, "packages", "parity-contracts", "fixtures"), {
+    recursive: true,
+  });
+  writeFileSync(
+    join(root, "apps", "web", "public", "data", "class1-timepoints.ena3d.json"),
+    "{}",
+  );
+  writeFileSync(
+    join(root, "packages", "parity-contracts", "fixtures", "class1-timepoints.ena3d.json"),
+    "{}",
+  );
+  const result = inspect(root);
+  assert.equal(result.ok, false);
+  assert.equal(
+    result.findings.filter(({ rule }) => rule === "class1-participant-artifact").length,
+    2,
+  );
 });
 
 test("rejects forbidden references emitted into .next", () => {
@@ -162,6 +257,25 @@ test("rejects direct R executable invocation emitted into .next", () => {
     result.findings.some(
       ({ scope, rule }) =>
         scope === "next-output" && rule === "direct-r-executable",
+    ),
+  );
+});
+
+test("rejects a custody-excluded prepared artifact emitted into .next", () => {
+  const root = fixture();
+  mkdirSync(join(root, "apps", "web", ".next", "static", "data"), {
+    recursive: true,
+  });
+  writeFileSync(
+    join(root, "apps", "web", ".next", "static", "data", "class1-timepoints.ena3d.json"),
+    "{}",
+  );
+  const result = inspect(root);
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.findings.some(
+      ({ scope, rule }) =>
+        scope === "next-output" && rule === "class1-participant-artifact",
     ),
   );
 });

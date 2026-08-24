@@ -1,0 +1,215 @@
+{
+  "$id": "https://3dena.com/schemas/display-spec.v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "dimensions",
+    "plotDimension",
+    "showGrid",
+    "showZeroLines",
+    "showAxes",
+    "traces",
+    "style",
+    "camera"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "3dena.display-spec.v1"
+    },
+    "dimensions": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "plotDimension": {
+      "enum": [
+        2,
+        3
+      ]
+    },
+    "groups": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "showGrid": {
+      "type": "boolean"
+    },
+    "showZeroLines": {
+      "type": "boolean"
+    },
+    "showAxes": {
+      "type": "boolean"
+    },
+    "traces": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "points",
+        "nodes",
+        "network",
+        "centroids",
+        "trajectory",
+        "uncertainty"
+      ],
+      "properties": {
+        "points": {
+          "type": "boolean"
+        },
+        "nodes": {
+          "type": "boolean"
+        },
+        "network": {
+          "type": "boolean"
+        },
+        "centroids": {
+          "type": "boolean"
+        },
+        "trajectory": {
+          "type": "boolean"
+        },
+        "uncertainty": {
+          "type": "boolean"
+        }
+      }
+    },
+    "style": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pointSize",
+        "pointOpacity",
+        "nodeSize",
+        "nodeOpacity",
+        "edgeThreshold",
+        "edgeWidthScale",
+        "trajectoryWidth"
+      ],
+      "properties": {
+        "pointSize": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "pointOpacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "nodeSize": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "nodeOpacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "edgeThreshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000000
+        },
+        "edgeWidthScale": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 1000
+        },
+        "trajectoryWidth": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 100
+        }
+      }
+    },
+    "camera": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "eye",
+            "center",
+            "up"
+          ],
+          "properties": {
+            "eye": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "z": {
+                  "type": "number"
+                }
+              }
+            },
+            "center": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "z": {
+                  "type": "number"
+                }
+              }
+            },
+            "up": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "z": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

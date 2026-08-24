@@ -1,0 +1,679 @@
+{
+  "$id": "https://3dena.com/schemas/analysis-task.v1.json",
+  "discriminator": {
+    "propertyName": "kind"
+  },
+  "$defs": {
+    "stringPair": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "timeValue": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "value",
+            "unit"
+          ],
+          "properties": {
+            "type": {
+              "const": "numeric-v1"
+            },
+            "value": {
+              "type": "number"
+            },
+            "unit": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "value"
+          ],
+          "properties": {
+            "type": {
+              "const": "date-v1"
+            },
+            "value": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "epochMilliseconds",
+            "timeZone",
+            "offsetMinutes",
+            "fold",
+            "elapsedUnit"
+          ],
+          "properties": {
+            "type": {
+              "const": "instant-v1"
+            },
+            "epochMilliseconds": {
+              "type": "string",
+              "pattern": "^-?(?:0|[1-9][0-9]*)$"
+            },
+            "timeZone": {
+              "type": "string",
+              "minLength": 1
+            },
+            "offsetMinutes": {
+              "type": "integer",
+              "minimum": -1440,
+              "maximum": 1440
+            },
+            "fold": {
+              "enum": [
+                0,
+                1
+              ]
+            },
+            "elapsedUnit": {
+              "enum": [
+                "milliseconds",
+                "seconds",
+                "minutes",
+                "hours",
+                "days",
+                "weeks"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "value",
+            "unit",
+            "elapsedUnit"
+          ],
+          "properties": {
+            "type": {
+              "const": "difftime-v1"
+            },
+            "value": {
+              "type": "number"
+            },
+            "unit": {
+              "enum": [
+                "milliseconds",
+                "seconds",
+                "minutes",
+                "hours",
+                "days",
+                "weeks"
+              ]
+            },
+            "elapsedUnit": {
+              "enum": [
+                "milliseconds",
+                "seconds",
+                "minutes",
+                "hours",
+                "days",
+                "weeks"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "kind",
+        "owner",
+        "deadlineEpochMilliseconds",
+        "input"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "3dena.analysis-task.v1"
+        },
+        "kind": {
+          "const": "ena-model"
+        },
+        "owner": {
+          "$ref": "https://3dena.com/schemas/task-owner.v1.json"
+        },
+        "deadlineEpochMilliseconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "input": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "kind",
+        "owner",
+        "deadlineEpochMilliseconds",
+        "input"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "3dena.analysis-task.v1"
+        },
+        "kind": {
+          "const": "prepared-import"
+        },
+        "owner": {
+          "$ref": "https://3dena.com/schemas/task-owner.v1.json"
+        },
+        "deadlineEpochMilliseconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sourceName",
+            "exactBytesBase64",
+            "mapping"
+          ],
+          "properties": {
+            "sourceName": {
+              "const": "uploaded.ena3d.json"
+            },
+            "exactBytesBase64": {
+              "type": "string",
+              "minLength": 4,
+              "maxLength": 7000000,
+              "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+            },
+            "mapping": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "participant",
+                "participantLabel",
+                "group",
+                "time",
+                "timeOrder",
+                "cohortPolicy",
+                "displayDimensions",
+                "missingDisplayCoordinates"
+              ],
+              "properties": {
+                "participant": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "participantLabel": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "group": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "time": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "timeOrder": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  }
+                },
+                "cohortPolicy": {
+                  "enum": [
+                    "available",
+                    "complete"
+                  ]
+                },
+                "displayDimensions": {
+                  "type": "array",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "missingDisplayCoordinates": {
+                  "const": "reject"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "kind",
+        "owner",
+        "deadlineEpochMilliseconds",
+        "sourceResultHash",
+        "groups"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "3dena.analysis-task.v1"
+        },
+        "kind": {
+          "const": "network-comparison"
+        },
+        "owner": {
+          "$ref": "https://3dena.com/schemas/task-owner.v1.json"
+        },
+        "deadlineEpochMilliseconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sourceResultHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "groups": {
+          "$ref": "#/$defs/stringPair"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "kind",
+        "owner",
+        "deadlineEpochMilliseconds",
+        "sourceResultHash",
+        "field",
+        "level"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "3dena.analysis-task.v1"
+        },
+        "kind": {
+          "const": "change-network"
+        },
+        "owner": {
+          "$ref": "https://3dena.com/schemas/task-owner.v1.json"
+        },
+        "deadlineEpochMilliseconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sourceResultHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "level": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "kind",
+        "owner",
+        "deadlineEpochMilliseconds",
+        "sourceResultHash",
+        "design",
+        "groups",
+        "dimensions",
+        "alternative",
+        "adjustment",
+        "samePhysicalEntityConfirmed"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "3dena.analysis-task.v1"
+        },
+        "kind": {
+          "const": "statistics"
+        },
+        "owner": {
+          "$ref": "https://3dena.com/schemas/task-owner.v1.json"
+        },
+        "deadlineEpochMilliseconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sourceResultHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "design": {
+          "enum": [
+            "independent",
+            "paired"
+          ]
+        },
+        "groups": {
+          "$ref": "#/$defs/stringPair"
+        },
+        "dimensions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "alternative": {
+          "enum": [
+            "two-sided",
+            "greater",
+            "less"
+          ]
+        },
+        "adjustment": {
+          "enum": [
+            "none",
+            "holm",
+            "bh",
+            "bonferroni"
+          ]
+        },
+        "samePhysicalEntityConfirmed": {
+          "type": "boolean"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "kind",
+        "owner",
+        "deadlineEpochMilliseconds",
+        "sourceResultHash",
+        "group",
+        "selectedDimensions",
+        "cohortPolicy",
+        "periods",
+        "estimand"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "3dena.analysis-task.v1"
+        },
+        "kind": {
+          "const": "trajectory"
+        },
+        "owner": {
+          "$ref": "https://3dena.com/schemas/task-owner.v1.json"
+        },
+        "deadlineEpochMilliseconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sourceResultHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "group": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selectedDimensions": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "cohortPolicy": {
+          "enum": [
+            "available",
+            "complete"
+          ]
+        },
+        "periods": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sourceTimeCanonical",
+              "value"
+            ],
+            "properties": {
+              "sourceTimeCanonical": {
+                "type": "string",
+                "minLength": 1
+              },
+              "value": {
+                "$ref": "#/$defs/timeValue"
+              }
+            }
+          }
+        },
+        "estimand": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "equal-participant-v1"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "metadataField"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "weighted-participant-v1"
+                },
+                "metadataField": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "kind",
+        "owner",
+        "deadlineEpochMilliseconds",
+        "sourceResultHash",
+        "design",
+        "groups",
+        "samePhysicalEntityConfirmed"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "3dena.analysis-task.v1"
+        },
+        "kind": {
+          "const": "trajectory-comparison"
+        },
+        "owner": {
+          "$ref": "https://3dena.com/schemas/task-owner.v1.json"
+        },
+        "deadlineEpochMilliseconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sourceResultHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "design": {
+          "enum": [
+            "independent",
+            "paired"
+          ]
+        },
+        "groups": {
+          "$ref": "#/$defs/stringPair"
+        },
+        "samePhysicalEntityConfirmed": {
+          "type": "boolean"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "kind",
+        "owner",
+        "deadlineEpochMilliseconds",
+        "sourceResultHash",
+        "group",
+        "replicates",
+        "confidenceLevel",
+        "seed",
+        "interval",
+        "rotationPolicy"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "3dena.analysis-task.v1"
+        },
+        "kind": {
+          "const": "bootstrap"
+        },
+        "owner": {
+          "$ref": "https://3dena.com/schemas/task-owner.v1.json"
+        },
+        "deadlineEpochMilliseconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sourceResultHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "group": {
+          "type": "string",
+          "minLength": 1
+        },
+        "replicates": {
+          "type": "integer",
+          "minimum": 200,
+          "maximum": 500
+        },
+        "confidenceLevel": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "interval": {
+          "const": "pointwise-percentile-type7"
+        },
+        "rotationPolicy": {
+          "const": "fixed-preprojected"
+        }
+      }
+    }
+  ]
+}

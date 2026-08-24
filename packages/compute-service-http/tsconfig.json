@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "@3dena/analysis": ["../analysis/src/index.ts"],
+      "@3dena/compute-service-core": ["../compute-service-core/src/index.ts"],
+      "@3dena/dataset-workflow": ["../dataset-workflow/src/index.ts"],
+      "@3dena/tabular-import": ["../tabular-import/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

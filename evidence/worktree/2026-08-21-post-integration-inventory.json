@@ -1,0 +1,1375 @@
+{
+  "schemaVersion": "3dena.worktree-inventory.v1",
+  "repositoryHead": "a71cce8970555c77462cac899232ddebbdc97669",
+  "branch": "codex/strict-gap-closure-20260821",
+  "generatedAt": "2026-08-20T21:26:14.985Z",
+  "mutationPolicy": "read-only-no-reset-clean-stash",
+  "counts": {
+    "changedPaths": 125,
+    "trackedPaths": 0,
+    "untrackedPaths": 125
+  },
+  "worktreeInventorySha256": "a28919fd6cecdadd74dfa8c709d6891098c3c70d1e221747f0f3a02d3ccf4f30",
+  "testsBySubsystem": {
+    "web": [
+      "apps/web/components/analysis-results.test.tsx",
+      "apps/web/components/analysis-workspace.test.tsx",
+      "apps/web/components/prepared-analysis-results.test.tsx",
+      "apps/web/components/raw-statistics-panel.test.tsx",
+      "apps/web/components/remote-analysis-workspace.test.tsx",
+      "apps/web/lib/app-build-identity.test.ts",
+      "apps/web/lib/derived-analysis-protocol.test.ts",
+      "apps/web/lib/derived-download.test.ts",
+      "apps/web/lib/evidence-scope.test.ts",
+      "apps/web/lib/execution-policy.test.ts",
+      "apps/web/lib/export-prepared-results.test.ts",
+      "apps/web/lib/export-results.test.ts",
+      "apps/web/lib/parse-analysis-csv.test.ts",
+      "apps/web/lib/plot-traces.test.ts",
+      "apps/web/lib/prepared-class1-integration.test.ts",
+      "apps/web/lib/prepared-class1-plot-candidate.test.ts",
+      "apps/web/lib/prepared-derived-analysis.test.ts",
+      "apps/web/lib/remote-analysis-runtime.test.ts",
+      "apps/web/lib/remote-dataset-http-adapter.test.ts",
+      "apps/web/lib/remote-formal-download.test.ts",
+      "apps/web/lib/result-plot-tools.test.ts",
+      "apps/web/lib/run-ownership.test.ts",
+      "apps/web/lib/sample-data.test.ts",
+      "apps/web/lib/worker-protocol.test.ts"
+    ],
+    "browser-evidence": [
+      "e2e/accessibility.a11y.spec.ts",
+      "e2e/analysis.spec.ts",
+      "e2e/prepared-class1.spec.ts",
+      "e2e/production-remote.spec.ts",
+      "e2e/remote-execution.spec.ts",
+      "e2e/routes.spec.ts"
+    ],
+    "offline-oracle": [
+      "oracle-r/verify-class1-custody-receipt.test.mjs",
+      "oracle-r/verify-small-raw-custody.test.mjs"
+    ],
+    "ai-contract": [
+      "packages/ai-contract/src/index.test.ts"
+    ],
+    "analysis-facade": [
+      "packages/analysis/src/analysis-client.test.ts",
+      "packages/analysis/src/analyze.test.ts",
+      "packages/analysis/src/contracts.test.ts",
+      "packages/analysis/src/dataset-inspection.test.ts",
+      "packages/analysis/src/display.test.ts",
+      "packages/analysis/src/export-bundle.test.ts",
+      "packages/analysis/src/network-analysis.test.ts",
+      "packages/analysis/src/plotly-spec.test.ts",
+      "packages/analysis/src/prepared-space.test.ts",
+      "packages/analysis/src/public.test.ts",
+      "packages/analysis/src/task-executor-prepared.test.ts",
+      "packages/analysis/src/task-executor.test.ts",
+      "packages/analysis/src/trajectory-bootstrap.test.ts",
+      "packages/analysis/src/trajectory-statistics.test.ts"
+    ],
+    "compute-service": [
+      "packages/compute-service-core/src/service.test.ts",
+      "packages/compute-service-http/src/dataset-router.test.ts",
+      "packages/compute-service-http/src/router.test.ts",
+      "packages/compute-service-node/src/node-process-supervisor.test.ts",
+      "packages/compute-service-node/src/scientific/scientific-worker.test.ts"
+    ],
+    "repository-other": [
+      "packages/compute-service-persistent/src/build-approval.test.ts",
+      "packages/compute-service-persistent/src/build-candidate-cli.test.ts",
+      "packages/compute-service-persistent/src/container-boundary.test.ts",
+      "packages/compute-service-persistent/src/dataset-service.test.ts",
+      "packages/compute-service-persistent/src/migration.test.ts",
+      "packages/compute-service-persistent/src/postgres.test.ts",
+      "packages/compute-service-persistent/src/rate-limit.test.ts",
+      "packages/compute-service-persistent/src/source-result.test.ts",
+      "packages/compute-service-persistent/src/vercel-blob.test.ts",
+      "packages/compute-service-persistent/src/worker.test.ts"
+    ],
+    "dataset-workflow": [
+      "packages/dataset-workflow/src/workflow.test.ts"
+    ],
+    "export": [
+      "packages/export/src/csv.test.ts",
+      "packages/export/src/zip.test.ts"
+    ],
+    "dataset-io": [
+      "packages/io/src/decode.test.ts",
+      "packages/tabular-import/src/importer.test.ts",
+      "packages/tabular-import/src/parser-fuzz.test.ts"
+    ],
+    "scientific-evidence": [
+      "packages/parity-contracts/src/class1-fixture.test.ts",
+      "packages/parity-contracts/src/compare.test.ts",
+      "packages/parity-contracts/src/oracle-candidate.test.ts",
+      "packages/parity-contracts/src/scientific-authority.test.ts",
+      "packages/parity-contracts/src/strict-capability-ledger.test.ts",
+      "packages/parity-contracts/src/subspace.test.ts"
+    ],
+    "stats": [
+      "packages/stats/src/index.test.ts"
+    ],
+    "trajectory": [
+      "packages/trajectory/src/analyze.test.ts"
+    ],
+    "repository-tooling": [
+      "scripts/verify-jena-successor.test.mjs",
+      "scripts/verify-production-boundary.test.mjs",
+      "scripts/verify-release-receipts.test.mjs",
+      "scripts/verify-release-security.test.mjs"
+    ]
+  },
+  "entries": [
+    {
+      "status": "??",
+      "path": "output/compute-service/build-manifest.json",
+      "tracked": false,
+      "subsystem": "repository-other",
+      "kind": "file",
+      "bytes": 503,
+      "sha256": "cf7b5d50cf985012555efbfa1ec7a6ec4afb167908a7aa3d29427616cb59ba7f",
+      "testCount": 10
+    },
+    {
+      "status": "??",
+      "path": "output/compute-service/compute-runtime.mjs",
+      "tracked": false,
+      "subsystem": "repository-other",
+      "kind": "file",
+      "bytes": 3290459,
+      "sha256": "13b839960a752558b87ae74f76c75b70752b3284988e1440f32af936b644c6bc",
+      "testCount": 10
+    },
+    {
+      "status": "??",
+      "path": "output/compute-service/scientific-worker-entry.mjs",
+      "tracked": false,
+      "subsystem": "repository-other",
+      "kind": "file",
+      "bytes": 932607,
+      "sha256": "89a4ec59da3afe6b24dd583251bb90d12d174a6ef8ea90bfce8b9078b47e6ca0",
+      "testCount": 10
+    },
+    {
+      "status": "??",
+      "path": "output/sbom.cdx.json",
+      "tracked": false,
+      "subsystem": "repository-other",
+      "kind": "file",
+      "bytes": 251032,
+      "sha256": "d35f63c7a3c5e22a60818e10861e670cb288c44ee59b7223c2d70f0ac2b826ed",
+      "testCount": 10
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/index.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 48,
+      "sha256": "65c24c24c35497f798dbe2723496c743b6ae39bc16793633b78083f884118aac",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/index.js",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1680463,
+      "sha256": "74cc29253e00014b5212c546282ad4b7ca915b7af637a7724b63ca357bd98316",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/index.js.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 3374091,
+      "sha256": "c5fc7f5e9187d778e822a06bc8595adbe43bba61dff2d2d31f28a23afde08065",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/LICENSE",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 35149,
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/package.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 740,
+      "sha256": "e1f835ca12cd94aa7ecf4bdd222411d19390b971bf4ac9ab04ab8bc898ecae28",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/PROVENANCE.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1597,
+      "sha256": "74a54d27fdee790d004a97697211d1041da586765c2088dd207258d5fe7adf43",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/README.md",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1805,
+      "sha256": "08d62008578b160ba758d66bcc999859fdc64b69ce7b8aed54ca6d91065dbd20",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/analysis-execution-dataset.v2.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 152935,
+      "sha256": "e4c095c0a0425d44a0f9a3a6711883bed130802d4b7792301b92f59fd83358cc",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/analysis-result-envelope.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 705352,
+      "sha256": "f636a657f75140a0004885105dddd488fa49862d61716660030a0df6dfd3a63a",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/analysis-spec.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1071,
+      "sha256": "c768eff17f905eb0613bea2ee3a18442003f0fc23206214d275dc82bcd023610",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/analysis-task.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 12802,
+      "sha256": "a41979dd439a737cd5df66c1669391c37a1d21434dfb4e9ee9ab0668b2029740",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/dataset-receipt.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 4264,
+      "sha256": "3162a1f6f954302385a80e21fe3f75c53a67a996fc196f359458cf84baa74043",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/display-spec.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 4511,
+      "sha256": "f8edaae648572f1ad77c97ea092cd67e9484eca840d32f9a3cb58d282468f4c3",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/evidence-stamp.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1034,
+      "sha256": "5c817054bf58e481ca0899677bdbe8bb1291998c64131af84433cd1c9be63136",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/index.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 601,
+      "sha256": "d4bd8b7257002d3138a97bdda6a08dcef4af285d574ca3106a67051c9d1daa10",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/provenance-manifest.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 2251,
+      "sha256": "286e0c9182904601f706af9bb3daa9764895a4295e7b61ecfda2614157e5f9be",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/task-owner.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 611,
+      "sha256": "df21323b7a2e9961bb060e4a2db45e99f1c47e1c35ec8a5f5f5e4881d4207a26",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/typed-key.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 803,
+      "sha256": "a4916236c553ea7378f9dcad13de5516476e0c68988ebdf36d9fc90c0c390c18",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/schemas/typed-scalar.v1.json",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 3657,
+      "sha256": "65141b68b9d2784f49e9f208c2ffee477001c05903d1158f2481796966f4c37a",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/THIRD_PARTY_NOTICES.md",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1284,
+      "sha256": "1e3259125d903c6053a2d409d1bc9f7103dbcc8a221d2344c7493ffcd1b8e685",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/THIRD_PARTY/jena-js-LICENSE",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 34278,
+      "sha256": "d10bac154a838028d10b3ae490af756f0696d31657f48114c73601a9e4e7fe62",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/THIRD_PARTY/jena-js-PROVENANCE.md",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 3865,
+      "sha256": "ab99709c81c269eca667406735abf8eaeca8e2e053d2510e55d494a375314e48",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/THIRD_PARTY/SheetJS-LICENSE.txt",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 11355,
+      "sha256": "4d2a38ac35cda06a555c84074a819d413339cd3691b822cae50f8f322fe01f64",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/analysis-client.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 3732,
+      "sha256": "1019ed55ac26788f0e883437222b62f4df2a06122d9e9ef367bc1edc1ba20277",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/analysis-client.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 3210,
+      "sha256": "7d2e5eb4442e8bc153f654e8e5c78af11d272c642db2229ff1b3b672bf15ff9b",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/analyze.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 503,
+      "sha256": "f1bf578db29cb1e54673aef5fd703a7a6bba60b82714b7212c6ff25516623715",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/analyze.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 253,
+      "sha256": "d4a66e2c60a40f94b245775090e40913c3aab6e42f88eee2a5df55f5799c2949",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/contracts.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 39605,
+      "sha256": "87b3d8a7823bc2c2c4a09549ecc5499012168fd1d6add2115a3979941c01527b",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/contracts.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 9213,
+      "sha256": "c05915a2055ee7ffb50771d35461d883cd938c7035e013342a73e78026c37899",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/dataset-inspection.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1902,
+      "sha256": "103972faf663af72f173e0db1b30c2ca86d7b44ca650cdb620878b3c108a7d48",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/dataset-inspection.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1327,
+      "sha256": "25c613134752bd4d6ef4f3d85b477ba3565186415e474387b507bc58b0195578",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/display.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 440,
+      "sha256": "99555a637d0c6c35c0f3c2da82120a2db7ece15a12cac11cec302408213d86a1",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/display.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 298,
+      "sha256": "7275c3b07253c44f14e937030e495a1a966a6ddf26ce3c2504aaaf1cdd269f82",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/export-bundle.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 2479,
+      "sha256": "413f6d8e1efc817fbf8d4215c7e23872f49b98a32f1871f751a83526aeff2593",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/export-bundle.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1953,
+      "sha256": "e100c14a2bfb2038f4a9730e5ea8b3d13d1f7c2ffd33bc99e679c5728fcff781",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/index.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 4444,
+      "sha256": "d2ae942cf3e98d54fb7066dea13fbccfd5121a6eb4597f7ea7ef57b2a5f5f3d2",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/index.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 2754,
+      "sha256": "643c59affafcf90b2be47009a07a4a1cd6c84d514ea6d9296f00037d62efe0d2",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/network-analysis.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 2169,
+      "sha256": "dc143bcf7512da13336ec9ac4df3b3e07afa82e3e983565fcff4e925de0037bb",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/network-analysis.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1607,
+      "sha256": "966b27b6607e1dc4004420d0d30c7695785b0a95119a6dc2ecd74643ce93aa3d",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/plotly-spec.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1303,
+      "sha256": "f2bcebfce78b0c1e45e33b7f859138e54bf5d6f5b583c10ca340062af23a5ca3",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/plotly-spec.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1179,
+      "sha256": "f9b5dcd90b9451c4b11947e654f06cad423b84388f89cbfc95227d750b30d36f",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/prepared-derived.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1457,
+      "sha256": "03866507140d1e533a1bbdd84d6a783ef47199add320cfeac666d2f5c57884e6",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/prepared-derived.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1110,
+      "sha256": "3cf717367f80f62762ef0934f64a48e018ca453611577faea75cf934864d261a",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/prepared-space.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 837,
+      "sha256": "c6d0802908cbc9a0db1c17ef2dc14a61e7f164bda718f4b59dd255a7044a5627",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/prepared-space.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 396,
+      "sha256": "2f2693d35f2084a144eeceb604207ce044d22e8c33213f24231276863c581d1e",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/prepared-types.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 6715,
+      "sha256": "f22ef2bc9736d89443ebf97583ea6451341a7fd0e35d63305131fd9005597866",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/prepared-types.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 4955,
+      "sha256": "c11bfc2a6c2aa1c0d9752eccb340bfcb3ef6bf4b2787fd9a115340b5f3420c6c",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/public.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1322,
+      "sha256": "41f2d302c6fb9722965c5c9d269e866d975936a25567032932d9c2b5135cda02",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/public.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 810,
+      "sha256": "0fcd4718b4bb761c8dce12a2d2a8ac313213fc02fdad79237b7fe2048ccc4a96",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/scientific-result-schemas.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 393,
+      "sha256": "75668ea3b0a8ee2ac6e2b2398719855d2ca4807bc180ae91bf21c4a26daab5d4",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/scientific-result-schemas.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 410,
+      "sha256": "17d9952e5f5c8240cdb6f9a10f676ed03d34b12daa96d20879e794068b08c361",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/task-executor.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 3879,
+      "sha256": "c5ef25df16727e9fedfbd0e662beae44f6cf662681c7140bcfc57d6cacf44d6a",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/task-executor.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 2359,
+      "sha256": "425f04c5b6d9d241f14d98cf26eb07c41ec9a2174834afe71e880c6a680c4a27",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/trajectory-series-adapters.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1213,
+      "sha256": "42f8fc77c68e14c2918dd1bbc465ca6930e1e711b427799c2e4cb11980886e97",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/trajectory-series-adapters.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 652,
+      "sha256": "061b96d6f3239f1926e8fa07b6700d536976c3d34e3ca30760a5da7e52923782",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/trajectory-statistics.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 11292,
+      "sha256": "d8b97696e43936c0bf63f158803341a1d90dbc6c89a15f9293b4a0e2dc368b0f",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/trajectory-statistics.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 8565,
+      "sha256": "1d2a7cfb7c243c8e8d6570c4f838e8eff531d51e68e0c03ec2caeb53b3f1210d",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/trajectory.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 751,
+      "sha256": "835f4c1f37e3a078b3924e3a3cc18975b61511ccfc194f05dccdd63adede8c52",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/trajectory.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 457,
+      "sha256": "d25f969e059500ac474dd495423f47e1984e46b2d99b7191cf25cdf3fc071771",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/types.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 9887,
+      "sha256": "bbdaecde346ec44a47945c8ec8a836fb6f41847bd3c8e6386c336fc906b920d1",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/types.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 7492,
+      "sha256": "f1f433446c57133e62f8f7e3d798ab9c42d6fa2af36a140b36e1ddc2b9d4da9d",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/validation.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1657,
+      "sha256": "b7f2c5f41f08c82ea6d81597e7b913aaf539bc7a01b7523b2ac97ac153ce55e2",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/analysis/src/validation.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1375,
+      "sha256": "70bb6c96e43b8b876346fd730f874128ef12c0f5f9c11d1acce249cb9d6fc3fd",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/csv.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1471,
+      "sha256": "47dfe0e98bba23354acc5e309c32db6f9e17b833e258f2f857eb96c4700ab80d",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/csv.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1130,
+      "sha256": "495571897d8ee76a0a647d1e0ef38b2c08c6647a6dd59447e57c55f29d6211bd",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/errors.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 693,
+      "sha256": "5c46186cf83f313eb0e76ad207e13b2b0e1f9e255b29305376c4ec939d359c3d",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/errors.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 608,
+      "sha256": "6877def3c5c3cb6154e3bd3605285c93ee13ca8f3805f103f53cbd351c6dc160",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/index.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 577,
+      "sha256": "da928b0d4d3bcdb6fa129fba5fdba6d3606f484c774a6c26e58848403158f37f",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/index.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 501,
+      "sha256": "2f83438ef302720c77f826d47f879de5b791a3f4147c4f3269247dcd23a14a85",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/unicode.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 106,
+      "sha256": "b06912f11e0245d52e500e7871dec16e3b69b1b0ab3208d3885e6c1ff76a1452",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/unicode.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 184,
+      "sha256": "400490828417a1ec7d91df92650b6cd598017d440eb448fbb10849375f208acc",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/zip.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 878,
+      "sha256": "1b1f450e2d08973d66ffd0b228fe17a342575b88d4477eedef77040c9ed0dd9a",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/export/src/zip.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 679,
+      "sha256": "bcbae194723611ed949127f0d1bee3c76c96d244ddf90855259328df1a140082",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/decode.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1195,
+      "sha256": "d330650b98b71c04ecbf59a444c28dd14dba4ce40436658e4b405011530579eb",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/decode.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 716,
+      "sha256": "b177b014eb78900a001b343d5f4a02b7e06aca0e6eb76ef46a1783ad314f775a",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/errors.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 738,
+      "sha256": "5ddbc5f85ed5c79b093bed990dcb764673004a64b3eaa3faf13846389ac75f37",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/errors.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 622,
+      "sha256": "6c0125e98889edefb0e641f48f4fe54da0b45052cbf70f63b907a1804f604ca2",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/index.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 856,
+      "sha256": "5e81229d6030c714581f70bc2e1eaaa077e0b8bbe9d6f6c6c63ac72858b406e4",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/index.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 648,
+      "sha256": "639f687277e7ef50489cadf30679302d7d34460212f35efc5b3a77de30fcd4e3",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/json-preflight.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 350,
+      "sha256": "be89f8b4fe35da2ac3637041a8f28c784fd8d58d809d21f0c8b1208facff9686",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/json-preflight.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 207,
+      "sha256": "e7b0ed55c7f58959ff4291e4de326bbd06b30988af3569724e301a3b903eeaac",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/limits.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 707,
+      "sha256": "e0a259750807e7022b48f2d176ebc69a2af4d0cd952e90d94904ed803ada412c",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/limits.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 681,
+      "sha256": "a186962a495bcf1f0a984c19a5a83e07d2d0e08c2f2c2459098cbe0b220a5c22",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/types.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 3073,
+      "sha256": "d916bd7d577f2b043b5eb447a223e7c6f38f6129afb073be4c30f3ae42450511",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/io/src/types.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 2789,
+      "sha256": "0b41b4acd0383d6701d5d4975ff3c870d7e1e0fae0747592b1d399af2ed3f210",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/adjust.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 203,
+      "sha256": "aa5b945a45f545a02fc368e997c3bb0e7dadcbddd176256d292dd9ab8f69fc7d",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/adjust.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 267,
+      "sha256": "cd95a5d1c4009fed8f2e7744d368f5cf66fedbc05c8dc11f66b03dc4d0b2ae40",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/independent.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 252,
+      "sha256": "3b1ea0e786963827a278b616bf6bd03df1e97a864ed9c580de555ee22d240b96",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/independent.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 266,
+      "sha256": "9e6aac1c6d999d2d39379b24275e5708dfff21769fcb529b306972aeb11dbfb1",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/index.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 747,
+      "sha256": "fcf5652274901b9a0ba8117e27c616f4f1d578b821af431dbcff54d91e74193f",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/index.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 584,
+      "sha256": "c984dcd38717f3e5a3521975a6fa8d1a868f2df2f50ec343a12e0e207f1cb5f1",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/numerics.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1351,
+      "sha256": "cfb1e9173f8ff0e8bad084491c448ac1bd91a1c6e710a00f7592792f3a9c83c1",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/numerics.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1227,
+      "sha256": "126a7d09e10abf9290ef8a644ba7cce015511f0ac7503242c80db2b5e8f9f286",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/paired.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 222,
+      "sha256": "ce2153e3318eef97f3d012266e571581fdc8a3064fed18d9ec455f01f015e2b4",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/paired.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 254,
+      "sha256": "8f46d055e3ea63281a9b0206851e5c257b5722174e6f03fa9b53c51f9051e3e3",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/types.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 6751,
+      "sha256": "1b1031f7a8133428955d36138182ce4518bef1c2c2cce8483093bfa8e3a7a9a2",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/stats/src/types.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 4851,
+      "sha256": "8f0016362e4be22f8648ac3c26387086d69c47c95b480e37e2de9f08260dd8cb",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/bytes.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 606,
+      "sha256": "ffddd9b3d548449b6863f35c0b3b63ca9851a9103d5416b00bc92052b1a62099",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/bytes.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 602,
+      "sha256": "6838de076584b95bf96fec594cc012fcc84b5d67b0d8db1b57e6a5d04a2b7661",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/container-preflight.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 453,
+      "sha256": "cb83727af4b6ce0bec14cb9ef87a81bf498f58bb258afb27a62af5572d5d41b7",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/container-preflight.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 516,
+      "sha256": "edd56596a84b8780ee31eaf0abffaf38c4c885b5793587bdb56863d744db8cdf",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/csv.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 360,
+      "sha256": "facc7818b4f319a85d4c4af08067184596b2204a0dc2ea525537f671f44be3f5",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/csv.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 427,
+      "sha256": "395e6e0d3f8ac7f768f908483a1e35297c79037317975388f5e70518887c372b",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/errors.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1553,
+      "sha256": "2ae937c926f2424574a61ee115d5c7b69291d70f6015836590c4a1e807b2c1e0",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/errors.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 987,
+      "sha256": "d91c4d78fe361207192563eeed3191d2b478a5c81d8baac6660a141177f7bf7e",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/importer.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 1131,
+      "sha256": "ef578c42ea2ee9c23febdcb12cdb463404fc767d83aca5d31333778d7310d4c2",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/importer.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 878,
+      "sha256": "007c7d8ec4c6ada2e09005fb4b145569e2e157223588d79cc83f73e1b827ff22",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/index.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 728,
+      "sha256": "7448acc6a3744e724f5f2f0d075809355b47dfc3cc8a3813850d7c6d448ebc50",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/index.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 588,
+      "sha256": "a4d6b33c25ad55b37131907e93a62f55362a4d4555f1a4840dc681f775dffc26",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/limits.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 379,
+      "sha256": "227134597293cec21016c452bf9d3923e941089930ef28cf6f18f75827a5c004",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/limits.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 390,
+      "sha256": "f11c452759aab7585c2805e96b4f3c533da2f28e316d0d281ecdb34e6087e6fd",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/types.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 4199,
+      "sha256": "11ed7b3dd5806631db58ab04c6808e9f6d4dd706c3750b2c1e4f7b107dd40f57",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/tabular-import/src/types.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 3179,
+      "sha256": "b9b31b38cd03067d6fa1de6bcaa8ba4c69765ca35b88b55856add3b752bc4108",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/trajectory/src/analyze.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 241,
+      "sha256": "08a8180ef2fe2cedcc2acbe5f367a480a7f0f40daf189d9dbfa0d11ecb0cbb06",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/trajectory/src/analyze.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 257,
+      "sha256": "64a0db225e6696a0ee6fc8372fe781ccebdd785f22aa73e838bc96f90244f1fc",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/trajectory/src/errors.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 317,
+      "sha256": "ad6b4ce06cefcd9fce670eb3dfb1d2305d774803c1edefc0cf54dec96f5505ea",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/trajectory/src/errors.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 393,
+      "sha256": "cd80515843a3ab79c52bc031b8453c0a25a8503935527f2edd8da5d8a0a44faf",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/trajectory/src/index.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 678,
+      "sha256": "cda8d6f142851ab5ba912b1eb3a6546bf2d1598040d9c9f60f9207c7ab80252b",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/trajectory/src/index.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 489,
+      "sha256": "3f268ae3ec96a069841fb02378ed4c5299b2b943d1aa42be1dd8c84680388716",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/trajectory/src/types.d.ts",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 6031,
+      "sha256": "d734ba76b7e26ef2e23645bed4c7809b7d44ff471ef9edbeaccd387514f3fdc4",
+      "testCount": 14
+    },
+    {
+      "status": "??",
+      "path": "packages/analysis/dist/package/types/trajectory/src/types.d.ts.map",
+      "tracked": false,
+      "subsystem": "analysis-facade",
+      "kind": "file",
+      "bytes": 4809,
+      "sha256": "02b2e5d868ed46c2b7049157abd9813283d9c8a78dfca7cfe084b51adf5fedc2",
+      "testCount": 14
+    }
+  ]
+}

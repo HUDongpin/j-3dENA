@@ -2,18 +2,22 @@
 
 import {
   AnalysisValidationError,
+  analyzePreparedSpace,
   analyzeRows,
   type AnalyzeRowsInput,
   type RawRow,
 } from "@3dena/analysis";
+import { decodeEna3dExchangeV1WithSha256 } from "@3dena/io";
 import type { AnalysisMapping } from "@/lib/analysis-contract";
 import { parseAnalysisCsv } from "@/lib/parse-analysis-csv";
 import type {
+  AnalysisWorkerRequest,
   AnalysisWorkerResponse,
-  AnalyzeWorkerRequest,
+  AnalyzeRawWorkerRequest,
   RunOwner,
   WorkerPhase,
 } from "@/lib/worker-protocol";
+import { isAnalysisWorkerRequest } from "@/lib/worker-protocol";
 
 const workerScope: DedicatedWorkerGlobalScope = self as DedicatedWorkerGlobalScope;
 
@@ -23,7 +27,7 @@ function post(
   workerScope.postMessage(response);
 }
 
-function ownerFor(request: AnalyzeWorkerRequest): RunOwner {
+function ownerFor(request: AnalysisWorkerRequest): RunOwner {
   return {
     datasetHash: request.input.datasetHash,
     specHash: request.input.specHash,
@@ -88,17 +92,8 @@ function errorMessage(error: unknown): string {
 }
 
 workerScope.addEventListener("message", async (event: MessageEvent<unknown>) => {
-  const request = event.data;
-  if (
-    !request ||
-    typeof request !== "object" ||
-    (request as Partial<AnalyzeWorkerRequest>).v !== 1 ||
-    (request as Partial<AnalyzeWorkerRequest>).kind !== "analyze"
-  ) {
-    return;
-  }
-
-  const typedRequest = request as AnalyzeWorkerRequest;
+  if (!isAnalysisWorkerRequest(event.data)) return;
+  const typedRequest = event.data;
   const owner = ownerFor(typedRequest);
 
   try {
@@ -114,12 +109,46 @@ workerScope.addEventListener("message", async (event: MessageEvent<unknown>) => 
       await pause(debugDelayMs);
     }
 
+    if (typedRequest.kind === "analyze-prepared") {
+      progress(
+        owner,
+        "decoding",
+        24,
+        "Revalidating exact prepared-exchange bytes inside the Worker…",
+      );
+      const artifact = await decodeEna3dExchangeV1WithSha256(
+        typedRequest.input.bytes,
+      );
+      if (artifact.sha256 !== typedRequest.input.datasetHash) {
+        throw new Error(
+          "Prepared exchange bytes no longer match the activated dataset hash.",
+        );
+      }
+      progress(
+        owner,
+        "trajectory",
+        62,
+        "Reducing participant-period centroids in the imported shared space…",
+      );
+      const result = analyzePreparedSpace({
+        source: {
+          artifact,
+          name: typedRequest.input.sourceName,
+        },
+        mapping: typedRequest.input.mapping,
+      });
+      progress(owner, "complete", 100, "Prepared-space analysis complete.");
+      post({ type: "prepared-result", owner, result });
+      return;
+    }
+
+    const rawRequest: AnalyzeRawWorkerRequest = typedRequest;
     progress(owner, "parsing", 22, "Parsing CSV rows inside the worker…");
     const rows = parseAnalysisCsv(
-      typedRequest.input.csvText,
-      typedRequest.input.mapping,
+      rawRequest.input.csvText,
+      rawRequest.input.mapping,
     );
-    const input = toAnalysisInput(rows, typedRequest.input.mapping);
+    const input = toAnalysisInput(rows, rawRequest.input.mapping);
 
     progress(owner, "modeling", 48, "Building and rotating the ENA model…");
     const result = analyzeRows(input);

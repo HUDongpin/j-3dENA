@@ -1,0 +1,22 @@
+# Deny the entire dirty repository by default. The compute Dockerfile consumes
+# only three prebuilt release artifacts plus its fixed entrypoint. In
+# particular, oracle, evidence, source, Git, test fixtures, and raw datasets
+# never enter the BuildKit context.
+**
+
+!output/
+output/**
+!output/compute-service/
+output/compute-service/**
+!output/compute-service/compute-runtime.mjs
+!output/compute-service/scientific-worker-entry.mjs
+!output/compute-service/build-manifest.json
+
+!packages/
+packages/**
+!packages/compute-service-persistent/
+packages/compute-service-persistent/**
+!packages/compute-service-persistent/deploy/
+packages/compute-service-persistent/deploy/**
+!packages/compute-service-persistent/deploy/Dockerfile
+!packages/compute-service-persistent/deploy/entrypoint.sh

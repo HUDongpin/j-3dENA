@@ -1,0 +1,36 @@
+{
+  "$id": "https://3dena.com/schemas/trajectory-path-task.v2.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "datasetHash",
+    "specHash",
+    "runId",
+    "runSpec"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "3dena.trajectory-path-task.v2"
+    },
+    "kind": {
+      "const": "trajectory-path-v2"
+    },
+    "datasetHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "specHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runSpec": {
+      "$ref": "https://3dena.com/schemas/trajectory-run-spec.v2.json"
+    }
+  }
+}

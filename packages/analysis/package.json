@@ -1,6 +1,6 @@
 {
   "name": "@3dena/analysis",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "license": "GPL-3.0-only",
@@ -17,13 +17,25 @@
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build": "tsc --noEmit"
+    "build": "tsc --noEmit",
+    "build:public": "node ./scripts/build-public-package.mjs",
+    "pack:check": "node ./scripts/verify-public-package.mjs ./dist/package",
+    "test:public-package": "node ./scripts/smoke-public-package.mjs ./dist/package"
   },
   "dependencies": {
-    "jena-js": "0.6.2"
+    "@3dena/export": "0.1.0",
+    "@3dena/io": "0.1.0",
+    "@3dena/stats": "0.2.0",
+    "@3dena/tabular-import": "0.1.0",
+    "@3dena/trajectory": "0.2.0"
+  },
+  "peerDependencies": {
+    "jena-js": "0.7.0-ona.0"
   },
   "devDependencies": {
+    "ajv": "8.20.0",
     "typescript": "6.0.3",
+    "vite": "8.2.2",
     "vitest": "4.1.11"
   }
 }

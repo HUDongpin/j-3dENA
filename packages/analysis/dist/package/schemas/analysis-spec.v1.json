@@ -1,0 +1,58 @@
+{
+  "$id": "https://3dena.com/schemas/analysis-spec.v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "model",
+    "window",
+    "weightBy",
+    "windowSizeBack",
+    "windowSizeForward",
+    "centerAlignToOrigin",
+    "cohortPolicy"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "3dena.analysis-spec.v1"
+    },
+    "model": {
+      "enum": [
+        "EndPoint",
+        "AccumulatedTrajectory",
+        "SeparateTrajectory"
+      ]
+    },
+    "window": {
+      "enum": [
+        "MovingStanzaWindow",
+        "Conversation"
+      ]
+    },
+    "weightBy": {
+      "enum": [
+        "binary",
+        "sum"
+      ]
+    },
+    "windowSizeBack": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "windowSizeForward": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "centerAlignToOrigin": {
+      "type": "boolean"
+    },
+    "cohortPolicy": {
+      "enum": [
+        "available",
+        "complete"
+      ]
+    }
+  }
+}

@@ -6,12 +6,8 @@
 
 LEGACY_COMMIT <- "d02019ad872c5ece3840be2b4028ef27af38b2ff"
 INPUT_RELATIVE_PATH <- "sample_data/class1_timepoints_enaset.RData"
-INPUT_SHA256 <- "16c74f4e2ab4580f5742f2c46684e24bb7ab3417c0c0b66ba99f7bb2fed9debc"
-INPUT_BYTES <- 13176
 CONVERTER_RELATIVE_PATH <- "tools/convert_trusted_rdata_to_ena3d_json.R"
 CONVERTER_SHA256 <- "f07e28ae3c1d3209aa8d4c5171bf80f575f25534d250bd879935964ea079c7b1"
-EXPECTED_EXCHANGE_SHA256 <- "704b940865fbf09a7c5e42949105c935f3a64f5831a65e9af489af04e695c909"
-EXPECTED_EXCHANGE_BYTES <- 52073
 EXPECTED_R_VERSION <- "4.4.1"
 EXPECTED_RENA_VERSION <- "0.2.7"
 EXPECTED_JSONLITE_VERSION <- "2.0.0"
@@ -32,15 +28,32 @@ usage <- function() {
     "Usage:",
     "  Rscript oracle-r/generate-class1-exchange.R",
     "    --legacy-checkout /path/to/clean/d020-checkout",
-    "    --output /explicit/review/path/class1-timepoints.ena3d.json",
+    "    --output /explicit/private-review/path/prepared-exchange.ena3d.json",
+    "    --expected-input-sha256 <externally-supplied-64-hex-hash>",
+    "    --expected-input-bytes <externally-supplied-positive-integer>",
+    "    --expected-exchange-sha256 <externally-supplied-64-hex-hash>",
+    "    --expected-exchange-bytes <externally-supplied-positive-integer>",
     "  Rscript oracle-r/generate-class1-exchange.R",
-    "    --legacy-checkout /path/to/clean/d020-checkout --preflight",
+    "    --legacy-checkout /path/to/clean/d020-checkout",
+    "    --expected-input-sha256 <externally-supplied-64-hex-hash>",
+    "    --expected-input-bytes <externally-supplied-positive-integer>",
+    "    --expected-exchange-sha256 <externally-supplied-64-hex-hash>",
+    "    --expected-exchange-bytes <externally-supplied-positive-integer>",
+    "    --preflight",
     sep = "\n"
   )
 }
 
 parse_arguments <- function(arguments) {
-  result <- list(legacy_checkout = NULL, output = NULL, preflight = FALSE)
+  result <- list(
+    legacy_checkout = NULL,
+    output = NULL,
+    expected_input_sha256 = NULL,
+    expected_input_bytes = NULL,
+    expected_exchange_sha256 = NULL,
+    expected_exchange_bytes = NULL,
+    preflight = FALSE
+  )
   index <- 1L
   while (index <= length(arguments)) {
     argument <- arguments[[index]]
@@ -51,6 +64,22 @@ parse_arguments <- function(arguments) {
     } else if (identical(argument, "--output")) {
       if (index == length(arguments)) abort("--output requires a path.")
       result$output <- arguments[[index + 1L]]
+      index <- index + 2L
+    } else if (identical(argument, "--expected-exchange-sha256")) {
+      if (index == length(arguments)) abort("--expected-exchange-sha256 requires a value.")
+      result$expected_exchange_sha256 <- tolower(arguments[[index + 1L]])
+      index <- index + 2L
+    } else if (identical(argument, "--expected-exchange-bytes")) {
+      if (index == length(arguments)) abort("--expected-exchange-bytes requires a value.")
+      result$expected_exchange_bytes <- suppressWarnings(as.numeric(arguments[[index + 1L]]))
+      index <- index + 2L
+    } else if (identical(argument, "--expected-input-sha256")) {
+      if (index == length(arguments)) abort("--expected-input-sha256 requires a value.")
+      result$expected_input_sha256 <- tolower(arguments[[index + 1L]])
+      index <- index + 2L
+    } else if (identical(argument, "--expected-input-bytes")) {
+      if (index == length(arguments)) abort("--expected-input-bytes requires a value.")
+      result$expected_input_bytes <- suppressWarnings(as.numeric(arguments[[index + 1L]]))
       index <- index + 2L
     } else if (identical(argument, "--preflight")) {
       result$preflight <- TRUE
@@ -70,6 +99,26 @@ parse_arguments <- function(arguments) {
   }
   if (!result$preflight && is.null(result$output)) {
     abort(sprintf("An explicit --output path is required.\n%s", usage()))
+  }
+  if (is.null(result$expected_input_sha256) ||
+      !grepl("^[a-f0-9]{64}$", result$expected_input_sha256)) {
+    abort("--expected-input-sha256 must be supplied externally as 64 lowercase hexadecimal characters.")
+  }
+  if (is.null(result$expected_input_bytes) ||
+      !is.finite(result$expected_input_bytes) ||
+      result$expected_input_bytes <= 0 ||
+      result$expected_input_bytes != floor(result$expected_input_bytes)) {
+    abort("--expected-input-bytes must be supplied externally as a positive integer.")
+  }
+  if (is.null(result$expected_exchange_sha256) ||
+      !grepl("^[a-f0-9]{64}$", result$expected_exchange_sha256)) {
+    abort("--expected-exchange-sha256 must be supplied externally as 64 lowercase hexadecimal characters.")
+  }
+  if (is.null(result$expected_exchange_bytes) ||
+      !is.finite(result$expected_exchange_bytes) ||
+      result$expected_exchange_bytes <= 0 ||
+      result$expected_exchange_bytes != floor(result$expected_exchange_bytes)) {
+    abort("--expected-exchange-bytes must be supplied externally as a positive integer.")
   }
   result
 }
@@ -213,8 +262,9 @@ if (!file.exists(input) || !file.exists(converter)) {
 input_hash <- sha256_file(input)
 input_bytes <- unname(file.info(input)$size)
 converter_hash <- sha256_file(converter)
-if (!identical(input_hash, INPUT_SHA256) || !identical(input_bytes, INPUT_BYTES)) {
-  abort("Pinned Class 1 input hash/size mismatch.")
+if (!identical(input_hash, arguments$expected_input_sha256) ||
+    !identical(input_bytes, arguments$expected_input_bytes)) {
+  abort("Pinned Class 1 input differs from the externally supplied private identity.")
 }
 if (!identical(converter_hash, CONVERTER_SHA256)) {
   abort("Pinned trusted-native converter hash mismatch.")
@@ -226,11 +276,9 @@ if (arguments$preflight) {
     paste0("wrapper_commit=", wrapper_commit),
     paste0("wrapper_sha256=", wrapper_hash),
     paste0("legacy_commit=", head),
-    paste0("input_sha256=", input_hash),
-    paste0("input_bytes=", format(input_bytes, scientific = FALSE)),
+    "input_identity=verified-against-external-review-parameters",
     paste0("converter_sha256=", converter_hash),
-    paste0("expected_exchange_sha256=", EXPECTED_EXCHANGE_SHA256),
-    paste0("expected_exchange_bytes=", EXPECTED_EXCHANGE_BYTES),
+    "expected_exchange_identity=externally-supplied",
     sep = "\n"
   )
   cat("\n")
@@ -267,18 +315,17 @@ checksum_text <- trimws(paste(readLines(checksum, warn = FALSE), collapse = " ")
 if (!startsWith(checksum_text, paste0(exchange_hash, " "))) {
   abort("Converter checksum sidecar does not match the generated exchange.")
 }
-if (!identical(exchange_hash, EXPECTED_EXCHANGE_SHA256) ||
-    !identical(exchange_bytes, EXPECTED_EXCHANGE_BYTES)) {
+if (!identical(exchange_hash, arguments$expected_exchange_sha256) ||
+    !identical(exchange_bytes, arguments$expected_exchange_bytes)) {
   abort(paste(
-    sprintf("Generated exchange differs from the frozen observation: %s bytes, %s.",
-            exchange_bytes, exchange_hash),
+    "Generated exchange differs from the externally supplied output identity.",
     "Candidate files were retained for diagnosis; no provenance approval was written."
   ))
 }
 
 provenance <- list(
   schemaVersion = "3dena.oracle-conversion-provenance.v1",
-  status = "generated-matches-frozen-observation",
+  status = "generated-matches-external-identity-unapproved",
   role = "offline-trusted-native-migration-only",
   wrapperCommit = wrapper_commit,
   legacyCommit = head,
@@ -296,18 +343,23 @@ provenance <- list(
     path = INPUT_RELATIVE_PATH,
     bytes = input_bytes,
     sha256 = input_hash,
-    trust = "exact-tracked-local-native-R-object"
+    trust = "externally-bound-private-native-object"
   ),
   output = list(
     mediaType = "application/json",
     bytes = exchange_bytes,
-    sha256 = exchange_hash
+    sha256 = exchange_hash,
+    identitySource = "externally-supplied-private-review-parameters"
   ),
   command = paste(
     "R_LIBS_USER=<legacy-renv-library>",
     "Rscript --vanilla oracle-r/generate-class1-exchange.R",
     "--legacy-checkout <clean-d020-checkout>",
-    "--output <external-review-dir>/class1-timepoints.ena3d.json"
+    "--output <external-private-review-dir>/prepared-exchange.ena3d.json",
+    "--expected-input-sha256 <private-review-input-hash>",
+    "--expected-input-bytes <private-review-input-byte-count>",
+    "--expected-exchange-sha256 <private-review-hash>",
+    "--expected-exchange-bytes <private-review-byte-count>"
   )
 )
 provenance_written <- write_provenance(provenance_path, provenance)
@@ -316,10 +368,9 @@ cat(
   paste0("wrapper_commit=", wrapper_commit),
   paste0("wrapper_sha256=", wrapper_hash),
   paste0("legacy_commit=", head),
-  paste0("input_sha256=", input_hash),
+  "input_identity=verified-against-external-review-parameters",
   paste0("converter_sha256=", converter_hash),
-  paste0("exchange_sha256=", exchange_hash),
-  paste0("exchange_bytes=", format(exchange_bytes, scientific = FALSE)),
+  "exchange_identity=verified-against-external-review-parameters",
   paste0("exchange_path=", output),
   paste0("checksum_path=", checksum),
   paste0("provenance_path=", provenance_written),

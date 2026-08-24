@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "3dena.schema-index.v1",
+  "schemas": {
+    "analysisExecutionDatasetV2": "analysis-execution-dataset.v2.json",
+    "analysisSpec": "analysis-spec.v1.json",
+    "analysisTask": "analysis-task.v1.json",
+    "datasetReceipt": "dataset-receipt.v1.json",
+    "displaySpec": "display-spec.v1.json",
+    "evidenceStamp": "evidence-stamp.v1.json",
+    "longitudinalAnalysisBundleV2": "longitudinal-analysis-bundle.v2.json",
+    "provenanceManifest": "provenance-manifest.v1.json",
+    "resultEnvelope": "analysis-result-envelope.v1.json",
+    "taskOwner": "task-owner.v1.json",
+    "trajectoryBootstrapTaskV2": "trajectory-bootstrap-task.v2.json",
+    "trajectoryDisplaySpecV2": "trajectory-display-spec.v2.json",
+    "trajectoryInferenceTaskV2": "trajectory-inference-task.v2.json",
+    "trajectoryNetworkOverlayTaskV2": "trajectory-network-overlay-task.v2.json",
+    "trajectoryPathTaskV2": "trajectory-path-task.v2.json",
+    "trajectoryRunSpecV2": "trajectory-run-spec.v2.json",
+    "typedKey": "typed-key.v1.json",
+    "typedScalar": "typed-scalar.v1.json"
+  }
+}

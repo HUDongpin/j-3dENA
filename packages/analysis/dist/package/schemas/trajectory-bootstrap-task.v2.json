@@ -1,0 +1,110 @@
+{
+  "$id": "https://3dena.com/schemas/trajectory-bootstrap-task.v2.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "datasetHash",
+    "specHash",
+    "sourceResultHash",
+    "runId",
+    "repetitions",
+    "confidenceLevel",
+    "seed",
+    "resamplingDesign",
+    "explicitStrataField",
+    "interval",
+    "rotationPolicy"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "3dena.trajectory-bootstrap-task.v2"
+    },
+    "kind": {
+      "const": "trajectory-bootstrap-v2"
+    },
+    "datasetHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "specHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "sourceResultHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repetitions": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000
+    },
+    "confidenceLevel": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "exclusiveMaximum": 1
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "resamplingDesign": {
+      "enum": [
+        "auto",
+        "global-participant",
+        "within-group",
+        "explicit-strata"
+      ]
+    },
+    "explicitStrataField": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "minLength": 1
+        }
+      ]
+    },
+    "interval": {
+      "const": "pointwise-percentile-linear-type7"
+    },
+    "rotationPolicy": {
+      "const": "fixed-same-fit-projection"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "resamplingDesign": {
+            "const": "explicit-strata"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "explicitStrataField": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "explicitStrataField": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}

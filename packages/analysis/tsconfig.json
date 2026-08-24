@@ -1,6 +1,13 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "paths": {
+      "@3dena/export": ["../export/src/index.ts"],
+      "@3dena/io": ["../io/src/index.ts"],
+      "@3dena/stats": ["../stats/src/index.ts"],
+      "@3dena/tabular-import": ["../tabular-import/src/index.ts"],
+      "@3dena/trajectory": ["../trajectory/src/index.ts"]
+    },
     "types": ["node", "vitest/globals"]
   },
   "include": ["src/**/*.ts"]

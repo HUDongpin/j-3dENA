@@ -4,13 +4,15 @@ import { describe, expect, it } from "vitest";
 
 import { analyzeRows, type RawRow } from "../../analysis/src/index";
 import {
+  ParityApprovalError,
   compareGoldenAnalysis,
   normalizeAnalysisResult,
+  requireApprovedParity,
   type GoldenFixture
 } from "./index";
 
-const candidatePath = process.env.THREEDENA_ORACLE_CANDIDATE;
-const candidateDescribe = candidatePath ? describe : describe.skip;
+const candidatePath = process.env.THREEDENA_ORACLE_CANDIDATE
+  ?? new URL("../fixtures/small-raw.rena-0.2.7.golden.json", import.meta.url);
 
 function readSmallRaw(): RawRow[] {
   const lines = readFileSync(new URL("../fixtures/small-raw.csv", import.meta.url), "utf8").trim().split(/\r?\n/);
@@ -24,9 +26,9 @@ function readSmallRaw(): RawRow[] {
   });
 }
 
-candidateDescribe("explicit offline oracle candidate", () => {
+describe("governed generated oracle candidate", () => {
   it("compares every public DTO numeric field without adopting the candidate", () => {
-    const fixtureJson = readFileSync(candidatePath!, "utf8");
+    const fixtureJson = readFileSync(candidatePath, "utf8");
     const fixture = JSON.parse(fixtureJson) as GoldenFixture;
     expect(fixture.manifest.status).toBe("generated");
     const result = analyzeRows({
@@ -56,7 +58,6 @@ candidateDescribe("explicit offline oracle candidate", () => {
     const publicFields = fixture.manifest.availableFields.filter((field) => actual[field] !== undefined);
     const oracleOnlyFields = fixture.manifest.availableFields.filter((field) => actual[field] === undefined);
     const comparison = compareGoldenAnalysis(actual, fixture, undefined, {
-      fields: publicFields,
       fixtureJson,
       inputBytes: readFileSync(new URL("../fixtures/small-raw.csv", import.meta.url)),
       generatorBytes: readFileSync(new URL("../../../oracle-r/generate-small-raw-golden.R", import.meta.url))
@@ -66,6 +67,8 @@ candidateDescribe("explicit offline oracle candidate", () => {
     }
 
     expect(publicFields).toEqual([
+      "connectionCounts",
+      "rowConnectionCounts",
       "lineWeights",
       "centerVector",
       "rotationMatrix",
@@ -74,17 +77,19 @@ candidateDescribe("explicit offline oracle candidate", () => {
       "variance",
       "eigenvalues"
     ]);
-    expect(oracleOnlyFields).toEqual(["connectionCounts", "rowConnectionCounts"]);
+    expect(oracleOnlyFields).toEqual([]);
     expect(comparison.fixtureStatus).toBe("generated");
     expect(comparison.numericStatus, JSON.stringify(comparison, null, 2)).toBe("pass");
-    expect(comparison.comparisonScope).toBe("partial");
+    expect(comparison.comparisonScope).toBe("complete");
     expect(comparison.approvedForParity).toBe(false);
-    // This retained candidate predates final generator Git-commit/runtime
-    // provenance enforcement. Its numbers remain diagnostic; its custody is
-    // deliberately invalid and cannot pass the approved-only gate.
-    expect(comparison.status).toBe("candidate-invalid");
-    expect(comparison.fixtureValidation.issues.map((entry) => entry.code)).toContain("manifest.generator-commit");
+    expect(comparison.status).toBe("candidate-pass");
+    expect(comparison.fixtureValidation.valid).toBe(true);
+    expect(comparison.fixtureValidation.issues).toEqual([]);
+    expect(comparison.fields).toHaveLength(9);
+    expect(comparison.fields.every((field) => field.status === "pass")).toBe(true);
+    expect(comparison.uncomparedFields).toEqual([]);
     expect(comparison.fixtureValidation.computedHashes.analysisPayloadSha256).toBe(fixture.manifest.analysisPayloadSha256);
     expect(comparison.fixtureValidation.issues.map((entry) => entry.code)).not.toContain("evidence.analysis-hash");
+    expect(() => requireApprovedParity(comparison)).toThrow(ParityApprovalError);
   });
 });

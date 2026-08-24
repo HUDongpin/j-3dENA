@@ -17,13 +17,13 @@ jobs:
   checks:
     name: Lint, test, build, and runtime boundary
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
@@ -43,13 +43,25 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Dependency vulnerability audit
+        run: npm audit --audit-level=moderate
+
+      - name: Build and verify public facade package
+        run: |
+          npm run build:public --workspace @3dena/analysis
+          npm run pack:check --workspace @3dena/analysis
+
+      - name: Smoke public tarball in Node, TypeScript, Vite, and Next.js
+        run: npm run test:public-package --workspace @3dena/analysis
+
       - name: Golden parity tests
         run: npm run test:golden
 
       - name: Frozen oracle custody tests (R-free)
-        run: |
-          node --test oracle-r/verify-small-raw-custody.test.mjs
-          node oracle-r/verify-small-raw-custody.mjs
+        run: npm run test:oracle-custody
+
+      - name: Class 1 custody contract tests (synthetic and R-free)
+        run: npm run test:class1-custody:unit
 
       - name: Production build
         run: npm run build
@@ -60,17 +72,60 @@ jobs:
       - name: Verify production runtime boundary
         run: node scripts/verify-production-boundary.mjs --require-installed-tree
 
+      - name: Verify immutable GitHub Action pins
+        run: npm run test:ci-action-pins
+
+      - name: Test release-security and SBOM contracts
+        run: npm run test:release-security:unit
+
+      - name: Test parser fuzz receipt contracts
+        run: npm run test:parser-fuzz:unit
+
+      - name: Test the fail-closed jENA successor gate
+        run: npm run test:jena-successor:unit
+
+      - name: Test exact-build release receipt contracts
+        run: npm run test:release-receipts:unit
+
+      - name: Test Playwright evidence receipt contracts
+        run: npm run test:playwright-evidence:unit
+
+      - name: Test exact-image scan evidence contracts
+        run: npm run test:container-scan-evidence:unit
+
+      - name: Test CodeQL scanning scope contract
+        run: npm run test:codeql-scope:unit
+
+      - name: Generate complete deterministic production dependency SBOM
+        run: |
+          mkdir -p output
+          node scripts/generate-release-sbom.mjs --output output/sbom.cdx.json
+
+      - name: Verify release security and generated SBOM
+        run: node scripts/verify-release-security.mjs --sbom output/sbom.cdx.json
+
+      - name: Upload package and SBOM evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: package-and-sbom-evidence
+          path: |
+            packages/analysis/dist/package
+            output/sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 14
+
   browser:
-    name: Chromium vertical slice and accessibility
+    name: Chromium, Firefox, WebKit, and accessibility
     needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
@@ -81,20 +136,38 @@ jobs:
       - name: Install exact dependencies
         run: npm ci
 
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install Chromium, Firefox, and WebKit
+        run: npx playwright install --with-deps chromium firefox webkit
 
-      - name: Browser vertical slice
-        run: npm run test:e2e -- --project=chromium
+      - name: Multi-browser product matrix
+        env:
+          PLAYWRIGHT_REPORT_SEGMENT: multi-browser
+        run: npm run test:e2e -- --project=chromium --project=firefox --project=webkit
 
       - name: Accessibility at 390, 768, and 1280 px
+        env:
+          PLAYWRIGHT_REPORT_SEGMENT: accessibility
         run: npm run test:e2e:a11y
+
+      - name: Verify immutable Playwright evidence
+        if: always()
+        env:
+          SOURCE_HEAD_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          node scripts/verify-playwright-evidence.mjs \
+            --root output/playwright \
+            --output output/playwright/receipt.json \
+            --repository "$GITHUB_REPOSITORY" \
+            --execution-commit "$GITHUB_SHA" \
+            --source-head-commit "$SOURCE_HEAD_COMMIT" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT"
 
       - name: Upload Playwright evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-evidence
           path: output/playwright
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 14

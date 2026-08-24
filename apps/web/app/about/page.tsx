@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, FlaskConical, Laptop2 } from "lucide-react";
+import { ArrowRight, CloudCog, FlaskConical, Laptop2 } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "About",
@@ -26,21 +26,22 @@ export default function AboutPage() {
         <div className="runtime-diagram" aria-label="Production runtime boundary">
           <Laptop2 size={32} aria-hidden="true" />
           <strong>Production runtime</strong>
-          <span>Next.js · React · TypeScript</span>
-          <span>Web Worker · jENA · Plotly.js</span>
-          <small>Computation remains in the browser.</small>
+          <span>Next.js Web · approved remote compute</span>
+          <span>Service-owned dataset · jENA · Plotly.js</span>
+          <small>Missing or mixed build approval fails closed.</small>
         </div>
       </section>
 
       <section className="about-grid section-shell">
         <article>
-          <CheckCircle2 size={25} aria-hidden="true" />
+          <CloudCog size={25} aria-hidden="true" />
           <p className="eyebrow">Runtime boundary</p>
-          <h2>Browser-only production analysis</h2>
+          <h2>Remote-only production analysis</h2>
           <p>
-            The locally verified production build and runtime require no external
-            statistical-computation service. ENA runs entirely in a dedicated
-            browser Worker.
+            Production binds the Web build, compute image, dataset activation,
+            task, result, and formal export to one active approval. Browser
+            Workers remain available only for explicit development calibration;
+            there is no production fallback. Deployment verification remains open.
           </p>
         </article>
         <article>
@@ -57,8 +58,10 @@ export default function AboutPage() {
           <p className="eyebrow">Evidence status</p>
           <h2>Verification remains visible</h2>
           <p>
-            Product behavior can be exercised now, while scientific parity is
-            explicitly marked as in progress until golden comparisons pass.
+            Product status is IMPLEMENTED_UNVERIFIED. A PARITY_CANDIDATE label
+            applies only to an exact governed fixture, specification, explicit
+            build identity, and frozen version set; it is not a product-wide
+            parity claim.
           </p>
         </article>
       </section>

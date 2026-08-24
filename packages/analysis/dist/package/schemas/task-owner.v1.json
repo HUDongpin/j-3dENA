@@ -1,0 +1,33 @@
+{
+  "$id": "https://3dena.com/schemas/task-owner.v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "datasetHash",
+    "specHash",
+    "runId",
+    "taskId"
+  ],
+  "properties": {
+    "contractVersion": {
+      "const": "3dena.contract.v1"
+    },
+    "datasetHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "specHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "taskId": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

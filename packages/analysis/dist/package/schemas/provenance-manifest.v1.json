@@ -1,0 +1,121 @@
+{
+  "$id": "https://3dena.com/schemas/provenance-manifest.v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "datasetHash",
+    "specHash",
+    "resultHash",
+    "adapterVersion",
+    "jenaPackage",
+    "jenaVersion",
+    "jenaCommit",
+    "sourceKind",
+    "jenaExecuted",
+    "sdkPackage",
+    "sdkVersion",
+    "appVersion",
+    "contractVersion",
+    "buildId",
+    "seed",
+    "toleranceContract",
+    "schemaVersions",
+    "generatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "3dena.provenance-manifest.v1"
+    },
+    "datasetHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "specHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "resultHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "adapterVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "jenaPackage": {
+      "const": "jena-js"
+    },
+    "jenaVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "jenaCommit": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceKind": {
+      "enum": [
+        "raw-jena",
+        "prepared-exchange"
+      ]
+    },
+    "jenaExecuted": {
+      "type": "boolean"
+    },
+    "sdkPackage": {
+      "const": "@3dena/analysis"
+    },
+    "sdkVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "appVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "contractVersion": {
+      "const": "3dena.contract.v1"
+    },
+    "buildId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "seed": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      ]
+    },
+    "toleranceContract": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "minLength": 1
+        }
+      ]
+    },
+    "schemaVersions": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

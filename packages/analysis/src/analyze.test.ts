@@ -107,18 +107,68 @@ describe("analyzeRows", () => {
       points: 16,
       nodes: 4,
       edges: 6,
+      modelCountRows: 16,
+      rowCountRows: 16,
       groups: 2,
       timePoints: 2,
       participantPeriods: 16,
       trajectoryCentroids: 4
     });
     expect(result.rotation.columns.slice(0, 3)).toEqual(result.axes);
+    expect(result.dimensions).toEqual(result.rotation.columns);
+    expect(result.summary.dimensions).toBe(6);
     expect(result.variance).toHaveLength(6);
     expect(result.variance.reduce((sum, dimension) => sum + dimension.proportion, 0)).toBeCloseTo(1, 9);
     expect(result.variance.filter((dimension) => dimension.displayed).map((dimension) => dimension.axis)).toEqual(result.axes);
-    expect(result.points.every((point) => point.coordinates.length === 3 && point.lineWeights.length === 6)).toBe(true);
+    expect(result.points.every((point) =>
+      point.coordinates.length === 3 &&
+      point.fullCoordinates.length === result.dimensions.length &&
+      point.coordinates.every((value, index) => value === point.fullCoordinates[index]) &&
+      point.lineWeights.length === 6
+    )).toBe(true);
+    expect(result.nodes.every((node) =>
+      node.fullCoordinates.length === result.dimensions.length &&
+      node.coordinates.every((value, index) => value === node.fullCoordinates[index])
+    )).toBe(true);
+    expect(result.trajectory?.dimensions).toEqual(result.dimensions);
+    expect(result.trajectory?.centroids.every((centroid) =>
+      centroid.fullCoordinates.length === result.dimensions.length &&
+      centroid.coordinates.every((value, index) => value === centroid.fullCoordinates[index])
+    )).toBe(true);
+    expect(result.accumulation.modelCounts.columns).toEqual([
+      "EC & ICT", "EC & MCO", "ICT & MCO", "EC & ATT", "ICT & ATT", "MCO & ATT"
+    ]);
+    expect(result.accumulation.rowCounts.columns).toEqual([
+      "EC", "ICT", "MCO", "ATT", "EC & ICT", "EC & MCO", "ICT & MCO", "EC & ATT", "ICT & ATT", "MCO & ATT"
+    ]);
+    expect(result.accumulation.modelCounts.rowKeys.map((key) => key.canonical)).toEqual(result.points.map((point) => point.id.canonical));
+    expect(result.accumulation.modelCounts.rowKeys.slice(0, 4).map((key) => key.canonical)).toEqual([
+      '[["string","Experimental"],["string","Student 1"],["string","Lesson 1"]]',
+      '[["string","Experimental"],["string","Student 1"],["string","Lesson 2"]]',
+      '[["string","Control"],["string","Student 1"],["string","Lesson 1"]]',
+      '[["string","Control"],["string","Student 1"],["string","Lesson 2"]]'
+    ]);
+    expect(result.accumulation.rowCounts.rowKeys.slice(0, 4).map((key) => key.canonical)).toEqual([
+      '[["string","Experimental"],["string","Student 1"],["string","Lesson 1"]]',
+      '[["string","Control"],["string","Student 1"],["string","Lesson 1"]]',
+      '[["string","Experimental"],["string","Student 1"],["string","Lesson 2"]]',
+      '[["string","Control"],["string","Student 1"],["string","Lesson 2"]]'
+    ]);
+    expect(result.accumulation.modelCounts.values.slice(0, 4)).toEqual([
+      [0, 0, 0, 0, 0, 1],
+      [0, 0, 0, 0, 0, 1],
+      [0, 1, 0, 1, 0, 1],
+      [1, 2, 1, 1, 0, 1]
+    ]);
+    expect(result.accumulation.rowCounts.values.slice(0, 2)).toEqual([
+      [0, 0, 1, 1, 0, 0, 0, 0, 0, 1],
+      [1, 0, 0, 1, 0, 1, 0, 1, 0, 1]
+    ]);
+    expect(result).not.toHaveProperty("connectionCounts");
+    expect(result).not.toHaveProperty("rowConnectionCounts");
     expect(result.trajectory?.space).toBe("analysis-result-rotation");
-    expect(result.provenance.legacyGoldenStatus).toBe("pending");
+    expect(result.provenance.legacyGoldenStatus).toBe("not-assessed");
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "PARITY_SCOPE_NOT_ASSESSED" }));
     expect(structuredClone(result)).toEqual(result);
   });
 
@@ -185,6 +235,35 @@ describe("analyzeRows", () => {
     expect(new Set(result.points.map((point) => point.unit.canonical)).size).toBe(2);
   });
 
+  it("adds typed source-row occurrences to every duplicated unit-conversation row key", () => {
+    const result = analyzeRows({
+      rows: [
+        { group: "G", person: "P1", time: "T1", A: 1, B: 1, C: 0 },
+        { group: "G", person: "P1", time: "T1", A: 0, B: 1, C: 1 }
+      ],
+      mapping: {
+        units: ["group", "person"],
+        conversation: ["time"],
+        codes: ["A", "B", "C"]
+      },
+      config: { model: "AccumulatedTrajectory", windowSizeBack: 4 }
+    });
+
+    const rowKeys = result.accumulation.rowCounts.rowKeys;
+    expect(rowKeys).toHaveLength(2);
+    expect(new Set(rowKeys.map((key) => key.canonical)).size).toBe(2);
+    expect(rowKeys.map((key) => key.columns)).toEqual([
+      ["group", "person", "time", "@3dena/source-row-occurrence"],
+      ["group", "person", "time", "@3dena/source-row-occurrence"]
+    ]);
+    expect(rowKeys.map((key) => key.values)).toEqual([
+      ["G", "P1", "T1", 1],
+      ["G", "P1", "T1", 2]
+    ]);
+    expect(rowKeys[0]!.canonical).toBe('[["string","G"],["string","P1"],["string","T1"],["number","1"]]');
+    expect(rowKeys[1]!.canonical).toBe('[["string","G"],["string","P1"],["string","T1"],["number","2"]]');
+  });
+
   it("rejects unsafe numeric identities, invalid mappings, and resource excess before jENA", () => {
     const base = smallRawInput();
     const unsafe = structuredClone(base);
@@ -198,6 +277,22 @@ describe("analyzeRows", () => {
     const tooManyRows = structuredClone(base);
     tooManyRows.limits = { maxRows: 1 };
     expect(() => analyzeRows(tooManyRows)).toThrow(/exceeds maxRows=1/);
+
+    const tooManyAccumulationCells = structuredClone(base);
+    tooManyAccumulationCells.limits = { maxAccumulationCells: 1 };
+    expect(() => analyzeRows(tooManyAccumulationCells)).toThrow(/exceeds maxAccumulationCells=1/);
+
+    const tooManyDimensions = structuredClone(base);
+    tooManyDimensions.limits = { maxDimensions: 5 };
+    expect(() => analyzeRows(tooManyDimensions)).toThrow(/modeled dimensions exceeds maxDimensions=5/);
+
+    const tooManyCoordinateCells = structuredClone(base);
+    tooManyCoordinateCells.limits = { maxCoordinateCells: 1 };
+    expect(() => analyzeRows(tooManyCoordinateCells)).toThrow(/coordinate cells exceeds maxCoordinateCells=1/);
+
+    const reservedOccurrence = structuredClone(base);
+    reservedOccurrence.mapping.units = ["@3dena/source-row-occurrence"];
+    expect(() => analyzeRows(reservedOccurrence)).toThrow(/is reserved by @3dena\/analysis/);
   });
 
   it("rejects metadata that is not constant within a typed unit", () => {

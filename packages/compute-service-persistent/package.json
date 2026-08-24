@@ -1,0 +1,38 @@
+{
+  "name": "@3dena/compute-service-persistent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-only",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "tsc --noEmit",
+    "build:runtime": "node ./scripts/build-runtime.mjs"
+  },
+  "dependencies": {
+    "@3dena/analysis": "0.2.0",
+    "@3dena/compute-service-core": "0.1.0",
+    "@3dena/compute-service-http": "0.1.0",
+    "@3dena/compute-service-node": "0.1.0",
+    "@3dena/dataset-workflow": "0.1.0",
+    "@vercel/blob": "2.8.0",
+    "pg": "8.22.0"
+  },
+  "devDependencies": {
+    "@types/pg": "8.21.0",
+    "typescript": "6.0.3",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
+  }
+}

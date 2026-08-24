@@ -2,6 +2,7 @@ import {
   AnalysisValidationError,
   type AnalysisPoint,
   type Coordinates3D,
+  type CoordinatesND,
   type EntityKey,
   type ParticipantPeriodPoint,
   type SharedSpaceTrajectories,
@@ -21,6 +22,7 @@ interface ReductionAccumulator {
   time: TypedValue;
   sourcePointIndexes: number[];
   sums: Coordinates3D;
+  fullSums: CoordinatesND;
 }
 
 function meanCoordinates(points: Coordinates3D[]): Coordinates3D {
@@ -32,6 +34,13 @@ function meanCoordinates(points: Coordinates3D[]): Coordinates3D {
     sums[2] += point[2];
   }
   return [sums[0] / points.length, sums[1] / points.length, sums[2] / points.length];
+}
+
+function meanCoordinatesND(points: CoordinatesND[], dimensions: number): CoordinatesND {
+  if (points.length === 0) return Array.from({ length: dimensions }, () => 0);
+  return Array.from({ length: dimensions }, (_, dimension) =>
+    points.reduce((sum, point) => sum + (point[dimension] ?? 0), 0) / points.length
+  );
 }
 
 function stableTypedValues(values: TypedValue[]): TypedValue[] {
@@ -59,7 +68,11 @@ function participantInCompleteCohort(
   return true;
 }
 
-export function buildSharedSpaceTrajectories(points: AnalysisPoint[], mapping: TrajectoryMapping): SharedSpaceTrajectories {
+export function buildSharedSpaceTrajectories(
+  points: AnalysisPoint[],
+  mapping: TrajectoryMapping,
+  dimensions: string[]
+): SharedSpaceTrajectories {
   const eligible = points.filter((point) => point.group && point.time);
   if (eligible.length !== points.length) {
     throw new Error("Trajectory construction requires a typed group and period on every model point.");
@@ -86,6 +99,12 @@ export function buildSharedSpaceTrajectories(points: AnalysisPoint[], mapping: T
       current.sums[0] += point.coordinates[0];
       current.sums[1] += point.coordinates[1];
       current.sums[2] += point.coordinates[2];
+      if (current.fullSums.length !== point.fullCoordinates.length) {
+        throw new Error("Trajectory points do not share one full-dimensional rotation shape.");
+      }
+      point.fullCoordinates.forEach((value, dimension) => {
+        current.fullSums[dimension] = (current.fullSums[dimension] ?? 0) + value;
+      });
       current.sourcePointIndexes.push(point.index);
     } else {
       reductions.set(key, {
@@ -94,7 +113,8 @@ export function buildSharedSpaceTrajectories(points: AnalysisPoint[], mapping: T
         group,
         time,
         sourcePointIndexes: [point.index],
-        sums: [...point.coordinates]
+        sums: [...point.coordinates],
+        fullSums: [...point.fullCoordinates]
       });
     }
   }
@@ -110,6 +130,7 @@ export function buildSharedSpaceTrajectories(points: AnalysisPoint[], mapping: T
       reduction.sums[1] / reduction.sourcePointIndexes.length,
       reduction.sums[2] / reduction.sourcePointIndexes.length
     ],
+    fullCoordinates: reduction.fullSums.map((value) => value / reduction.sourcePointIndexes.length),
     sourcePointIndexes: reduction.sourcePointIndexes,
     includedInCohort: true
   }));
@@ -142,6 +163,7 @@ export function buildSharedSpaceTrajectories(points: AnalysisPoint[], mapping: T
         group,
         time,
         coordinates: meanCoordinates(members.map((member) => member.coordinates)),
+        fullCoordinates: meanCoordinatesND(members.map((member) => member.fullCoordinates), dimensions.length),
         participantCount: members.length,
         participantPeriodIndexes: members.map((member) => member.index)
       };
@@ -160,6 +182,7 @@ export function buildSharedSpaceTrajectories(points: AnalysisPoint[], mapping: T
 
   return {
     space: "analysis-result-rotation",
+    dimensions: [...dimensions],
     cohortPolicy,
     groupOrder,
     timeOrder,

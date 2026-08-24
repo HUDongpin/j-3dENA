@@ -193,6 +193,10 @@ export type ApprovedParityComparison = ParityComparison & {
 
 interface AnalysisResultLike {
   axes: string[];
+  accumulation: {
+    modelCounts: { rowKeys: Array<{ canonical: string }>; columns: string[]; values: number[][] };
+    rowCounts: { rowKeys: Array<{ canonical: string }>; columns: string[]; values: number[][] };
+  };
   points: Array<{ id: { canonical: string }; coordinates: number[]; lineWeights: number[] }>;
   nodes: Array<{ code: string; coordinates: number[] }>;
   edges: Array<{ column: string }>;
@@ -203,6 +207,16 @@ interface AnalysisResultLike {
 /** Converts the public analysis DTO to the portable numeric-table fixture shape. */
 export function normalizeAnalysisResult(result: AnalysisResultLike): GoldenAnalysis {
   return {
+    connectionCounts: {
+      rowKeys: result.accumulation.modelCounts.rowKeys.map((key) => key.canonical),
+      columns: [...result.accumulation.modelCounts.columns],
+      values: result.accumulation.modelCounts.values.map((row) => [...row])
+    },
+    rowConnectionCounts: {
+      rowKeys: result.accumulation.rowCounts.rowKeys.map((key) => key.canonical),
+      columns: [...result.accumulation.rowCounts.columns],
+      values: result.accumulation.rowCounts.values.map((row) => [...row])
+    },
     lineWeights: {
       rowKeys: result.points.map((point) => point.id.canonical),
       columns: result.edges.map((edge) => edge.column),

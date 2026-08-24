@@ -1,0 +1,193 @@
+{
+  "$id": "https://3dena.com/schemas/trajectory-display-spec.v2.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "projection",
+    "displayedGroups",
+    "traces",
+    "axisFlips",
+    "camera",
+    "style"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "3dena.trajectory-display-spec.v2"
+    },
+    "projection": {
+      "enum": [
+        "3d",
+        "xy",
+        "xz",
+        "yz",
+        "yx",
+        "zx",
+        "zy"
+      ]
+    },
+    "displayedGroups": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "traces": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "participants",
+        "individualPaths",
+        "centroids",
+        "paths",
+        "directionArrows",
+        "uncertainty",
+        "networkOverlay",
+        "labels"
+      ],
+      "properties": {
+        "participants": {
+          "type": "boolean"
+        },
+        "individualPaths": {
+          "type": "boolean"
+        },
+        "centroids": {
+          "type": "boolean"
+        },
+        "paths": {
+          "type": "boolean"
+        },
+        "directionArrows": {
+          "type": "boolean"
+        },
+        "uncertainty": {
+          "type": "boolean"
+        },
+        "networkOverlay": {
+          "type": "boolean"
+        },
+        "labels": {
+          "type": "boolean"
+        }
+      }
+    },
+    "axisFlips": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "boolean"
+      }
+    },
+    "camera": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "eye",
+            "center",
+            "up"
+          ],
+          "properties": {
+            "eye": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "z": {
+                  "type": "number"
+                }
+              }
+            },
+            "center": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "z": {
+                  "type": "number"
+                }
+              }
+            },
+            "up": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "z": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "style": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "participantSize",
+        "participantOpacity",
+        "centroidSize",
+        "pathWidth"
+      ],
+      "properties": {
+        "participantSize": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "participantOpacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "centroidSize": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "pathWidth": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    }
+  }
+}
