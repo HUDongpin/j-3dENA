@@ -1,8 +1,13 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 import { analyzeTrajectoryDynamicsV1, type TrajectoryIdentityV1 } from "@3dena/trajectory";
 
 import * as publicFacade from "./public";
 import type { DisplaySpecV1, LongitudinalAnalysisBundleV2, TrajectoryDisplaySpecV2 } from "./public";
+// The verifier's source-controlled MJS export list intentionally has no declaration file.
+// @ts-expect-error Runtime public-contract authority is JavaScript consumed by build scripts and tests.
+import { PUBLIC_PACKAGE_RUNTIME_EXPORT_NAMES } from "../scripts/verify-public-package.mjs";
 import {
   createSyntheticPreparedFixture,
   SYNTHETIC_PREPARED_PERIODS,
@@ -144,7 +149,29 @@ const genericDisplay: DisplaySpecV1 = {
   camera: null,
 };
 
+function readmeRuntimeExportNames(): string[] {
+  const readme = readFileSync(new URL("../PUBLIC_PACKAGE_README.md", import.meta.url), "utf8");
+  const section = /The supported runtime root exports are exactly:\r?\n\r?\n([\s\S]*?)(?:\r?\n\r?\n|$)/u.exec(readme)?.[1];
+  if (!section) throw new Error("public package README is missing its exact runtime root export list");
+  return section.split(/\r?\n/u).map((line) => {
+    const name = /^- `([A-Za-z_$][A-Za-z0-9_$]*)\([^`]*\)`$/u.exec(line)?.[1];
+    if (!name) throw new Error(`invalid public runtime root export documentation: ${JSON.stringify(line)}`);
+    return name;
+  });
+}
+
 describe("public npm facade", () => {
+  it("documents exactly the runtime root exports enforced by the verifier", () => {
+    const facadeNames = Object.keys(publicFacade).sort();
+    const readmeNames = readmeRuntimeExportNames();
+    const verifierNames = [...PUBLIC_PACKAGE_RUNTIME_EXPORT_NAMES];
+
+    expect(new Set(readmeNames).size).toBe(readmeNames.length);
+    expect(new Set(verifierNames).size).toBe(verifierNames.length);
+    expect([...readmeNames].sort()).toEqual(facadeNames);
+    expect([...verifierNames].sort()).toEqual(facadeNames);
+  });
+
   it("exposes the reviewed runtime functions plus strict dataset and result validators", () => {
     expect(Object.keys(publicFacade).sort()).toEqual([
       "adaptFittedJenaTrajectoryResultV2",

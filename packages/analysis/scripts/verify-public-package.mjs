@@ -29,6 +29,18 @@ const expectedManifestFiles = [
   "PROVENANCE.json"
 ];
 
+export const PUBLIC_PACKAGE_RUNTIME_EXPORT_NAMES = Object.freeze([
+  "adaptFittedJenaTrajectoryResultV2",
+  "assertAnalysisExecutionDatasetV2", "assertAnalysisResultEnvelopeV1",
+  "assertLongitudinalAnalysisBundleV2", "assertLongitudinalExecutionRequestV2",
+  "assertTrajectoryRunSpecV2",
+  "compilePlotlySpec", "compileTrajectoryPlotlySpec", "createAnalysisClient",
+  "createExportBundle", "executeAnalysisTask", "executeLongitudinalAnalysisV2",
+  "getAnalysisBuildIdentityV2", "hashAnalysisValueV1",
+  "hashLongitudinalExecutionRequestV2", "inspectDataset",
+  "verifyLongitudinalAnalysisBundleV2"
+]);
+
 function fail(message) {
   throw new Error(`PUBLIC_PACKAGE_INVALID: ${message}`);
 }
@@ -180,21 +192,10 @@ export async function verifyPublicPackage(packageDirectory) {
   if (provenance.artifacts?.schemaIndexSha256 !== schemaIndexDigest) fail("schema index digest does not match provenance");
 
   const loaded = await import(`${pathToFileURL(resolve(directory, "index.js")).href}?verify=${digest}`);
-  const publicNames = [
-    "adaptFittedJenaTrajectoryResultV2",
-    "assertAnalysisExecutionDatasetV2", "assertAnalysisResultEnvelopeV1",
-    "assertLongitudinalAnalysisBundleV2", "assertLongitudinalExecutionRequestV2",
-    "assertTrajectoryRunSpecV2",
-    "compilePlotlySpec", "compileTrajectoryPlotlySpec", "createAnalysisClient",
-    "createExportBundle", "executeAnalysisTask", "executeLongitudinalAnalysisV2",
-    "getAnalysisBuildIdentityV2", "hashAnalysisValueV1",
-    "hashLongitudinalExecutionRequestV2", "inspectDataset",
-    "verifyLongitudinalAnalysisBundleV2"
-  ];
-  if (JSON.stringify(Object.keys(loaded).sort()) !== JSON.stringify(publicNames)) {
-    fail(`runtime root exports must be exactly ${publicNames.join(", ")}`);
+  if (JSON.stringify(Object.keys(loaded).sort()) !== JSON.stringify(PUBLIC_PACKAGE_RUNTIME_EXPORT_NAMES)) {
+    fail(`runtime root exports must be exactly ${PUBLIC_PACKAGE_RUNTIME_EXPORT_NAMES.join(", ")}`);
   }
-  for (const publicName of publicNames) {
+  for (const publicName of PUBLIC_PACKAGE_RUNTIME_EXPORT_NAMES) {
     if (typeof loaded[publicName] !== "function") fail(`runtime root export ${publicName} is not a function`);
   }
   const scientificBuild = loaded.getAnalysisBuildIdentityV2();

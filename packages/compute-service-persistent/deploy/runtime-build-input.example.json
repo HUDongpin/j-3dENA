@@ -4,7 +4,7 @@
     "jenaVersion": "0.7.0-ona.0",
     "jenaCommit": "90790856f00bdef63dbd27fc3a5b502e8cffe65f",
     "jenaTarballIntegrity": "sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==",
-    "sdkVersion": "0.2.0-implemented-unverified.3",
+    "sdkVersion": "0.2.0-implemented-unverified.4",
     "buildId": "REPLACE_WITH_APPROVED_BUILD_ID"
   },
   "migrations": [
