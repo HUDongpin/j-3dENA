@@ -46,6 +46,7 @@ The supported runtime root exports are exactly:
 - `executeLongitudinalAnalysisV2(input)`
 - `getAnalysisBuildIdentityV2()`
 - `hashAnalysisValueV1(value)`
+- `hashLongitudinalExecutionRequestV2(input)`
 
 The plotting APIs are mutually exclusive presenter boundaries:
 `compilePlotlySpec()` is ENA-only: it renders fitted participant points, code
