@@ -96,6 +96,7 @@ interface NormalizedDisplay {
 
 const COLORS = ["#2563eb", "#a16207", "#7c3aed", "#0f766e", "#be123c", "#475569"] as const;
 const AXIS_COLORS = ["#b91c1c", "#1d4ed8", "#15803d"] as const;
+const TRAJECTORY_LINE_COLOR = "#000000";
 
 function reject(code: string, path: string, message: string): never {
   throw new PlotlySpecCompilationError(code, path, message);
@@ -297,7 +298,7 @@ function trajectoryTraces(display: NormalizedDisplay, spec: DisplaySpecV1): Plot
       name: `${path.groupDisplay} trajectory`,
       ...fields,
       connectgaps: false,
-      line: { color: groupColor(path.groupCanonical), width: spec.style.trajectoryWidth },
+      line: { color: TRAJECTORY_LINE_COLOR, width: spec.style.trajectoryWidth },
       marker: { color: groupColor(path.groupCanonical), size: Math.max(4, spec.style.pointSize - 1), symbol: "square" },
       hovertemplate: `${path.groupDisplay}<extra></extra>`,
     }, { role: "trajectory", groupCanonical: path.groupCanonical });

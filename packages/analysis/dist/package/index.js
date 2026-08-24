@@ -4847,6 +4847,7 @@ Object.freeze({
 					"directionArrows",
 					"uncertainty",
 					"networkOverlay",
+					"codeNodes",
 					"labels"
 				].map((field) => [field, { type: "boolean" }]))
 			},
@@ -36753,7 +36754,7 @@ var init_build_identity = __esmMin((() => {
 		jenaCommit: injected("90790856f00bdef63dbd27fc3a5b502e8cffe65f", "development-unbound"),
 		jenaTarballIntegrity: injected("sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==", "development-unbound"),
 		sdkVersion: injected("0.2.0", "development-unbound"),
-		buildId: injected("efc2cc1f96bffaa32fa80000851b99efb3343f1c", "development-unbound"),
+		buildId: injected("758ca0633f1d1616ad28cd6e4eb3e1fcd7cddbfc", "development-unbound"),
 		bound: true
 	});
 }));
@@ -40498,7 +40499,7 @@ function assertDisplaySpec(value) {
 	if (!Array.isArray(spec.displayedGroups) || spec.displayedGroups.some((group) => typeof group !== "string")) contractError("displaySpec.displayedGroups", "must be a string array");
 	if (!Array.isArray(spec.axisFlips) || spec.axisFlips.length !== 3 || spec.axisFlips.some((entry) => typeof entry !== "boolean")) contractError("displaySpec.axisFlips", "must contain three booleans");
 	const traces = objectAt(spec.traces, "displaySpec.traces");
-	const traceFields = [
+	const requiredTraceFields = [
 		"participants",
 		"individualPaths",
 		"centroids",
@@ -40508,8 +40509,8 @@ function assertDisplaySpec(value) {
 		"networkOverlay",
 		"labels"
 	];
-	exactFields(traces, traceFields, traceFields, "displaySpec.traces");
-	if (traceFields.some((field) => typeof traces[field] !== "boolean")) contractError("displaySpec.traces", "all trace controls must be boolean");
+	exactFields(traces, [...requiredTraceFields, "codeNodes"], requiredTraceFields, "displaySpec.traces");
+	if (requiredTraceFields.some((field) => typeof traces[field] !== "boolean") || "codeNodes" in traces && typeof traces.codeNodes !== "boolean") contractError("displaySpec.traces", "all trace controls must be boolean");
 	const style = objectAt(spec.style, "displaySpec.style");
 	exactFields(style, [
 		"participantSize",
@@ -40540,6 +40541,9 @@ var AXIS_COLORS$1 = [
 	"#2563eb",
 	"#16a34a"
 ];
+var TRAJECTORY_LINE_COLOR$1 = "#000000";
+var DIRECTION_ARROW_TIP_PROGRESS = .5;
+var DIRECTION_ARROW_TAIL_PROGRESS = .35;
 function hashString$1(value) {
 	let hash = 0;
 	for (let index = 0; index < value.length; index += 1) hash = Math.imul(hash, 31) + value.charCodeAt(index) >>> 0;
@@ -40700,7 +40704,7 @@ function compileTrajectoryPlotlySpec(bundle, displaySpec) {
 					connectgaps: false,
 					showlegend: false,
 					line: {
-						color,
+						color: TRAJECTORY_LINE_COLOR$1,
 						width: Math.max(1, displaySpec.style.pathWidth * .35)
 					},
 					marker: {
@@ -40720,12 +40724,13 @@ function compileTrajectoryPlotlySpec(bundle, displaySpec) {
 			...projectedFields(centroidCoordinates, displaySpec.projection, displaySpec.axisFlips),
 			connectgaps: false,
 			line: {
-				color,
+				color: TRAJECTORY_LINE_COLOR$1,
 				width: displaySpec.style.pathWidth
 			},
 			marker: {
 				color,
-				size: displaySpec.style.centroidSize
+				size: displaySpec.style.centroidSize,
+				symbol: "square"
 			},
 			text: dynamics.periods.map((period) => period.time.display),
 			hovertemplate: "%{text}<extra></extra>"
@@ -40750,77 +40755,28 @@ function compileTrajectoryPlotlySpec(bundle, displaySpec) {
 				hovertemplate: "%{text}<br>n=%{customdata[0]}<extra></extra>"
 			}, { groupCanonical: group.canonical }));
 		}
-		if (displaySpec.traces.uncertainty) {
-			const bootstrap = bundle.bootstrap.find((entry) => entry.groupCanonical === group.canonical);
-			if (bootstrap) {
-				const projectedIndexes = projectionIndexes(displaySpec.projection) ?? [
-					0,
-					1,
-					2
-				];
-				const available = bootstrap.result.periods.filter((period) => projectedIndexes.every((axisIndex) => period.selectedCentroid[axisIndex] !== null));
-				if (available.length > 0) {
-					const estimates = available.map((period) => [
-						0,
-						1,
-						2
-					].map((axisIndex) => period.selectedCentroid[axisIndex]?.estimate ?? 0));
-					const error = (axisIndex) => {
-						const intervals = available.map((period) => period.selectedCentroid[axisIndex]);
-						const positive = intervals.map((interval) => interval.upper - interval.estimate);
-						const negative = intervals.map((interval) => interval.estimate - interval.lower);
-						return {
-							type: "data",
-							symmetric: false,
-							visible: true,
-							color,
-							thickness: 2,
-							width: 4,
-							array: displaySpec.axisFlips[axisIndex] ? negative : positive,
-							arrayminus: displaySpec.axisFlips[axisIndex] ? positive : negative
-						};
-					};
-					const projected = projectedFields(estimates, displaySpec.projection, displaySpec.axisFlips);
-					data.push(trace$1(dimension, resultHash, "uncertainty", {
-						mode: "markers",
-						name: `${group.display} pointwise ${Math.round(bootstrap.result.confidenceLevel * 100)}% intervals`,
-						...projected,
-						marker: {
-							color,
-							size: Math.max(3, displaySpec.style.centroidSize * .45),
-							opacity: .32
-						},
-						error_x: error(projectedIndexes[0]),
-						error_y: error(projectedIndexes[1]),
-						...dimension === 3 ? { error_z: error(projectedIndexes[2]) } : {},
-						text: available.map((period) => period.time.display),
-						hovertemplate: "%{text}<br>pointwise centroid interval<extra></extra>"
-					}, { groupCanonical: group.canonical }));
-				}
-			}
-		}
 		if (displaySpec.traces.directionArrows) for (let index = 1; index < dynamics.periods.length; index += 1) {
 			const previous = dynamics.periods[index - 1].selectedCentroid;
 			const current = dynamics.periods[index].selectedCentroid;
 			if (previous === null || current === null || dynamics.periods[index].selected3d.stepDistance === null) continue;
 			if (dimension === 3) {
-				const currentProjected = projectedFields([current], "3d", displaySpec.axisFlips);
+				const midpointProjected = projectedFields([current.map((value, axisIndex) => previous[axisIndex] + (value - previous[axisIndex]) * DIRECTION_ARROW_TIP_PROGRESS)], "3d", displaySpec.axisFlips);
 				const delta = current.map((value, axisIndex) => {
 					const raw = value - previous[axisIndex];
 					return displaySpec.axisFlips[axisIndex] ? -raw : raw;
 				});
 				data.push({
 					type: "cone",
-					x: currentProjected.x,
-					y: currentProjected.y,
-					z: currentProjected.z,
+					x: midpointProjected.x,
+					y: midpointProjected.y,
+					z: midpointProjected.z,
 					u: [delta[0]],
 					v: [delta[1]],
 					w: [delta[2]],
 					anchor: "tip",
 					sizemode: "absolute",
 					sizeref: Math.max(.06, extent * .06),
-					colorscale: [[0, color], [1, color]],
+					colorscale: [[0, TRAJECTORY_LINE_COLOR$1], [1, TRAJECTORY_LINE_COLOR$1]],
 					showscale: false,
 					showlegend: false,
 					hoverinfo: "skip",
@@ -40832,7 +40788,8 @@ function compileTrajectoryPlotlySpec(bundle, displaySpec) {
 				});
 			} else {
 				const indexes = projectionIndexes(displaySpec.projection);
-				const projected = projectedFields([previous, current], displaySpec.projection, displaySpec.axisFlips);
+				const arrowPoint = (progress) => current.map((value, axisIndex) => previous[axisIndex] + (value - previous[axisIndex]) * progress);
+				const projected = projectedFields([arrowPoint(DIRECTION_ARROW_TAIL_PROGRESS), arrowPoint(DIRECTION_ARROW_TIP_PROGRESS)], displaySpec.projection, displaySpec.axisFlips);
 				const dx = (current[indexes[0]] - previous[indexes[0]]) * (displaySpec.axisFlips[indexes[0]] ? -1 : 1);
 				const dy = (current[indexes[1]] - previous[indexes[1]]) * (displaySpec.axisFlips[indexes[1]] ? -1 : 1);
 				const angle = 90 - Math.atan2(dy, dx) * 180 / Math.PI;
@@ -40841,11 +40798,11 @@ function compileTrajectoryPlotlySpec(bundle, displaySpec) {
 					name: `${group.display} direction`,
 					...projected,
 					line: {
-						color,
+						color: TRAJECTORY_LINE_COLOR$1,
 						width: Math.max(1, displaySpec.style.pathWidth * .45)
 					},
 					marker: {
-						color,
+						color: TRAJECTORY_LINE_COLOR$1,
 						size: [0, Math.max(9, displaySpec.style.centroidSize * .85)],
 						symbol: ["circle", "arrow-up"],
 						angle: [0, angle]
@@ -40856,15 +40813,16 @@ function compileTrajectoryPlotlySpec(bundle, displaySpec) {
 			}
 		}
 	}
-	if (displaySpec.traces.networkOverlay) {
+	if (displaySpec.traces.codeNodes || displaySpec.traces.networkOverlay) {
 		const overlays = bundle.networkOverlays.filter((overlay) => overlay.status === "available" && (overlay.groupCanonical === null || selectedGroups.size === 0 || selectedGroups.has(overlay.groupCanonical)));
 		for (const overlay of overlays) {
 			const nodes = overlay.nodes;
 			data.push(trace$1(dimension, resultHash, "network-node", {
 				mode: "markers+text",
-				name: "Mean network nodes",
+				name: "ENA codes",
 				...projectedFields(nodes.map((node) => node.coordinates), displaySpec.projection, displaySpec.axisFlips),
 				text: nodes.map((node) => node.code),
+				textposition: "top center",
 				marker: {
 					size: nodes.map((node) => 8 + Math.sqrt(Math.max(0, node.weight)) * 4),
 					color: "#f8fafc",
@@ -40874,6 +40832,7 @@ function compileTrajectoryPlotlySpec(bundle, displaySpec) {
 					}
 				}
 			}, { ...overlay.groupCanonical ? { groupCanonical: overlay.groupCanonical } : {} }));
+			if (!displaySpec.traces.networkOverlay) continue;
 			for (const edge of overlay.edges) {
 				const source = nodes[edge.sourceIndex];
 				const target = nodes[edge.targetIndex];
@@ -43570,6 +43529,7 @@ var AXIS_COLORS = [
 	"#1d4ed8",
 	"#15803d"
 ];
+var TRAJECTORY_LINE_COLOR = "#000000";
 function reject$1(code, path, message) {
 	throw new PlotlySpecCompilationError(code, path, message);
 }
@@ -43798,7 +43758,7 @@ function trajectoryTraces(display, spec) {
 			...fields,
 			connectgaps: false,
 			line: {
-				color: groupColor(path.groupCanonical),
+				color: TRAJECTORY_LINE_COLOR,
 				width: spec.style.trajectoryWidth
 			},
 			marker: {

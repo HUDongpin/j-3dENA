@@ -322,6 +322,8 @@ export interface TrajectoryDisplaySpecV2 {
     directionArrows: boolean;
     uncertainty: boolean;
     networkOverlay: boolean;
+    /** Show fitted ENA code reference nodes without requiring mean-network edges. */
+    codeNodes?: boolean;
     labels: boolean;
   };
   axisFlips: [boolean, boolean, boolean];
@@ -652,9 +654,12 @@ function assertDisplaySpec(value: TrajectoryDisplaySpecV2): void {
   if (!Array.isArray(spec.displayedGroups) || spec.displayedGroups.some((group) => typeof group !== "string")) contractError("displaySpec.displayedGroups", "must be a string array");
   if (!Array.isArray(spec.axisFlips) || spec.axisFlips.length !== 3 || spec.axisFlips.some((entry) => typeof entry !== "boolean")) contractError("displaySpec.axisFlips", "must contain three booleans");
   const traces = objectAt(spec.traces, "displaySpec.traces");
-  const traceFields = ["participants", "individualPaths", "centroids", "paths", "directionArrows", "uncertainty", "networkOverlay", "labels"] as const;
-  exactFields(traces, traceFields, traceFields, "displaySpec.traces");
-  if (traceFields.some((field) => typeof traces[field] !== "boolean")) contractError("displaySpec.traces", "all trace controls must be boolean");
+  const requiredTraceFields = ["participants", "individualPaths", "centroids", "paths", "directionArrows", "uncertainty", "networkOverlay", "labels"] as const;
+  const traceFields = [...requiredTraceFields, "codeNodes"] as const;
+  exactFields(traces, traceFields, requiredTraceFields, "displaySpec.traces");
+  if (requiredTraceFields.some((field) => typeof traces[field] !== "boolean") || ("codeNodes" in traces && typeof traces.codeNodes !== "boolean")) {
+    contractError("displaySpec.traces", "all trace controls must be boolean");
+  }
   const style = objectAt(spec.style, "displaySpec.style");
   exactFields(style, ["participantSize", "participantOpacity", "centroidSize", "pathWidth"], ["participantSize", "participantOpacity", "centroidSize", "pathWidth"], "displaySpec.style");
   if (typeof style.participantSize !== "number" || style.participantSize <= 0) contractError("displaySpec.style.participantSize", "must be positive");
@@ -665,6 +670,9 @@ function assertDisplaySpec(value: TrajectoryDisplaySpecV2): void {
 
 const GROUP_COLORS = ["#2563eb", "#b45309", "#7c3aed", "#0f766e", "#be123c", "#475569"] as const;
 const AXIS_COLORS = ["#dc2626", "#2563eb", "#16a34a"] as const;
+const TRAJECTORY_LINE_COLOR = "#000000";
+const DIRECTION_ARROW_TIP_PROGRESS = 0.5;
+const DIRECTION_ARROW_TAIL_PROGRESS = 0.35;
 
 function hashString(value: string): number {
   let hash = 0;
@@ -820,7 +828,7 @@ export function compileTrajectoryPlotlySpec(
           ...projectedFields(coordinates, displaySpec.projection, displaySpec.axisFlips),
           connectgaps: false,
           showlegend: false,
-          line: { color, width: Math.max(1, displaySpec.style.pathWidth * 0.35) },
+          line: { color: TRAJECTORY_LINE_COLOR, width: Math.max(1, displaySpec.style.pathWidth * 0.35) },
           marker: { color, size: Math.max(3, displaySpec.style.participantSize - 1) },
         }, { groupCanonical: group.canonical, participantCanonical }));
       }
@@ -832,8 +840,8 @@ export function compileTrajectoryPlotlySpec(
         name: `${group.display} trajectory`,
         ...projectedFields(centroidCoordinates, displaySpec.projection, displaySpec.axisFlips),
         connectgaps: false,
-        line: { color, width: displaySpec.style.pathWidth },
-        marker: { color, size: displaySpec.style.centroidSize },
+        line: { color: TRAJECTORY_LINE_COLOR, width: displaySpec.style.pathWidth },
+        marker: { color, size: displaySpec.style.centroidSize, symbol: "square" },
         text: dynamics.periods.map((period) => period.time.display),
         hovertemplate: "%{text}<extra></extra>",
       }, { groupCanonical: group.canonical }));
@@ -850,66 +858,37 @@ export function compileTrajectoryPlotlySpec(
         hovertemplate: "%{text}<br>n=%{customdata[0]}<extra></extra>",
       }, { groupCanonical: group.canonical }));
     }
-    if (displaySpec.traces.uncertainty) {
-      const bootstrap = bundle.bootstrap.find((entry) => entry.groupCanonical === group.canonical);
-      if (bootstrap) {
-        const projectedIndexes = projectionIndexes(displaySpec.projection) ?? [0, 1, 2];
-        const available = bootstrap.result.periods.filter((period) => projectedIndexes.every((axisIndex) => period.selectedCentroid[axisIndex] !== null));
-        if (available.length > 0) {
-          const estimates = available.map((period) => [0, 1, 2].map((axisIndex) => period.selectedCentroid[axisIndex]?.estimate ?? 0) as [number, number, number]);
-          const error = (axisIndex: number) => {
-            const intervals = available.map((period) => period.selectedCentroid[axisIndex]!);
-            const positive = intervals.map((interval) => interval.upper - interval.estimate);
-            const negative = intervals.map((interval) => interval.estimate - interval.lower);
-            return {
-              type: "data",
-              symmetric: false,
-              visible: true,
-              color,
-              thickness: 2,
-              width: 4,
-              array: displaySpec.axisFlips[axisIndex] ? negative : positive,
-              arrayminus: displaySpec.axisFlips[axisIndex] ? positive : negative,
-            };
-          };
-          const projected = projectedFields(estimates, displaySpec.projection, displaySpec.axisFlips);
-          data.push(trace(dimension, resultHash, "uncertainty", {
-            mode: "markers",
-            name: `${group.display} pointwise ${Math.round(bootstrap.result.confidenceLevel * 100)}% intervals`,
-            ...projected,
-            marker: { color, size: Math.max(3, displaySpec.style.centroidSize * 0.45), opacity: 0.32 },
-            error_x: error(projectedIndexes[0]!),
-            error_y: error(projectedIndexes[1]!),
-            ...(dimension === 3 ? { error_z: error(projectedIndexes[2]!) } : {}),
-            text: available.map((period) => period.time.display),
-            hovertemplate: "%{text}<br>pointwise centroid interval<extra></extra>",
-          }, { groupCanonical: group.canonical }));
-        }
-      }
-    }
+    // `traces.uncertainty` remains in the V2 display schema so older saved
+    // display specifications stay readable. Longitudinal trajectory plots do
+    // not render confidence intervals: that visual grammar belongs to static
+    // 3D ENA group-comparison presenters. Bootstrap intervals remain available
+    // in the immutable bundle, exact tables, and exports.
     if (displaySpec.traces.directionArrows) {
       for (let index = 1; index < dynamics.periods.length; index += 1) {
         const previous = dynamics.periods[index - 1]!.selectedCentroid;
         const current = dynamics.periods[index]!.selectedCentroid;
         if (previous === null || current === null || dynamics.periods[index]!.selected3d.stepDistance === null) continue;
         if (dimension === 3) {
-          const currentProjected = projectedFields([current], "3d", displaySpec.axisFlips);
+          const midpoint = current.map((value, axisIndex) => (
+            previous[axisIndex]! + (value - previous[axisIndex]!) * DIRECTION_ARROW_TIP_PROGRESS
+          )) as [number, number, number];
+          const midpointProjected = projectedFields([midpoint], "3d", displaySpec.axisFlips);
           const delta = current.map((value, axisIndex) => {
             const raw = value - previous[axisIndex]!;
             return displaySpec.axisFlips[axisIndex] ? -raw : raw;
           });
           data.push({
             type: "cone",
-            x: currentProjected.x,
-            y: currentProjected.y,
-            z: currentProjected.z,
+            x: midpointProjected.x,
+            y: midpointProjected.y,
+            z: midpointProjected.z,
             u: [delta[0]],
             v: [delta[1]],
             w: [delta[2]],
             anchor: "tip",
             sizemode: "absolute",
             sizeref: Math.max(0.06, extent * 0.06),
-            colorscale: [[0, color], [1, color]],
+            colorscale: [[0, TRAJECTORY_LINE_COLOR], [1, TRAJECTORY_LINE_COLOR]],
             showscale: false,
             showlegend: false,
             hoverinfo: "skip",
@@ -917,7 +896,13 @@ export function compileTrajectoryPlotlySpec(
           });
         } else {
           const indexes = projectionIndexes(displaySpec.projection)!;
-          const projected = projectedFields([previous, current], displaySpec.projection, displaySpec.axisFlips);
+          const arrowPoint = (progress: number) => current.map((value, axisIndex) => (
+            previous[axisIndex]! + (value - previous[axisIndex]!) * progress
+          )) as [number, number, number];
+          const projected = projectedFields([
+            arrowPoint(DIRECTION_ARROW_TAIL_PROGRESS),
+            arrowPoint(DIRECTION_ARROW_TIP_PROGRESS),
+          ], displaySpec.projection, displaySpec.axisFlips);
           const dx = (current[indexes[0]]! - previous[indexes[0]]!) * (displaySpec.axisFlips[indexes[0]] ? -1 : 1);
           const dy = (current[indexes[1]]! - previous[indexes[1]]!) * (displaySpec.axisFlips[indexes[1]] ? -1 : 1);
           const angle = 90 - Math.atan2(dy, dx) * 180 / Math.PI;
@@ -925,9 +910,9 @@ export function compileTrajectoryPlotlySpec(
             mode: "lines+markers",
             name: `${group.display} direction`,
             ...projected,
-            line: { color, width: Math.max(1, displaySpec.style.pathWidth * 0.45) },
+            line: { color: TRAJECTORY_LINE_COLOR, width: Math.max(1, displaySpec.style.pathWidth * 0.45) },
             marker: {
-              color,
+              color: TRAJECTORY_LINE_COLOR,
               size: [0, Math.max(9, displaySpec.style.centroidSize * 0.85)],
               symbol: ["circle", "arrow-up"],
               angle: [0, angle],
@@ -940,7 +925,7 @@ export function compileTrajectoryPlotlySpec(
     }
   }
 
-  if (displaySpec.traces.networkOverlay) {
+  if (displaySpec.traces.codeNodes || displaySpec.traces.networkOverlay) {
     const overlays = bundle.networkOverlays.filter((overlay) => (
       overlay.status === "available"
       && (overlay.groupCanonical === null || selectedGroups.size === 0 || selectedGroups.has(overlay.groupCanonical))
@@ -949,11 +934,13 @@ export function compileTrajectoryPlotlySpec(
       const nodes = overlay.nodes;
       data.push(trace(dimension, resultHash, "network-node", {
         mode: "markers+text",
-        name: "Mean network nodes",
+        name: "ENA codes",
         ...projectedFields(nodes.map((node) => node.coordinates), displaySpec.projection, displaySpec.axisFlips),
         text: nodes.map((node) => node.code),
+        textposition: "top center",
         marker: { size: nodes.map((node) => 8 + Math.sqrt(Math.max(0, node.weight)) * 4), color: "#f8fafc", line: { color: "#0f172a", width: 2 } },
       }, { ...(overlay.groupCanonical ? { groupCanonical: overlay.groupCanonical } : {}) }));
+      if (!displaySpec.traces.networkOverlay) continue;
       for (const edge of overlay.edges) {
         const source = nodes[edge.sourceIndex];
         const target = nodes[edge.targetIndex];

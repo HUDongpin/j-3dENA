@@ -269,6 +269,13 @@ avoidable finite-input overflow and severe cancellation loss; deltas,
 with a typed numeric-overflow error if the mathematical result is not
 representable as a finite JavaScript number.
 
+These longitudinal bootstrap intervals are numerical analysis artifacts for
+exact tables and exports. `compileTrajectoryPlotlySpec()` intentionally does
+not render them in either 2D or 3D, even when a legacy V2 display specification
+sets `traces.uncertainty` to `true`. Visual confidence intervals remain part of
+the separate static 3D ENA group-comparison grammar; they are not trajectory
+marks.
+
 ### Result adapters
 
 `adaptAnalysisResultTrajectorySeries()` and

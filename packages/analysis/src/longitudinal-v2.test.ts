@@ -174,8 +174,18 @@ describe("dedicated trajectory Plotly compiler", () => {
     expect(plot.data.some((trace) => trace.meta.role === "trajectory-path")).toBe(true);
     expect(plot.data.some((trace) => trace.meta.role === "direction-arrow")).toBe(false);
     const trajectory = plot.data.find((trace) => trace.meta.role === "trajectory-path")!;
+    const individualPath = plot.data.find((trace) => trace.meta.role === "individual-path")!;
+    const participant = plot.data.find((trace) => trace.meta.role === "participant")!;
+    const centroid = plot.data.find((trace) => trace.meta.role === "centroid")!;
     expect(trajectory.x).toEqual([1, null, 4]);
     expect(trajectory.connectgaps).toBe(false);
+    expect(trajectory).toMatchObject({ line: { color: "#000000" } });
+    expect(individualPath).toMatchObject({ line: { color: "#000000" } });
+    expect(trajectory).toMatchObject({ marker: { symbol: "square" } });
+    expect(trajectory).not.toMatchObject({ marker: { color: "#000000" } });
+    expect(individualPath).not.toMatchObject({ marker: { color: "#000000" } });
+    expect(participant).not.toMatchObject({ marker: { color: "#000000" } });
+    expect(centroid).not.toMatchObject({ marker: { color: "#000000" } });
     expect(scientific).toEqual(before);
     expect(Object.isFrozen(plot)).toBe(true);
   });
@@ -196,7 +206,48 @@ describe("dedicated trajectory Plotly compiler", () => {
     });
   });
 
-  it("renders pointwise centroid uncertainty and direction arrows in both 3D and projected 2D without a confidence tube", async () => {
+  it("shows fitted ENA code nodes independently from optional mean-network edges", () => {
+    const scientific = bundle();
+    scientific.networkOverlays = [{
+      status: "available",
+      reason: null,
+      groupCanonical: null,
+      periodCanonical: "T1",
+      dimensions: ["SVD1", "SVD2", "SVD3"],
+      estimand: "equal-participant",
+      sourceRows: 2,
+      participantPeriods: 2,
+      effectiveParticipantN: 2,
+      nodes: [
+        { code: "RE", coordinates: [-0.5, 0.1, 0.2], weight: 0.5 },
+        { code: "IN", coordinates: [0.4, -0.2, 0.3], weight: 0.5 },
+      ],
+      edges: [{ id: "RE-IN", sourceIndex: 0, targetIndex: 1, weight: 0.5 }],
+    }];
+    const codesOnly = displaySpec("3d");
+    codesOnly.traces.codeNodes = true;
+    codesOnly.traces.networkOverlay = false;
+
+    const three = compileTrajectoryPlotlySpec(scientific, codesOnly);
+    const threeCodeNodes = three.data.filter((trace) => trace.meta.role === "network-node");
+    expect(threeCodeNodes).toHaveLength(1);
+    expect(threeCodeNodes[0]!.text).toEqual(["RE", "IN"]);
+    expect(three.data.filter((trace) => trace.meta.role === "network-edge")).toHaveLength(0);
+
+    const twoCodesOnly = structuredClone(codesOnly);
+    twoCodesOnly.projection = "xy";
+    const two = compileTrajectoryPlotlySpec(scientific, twoCodesOnly);
+    expect(two.data.find((trace) => trace.meta.role === "network-node")?.text).toEqual(["RE", "IN"]);
+    expect(two.data.filter((trace) => trace.meta.role === "network-edge")).toHaveLength(0);
+
+    const withEdges = structuredClone(codesOnly);
+    withEdges.traces.networkOverlay = true;
+    const edgePlot = compileTrajectoryPlotlySpec(scientific, withEdges);
+    expect(edgePlot.data.filter((trace) => trace.meta.role === "network-node")).toHaveLength(1);
+    expect(edgePlot.data.filter((trace) => trace.meta.role === "network-edge")).toHaveLength(1);
+  });
+
+  it("keeps bootstrap intervals numerical while trajectory plots render no CI in 3D or projected 2D", async () => {
     const completePath = analyzeTrajectoryDynamicsV1({
       schemaVersion: "3dena.trajectory-dynamics-input.v1",
       namespace: "group-a-complete",
@@ -247,13 +298,38 @@ describe("dedicated trajectory Plotly compiler", () => {
     }];
 
     const three = compileTrajectoryPlotlySpec(scientific, displaySpec("3d"));
-    const threeUncertainty = three.data.find((trace) => trace.meta.role === "uncertainty")!;
-    expect(three.data.filter((trace) => trace.meta.role === "direction-arrow")).toHaveLength(2);
-    expect(threeUncertainty).toMatchObject({ type: "scatter3d", error_x: { type: "data", symmetric: false }, error_y: { type: "data", symmetric: false }, error_z: { type: "data", symmetric: false } });
+    const threeUncertainty = three.data.find((trace) => trace.meta.role === "uncertainty");
+    const threeArrows = three.data.filter((trace) => trace.meta.role === "direction-arrow");
+    expect(threeArrows).toHaveLength(2);
+    expect(threeArrows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ colorscale: [[0, "#000000"], [1, "#000000"]] }),
+      ]),
+    );
+    expect(threeArrows.map((trace) => [trace.x, trace.y, trace.z])).toEqual([
+      [[1.75], [2.75], [3.75]],
+      [[3.25], [4.25], [5.25]],
+    ]);
+    expect(threeUncertainty).toBeUndefined();
+    expect(scientific.bootstrap[0]!.result.periods).toHaveLength(3);
+    expect(scientific.bootstrap[0]!.result.periods[0]!.selectedCentroid[0]).not.toBeNull();
     expect(three.data.some((trace) => String(trace.meta.role).includes("tube"))).toBe(false);
 
     const two = compileTrajectoryPlotlySpec(scientific, displaySpec("xy"));
-    expect(two.data.filter((trace) => trace.meta.role === "direction-arrow")).toHaveLength(2);
-    expect(two.data.find((trace) => trace.meta.role === "uncertainty")).toMatchObject({ type: "scatter", error_x: { type: "data", symmetric: false }, error_y: { type: "data", symmetric: false } });
+    const twoArrows = two.data.filter((trace) => trace.meta.role === "direction-arrow");
+    expect(twoArrows).toHaveLength(2);
+    expect(twoArrows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          line: expect.objectContaining({ color: "#000000" }),
+          marker: expect.objectContaining({ color: "#000000" }),
+        }),
+      ]),
+    );
+    expect(twoArrows.map((trace) => [trace.x, trace.y])).toEqual([
+      [[1.525, 1.75], [2.525, 2.75]],
+      [[3.025, 3.25], [4.025, 4.25]],
+    ]);
+    expect(two.data.find((trace) => trace.meta.role === "uncertainty")).toBeUndefined();
   });
 });
