@@ -37102,7 +37102,7 @@ var init_build_identity = __esmMin((() => {
 		jenaCommit: injected("90790856f00bdef63dbd27fc3a5b502e8cffe65f", "development-unbound"),
 		jenaTarballIntegrity: injected("sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==", "development-unbound"),
 		sdkVersion: injected("0.2.0-implemented-unverified.1", "development-unbound"),
-		buildId: injected("90f06b6ee187af6ce2ac2d932593a63cbcaa8873", "development-unbound"),
+		buildId: injected("3321fa815341039967a2911c7b6a321d6527306f", "development-unbound"),
 		bound: true
 	});
 }));
@@ -41550,7 +41550,7 @@ var AXIS_COLORS$1 = [
 	"#2563eb",
 	"#16a34a"
 ];
-var TRAJECTORY_LINE_COLOR$1 = "#000000";
+var TRAJECTORY_LINE_COLOR = "#000000";
 var DIRECTION_ARROW_TIP_PROGRESS = .5;
 var DIRECTION_ARROW_TAIL_PROGRESS = .35;
 function hashString$1(value) {
@@ -41738,7 +41738,7 @@ function compileTrajectoryPlotlySpec(bundle, displaySpec) {
 					connectgaps: false,
 					showlegend: false,
 					line: {
-						color: TRAJECTORY_LINE_COLOR$1,
+						color: TRAJECTORY_LINE_COLOR,
 						width: Math.max(1, displaySpec.style.pathWidth * .35)
 					},
 					marker: {
@@ -41758,7 +41758,7 @@ function compileTrajectoryPlotlySpec(bundle, displaySpec) {
 			...projectedFields(centroidCoordinates, displaySpec.projection, displaySpec.axisFlips),
 			connectgaps: false,
 			line: {
-				color: TRAJECTORY_LINE_COLOR$1,
+				color: TRAJECTORY_LINE_COLOR,
 				width: displaySpec.style.pathWidth
 			},
 			text: dynamics.periods.map((period) => period.time.display),
@@ -41805,7 +41805,7 @@ function compileTrajectoryPlotlySpec(bundle, displaySpec) {
 					anchor: "tip",
 					sizemode: "absolute",
 					sizeref: Math.max(.06, extent * .06),
-					colorscale: [[0, TRAJECTORY_LINE_COLOR$1], [1, TRAJECTORY_LINE_COLOR$1]],
+					colorscale: [[0, TRAJECTORY_LINE_COLOR], [1, TRAJECTORY_LINE_COLOR]],
 					showscale: false,
 					showlegend: false,
 					hoverinfo: "skip",
@@ -41827,11 +41827,11 @@ function compileTrajectoryPlotlySpec(bundle, displaySpec) {
 					name: `${group.display} direction`,
 					...projected,
 					line: {
-						color: TRAJECTORY_LINE_COLOR$1,
+						color: TRAJECTORY_LINE_COLOR,
 						width: Math.max(1, displaySpec.style.pathWidth * .45)
 					},
 					marker: {
-						color: TRAJECTORY_LINE_COLOR$1,
+						color: TRAJECTORY_LINE_COLOR,
 						size: [0, Math.max(9, displaySpec.style.centroidSize * .85)],
 						symbol: ["circle", "arrow-up"],
 						angle: [0, angle]
@@ -41842,7 +41842,7 @@ function compileTrajectoryPlotlySpec(bundle, displaySpec) {
 			}
 		}
 	}
-	if (displaySpec.traces.codeNodes !== false || displaySpec.traces.networkOverlay) {
+	if (displaySpec.traces.codeNodes !== false) {
 		const nodes = bundle.codeGeometry.nodes;
 		if (nodes.length > 0) data.push(trace$1(dimension, resultHash, "network-node", {
 			mode: "markers+text",
@@ -41864,24 +41864,6 @@ function compileTrajectoryPlotlySpec(bundle, displaySpec) {
 				}
 			}
 		}));
-		if (displaySpec.traces.networkOverlay) {
-			const overlays = bundle.networkOverlays.filter((overlay) => overlay.status === "available" && (overlay.groupCanonical === null || selectedGroups.size === 0 || selectedGroups.has(overlay.groupCanonical)));
-			for (const overlay of overlays) for (const edge of overlay.edges) {
-				const source = bundle.codeGeometry.nodes[edge.sourceIndex];
-				const target = bundle.codeGeometry.nodes[edge.targetIndex];
-				if (!source || !target) continue;
-				data.push(trace$1(dimension, resultHash, "network-edge", {
-					mode: "lines",
-					name: edge.id,
-					...projectedFields([source.coordinates, target.coordinates], displaySpec.projection, displaySpec.axisFlips),
-					line: {
-						width: Math.max(.75, Math.abs(edge.weight) * 5),
-						color: edge.weight < 0 ? "#be123c" : "#64748b"
-					},
-					showlegend: false
-				}, { ...overlay.groupCanonical ? { groupCanonical: overlay.groupCanonical } : {} }));
-			}
-		}
 	}
 	const axisTitle = (index) => `${displaySpec.axisFlips[index] ? "−" : ""}${bundle.model.selectedDimensions[index]}`;
 	return deepFreeze$1({
@@ -44651,7 +44633,6 @@ var AXIS_COLORS = [
 	"#1d4ed8",
 	"#15803d"
 ];
-var TRAJECTORY_LINE_COLOR = "#000000";
 function reject$1(code, path, message) {
 	throw new PlotlySpecCompilationError(code, path, message);
 }
@@ -44865,36 +44846,6 @@ function centroidTraces(display, spec) {
 		groupCanonical: canonical
 	}));
 }
-function trajectoryTraces(display, spec) {
-	const centroids = new Map(display.centroids.map((centroid) => [centroid.index, centroid]));
-	return display.paths.map((path) => {
-		const coordinates = path.centroidIndexes.map((index) => index === null ? null : centroids.get(index)?.coordinates ?? null);
-		const fields = {
-			x: coordinates.map((point) => point?.[0] ?? null),
-			y: coordinates.map((point) => point?.[1] ?? null),
-			...spec.plotDimension === 3 ? { z: coordinates.map((point) => point?.[2] ?? null) } : {}
-		};
-		return trace(spec.plotDimension, {
-			mode: "lines+markers",
-			name: `${path.groupDisplay} trajectory`,
-			...fields,
-			connectgaps: false,
-			line: {
-				color: TRAJECTORY_LINE_COLOR,
-				width: spec.style.trajectoryWidth
-			},
-			marker: {
-				color: groupColor(path.groupCanonical),
-				size: Math.max(4, spec.style.pointSize - 1),
-				symbol: "square"
-			},
-			hovertemplate: `${path.groupDisplay}<extra></extra>`
-		}, {
-			role: "trajectory",
-			groupCanonical: path.groupCanonical
-		});
-	});
-}
 function axisTraces(display, spec) {
 	const coordinates = [
 		...display.points.map((point) => point.coordinates),
@@ -44979,7 +44930,6 @@ function compilePlotlySpec(result, displaySpec) {
 	if (displaySpec.traces.network) data.push(...edgeTraces(display, displaySpec));
 	if (displaySpec.traces.points) data.push(...pointTraces(display, displaySpec));
 	if (displaySpec.traces.nodes) data.push(nodeTrace(display, displaySpec));
-	if (displaySpec.traces.trajectory) data.push(...trajectoryTraces(display, displaySpec));
 	if (displaySpec.traces.centroids) data.push(...centroidTraces(display, displaySpec));
 	const axis = (title) => ({
 		title,

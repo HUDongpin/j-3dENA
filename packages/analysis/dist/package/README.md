@@ -47,6 +47,14 @@ The supported runtime root exports are exactly:
 - `getAnalysisBuildIdentityV2()`
 - `hashAnalysisValueV1(value)`
 
+The plotting APIs are mutually exclusive presenter boundaries:
+`compilePlotlySpec()` is ENA-only and ignores the read-compatible legacy
+`traces.trajectory` flag; `compileTrajectoryPlotlySpec()` is trajectory-only
+and ignores the read-compatible legacy `traces.networkOverlay` flag. Fitted
+code reference nodes remain part of trajectory plots because they are
+coordinate references, not ENA network edges. Longitudinal scientific bundles
+and exports retain their immutable `networkOverlays` data.
+
 No `@3dena/*` internal subpath is a public compatibility promise. Versioned
 contract and result types remain type-only root exports. The runtime
 validators and the discriminated JSON Schemas under `schemas/` are the stable
