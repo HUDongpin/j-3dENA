@@ -59,10 +59,15 @@ function display(overrides: Partial<DisplaySpecV1> = {}): DisplaySpecV1 {
 describe("compilePlotlySpec", () => {
   it("ignores legacy trajectory display flags while preserving the ordinary ENA plot", () => {
     const result = analyzeRows(rawInput());
-    const spec = compilePlotlySpec(result, display({
+    const legacyEnabled = display({
       traces: { ...display().traces, network: true, trajectory: true },
-    }));
+    });
+    const legacyDisabled = structuredClone(legacyEnabled);
+    legacyDisabled.traces.trajectory = false;
+    const spec = compilePlotlySpec(result, legacyEnabled);
+    const withoutLegacyTrajectory = compilePlotlySpec(result, legacyDisabled);
 
+    expect(spec).toEqual(withoutLegacyTrajectory);
     expect(spec.data.some((trace) => trace.meta.role === "network-edge")).toBe(true);
     expect(spec.data.some((trace) => trace.meta.role === "participant")).toBe(true);
     expect(spec.data.some((trace) => trace.meta.role === "node")).toBe(true);

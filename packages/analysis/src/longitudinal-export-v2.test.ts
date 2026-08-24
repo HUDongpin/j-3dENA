@@ -7,6 +7,7 @@ import {
   type LongitudinalAnalysisBundleV2,
   type TrajectoryDisplaySpecV2,
   type TrajectoryRunSpecV2,
+  verifyLongitudinalAnalysisBundleV2,
 } from "./longitudinal-v2";
 import { hashAnalysisValueV1 } from "./task-executor";
 
@@ -14,6 +15,18 @@ const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
 const HASH_C = "c".repeat(64);
 const DECODER = new TextDecoder("utf-8", { fatal: true });
+const AVAILABLE_NETWORK_OVERLAYS: LongitudinalAnalysisBundleV2["networkOverlays"] = [{
+  status: "available",
+  reason: null,
+  groupCanonical: "group:A",
+  periodCanonical: "time:T1",
+  dimensions: ["SVD1", "SVD2", "SVD3"],
+  estimand: "equal-participant",
+  sourceRows: 2,
+  participantPeriods: 2,
+  effectiveParticipantN: 2,
+  edges: [{ id: "RE-IN", sourceIndex: 0, targetIndex: 1, weight: 0.375 }],
+}];
 
 const identity = (name: string, value: string): TrajectoryIdentityV1 => ({
   components: [{ name, type: "string", value }],
@@ -91,6 +104,7 @@ async function scientificBundle(): Promise<LongitudinalAnalysisBundleV2> {
     runId: "run-export-v2",
     jenaBuildId: "jena-js@0.7.0-ona.0+90790856f00bdef63dbd27fc3a5b502e8cffe65f:fixture-build",
   };
+  const networkOverlays = structuredClone(AVAILABLE_NETWORK_OVERLAYS);
   const core = {
     schemaVersion: "3dena.longitudinal-analysis-bundle.v2" as const,
     identity: {
@@ -117,7 +131,7 @@ async function scientificBundle(): Promise<LongitudinalAnalysisBundleV2> {
         { index: 1, code: "IN", coordinates: [0.4, -0.2, 0.3] as [number, number, number] },
       ],
     },
-    networkOverlays: [],
+    networkOverlays,
     diagnostics: [],
     scientificExecution: {
       jenaVersion: "0.7.0-ona.0",
@@ -142,7 +156,7 @@ async function scientificBundle(): Promise<LongitudinalAnalysisBundleV2> {
     pathComparisons: [],
     bootstrap: [],
     codeGeometry: core.codeGeometry,
-    networkOverlays: [],
+    networkOverlays: core.networkOverlays,
     diagnostics: [],
     execution: { target: "browser-worker", ...core.scientificExecution },
   };
@@ -159,9 +173,15 @@ const display: TrajectoryDisplaySpecV2 = {
 };
 
 describe("longitudinal V2 export bundle", () => {
-  it("emits deterministic aggregate members and a recomputable per-file provenance manifest", async () => {
+  it("preserves non-empty network overlays while the trajectory presenter fails closed", async () => {
     const bundle = await scientificBundle();
+    const before = structuredClone(bundle);
+    await expect(verifyLongitudinalAnalysisBundleV2(bundle)).resolves.toBeUndefined();
+    expect(bundle.networkOverlays).toEqual(AVAILABLE_NETWORK_OVERLAYS);
+
     const plotlySpec = compileTrajectoryPlotlySpec(bundle, display);
+    expect(plotlySpec.data.map((trace) => trace.meta.role)).not.toContain("network-edge");
+    expect(bundle).toEqual(before);
     const first = await createExportBundle(bundle, { plotlySpec, fileName: "trajectory-analysis.zip" });
     const second = await createExportBundle(bundle, { plotlySpec, fileName: "trajectory-analysis.zip" });
     const entries = zipEntries(first.bytes);
@@ -176,6 +196,9 @@ describe("longitudinal V2 export bundle", () => {
       "trajectory-metadata.csv",
       "trajectory-path.csv",
     ]);
+    const analysis = JSON.parse(DECODER.decode(entries.get("analysis.json")!));
+    expect(analysis.networkOverlays).toEqual(before.networkOverlays);
+    expect(analysis.identity.resultHash).toBe(before.identity.resultHash);
     expect(DECODER.decode(entries.get("analysis.json")!)).not.toContain("private-P1");
     expect(DECODER.decode(entries.get("trajectory-path.csv")!)).toContain("full:SVD4");
     const manifest = JSON.parse(DECODER.decode(entries.get("provenance-manifest.json")!));
@@ -187,7 +210,9 @@ describe("longitudinal V2 export bundle", () => {
       jena: { version: "0.7.0-ona.0", commit: "90790856f00bdef63dbd27fc3a5b502e8cffe65f" },
     });
     for (const member of manifest.members) {
-      const bytes = entries.get(member.path)!;
+      const bytes = entries.get(member.path);
+      expect(bytes, `missing ZIP member ${member.path}`).toBeDefined();
+      if (!bytes) throw new Error(`missing ZIP member ${member.path}`);
       expect(bytes.byteLength).toBe(member.byteLength);
       expect(await hashAnalysisValueV1([...bytes])).not.toBe(member.sha256);
       const snapshot = new Uint8Array(bytes.byteLength);
@@ -195,6 +220,8 @@ describe("longitudinal V2 export bundle", () => {
       const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", snapshot))].map((value) => value.toString(16).padStart(2, "0")).join("");
       expect(digest).toBe(member.sha256);
     }
+    expect(manifest.contentSetHash).toBe(await hashAnalysisValueV1(manifest.members));
+    expect(bundle).toEqual(before);
   });
 
   it("returns the exact package-generated members for standalone presenter downloads", async () => {

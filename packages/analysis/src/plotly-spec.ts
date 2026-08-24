@@ -49,7 +49,6 @@ export class PlotlySpecCompilationError extends Error {
 }
 
 interface NormalizedPoint {
-  index: number;
   label: string;
   groupCanonical: string;
   groupDisplay: string;
@@ -71,18 +70,11 @@ interface NormalizedEdge {
 }
 
 interface NormalizedCentroid {
-  index: number;
   groupCanonical: string;
   groupDisplay: string;
   timeDisplay: string;
   participantCount: number;
   coordinates: Coordinates3D;
-}
-
-interface NormalizedPath {
-  groupCanonical: string;
-  groupDisplay: string;
-  centroidIndexes: Array<number | null>;
 }
 
 interface NormalizedDisplay {
@@ -92,7 +84,6 @@ interface NormalizedDisplay {
   nodes: NormalizedNode[];
   edges: NormalizedEdge[];
   centroids: NormalizedCentroid[];
-  paths: NormalizedPath[];
 }
 
 const COLORS = ["#2563eb", "#a16207", "#7c3aed", "#0f766e", "#be123c", "#475569"] as const;
@@ -117,7 +108,6 @@ function rawDisplay(result: AnalysisResult, displaySpec: DisplaySpecV1): Normali
     dimensions: [...displaySpec.dimensions],
     ...(displaySpec.groups ? { groups: [...displaySpec.groups] } : {}),
   });
-  const originalPoints = new Map(result.points.map((point) => [point.index, point]));
   const selectedIndexes = new Set(selection.points.map((point) => point.pointIndex));
   const edges = result.edges.map((edge) => {
     const weights = result.points.filter((point) => selectedIndexes.has(point.index)).map((point) => point.lineWeights[edge.index]!);
@@ -128,7 +118,6 @@ function rawDisplay(result: AnalysisResult, displaySpec: DisplaySpecV1): Normali
     source: "raw-jena",
     dimensions: [...selection.dimensions],
     points: selection.points.map((point) => ({
-      index: point.pointIndex,
       label: point.id.display,
       groupCanonical: point.group?.canonical ?? "@3dena/ungrouped",
       groupDisplay: point.group?.display ?? "All participants",
@@ -138,17 +127,11 @@ function rawDisplay(result: AnalysisResult, displaySpec: DisplaySpecV1): Normali
     nodes: selection.nodes.map((node) => ({ index: node.nodeIndex, code: node.code, coordinates: [...node.coordinates] })),
     edges,
     centroids: selection.trajectory?.centroids.map((centroid) => ({
-      index: centroid.centroidIndex,
       groupCanonical: centroid.group.canonical,
       groupDisplay: centroid.group.display,
       timeDisplay: centroid.time.display,
       participantCount: centroid.participantCount,
       coordinates: [...centroid.coordinates],
-    })) ?? [],
-    paths: selection.trajectory?.paths.map((path) => ({
-      groupCanonical: path.group.canonical,
-      groupDisplay: path.group.display,
-      centroidIndexes: path.steps.map((step) => step.centroidIndex),
     })) ?? [],
   };
 }
@@ -170,7 +153,6 @@ function preparedDisplay(result: PreparedSpaceResult, displaySpec: DisplaySpecV1
     source: "prepared-exchange",
     dimensions: [...selection.dimensions],
     points: selection.points.map((point) => ({
-      index: point.pointIndex,
       label: point.id.display,
       groupCanonical: point.group.canonical,
       groupDisplay: point.group.display,
@@ -180,17 +162,11 @@ function preparedDisplay(result: PreparedSpaceResult, displaySpec: DisplaySpecV1
     nodes: selection.nodes.map((node) => ({ index: node.nodeIndex, code: node.code, coordinates: [...node.coordinates] })),
     edges,
     centroids: selection.centroids.map((centroid) => ({
-      index: centroid.index,
       groupCanonical: centroid.group.canonical,
       groupDisplay: centroid.group.display,
       timeDisplay: centroid.time.display,
       participantCount: centroid.participantCount,
       coordinates: [...centroid.coordinates],
-    })),
-    paths: selection.paths.map((path) => ({
-      groupCanonical: path.group.canonical,
-      groupDisplay: path.group.display,
-      centroidIndexes: path.steps.map((step) => step.centroidIndex),
     })),
   };
 }

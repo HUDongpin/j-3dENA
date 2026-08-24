@@ -49,8 +49,10 @@ The supported runtime root exports are exactly:
 
 The plotting APIs are mutually exclusive presenter boundaries:
 `compilePlotlySpec()` is ENA-only and ignores the read-compatible legacy
-`traces.trajectory` flag; `compileTrajectoryPlotlySpec()` is trajectory-only
-and ignores the read-compatible legacy `traces.networkOverlay` flag. Fitted
+`traces.trajectory` flag. Its required legacy `style.trajectoryWidth` field is
+readback-only and also has no display effect. `compileTrajectoryPlotlySpec()`
+is trajectory-only and ignores the read-compatible legacy
+`traces.networkOverlay` flag. Fitted
 code reference nodes remain part of trajectory plots because they are
 coordinate references, not ENA network edges. Longitudinal scientific bundles
 and exports retain their immutable `networkOverlays` data.

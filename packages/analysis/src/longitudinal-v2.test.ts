@@ -340,6 +340,19 @@ describe("dedicated trajectory Plotly compiler", () => {
     const edgePlot = compileTrajectoryPlotlySpec(scientific, withEdges);
     expect(edgePlot.data.filter((trace) => trace.meta.role === "network-node")).toHaveLength(1);
     expect(edgePlot.data.map((trace) => trace.meta.role)).not.toContain("network-edge");
+
+    const withoutCodesOrEdges = structuredClone(codesOnly);
+    withoutCodesOrEdges.traces.codeNodes = false;
+    const hiddenWithoutLegacyOverlay = compileTrajectoryPlotlySpec(scientific, withoutCodesOrEdges);
+    const hiddenWithLegacyOverlayDisplay = structuredClone(withoutCodesOrEdges);
+    hiddenWithLegacyOverlayDisplay.traces.networkOverlay = true;
+    const hiddenWithLegacyOverlay = compileTrajectoryPlotlySpec(scientific, hiddenWithLegacyOverlayDisplay);
+    expect(hiddenWithLegacyOverlay).toEqual(hiddenWithoutLegacyOverlay);
+    for (const plot of [hiddenWithoutLegacyOverlay, hiddenWithLegacyOverlay]) {
+      const roles = plot.data.map((trace) => trace.meta.role);
+      expect(roles).not.toContain("network-node");
+      expect(roles).not.toContain("network-edge");
+    }
   });
 
   it("shows fitted ENA codes by default for legacy V2 display specs without codeNodes", () => {

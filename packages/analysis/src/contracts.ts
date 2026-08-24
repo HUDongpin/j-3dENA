@@ -154,6 +154,7 @@ export interface DisplaySpecV1 {
     nodeOpacity: number;
     edgeThreshold: number;
     edgeWidthScale: number;
+    /** Legacy required V1 readback-only field; compilePlotlySpec treats it as a no-op. */
     trajectoryWidth: number;
   };
   camera: {

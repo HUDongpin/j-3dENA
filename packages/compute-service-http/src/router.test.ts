@@ -58,7 +58,7 @@ const APPROVED_LONGITUDINAL_BUILD: ApprovedLongitudinalExecutionBuildV2 = {
   jenaVersion: "0.7.0-ona.0",
   jenaCommit: "2".repeat(40),
   jenaTarballIntegrity: "sha512-approved-fixture",
-  sdkVersion: "0.2.0-implemented-unverified.1",
+  sdkVersion: "0.2.0-implemented-unverified.2",
   buildId: "approved-longitudinal-build-1",
 };
 

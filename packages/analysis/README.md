@@ -279,7 +279,9 @@ marks.
 The two public Plotly compilers also enforce a strict presenter boundary.
 `compilePlotlySpec()` renders ordinary ENA points, code nodes, centroids, and
 network edges, but never trajectory paths or direction marks; the legacy V1
-`traces.trajectory` field remains readable and is ignored. Conversely,
+`traces.trajectory` field remains readable and is ignored. The exact V1 schema
+still requires `style.trajectoryWidth` for legacy readback, but that value is
+also a presenter no-op. Conversely,
 `compileTrajectoryPlotlySpec()` renders fitted code reference nodes,
 participant-period points, centroid squares, paths, and direction arrows, but
 never ENA mean-network edges; the legacy V2 `traces.networkOverlay` field
