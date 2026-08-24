@@ -31,13 +31,13 @@ var PreparedDerivedAnalysisError = class extends Error {
 		this.path = path;
 	}
 };
-function reject$10(code, path, message) {
+function reject$9(code, path, message) {
 	throw new PreparedDerivedAnalysisError(code, path, message);
 }
 function finiteMean(values, path) {
-	if (values.length === 0) reject$10("EMPTY_PREPARED_SELECTION", path, "contains no prepared points");
+	if (values.length === 0) reject$9("EMPTY_PREPARED_SELECTION", path, "contains no prepared points");
 	const scale = values.reduce((maximum, value) => {
-		if (!Number.isFinite(value)) reject$10("NON_FINITE_PREPARED_SOURCE", path, "contains a non-finite value");
+		if (!Number.isFinite(value)) reject$9("NON_FINITE_PREPARED_SOURCE", path, "contains a non-finite value");
 		return Math.max(maximum, Math.abs(value));
 	}, 0) || 1;
 	let sum = 0;
@@ -50,14 +50,14 @@ function finiteMean(values, path) {
 		sum = next;
 	}
 	const mean = (sum + correction) / values.length * scale;
-	if (!Number.isFinite(mean)) reject$10("PREPARED_NUMERIC_OVERFLOW", path, "mean is outside the finite numeric range");
+	if (!Number.isFinite(mean)) reject$9("PREPARED_NUMERIC_OVERFLOW", path, "mean is outside the finite numeric range");
 	return mean;
 }
 function scalarCanonical(value, path = "selector.level") {
 	if (value === null) return JSON.stringify(["null"]);
 	if (typeof value === "number") {
-		if (!Number.isFinite(value)) reject$10("NON_FINITE_PREPARED_LEVEL", path, "must be finite");
-		if (Number.isInteger(value) && !Number.isSafeInteger(value)) reject$10("UNSAFE_PREPARED_LEVEL", path, "unsafe integer identities must be supplied as source strings");
+		if (!Number.isFinite(value)) reject$9("NON_FINITE_PREPARED_LEVEL", path, "must be finite");
+		if (Number.isInteger(value) && !Number.isSafeInteger(value)) reject$9("UNSAFE_PREPARED_LEVEL", path, "unsafe integer identities must be supplied as source strings");
 		if (Object.is(value, -0)) return JSON.stringify(["number", "-0"]);
 	}
 	return JSON.stringify([typeof value, value]);
@@ -74,40 +74,40 @@ function typedValue$2(value) {
 * imported coordinates were recomputed from raw rows.
 */
 function assertPreparedDerivedSource(result) {
-	if (!result || typeof result !== "object" || result.schemaVersion !== "3dena.prepared-space-result.v1") reject$10("INVALID_PREPARED_SOURCE", "result.schemaVersion", "must be 3dena.prepared-space-result.v1");
+	if (!result || typeof result !== "object" || result.schemaVersion !== "3dena.prepared-space-result.v1") reject$9("INVALID_PREPARED_SOURCE", "result.schemaVersion", "must be 3dena.prepared-space-result.v1");
 	const provenance = result.provenance;
-	if (result.sourceKind !== "prepared-exchange" || result.rawJenaRecompute !== false || !provenance || typeof provenance !== "object" || provenance.jenaExecuted !== false || provenance.coordinateSpace !== "precomputed-import" || provenance.computation !== "reduction-only") reject$10("INVALID_PREPARED_BOUNDARY", "result", "must remain a precomputed prepared exchange with jENA execution disabled");
+	if (result.sourceKind !== "prepared-exchange" || result.rawJenaRecompute !== false || !provenance || typeof provenance !== "object" || provenance.jenaExecuted !== false || provenance.coordinateSpace !== "precomputed-import" || provenance.computation !== "reduction-only") reject$9("INVALID_PREPARED_BOUNDARY", "result", "must remain a precomputed prepared exchange with jENA execution disabled");
 	const sourceReceipt = result.sourceReceipt;
-	if (!sourceReceipt || typeof sourceReceipt !== "object" || !SHA256$4.test(sourceReceipt.sha256) || !Number.isSafeInteger(sourceReceipt.byteLength) || sourceReceipt.byteLength < 1) reject$10("INVALID_PREPARED_RECEIPT", "result.sourceReceipt", "must contain an exact SHA-256 and positive byte length");
+	if (!sourceReceipt || typeof sourceReceipt !== "object" || !SHA256$4.test(sourceReceipt.sha256) || !Number.isSafeInteger(sourceReceipt.byteLength) || sourceReceipt.byteLength < 1) reject$9("INVALID_PREPARED_RECEIPT", "result.sourceReceipt", "must contain an exact SHA-256 and positive byte length");
 	const fullSpace = result.fullSpace;
-	if (!fullSpace || typeof fullSpace !== "object") reject$10("INVALID_PREPARED_FULL_SPACE", "result.fullSpace", "must contain the imported full-space reduction");
+	if (!fullSpace || typeof fullSpace !== "object") reject$9("INVALID_PREPARED_FULL_SPACE", "result.fullSpace", "must contain the imported full-space reduction");
 	const { dimensions, points, edges, lineWeights } = fullSpace;
-	if (!Array.isArray(dimensions) || dimensions.length === 0 || dimensions.some((dimension) => typeof dimension !== "string" || dimension.trim() === "")) reject$10("INVALID_PREPARED_DIMENSIONS", "result.fullSpace.dimensions", "must contain non-empty dimension names");
-	if (new Set(dimensions).size !== dimensions.length) reject$10("DUPLICATE_PREPARED_DIMENSION", "result.fullSpace.dimensions", "must not contain duplicates");
-	if (!Array.isArray(points) || points.length === 0) reject$10("EMPTY_PREPARED_POINT_SET", "result.fullSpace.points", "must not be empty");
-	if (!Array.isArray(edges) || edges.length === 0) reject$10("EMPTY_PREPARED_EDGE_SET", "result.fullSpace.edges", "must not be empty");
-	if (!lineWeights || typeof lineWeights !== "object" || !Array.isArray(lineWeights.rowKeys) || !Array.isArray(lineWeights.values) || !Array.isArray(lineWeights.columns) || lineWeights.rowKeys.length !== points.length || lineWeights.values.length !== points.length || lineWeights.columns.length !== edges.length) reject$10("MISALIGNED_PREPARED_LINE_WEIGHTS", "result.fullSpace.lineWeights", "row keys, values, columns, points, and edges must remain exactly aligned");
+	if (!Array.isArray(dimensions) || dimensions.length === 0 || dimensions.some((dimension) => typeof dimension !== "string" || dimension.trim() === "")) reject$9("INVALID_PREPARED_DIMENSIONS", "result.fullSpace.dimensions", "must contain non-empty dimension names");
+	if (new Set(dimensions).size !== dimensions.length) reject$9("DUPLICATE_PREPARED_DIMENSION", "result.fullSpace.dimensions", "must not contain duplicates");
+	if (!Array.isArray(points) || points.length === 0) reject$9("EMPTY_PREPARED_POINT_SET", "result.fullSpace.points", "must not be empty");
+	if (!Array.isArray(edges) || edges.length === 0) reject$9("EMPTY_PREPARED_EDGE_SET", "result.fullSpace.edges", "must not be empty");
+	if (!lineWeights || typeof lineWeights !== "object" || !Array.isArray(lineWeights.rowKeys) || !Array.isArray(lineWeights.values) || !Array.isArray(lineWeights.columns) || lineWeights.rowKeys.length !== points.length || lineWeights.values.length !== points.length || lineWeights.columns.length !== edges.length) reject$9("MISALIGNED_PREPARED_LINE_WEIGHTS", "result.fullSpace.lineWeights", "row keys, values, columns, points, and edges must remain exactly aligned");
 	const pointKeys = /* @__PURE__ */ new Set();
 	points.forEach((point, index) => {
-		if (!point || typeof point !== "object") reject$10("INVALID_PREPARED_POINT", `result.fullSpace.points[${index}]`, "must be an object");
-		if (point.index !== index) reject$10("MISALIGNED_PREPARED_POINT_ORDER", `result.fullSpace.points[${index}].index`, "must equal its array position");
-		if (typeof point.id?.canonical !== "string" || point.id.canonical.length === 0 || typeof point.participant?.canonical !== "string" || point.participant.canonical.length === 0 || typeof point.participantLabel?.canonical !== "string" || point.participantLabel.canonical.length === 0 || typeof point.group?.canonical !== "string" || point.group.canonical.length === 0 || typeof point.time?.canonical !== "string" || point.time.canonical.length === 0) reject$10("INVALID_PREPARED_POINT_IDENTITY", `result.fullSpace.points[${index}]`, "must preserve non-empty point, participant, label, group, and time identities");
-		if (pointKeys.has(point.id.canonical)) reject$10("DUPLICATE_PREPARED_POINT_IDENTITY", `result.fullSpace.points[${index}].id`, "duplicates an earlier prepared point identity");
+		if (!point || typeof point !== "object") reject$9("INVALID_PREPARED_POINT", `result.fullSpace.points[${index}]`, "must be an object");
+		if (point.index !== index) reject$9("MISALIGNED_PREPARED_POINT_ORDER", `result.fullSpace.points[${index}].index`, "must equal its array position");
+		if (typeof point.id?.canonical !== "string" || point.id.canonical.length === 0 || typeof point.participant?.canonical !== "string" || point.participant.canonical.length === 0 || typeof point.participantLabel?.canonical !== "string" || point.participantLabel.canonical.length === 0 || typeof point.group?.canonical !== "string" || point.group.canonical.length === 0 || typeof point.time?.canonical !== "string" || point.time.canonical.length === 0) reject$9("INVALID_PREPARED_POINT_IDENTITY", `result.fullSpace.points[${index}]`, "must preserve non-empty point, participant, label, group, and time identities");
+		if (pointKeys.has(point.id.canonical)) reject$9("DUPLICATE_PREPARED_POINT_IDENTITY", `result.fullSpace.points[${index}].id`, "duplicates an earlier prepared point identity");
 		pointKeys.add(point.id.canonical);
-		if (!Array.isArray(point.coordinates) || point.coordinates.length !== dimensions.length || point.coordinates.some((value) => !Number.isFinite(value))) reject$10("INVALID_PREPARED_COORDINATES", `result.fullSpace.points[${index}].coordinates`, "must contain one finite value per dimension");
-		if (lineWeights.rowKeys[index]?.canonical !== point.id.canonical) reject$10("MISALIGNED_PREPARED_IDENTITY", `result.fullSpace.lineWeights.rowKeys[${index}]`, "must match the exact point identity and order");
+		if (!Array.isArray(point.coordinates) || point.coordinates.length !== dimensions.length || point.coordinates.some((value) => !Number.isFinite(value))) reject$9("INVALID_PREPARED_COORDINATES", `result.fullSpace.points[${index}].coordinates`, "must contain one finite value per dimension");
+		if (lineWeights.rowKeys[index]?.canonical !== point.id.canonical) reject$9("MISALIGNED_PREPARED_IDENTITY", `result.fullSpace.lineWeights.rowKeys[${index}]`, "must match the exact point identity and order");
 		const weights = lineWeights.values[index];
-		if (!weights || weights.length !== edges.length || weights.some((value) => !Number.isFinite(value))) reject$10("INVALID_PREPARED_LINE_WEIGHT_ROW", `result.fullSpace.lineWeights.values[${index}]`, "must contain one finite value per edge");
+		if (!weights || weights.length !== edges.length || weights.some((value) => !Number.isFinite(value))) reject$9("INVALID_PREPARED_LINE_WEIGHT_ROW", `result.fullSpace.lineWeights.values[${index}]`, "must contain one finite value per edge");
 	});
 	const edgeKeys = /* @__PURE__ */ new Set();
 	edges.forEach((edge, index) => {
-		if (!edge || typeof edge !== "object" || typeof edge.id !== "string" || edge.id.length === 0 || typeof edge.column !== "string" || edge.column.length === 0) reject$10("INVALID_PREPARED_EDGE", `result.fullSpace.edges[${index}]`, "must preserve non-empty edge and column identities");
-		if (edge.index !== index || lineWeights.columns[index] !== edge.column) reject$10("MISALIGNED_PREPARED_EDGE_ORDER", `result.fullSpace.edges[${index}]`, "must preserve imported edge and line-weight column order");
+		if (!edge || typeof edge !== "object" || typeof edge.id !== "string" || edge.id.length === 0 || typeof edge.column !== "string" || edge.column.length === 0) reject$9("INVALID_PREPARED_EDGE", `result.fullSpace.edges[${index}]`, "must preserve non-empty edge and column identities");
+		if (edge.index !== index || lineWeights.columns[index] !== edge.column) reject$9("MISALIGNED_PREPARED_EDGE_ORDER", `result.fullSpace.edges[${index}]`, "must preserve imported edge and line-weight column order");
 		const edgeKey = JSON.stringify([edge.id, edge.column]);
-		if (edgeKeys.has(edgeKey)) reject$10("DUPLICATE_PREPARED_EDGE_IDENTITY", `result.fullSpace.edges[${index}]`, "duplicates an earlier prepared edge identity");
+		if (edgeKeys.has(edgeKey)) reject$9("DUPLICATE_PREPARED_EDGE_IDENTITY", `result.fullSpace.edges[${index}]`, "duplicates an earlier prepared edge identity");
 		edgeKeys.add(edgeKey);
 	});
-	if (!result.displaySpace?.trajectory || !Array.isArray(result.displaySpace.trajectory.groupOrder)) reject$10("INVALID_PREPARED_GROUP_ORDER", "result.displaySpace.trajectory.groupOrder", "must preserve the prepared canonical group inventory");
+	if (!result.displaySpace?.trajectory || !Array.isArray(result.displaySpace.trajectory.groupOrder)) reject$9("INVALID_PREPARED_GROUP_ORDER", "result.displaySpace.trajectory.groupOrder", "must preserve the prepared canonical group inventory");
 }
 function preparedReductionDiagnostic() {
 	return {
@@ -118,20 +118,20 @@ function preparedReductionDiagnostic() {
 	};
 }
 function preparedGroupValue(result, canonical, path) {
-	if (typeof canonical !== "string" || canonical.trim() === "") reject$10("INVALID_PREPARED_GROUP", path, "must be a non-empty canonical group key");
+	if (typeof canonical !== "string" || canonical.trim() === "") reject$9("INVALID_PREPARED_GROUP", path, "must be a non-empty canonical group key");
 	const value = result.displaySpace.trajectory.groupOrder.find((candidate) => candidate.canonical === canonical) ?? result.fullSpace.points.find((point) => point.group.canonical === canonical)?.group;
-	if (!value) reject$10("UNKNOWN_PREPARED_GROUP", path, "is not present in the prepared result");
+	if (!value) reject$9("UNKNOWN_PREPARED_GROUP", path, "is not present in the prepared result");
 	return typedValue$2(value);
 }
 function preparedPointsForGroup(result, canonical, path) {
 	preparedGroupValue(result, canonical, path);
 	const points = result.fullSpace.points.filter((point) => point.group.canonical === canonical);
-	if (points.length === 0) reject$10("EMPTY_PREPARED_GROUP", path, "contains no prepared points");
+	if (points.length === 0) reject$9("EMPTY_PREPARED_GROUP", path, "contains no prepared points");
 	return points;
 }
 function preparedDimensionIndex(result, dimension, path) {
 	const index = result.fullSpace.dimensions.indexOf(dimension);
-	if (index < 0) reject$10("UNKNOWN_PREPARED_DIMENSION", path, `is not present in the imported full space: ${JSON.stringify(dimension)}`);
+	if (index < 0) reject$9("UNKNOWN_PREPARED_DIMENSION", path, `is not present in the imported full space: ${JSON.stringify(dimension)}`);
 	return index;
 }
 function rowIndexByPoint(result) {
@@ -146,13 +146,13 @@ function preparedEdgeMean(result, edge, points, rows) {
 		target: edge.target,
 		meanWeight: finiteMean(points.map((point) => {
 			const row = rows.get(point.id.canonical);
-			if (row === void 0) reject$10("MISSING_PREPARED_LINE_WEIGHT_ROW", `point.${point.id.canonical}`, "does not have an aligned line-weight row");
+			if (row === void 0) reject$9("MISSING_PREPARED_LINE_WEIGHT_ROW", `point.${point.id.canonical}`, "does not have an aligned line-weight row");
 			return result.fullSpace.lineWeights.values[row][edge.index];
 		}), `edges[${edge.index}]`)
 	};
 }
 function preparedNetworkMean(result, points) {
-	if (points.length === 0) reject$10("EMPTY_PREPARED_SELECTION", "selection", "contains no prepared points");
+	if (points.length === 0) reject$9("EMPTY_PREPARED_SELECTION", "selection", "contains no prepared points");
 	const rows = rowIndexByPoint(result);
 	return {
 		pointCount: points.length,
@@ -163,7 +163,7 @@ function preparedNetworkMean(result, points) {
 }
 function comparePreparedGroupNetworks(result, groups) {
 	assertPreparedDerivedSource(result);
-	if (!Array.isArray(groups) || groups.length !== 2 || groups[0] === groups[1]) reject$10("INVALID_PREPARED_GROUP_PAIR", "groups", "must contain two different canonical groups");
+	if (!Array.isArray(groups) || groups.length !== 2 || groups[0] === groups[1]) reject$9("INVALID_PREPARED_GROUP_PAIR", "groups", "must contain two different canonical groups");
 	const groupA = preparedGroupValue(result, groups[0], "groups[0]");
 	const groupB = preparedGroupValue(result, groups[1], "groups[1]");
 	const meanA = preparedNetworkMean(result, preparedPointsForGroup(result, groupA.canonical, "groups[0]"));
@@ -201,13 +201,13 @@ function selectedValue(point, field) {
 }
 function analyzePreparedChangeNetwork(result, selector) {
 	assertPreparedDerivedSource(result);
-	if (!selector || typeof selector.field !== "string" || selector.field.trim() === "") reject$10("INVALID_PREPARED_CHANGE_FIELD", "selector.field", "must be a non-empty metadata column name, @group, or @time");
+	if (!selector || typeof selector.field !== "string" || selector.field.trim() === "") reject$9("INVALID_PREPARED_CHANGE_FIELD", "selector.field", "must be a non-empty metadata column name, @group, or @time");
 	const levelCanonical = scalarCanonical(selector.level);
 	const selected = result.fullSpace.points.filter((point) => {
 		const value = selectedValue(point, selector.field);
 		return value !== void 0 && scalarCanonical(value) === levelCanonical;
 	});
-	if (selected.length === 0) reject$10("UNKNOWN_PREPARED_CHANGE_LEVEL", "selector.level", "does not select any prepared points");
+	if (selected.length === 0) reject$9("UNKNOWN_PREPARED_CHANGE_LEVEL", "selector.level", "does not select any prepared points");
 	return {
 		schemaVersion: "3dena.change-network.v1",
 		selector: {
@@ -35014,7 +35014,7 @@ var StatsInputError = class extends Error {
 		this.path = path;
 	}
 };
-function reject$9(code, path, message) {
+function reject$8(code, path, message) {
 	throw new StatsInputError(code, path, message);
 }
 function deepFreeze$5(value) {
@@ -35028,7 +35028,7 @@ function deepFreeze$5(value) {
 //#region ../stats/src/adjust.ts
 function validate(pValues) {
 	pValues.forEach((value, index) => {
-		if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) reject$9("INVALID_P_VALUE", `pValues[${index}]`, "must be finite and in [0, 1]");
+		if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) reject$8("INVALID_P_VALUE", `pValues[${index}]`, "must be finite and in [0, 1]");
 	});
 }
 function adjustPValues(pValues, method) {
@@ -35038,7 +35038,7 @@ function adjustPValues(pValues, method) {
 		"holm",
 		"bh",
 		"bonferroni"
-	].includes(method)) reject$9("INVALID_ADJUSTMENT", "method", "must be none, holm, bh, or bonferroni");
+	].includes(method)) reject$8("INVALID_ADJUSTMENT", "method", "must be none, holm, bh, or bonferroni");
 	const count = pValues.length;
 	if (method === "none") return deepFreeze$5([...pValues]);
 	if (method === "bonferroni") return deepFreeze$5(pValues.map((value) => Math.min(1, value * count)));
@@ -35082,7 +35082,7 @@ function commonScale(...groups) {
 	return scale === 0 ? 1 : scale;
 }
 function describe(values, scale = commonScale(values)) {
-	if (values.length === 0) reject$9("EMPTY_SAMPLE", "values", "must contain at least one value");
+	if (values.length === 0) reject$8("EMPTY_SAMPLE", "values", "must contain at least one value");
 	const normalized = values.map((value) => value / scale);
 	const meanUnit = compensatedSum(normalized) / normalized.length;
 	const centeredSquares = normalized.map((value) => {
@@ -35092,7 +35092,7 @@ function describe(values, scale = commonScale(values)) {
 	const varianceUnit = normalized.length > 1 ? Math.max(0, compensatedSum(centeredSquares) / (normalized.length - 1)) : 0;
 	const standardDeviationUnit = Math.sqrt(varianceUnit);
 	const mean = meanUnit * scale;
-	if (!Number.isFinite(mean)) reject$9("NUMERIC_OVERFLOW", "values", "the sample mean is not representable as a finite number");
+	if (!Number.isFinite(mean)) reject$8("NUMERIC_OVERFLOW", "values", "the sample mean is not representable as a finite number");
 	return {
 		n: values.length,
 		scale,
@@ -35156,7 +35156,7 @@ function betaContinuedFraction(a, b, x) {
 		result *= delta;
 		if (Math.abs(delta - 1) <= epsilon) return result;
 	}
-	reject$9("NUMERIC_CONVERGENCE", "studentT", "incomplete beta evaluation did not converge");
+	reject$8("NUMERIC_CONVERGENCE", "studentT", "incomplete beta evaluation did not converge");
 }
 function regularizedBeta(x, a, b) {
 	if (x <= 0) return 0;
@@ -35167,21 +35167,21 @@ function regularizedBeta(x, a, b) {
 }
 function studentTCdf(statistic, degreesOfFreedom) {
 	if (statistic === 0) return .5;
-	if (!(degreesOfFreedom > 0) || !Number.isFinite(degreesOfFreedom)) reject$9("INVALID_DEGREES_OF_FREEDOM", "degreesOfFreedom", "must be finite and positive");
+	if (!(degreesOfFreedom > 0) || !Number.isFinite(degreesOfFreedom)) reject$8("INVALID_DEGREES_OF_FREEDOM", "degreesOfFreedom", "must be finite and positive");
 	const tail = .5 * regularizedBeta(degreesOfFreedom / (degreesOfFreedom + statistic * statistic), degreesOfFreedom / 2, .5);
 	return statistic > 0 ? 1 - tail : tail;
 }
 /** Deterministic inverse of `studentTCdf` for versioned confidence intervals. */
 function studentTQuantile(probability, degreesOfFreedom) {
-	if (!(probability > 0 && probability < 1) || !Number.isFinite(probability)) reject$9("INVALID_PROBABILITY", "probability", "must be finite and strictly between zero and one");
-	if (!(degreesOfFreedom > 0) || !Number.isFinite(degreesOfFreedom)) reject$9("INVALID_DEGREES_OF_FREEDOM", "degreesOfFreedom", "must be finite and positive");
+	if (!(probability > 0 && probability < 1) || !Number.isFinite(probability)) reject$8("INVALID_PROBABILITY", "probability", "must be finite and strictly between zero and one");
+	if (!(degreesOfFreedom > 0) || !Number.isFinite(degreesOfFreedom)) reject$8("INVALID_DEGREES_OF_FREEDOM", "degreesOfFreedom", "must be finite and positive");
 	if (probability === .5) return 0;
 	if (probability < .5) return -studentTQuantile(1 - probability, degreesOfFreedom);
 	let lower = 0;
 	let upper = 1;
 	while (studentTCdf(upper, degreesOfFreedom) < probability) {
 		upper *= 2;
-		if (!Number.isFinite(upper) || upper > Number.MAX_VALUE / 2) reject$9("NUMERIC_CONVERGENCE", "studentTQuantile", "failed to bracket the requested quantile");
+		if (!Number.isFinite(upper) || upper > Number.MAX_VALUE / 2) reject$8("NUMERIC_CONVERGENCE", "studentTQuantile", "failed to bracket the requested quantile");
 	}
 	for (let iteration = 0; iteration < 100; iteration += 1) {
 		const midpoint = lower + (upper - lower) / 2;
@@ -35236,12 +35236,12 @@ function rankValues(values) {
 var MAX_OBSERVATIONS_PER_SIDE$1 = 1e6;
 var CONFIDENCE_LEVEL$1 = .95;
 function validateAlternative$1(value) {
-	if (value !== "two-sided" && value !== "greater" && value !== "less") reject$9("INVALID_ALTERNATIVE", "input.alternative", "must be two-sided, greater, or less");
+	if (value !== "two-sided" && value !== "greater" && value !== "less") reject$8("INVALID_ALTERNATIVE", "input.alternative", "must be two-sided, greater, or less");
 }
 function validateSample$1(sample, path) {
-	if (!sample || typeof sample.label !== "string" || sample.label.trim() === "") reject$9("INVALID_SAMPLE_LABEL", `${path}.label`, "must be a non-blank string");
-	if (!Array.isArray(sample.values)) reject$9("INVALID_SAMPLE", `${path}.values`, "must be an array");
-	if (sample.values.length > MAX_OBSERVATIONS_PER_SIDE$1) reject$9("SAMPLE_LIMIT", `${path}.values`, `must not exceed ${MAX_OBSERVATIONS_PER_SIDE$1} observations`);
+	if (!sample || typeof sample.label !== "string" || sample.label.trim() === "") reject$8("INVALID_SAMPLE_LABEL", `${path}.label`, "must be a non-blank string");
+	if (!Array.isArray(sample.values)) reject$8("INVALID_SAMPLE", `${path}.values`, "must be an array");
+	if (sample.values.length > MAX_OBSERVATIONS_PER_SIDE$1) reject$8("SAMPLE_LIMIT", `${path}.values`, `must not exceed ${MAX_OBSERVATIONS_PER_SIDE$1} observations`);
 	const values = [];
 	let droppedMissing = 0;
 	Array.from(sample.values).forEach((value, index) => {
@@ -35249,10 +35249,10 @@ function validateSample$1(sample, path) {
 			droppedMissing += 1;
 			return;
 		}
-		if (typeof value !== "number" || !Number.isFinite(value)) reject$9("NON_FINITE_VALUE", `${path}.values[${index}]`, "must be a finite number or explicit null");
+		if (typeof value !== "number" || !Number.isFinite(value)) reject$8("NON_FINITE_VALUE", `${path}.values[${index}]`, "must be a finite number or explicit null");
 		values.push(value);
 	});
-	if (values.length < 2) reject$9("INSUFFICIENT_SAMPLE", `${path}.values`, "requires at least two valid observations for Welch and Cohen's d");
+	if (values.length < 2) reject$8("INSUFFICIENT_SAMPLE", `${path}.values`, "requires at least two valid observations for Welch and Cohen's d");
 	return {
 		label: sample.label,
 		input: sample.values.length,
@@ -35419,7 +35419,7 @@ function mannWhitney(left, right, alternative, diagnostics) {
 	};
 }
 function analyzeIndependentSamples(input) {
-	if (!input || input.schemaVersion !== "3dena.stats.independent-input.v1") reject$9("INVALID_SCHEMA_VERSION", "input.schemaVersion", "must be 3dena.stats.independent-input.v1");
+	if (!input || input.schemaVersion !== "3dena.stats.independent-input.v1") reject$8("INVALID_SCHEMA_VERSION", "input.schemaVersion", "must be 3dena.stats.independent-input.v1");
 	validateAlternative$1(input.alternative);
 	const left = validateSample$1(input.sideA, "input.sideA");
 	const right = validateSample$1(input.sideB, "input.sideB");
@@ -35478,15 +35478,15 @@ function analyzeIndependentSamples(input) {
 var MAX_OBSERVATIONS_PER_SIDE = 1e6;
 var CONFIDENCE_LEVEL = .95;
 function validateAlternative(value) {
-	if (value !== "two-sided" && value !== "greater" && value !== "less") reject$9("INVALID_ALTERNATIVE", "input.alternative", "must be two-sided, greater, or less");
+	if (value !== "two-sided" && value !== "greater" && value !== "less") reject$8("INVALID_ALTERNATIVE", "input.alternative", "must be two-sided, greater, or less");
 }
 function identityKey(identity, path) {
-	if (!identity || !Array.isArray(identity.components) || identity.components.length === 0) reject$9("INVALID_IDENTITY", path, "must contain at least one typed component");
+	if (!identity || !Array.isArray(identity.components) || identity.components.length === 0) reject$8("INVALID_IDENTITY", path, "must contain at least one typed component");
 	const names = /* @__PURE__ */ new Set();
 	const normalized = identity.components.map((component, index) => {
 		const componentPath = `${path}.components[${index}]`;
-		if (!component || typeof component.name !== "string" || component.name.trim() === "") reject$9("INVALID_IDENTITY_COMPONENT", `${componentPath}.name`, "must be a non-blank string");
-		if (names.has(component.name)) reject$9("DUPLICATE_IDENTITY_COMPONENT", componentPath, "component names must be unique within an identity");
+		if (!component || typeof component.name !== "string" || component.name.trim() === "") reject$8("INVALID_IDENTITY_COMPONENT", `${componentPath}.name`, "must be a non-blank string");
+		if (names.has(component.name)) reject$8("DUPLICATE_IDENTITY_COMPONENT", componentPath, "component names must be unique within an identity");
 		names.add(component.name);
 		if (component.type === "string" && typeof component.value === "string") return [
 			component.name,
@@ -35499,15 +35499,15 @@ function identityKey(identity, path) {
 			component.value
 		];
 		if (component.type === "number" && typeof component.value === "number") {
-			if (!Number.isFinite(component.value)) reject$9("NON_FINITE_IDENTITY_NUMBER", `${componentPath}.value`, "must be finite");
-			if (Number.isInteger(component.value) && !Number.isSafeInteger(component.value)) reject$9("UNSAFE_IDENTITY_NUMBER", `${componentPath}.value`, "unsafe integer IDs must be supplied as strings");
+			if (!Number.isFinite(component.value)) reject$8("NON_FINITE_IDENTITY_NUMBER", `${componentPath}.value`, "must be finite");
+			if (Number.isInteger(component.value) && !Number.isSafeInteger(component.value)) reject$8("UNSAFE_IDENTITY_NUMBER", `${componentPath}.value`, "unsafe integer IDs must be supplied as strings");
 			return [
 				component.name,
 				"number",
 				Object.is(component.value, -0) ? 0 : component.value
 			];
 		}
-		reject$9("IDENTITY_TYPE_MISMATCH", componentPath, "declared identity type must match its value");
+		reject$8("IDENTITY_TYPE_MISMATCH", componentPath, "declared identity type must match its value");
 	});
 	return {
 		components: identity.components.map((component) => ({ ...component })),
@@ -35516,16 +35516,16 @@ function identityKey(identity, path) {
 	};
 }
 function validateSample(sample, path) {
-	if (!sample || typeof sample.label !== "string" || sample.label.trim() === "") reject$9("INVALID_SAMPLE_LABEL", `${path}.label`, "must be a non-blank string");
-	if (!Array.isArray(sample.observations)) reject$9("INVALID_SAMPLE", `${path}.observations`, "must be an array");
-	if (sample.observations.length > MAX_OBSERVATIONS_PER_SIDE) reject$9("SAMPLE_LIMIT", `${path}.observations`, `must not exceed ${MAX_OBSERVATIONS_PER_SIDE} observations`);
+	if (!sample || typeof sample.label !== "string" || sample.label.trim() === "") reject$8("INVALID_SAMPLE_LABEL", `${path}.label`, "must be a non-blank string");
+	if (!Array.isArray(sample.observations)) reject$8("INVALID_SAMPLE", `${path}.observations`, "must be an array");
+	if (sample.observations.length > MAX_OBSERVATIONS_PER_SIDE) reject$8("SAMPLE_LIMIT", `${path}.observations`, `must not exceed ${MAX_OBSERVATIONS_PER_SIDE} observations`);
 	const output = /* @__PURE__ */ new Map();
 	Array.from(sample.observations).forEach((observation, index) => {
 		const observationPath = `${path}.observations[${index}]`;
-		if (!observation || typeof observation !== "object") reject$9("INVALID_OBSERVATION", observationPath, "must be an observation object");
+		if (!observation || typeof observation !== "object") reject$8("INVALID_OBSERVATION", observationPath, "must be an observation object");
 		const key = identityKey(observation.id, `${observationPath}.id`);
-		if (output.has(key.canonical)) reject$9("DUPLICATE_PAIRED_ID", `${observationPath}.id`, "each typed identity may occur only once per side");
-		if (observation.value !== null && (typeof observation.value !== "number" || !Number.isFinite(observation.value))) reject$9("NON_FINITE_VALUE", `${observationPath}.value`, "must be a finite number or explicit null");
+		if (output.has(key.canonical)) reject$8("DUPLICATE_PAIRED_ID", `${observationPath}.id`, "each typed identity may occur only once per side");
+		if (observation.value !== null && (typeof observation.value !== "number" || !Number.isFinite(observation.value))) reject$8("NON_FINITE_VALUE", `${observationPath}.value`, "must be a finite number or explicit null");
 		output.set(key.canonical, {
 			key,
 			value: observation.value
@@ -35608,7 +35608,7 @@ function signedRank(differences, alternative, diagnostics) {
 	};
 }
 function analyzePairedSamples(input) {
-	if (!input || input.schemaVersion !== "3dena.stats.paired-input.v1") reject$9("INVALID_SCHEMA_VERSION", "input.schemaVersion", "must be 3dena.stats.paired-input.v1");
+	if (!input || input.schemaVersion !== "3dena.stats.paired-input.v1") reject$8("INVALID_SCHEMA_VERSION", "input.schemaVersion", "must be 3dena.stats.paired-input.v1");
 	validateAlternative(input.alternative);
 	const sideA = validateSample(input.sideA, "input.sideA");
 	const sideB = validateSample(input.sideB, "input.sideB");
@@ -35617,7 +35617,7 @@ function analyzePairedSamples(input) {
 	const unmatchedB = sideB.size - matched.length;
 	const validPairs = matched.map((key) => [sideA.get(key), sideB.get(key)]).filter(([left, right]) => left.value !== null && right.value !== null);
 	const droppedMissingPairs = matched.length - validPairs.length;
-	if (validPairs.length < 2) reject$9("INSUFFICIENT_PAIRS", "input", "requires at least two exact matched pairs with finite values");
+	if (validPairs.length < 2) reject$8("INSUFFICIENT_PAIRS", "input", "requires at least two exact matched pairs with finite values");
 	const diagnostics = [];
 	if (unmatchedA + unmatchedB > 0) diagnostics.push({
 		code: "UNMATCHED_OBSERVATIONS_DROPPED",
@@ -35725,7 +35725,7 @@ var RANK_INFERENCE_CONTRACT_V2 = Object.freeze({
 	exactTail: "inclusive-non-mid-p"
 });
 function normalizeRankValue(value, path) {
-	if (!Number.isFinite(value)) reject$9("NON_FINITE_RANK_VALUE", path, "must be finite");
+	if (!Number.isFinite(value)) reject$8("NON_FINITE_RANK_VALUE", path, "must be finite");
 	const rounded = Number(value.toPrecision(RANK_INFERENCE_CONTRACT_V2.rankPrecisionSignificantDigits));
 	return Object.is(rounded, -0) ? 0 : rounded;
 }
@@ -35798,7 +35798,7 @@ function logGamma(value) {
 	return .5 * Math.log(2 * Math.PI) + (shifted + .5) * Math.log(t) - t + Math.log(sum);
 }
 function regularizedGammaQ(shape, x) {
-	if (!Number.isFinite(shape) || shape <= 0 || Number.isNaN(x) || x < 0) reject$9("INVALID_GAMMA_INPUT", "rank", "requires shape > 0 and x >= 0");
+	if (!Number.isFinite(shape) || shape <= 0 || Number.isNaN(x) || x < 0) reject$8("INVALID_GAMMA_INPUT", "rank", "requires shape > 0 and x >= 0");
 	if (x === 0) return 1;
 	if (x === Number.POSITIVE_INFINITY) return 0;
 	const epsilon = 1e-15;
@@ -35836,7 +35836,7 @@ function regularizedGammaQ(shape, x) {
 	return Math.max(0, Math.min(1, Math.exp(logScale) * fraction));
 }
 function probabilityFromCounts(extreme, total) {
-	if (total <= 0n || total > BigInt(Number.MAX_SAFE_INTEGER) || extreme < 0n || extreme > total) reject$9("EXACT_COUNT_LIMIT", "rank.exactTail", "assignment counts exceed the supported safe ratio range");
+	if (total <= 0n || total > BigInt(Number.MAX_SAFE_INTEGER) || extreme < 0n || extreme > total) reject$8("EXACT_COUNT_LIMIT", "rank.exactTail", "assignment counts exceed the supported safe ratio range");
 	return Number(extreme) / Number(total);
 }
 function exactFixedSizeRankTail(doubledRanks, selectedSize, observedDoubledRankSum) {
@@ -36014,7 +36014,7 @@ function wilcoxonWarnings(nNonzero, exact, ties, zeros, missing, available) {
 }
 function wilcoxonSignedRankTestV2(rawDifferencesLaterMinusEarlier, options = {}) {
 	const nMissing = options.missingPairs ?? 0;
-	if (!Number.isSafeInteger(nMissing) || nMissing < 0) reject$9("INVALID_MISSING_PAIR_COUNT", "options.missingPairs", "must be a non-negative safe integer");
+	if (!Number.isSafeInteger(nMissing) || nMissing < 0) reject$8("INVALID_MISSING_PAIR_COUNT", "options.missingPairs", "must be a non-negative safe integer");
 	const differences = rawDifferencesLaterMinusEarlier.map((value, index) => normalizeRankValue(value, `differences[${index}]`));
 	const nMatched = differences.length;
 	const nPositive = differences.filter((difference) => difference > 0).length;
@@ -36204,9 +36204,9 @@ function friedmanWarnings(nComplete, exact, ties, missing, available) {
 function friedmanRankTestV2(completeBlocksByPeriod, options = {}) {
 	const nComplete = completeBlocksByPeriod.length;
 	const nMissingCompleteBlocks = options.missingCompleteBlocks ?? 0;
-	if (!Number.isSafeInteger(nMissingCompleteBlocks) || nMissingCompleteBlocks < 0) reject$9("INVALID_MISSING_BLOCK_COUNT", "options.missingCompleteBlocks", "must be a non-negative safe integer");
+	if (!Number.isSafeInteger(nMissingCompleteBlocks) || nMissingCompleteBlocks < 0) reject$8("INVALID_MISSING_BLOCK_COUNT", "options.missingCompleteBlocks", "must be a non-negative safe integer");
 	const periodCountWhenEmpty = options.periodCountWhenEmpty ?? 0;
-	if (!Number.isSafeInteger(periodCountWhenEmpty) || periodCountWhenEmpty < 0) reject$9("INVALID_PERIOD_COUNT", "options.periodCountWhenEmpty", "must be a non-negative safe integer");
+	if (!Number.isSafeInteger(periodCountWhenEmpty) || periodCountWhenEmpty < 0) reject$8("INVALID_PERIOD_COUNT", "options.periodCountWhenEmpty", "must be a non-negative safe integer");
 	const nPeriods = nComplete > 0 ? completeBlocksByPeriod[0].length : periodCountWhenEmpty;
 	const unavailable = (reason, degreesFreedom, tieAudit = {
 		tieGroupCount: 0,
@@ -36230,7 +36230,7 @@ function friedmanRankTestV2(completeBlocksByPeriod, options = {}) {
 	});
 	if (nComplete === 0) return unavailable("no-complete-blocks", nPeriods >= 1 ? nPeriods - 1 : null);
 	if (nPeriods < 3) return unavailable("insufficient-ranked-observations", nPeriods >= 1 ? nPeriods - 1 : null);
-	if (completeBlocksByPeriod.some((block) => block.length !== nPeriods)) reject$9("ENTITY_PERIOD_INSTABILITY", "completeBlocksByPeriod", "every complete block must have the same period count");
+	if (completeBlocksByPeriod.some((block) => block.length !== nPeriods)) reject$8("ENTITY_PERIOD_INSTABILITY", "completeBlocksByPeriod", "every complete block must have the same period count");
 	const ranksByBlock = [];
 	const observedRankSums = Array(nPeriods).fill(0);
 	let tieGroupCount = 0;
@@ -36293,9 +36293,9 @@ function friedmanRankTestV2(completeBlocksByPeriod, options = {}) {
 function holmAdjustFamilyV2(members) {
 	const identifiers = /* @__PURE__ */ new Set();
 	for (const [index, member] of members.entries()) {
-		if (!member.memberId || identifiers.has(member.memberId)) reject$9("INVALID_HOLM_MEMBER_ID", `members[${index}].memberId`, "must be non-empty and unique");
+		if (!member.memberId || identifiers.has(member.memberId)) reject$8("INVALID_HOLM_MEMBER_ID", `members[${index}].memberId`, "must be non-empty and unique");
 		identifiers.add(member.memberId);
-		if (member.pRaw !== null && (!Number.isFinite(member.pRaw) || member.pRaw < 0 || member.pRaw > 1)) reject$9("INVALID_HOLM_P_VALUE", `members[${index}].pRaw`, "must be null or finite in [0, 1]");
+		if (member.pRaw !== null && (!Number.isFinite(member.pRaw) || member.pRaw < 0 || member.pRaw > 1)) reject$8("INVALID_HOLM_P_VALUE", `members[${index}].pRaw`, "must be null or finite in [0, 1]");
 	}
 	const familySizePlanned = members.length;
 	const ordered = members.map((member, originalIndex) => ({
@@ -37101,8 +37101,8 @@ var init_build_identity = __esmMin((() => {
 		jenaVersion: injected("0.7.0-ona.0", "development-unbound"),
 		jenaCommit: injected("90790856f00bdef63dbd27fc3a5b502e8cffe65f", "development-unbound"),
 		jenaTarballIntegrity: injected("sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==", "development-unbound"),
-		sdkVersion: injected("0.2.0-implemented-unverified.2", "development-unbound"),
-		buildId: injected("833c340ef0b66ee9e0fefc66cad26798df1504d5", "development-unbound"),
+		sdkVersion: injected("0.2.0-implemented-unverified.3", "development-unbound"),
+		buildId: injected("64d9f4d7740f2f631d15c9166d6add45accba72d", "development-unbound"),
 		bound: true
 	});
 }));
@@ -37119,34 +37119,34 @@ var NetworkAnalysisError = class extends Error {
 		this.path = path;
 	}
 };
-function reject$8(code, path, message) {
+function reject$7(code, path, message) {
 	throw new NetworkAnalysisError(code, path, message);
 }
 function rawScalarCanonical(value) {
 	if (value === null) return JSON.stringify(["null"]);
 	if (typeof value === "number") {
-		if (!Number.isFinite(value)) reject$8("NON_FINITE_LEVEL", "selector.level", "must be finite");
-		if (Number.isInteger(value) && !Number.isSafeInteger(value)) reject$8("UNSAFE_INTEGER_LEVEL", "selector.level", "unsafe integer identities must be supplied as source strings");
+		if (!Number.isFinite(value)) reject$7("NON_FINITE_LEVEL", "selector.level", "must be finite");
+		if (Number.isInteger(value) && !Number.isSafeInteger(value)) reject$7("UNSAFE_INTEGER_LEVEL", "selector.level", "unsafe integer identities must be supplied as source strings");
 		if (Object.is(value, -0)) return JSON.stringify(["number", "-0"]);
 	}
 	return JSON.stringify([typeof value, value]);
 }
 function validateSource(result) {
-	if (!result || result.schemaVersion !== "3dena.analysis-result.v1") reject$8("INVALID_SOURCE_RESULT", "result", "must be a validated raw analysis result");
-	if (result.edges.length === 0) reject$8("EMPTY_EDGE_SET", "result.edges", "must contain at least one edge");
-	if (result.points.length === 0) reject$8("EMPTY_POINT_SET", "result.points", "must contain at least one point");
-	if (result.dimensions.length === 0) reject$8("EMPTY_DIMENSION_SET", "result.dimensions", "must contain at least one dimension");
+	if (!result || result.schemaVersion !== "3dena.analysis-result.v1") reject$7("INVALID_SOURCE_RESULT", "result", "must be a validated raw analysis result");
+	if (result.edges.length === 0) reject$7("EMPTY_EDGE_SET", "result.edges", "must contain at least one edge");
+	if (result.points.length === 0) reject$7("EMPTY_POINT_SET", "result.points", "must contain at least one point");
+	if (result.dimensions.length === 0) reject$7("EMPTY_DIMENSION_SET", "result.dimensions", "must contain at least one dimension");
 	for (const point of result.points) {
-		if (point.lineWeights.length !== result.edges.length) reject$8("MISALIGNED_LINE_WEIGHTS", `result.points[${point.index}].lineWeights`, "must align one-to-one with result.edges");
-		if (point.fullCoordinates.length !== result.dimensions.length) reject$8("MISALIGNED_COORDINATES", `result.points[${point.index}].fullCoordinates`, "must align one-to-one with result.dimensions");
+		if (point.lineWeights.length !== result.edges.length) reject$7("MISALIGNED_LINE_WEIGHTS", `result.points[${point.index}].lineWeights`, "must align one-to-one with result.edges");
+		if (point.fullCoordinates.length !== result.dimensions.length) reject$7("MISALIGNED_COORDINATES", `result.points[${point.index}].fullCoordinates`, "must align one-to-one with result.dimensions");
 	}
 }
 function mean$1(values, path) {
-	if (values.length === 0) reject$8("EMPTY_NETWORK_SELECTION", path, "contains no analysis points");
+	if (values.length === 0) reject$7("EMPTY_NETWORK_SELECTION", path, "contains no analysis points");
 	let sum = 0;
 	let correction = 0;
 	for (const value of values) {
-		if (!Number.isFinite(value)) reject$8("NON_FINITE_SOURCE_VALUE", path, "contains a non-finite model value");
+		if (!Number.isFinite(value)) reject$7("NON_FINITE_SOURCE_VALUE", path, "contains a non-finite model value");
 		const adjusted = value - correction;
 		const next = sum + adjusted;
 		correction = next - sum - adjusted;
@@ -37165,7 +37165,7 @@ function edgeMean(edge, points) {
 	};
 }
 function networkMean(result, points) {
-	if (points.length === 0) reject$8("EMPTY_NETWORK_SELECTION", "selection", "contains no analysis points");
+	if (points.length === 0) reject$7("EMPTY_NETWORK_SELECTION", "selection", "contains no analysis points");
 	return {
 		pointCount: points.length,
 		pointIndexes: points.map((point) => point.index),
@@ -37174,9 +37174,9 @@ function networkMean(result, points) {
 	};
 }
 function groupValue(result, canonical, path) {
-	if (typeof canonical !== "string" || canonical.length === 0) reject$8("INVALID_GROUP", path, "must be a non-empty canonical group key");
+	if (typeof canonical !== "string" || canonical.length === 0) reject$7("INVALID_GROUP", path, "must be a non-empty canonical group key");
 	const group = result.trajectory?.groupOrder.find((candidate) => candidate.canonical === canonical) ?? result.points.find((point) => point.group?.canonical === canonical)?.group;
-	if (!group) reject$8("UNKNOWN_GROUP", path, "is not present in the source result");
+	if (!group) reject$7("UNKNOWN_GROUP", path, "is not present in the source result");
 	return group;
 }
 /**
@@ -37185,8 +37185,8 @@ function groupValue(result, canonical, path) {
 */
 function compareGroupNetworks(result, groups) {
 	validateSource(result);
-	if (!Array.isArray(groups) || groups.length !== 2) reject$8("INVALID_GROUP_PAIR", "groups", "must contain exactly two canonical group keys");
-	if (groups[0] === groups[1]) reject$8("IDENTICAL_GROUPS", "groups", "must select two different groups");
+	if (!Array.isArray(groups) || groups.length !== 2) reject$7("INVALID_GROUP_PAIR", "groups", "must contain exactly two canonical group keys");
+	if (groups[0] === groups[1]) reject$7("IDENTICAL_GROUPS", "groups", "must select two different groups");
 	const groupA = groupValue(result, groups[0], "groups[0]");
 	const groupB = groupValue(result, groups[1], "groups[1]");
 	const meanA = networkMean(result, result.points.filter((point) => point.group?.canonical === groupA.canonical));
@@ -37221,13 +37221,13 @@ function compareGroupNetworks(result, groups) {
 /** Selects one exact metadata/group level and computes its mean network. */
 function analyzeChangeNetwork(result, selector) {
 	validateSource(result);
-	if (!selector || typeof selector.field !== "string" || selector.field.trim() === "") reject$8("INVALID_CHANGE_FIELD", "selector.field", "must be a non-empty metadata column name or @group");
+	if (!selector || typeof selector.field !== "string" || selector.field.trim() === "") reject$7("INVALID_CHANGE_FIELD", "selector.field", "must be a non-empty metadata column name or @group");
 	const levelCanonical = rawScalarCanonical(selector.level);
 	const selected = result.points.filter((point) => {
 		const value = selector.field === "@group" ? point.group?.value : point.metadata[selector.field];
 		return value !== void 0 && rawScalarCanonical(value) === levelCanonical;
 	});
-	if (selected.length === 0) reject$8("UNKNOWN_CHANGE_LEVEL", "selector.level", "does not select any analysis points");
+	if (selected.length === 0) reject$7("UNKNOWN_CHANGE_LEVEL", "selector.level", "does not select any analysis points");
 	return {
 		schemaVersion: "3dena.change-network.v1",
 		selector: {
@@ -37275,7 +37275,7 @@ function issue$1(code, path, message) {
 		message
 	};
 }
-function reject$7(code, path, message) {
+function reject$6(code, path, message) {
 	throw new AnalysisValidationError([issue$1(code, path, message)]);
 }
 function columnMap(table) {
@@ -37283,22 +37283,22 @@ function columnMap(table) {
 }
 function requiredColumn(columns, name, path) {
 	const column = columns.get(name);
-	if (!column) reject$7("MISSING_PREPARED_COLUMN", path, `column ${JSON.stringify(name)} is required`);
+	if (!column) reject$6("MISSING_PREPARED_COLUMN", path, `column ${JSON.stringify(name)} is required`);
 	return column;
 }
 function rawValue(column, rowIndex, path) {
 	const value = column.values[rowIndex];
-	if (value !== null && typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") reject$7("INVALID_PREPARED_SCALAR", path, "must be a scalar exchange value");
-	if (typeof value === "number" && !Number.isFinite(value)) reject$7("NON_FINITE_PREPARED_VALUE", path, "must be finite");
+	if (value !== null && typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") reject$6("INVALID_PREPARED_SCALAR", path, "must be a scalar exchange value");
+	if (typeof value === "number" && !Number.isFinite(value)) reject$6("NON_FINITE_PREPARED_VALUE", path, "must be finite");
 	return value ?? null;
 }
 function validateIdentityScalar(value, path) {
-	if (value !== null && typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") reject$7("INVALID_PREPARED_IDENTITY", path, "must be a scalar value");
-	if (value === null) reject$7("MISSING_PREPARED_IDENTITY", path, "identity values must not be null");
-	if (typeof value === "string" && value.trim().length === 0) reject$7("BLANK_PREPARED_IDENTITY", path, "identity strings must not be blank");
-	if (typeof value === "string" && UTF8_ENCODER.encode(value).byteLength > IDENTITY_STRING_MAX_UTF8_BYTES) reject$7("PREPARED_IDENTITY_TOO_LONG", path, `must not exceed ${IDENTITY_STRING_MAX_UTF8_BYTES} UTF-8 bytes`);
-	if (typeof value === "number" && !Number.isFinite(value)) reject$7("NON_FINITE_PREPARED_IDENTITY", path, "numeric identities must be finite");
-	if (typeof value === "number" && Number.isInteger(value) && !Number.isSafeInteger(value)) reject$7("UNSAFE_PREPARED_INTEGER_IDENTITY", path, "integer identities outside the JavaScript safe range must be encoded as strings");
+	if (value !== null && typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") reject$6("INVALID_PREPARED_IDENTITY", path, "must be a scalar value");
+	if (value === null) reject$6("MISSING_PREPARED_IDENTITY", path, "identity values must not be null");
+	if (typeof value === "string" && value.trim().length === 0) reject$6("BLANK_PREPARED_IDENTITY", path, "identity strings must not be blank");
+	if (typeof value === "string" && UTF8_ENCODER.encode(value).byteLength > IDENTITY_STRING_MAX_UTF8_BYTES) reject$6("PREPARED_IDENTITY_TOO_LONG", path, `must not exceed ${IDENTITY_STRING_MAX_UTF8_BYTES} UTF-8 bytes`);
+	if (typeof value === "number" && !Number.isFinite(value)) reject$6("NON_FINITE_PREPARED_IDENTITY", path, "numeric identities must be finite");
+	if (typeof value === "number" && Number.isInteger(value) && !Number.isSafeInteger(value)) reject$6("UNSAFE_PREPARED_INTEGER_IDENTITY", path, "integer identities outside the JavaScript safe range must be encoded as strings");
 }
 function scalarToken$2(value) {
 	if (value === null) return ["null", ""];
@@ -37365,44 +37365,44 @@ function sameTypedValue(left, right) {
 }
 function numericColumnValue(column, rowIndex, path) {
 	const value = rawValue(column, rowIndex, path);
-	if (typeof value !== "number" || !Number.isFinite(value)) reject$7("INVALID_PREPARED_COORDINATE", path, "prepared coordinates and weights must be present finite numbers");
+	if (typeof value !== "number" || !Number.isFinite(value)) reject$6("INVALID_PREPARED_COORDINATE", path, "prepared coordinates and weights must be present finite numbers");
 	return value;
 }
 function validateSourceName(name) {
-	if (typeof name !== "string" || name.trim().length === 0) reject$7("INVALID_PREPARED_SOURCE_NAME", "source.name", "must be a non-blank string");
-	if (/[\u0000-\u001f\u007f-\u009f]/u.test(name)) reject$7("INVALID_PREPARED_SOURCE_NAME", "source.name", "must not contain control characters");
-	if (/[\\/]/u.test(name)) reject$7("INVALID_PREPARED_SOURCE_NAME", "source.name", "must be a file name, not a path");
-	if (UTF8_ENCODER.encode(name).byteLength > SOURCE_NAME_MAX_UTF8_BYTES) reject$7("PREPARED_SOURCE_NAME_TOO_LONG", "source.name", `must not exceed ${SOURCE_NAME_MAX_UTF8_BYTES} UTF-8 bytes`);
+	if (typeof name !== "string" || name.trim().length === 0) reject$6("INVALID_PREPARED_SOURCE_NAME", "source.name", "must be a non-blank string");
+	if (/[\u0000-\u001f\u007f-\u009f]/u.test(name)) reject$6("INVALID_PREPARED_SOURCE_NAME", "source.name", "must not contain control characters");
+	if (/[\\/]/u.test(name)) reject$6("INVALID_PREPARED_SOURCE_NAME", "source.name", "must be a file name, not a path");
+	if (UTF8_ENCODER.encode(name).byteLength > SOURCE_NAME_MAX_UTF8_BYTES) reject$6("PREPARED_SOURCE_NAME_TOO_LONG", "source.name", `must not exceed ${SOURCE_NAME_MAX_UTF8_BYTES} UTF-8 bytes`);
 }
 function validateMapping$1(exchange, mapping) {
-	if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) reject$7("INVALID_PREPARED_MAPPING", "mapping", "must be an object");
-	if (!Array.isArray(mapping.participant) || mapping.participant.length === 0) reject$7("INVALID_PREPARED_MAPPING", "mapping.participant", "must name at least one column");
-	if (mapping.participant.length > PREPARED_PARTICIPANT_COLUMN_LIMIT) reject$7("PREPARED_MAPPING_LIMIT_EXCEEDED", "mapping.participant", `must not exceed ${PREPARED_PARTICIPANT_COLUMN_LIMIT} columns`);
-	if (mapping.participant.some((name) => typeof name !== "string" || name.trim().length === 0)) reject$7("INVALID_PREPARED_MAPPING", "mapping.participant", "must contain non-blank column names");
-	if (new Set(mapping.participant).size !== mapping.participant.length) reject$7("DUPLICATE_PREPARED_MAPPING", "mapping.participant", "must not contain duplicate columns");
-	if (!mapping.participant.includes(mapping.group)) reject$7("GROUP_OUTSIDE_PREPARED_PARTICIPANT", "mapping.group", "the trajectory group must be part of the complete participant identity");
-	if (!Array.isArray(mapping.displayDimensions) || mapping.displayDimensions.length !== 3) reject$7("INVALID_PREPARED_MAPPING", "mapping.displayDimensions", "must select exactly three dimensions");
-	if (mapping.displayDimensions.some((name) => typeof name !== "string" || name.trim().length === 0)) reject$7("INVALID_PREPARED_MAPPING", "mapping.displayDimensions", "must contain dimension names");
+	if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) reject$6("INVALID_PREPARED_MAPPING", "mapping", "must be an object");
+	if (!Array.isArray(mapping.participant) || mapping.participant.length === 0) reject$6("INVALID_PREPARED_MAPPING", "mapping.participant", "must name at least one column");
+	if (mapping.participant.length > PREPARED_PARTICIPANT_COLUMN_LIMIT) reject$6("PREPARED_MAPPING_LIMIT_EXCEEDED", "mapping.participant", `must not exceed ${PREPARED_PARTICIPANT_COLUMN_LIMIT} columns`);
+	if (mapping.participant.some((name) => typeof name !== "string" || name.trim().length === 0)) reject$6("INVALID_PREPARED_MAPPING", "mapping.participant", "must contain non-blank column names");
+	if (new Set(mapping.participant).size !== mapping.participant.length) reject$6("DUPLICATE_PREPARED_MAPPING", "mapping.participant", "must not contain duplicate columns");
+	if (!mapping.participant.includes(mapping.group)) reject$6("GROUP_OUTSIDE_PREPARED_PARTICIPANT", "mapping.group", "the trajectory group must be part of the complete participant identity");
+	if (!Array.isArray(mapping.displayDimensions) || mapping.displayDimensions.length !== 3) reject$6("INVALID_PREPARED_MAPPING", "mapping.displayDimensions", "must select exactly three dimensions");
+	if (mapping.displayDimensions.some((name) => typeof name !== "string" || name.trim().length === 0)) reject$6("INVALID_PREPARED_MAPPING", "mapping.displayDimensions", "must contain dimension names");
 	for (const [path, value] of [
 		["mapping.participantLabel", mapping.participantLabel],
 		["mapping.group", mapping.group],
 		["mapping.time", mapping.time]
-	]) if (typeof value !== "string" || value.trim().length === 0) reject$7("INVALID_PREPARED_MAPPING", path, "must name a non-blank metadata column");
-	if (new Set(mapping.displayDimensions).size !== 3) reject$7("DUPLICATE_PREPARED_MAPPING", "mapping.displayDimensions", "must contain three distinct dimensions");
-	if (mapping.missingDisplayCoordinates !== void 0 && mapping.missingDisplayCoordinates !== "reject") reject$7("INVALID_PREPARED_MAPPING", "mapping.missingDisplayCoordinates", "only the reject policy is supported");
-	if (mapping.cohortPolicy !== "available" && mapping.cohortPolicy !== "complete") reject$7("INVALID_PREPARED_MAPPING", "mapping.cohortPolicy", "must be available or complete");
+	]) if (typeof value !== "string" || value.trim().length === 0) reject$6("INVALID_PREPARED_MAPPING", path, "must name a non-blank metadata column");
+	if (new Set(mapping.displayDimensions).size !== 3) reject$6("DUPLICATE_PREPARED_MAPPING", "mapping.displayDimensions", "must contain three distinct dimensions");
+	if (mapping.missingDisplayCoordinates !== void 0 && mapping.missingDisplayCoordinates !== "reject") reject$6("INVALID_PREPARED_MAPPING", "mapping.missingDisplayCoordinates", "only the reject policy is supported");
+	if (mapping.cohortPolicy !== "available" && mapping.cohortPolicy !== "complete") reject$6("INVALID_PREPARED_MAPPING", "mapping.cohortPolicy", "must be available or complete");
 	const metadataColumns = columnMap(exchange.tables.meta_data);
 	const participantColumns = mapping.participant.map((name, index) => requiredColumn(metadataColumns, name, `mapping.participant[${index}]`));
 	const participantLabelColumn = requiredColumn(metadataColumns, mapping.participantLabel, "mapping.participantLabel");
 	const groupColumn = requiredColumn(metadataColumns, mapping.group, "mapping.group");
 	const timeColumn = requiredColumn(metadataColumns, mapping.time, "mapping.time");
-	if (!Array.isArray(mapping.timeOrder) || mapping.timeOrder.length === 0) reject$7("INVALID_PREPARED_TIME_ORDER", "mapping.timeOrder", "must contain at least one expected period");
-	if (mapping.timeOrder.length > PREPARED_TIME_ORDER_LIMIT) reject$7("PREPARED_TIME_ORDER_LIMIT_EXCEEDED", "mapping.timeOrder", `must not exceed ${PREPARED_TIME_ORDER_LIMIT} expected periods`);
+	if (!Array.isArray(mapping.timeOrder) || mapping.timeOrder.length === 0) reject$6("INVALID_PREPARED_TIME_ORDER", "mapping.timeOrder", "must contain at least one expected period");
+	if (mapping.timeOrder.length > PREPARED_TIME_ORDER_LIMIT) reject$6("PREPARED_TIME_ORDER_LIMIT_EXCEEDED", "mapping.timeOrder", `must not exceed ${PREPARED_TIME_ORDER_LIMIT} expected periods`);
 	const timeOrder = mapping.timeOrder.map((value, index) => {
 		validateIdentityScalar(value, `mapping.timeOrder[${index}]`);
 		return typedValue$1(timeColumn.name, timeColumn.type, value);
 	});
-	if (new Set(timeOrder.map((time) => time.canonical)).size !== timeOrder.length) reject$7("DUPLICATE_PREPARED_TIME", "mapping.timeOrder", "must not contain duplicate typed periods");
+	if (new Set(timeOrder.map((time) => time.canonical)).size !== timeOrder.length) reject$6("DUPLICATE_PREPARED_TIME", "mapping.timeOrder", "must not contain duplicate typed periods");
 	return {
 		metadataColumns,
 		participantColumns,
@@ -37412,7 +37412,7 @@ function validateMapping$1(exchange, mapping) {
 		timeOrder,
 		displayDimensionIndexes: mapping.displayDimensions.map((dimension, index) => {
 			const dimensionIndex = exchange.dimensions.indexOf(dimension);
-			if (dimensionIndex < 0) reject$7("MISSING_PREPARED_DIMENSION", `mapping.displayDimensions[${index}]`, `dimension ${JSON.stringify(dimension)} is not present`);
+			if (dimensionIndex < 0) reject$6("MISSING_PREPARED_DIMENSION", `mapping.displayDimensions[${index}]`, `dimension ${JSON.stringify(dimension)} is not present`);
 			return dimensionIndex;
 		})
 	};
@@ -37433,12 +37433,12 @@ function buildRowKeys(sourceIdColumn, rowCount) {
 	});
 }
 function stableMean(values, path) {
-	if (values.length === 0) reject$7("EMPTY_PREPARED_REDUCTION", path, "cannot reduce an empty numeric set");
+	if (values.length === 0) reject$6("EMPTY_PREPARED_REDUCTION", path, "cannot reduce an empty numeric set");
 	let result = 0;
 	for (let index = 0; index < values.length; index += 1) {
 		const count = index + 1;
 		result += values[index] / count - result / count;
-		if (!Number.isFinite(result)) reject$7("NON_FINITE_PREPARED_REDUCTION", path, "finite inputs produced a non-finite reduction");
+		if (!Number.isFinite(result)) reject$6("NON_FINITE_PREPARED_REDUCTION", path, "finite inputs produced a non-finite reduction");
 	}
 	return result;
 }
@@ -37447,15 +37447,15 @@ function buildParticipantPeriods(points, timeOrder, cohortPolicy) {
 	const byParticipantPeriod = /* @__PURE__ */ new Map();
 	const participantAttributes = /* @__PURE__ */ new Map();
 	for (const point of points) {
-		if (!expectedTimes.has(point.time.canonical)) reject$7("UNDECLARED_PREPARED_TIME", `tables.meta_data.${point.time.column}[${point.index}]`, `observed period ${JSON.stringify(point.time.display)} is absent from mapping.timeOrder`);
+		if (!expectedTimes.has(point.time.canonical)) reject$6("UNDECLARED_PREPARED_TIME", `tables.meta_data.${point.time.column}[${point.index}]`, `observed period ${JSON.stringify(point.time.display)} is absent from mapping.timeOrder`);
 		const knownAttributes = participantAttributes.get(point.participant.canonical);
 		if (!knownAttributes) participantAttributes.set(point.participant.canonical, {
 			group: point.group,
 			participantLabel: point.participantLabel
 		});
 		else {
-			if (!sameTypedValue(knownAttributes.group, point.group)) reject$7("UNSTABLE_PREPARED_GROUP", `tables.meta_data.${point.group.column}[${point.index}]`, "one participant cannot change groups across periods");
-			if (!sameTypedValue(knownAttributes.participantLabel, point.participantLabel)) reject$7("UNSTABLE_PREPARED_PARTICIPANT_LABEL", `tables.meta_data.${point.participantLabel.column}[${point.index}]`, "one participant cannot change display labels across periods");
+			if (!sameTypedValue(knownAttributes.group, point.group)) reject$6("UNSTABLE_PREPARED_GROUP", `tables.meta_data.${point.group.column}[${point.index}]`, "one participant cannot change groups across periods");
+			if (!sameTypedValue(knownAttributes.participantLabel, point.participantLabel)) reject$6("UNSTABLE_PREPARED_PARTICIPANT_LABEL", `tables.meta_data.${point.participantLabel.column}[${point.index}]`, "one participant cannot change display labels across periods");
 		}
 		const key = JSON.stringify([point.participant.canonical, point.time.canonical]);
 		const existing = byParticipantPeriod.get(key);
@@ -37472,11 +37472,11 @@ function buildParticipantPeriods(points, timeOrder, cohortPolicy) {
 			});
 			continue;
 		}
-		if (!sameTypedValue(existing.group, point.group)) reject$7("UNSTABLE_PREPARED_GROUP", `tables.meta_data.${point.group.column}[${point.index}]`, "one participant-period cannot belong to multiple groups");
-		if (!sameTypedValue(existing.participantLabel, point.participantLabel)) reject$7("UNSTABLE_PREPARED_PARTICIPANT_LABEL", `tables.meta_data.${point.participantLabel.column}[${point.index}]`, "one participant cannot have conflicting labels within a period");
+		if (!sameTypedValue(existing.group, point.group)) reject$6("UNSTABLE_PREPARED_GROUP", `tables.meta_data.${point.group.column}[${point.index}]`, "one participant-period cannot belong to multiple groups");
+		if (!sameTypedValue(existing.participantLabel, point.participantLabel)) reject$6("UNSTABLE_PREPARED_PARTICIPANT_LABEL", `tables.meta_data.${point.participantLabel.column}[${point.index}]`, "one participant cannot have conflicting labels within a period");
 		const count = existing.count + 1;
 		existing.coordinateMeans = existing.coordinateMeans.map((current, axis) => current + (displayCoordinates[axis] / count - current / count));
-		if (existing.coordinateMeans.some((coordinate) => !Number.isFinite(coordinate))) reject$7("NON_FINITE_PREPARED_REDUCTION", `tables.points[${point.index}]`, "finite participant-period coordinates produced a non-finite mean");
+		if (existing.coordinateMeans.some((coordinate) => !Number.isFinite(coordinate))) reject$6("NON_FINITE_PREPARED_REDUCTION", `tables.points[${point.index}]`, "finite participant-period coordinates produced a non-finite mean");
 		existing.count = count;
 		existing.sourcePointIndexes.push(point.index);
 	}
@@ -37553,15 +37553,15 @@ function buildTrajectories(participantPeriods, timeOrder) {
 * preserved; only participant-period and group-time summaries are computed.
 */
 function analyzePreparedSpace(input) {
-	if (!input || typeof input !== "object" || Array.isArray(input)) reject$7("INVALID_PREPARED_INPUT", "input", "must be an object");
-	if (!input.source || typeof input.source !== "object") reject$7("INVALID_PREPARED_SOURCE", "source", "must contain a validated hashed artifact");
+	if (!input || typeof input !== "object" || Array.isArray(input)) reject$6("INVALID_PREPARED_INPUT", "input", "must be an object");
+	if (!input.source || typeof input.source !== "object") reject$6("INVALID_PREPARED_SOURCE", "source", "must contain a validated hashed artifact");
 	validateSourceName(input.source.name);
 	const artifact = input.source.artifact;
-	if (!isHashedEna3dExchangeV1(artifact) || !/^[a-f0-9]{64}$/u.test(artifact.sha256) || !Number.isSafeInteger(artifact.byteLength) || artifact.byteLength < 1 || !artifact.exchange || typeof artifact.exchange !== "object") reject$7("INVALID_PREPARED_RECEIPT", "source.artifact", "must be a validated exchange with lowercase SHA-256 and positive byte length");
+	if (!isHashedEna3dExchangeV1(artifact) || !/^[a-f0-9]{64}$/u.test(artifact.sha256) || !Number.isSafeInteger(artifact.byteLength) || artifact.byteLength < 1 || !artifact.exchange || typeof artifact.exchange !== "object") reject$6("INVALID_PREPARED_RECEIPT", "source.artifact", "must be a validated exchange with lowercase SHA-256 and positive byte length");
 	const exchange = artifact.exchange;
 	const resolved = validateMapping$1(exchange, input.mapping);
 	const metadataRows = exchange.tables.meta_data.columns[0]?.values.length ?? 0;
-	if (metadataRows < 1) reject$7("EMPTY_PREPARED_SPACE", "tables.meta_data", "must contain at least one point row");
+	if (metadataRows < 1) reject$6("EMPTY_PREPARED_SPACE", "tables.meta_data", "must contain at least one point row");
 	const metadataSourceId = requiredColumn(resolved.metadataColumns, "ENA_UNIT", "tables.meta_data.ENA_UNIT");
 	const pointColumns = columnMap(exchange.tables.points);
 	const lineWeightColumns = columnMap(exchange.tables.line_weights);
@@ -37584,7 +37584,7 @@ function analyzePreparedSpace(input) {
 	const nodes = Array.from({ length: nodeCount }, (_, rowIndex) => {
 		const code = rawValue(codeColumn, rowIndex, `tables.nodes.code[${rowIndex}]`);
 		validateIdentityScalar(code, `tables.nodes.code[${rowIndex}]`);
-		if (typeof code !== "string") reject$7("INVALID_PREPARED_NODE_CODE", `tables.nodes.code[${rowIndex}]`, "must be a string");
+		if (typeof code !== "string") reject$6("INVALID_PREPARED_NODE_CODE", `tables.nodes.code[${rowIndex}]`, "must be a string");
 		return {
 			index: rowIndex,
 			code,
@@ -37600,10 +37600,10 @@ function analyzePreparedSpace(input) {
 	const edges = edgeColumns.map((edgeColumn, index) => {
 		const sourceValue = rawValue(edgeColumn, 0, `tables.adjacency_key.${edgeColumn.name}[0]`);
 		const targetValue = rawValue(edgeColumn, 1, `tables.adjacency_key.${edgeColumn.name}[1]`);
-		if (typeof sourceValue !== "string" || typeof targetValue !== "string") reject$7("INVALID_PREPARED_EDGE", `tables.adjacency_key.${edgeColumn.name}`, "edge endpoints must be string node codes");
+		if (typeof sourceValue !== "string" || typeof targetValue !== "string") reject$6("INVALID_PREPARED_EDGE", `tables.adjacency_key.${edgeColumn.name}`, "edge endpoints must be string node codes");
 		const sourceIndex = nodeIndexByCode.get(sourceValue);
 		const targetIndex = nodeIndexByCode.get(targetValue);
-		if (sourceIndex === void 0 || targetIndex === void 0) reject$7("INVALID_PREPARED_EDGE", `tables.adjacency_key.${edgeColumn.name}`, "edge endpoints must reference existing nodes");
+		if (sourceIndex === void 0 || targetIndex === void 0) reject$6("INVALID_PREPARED_EDGE", `tables.adjacency_key.${edgeColumn.name}`, "edge endpoints must reference existing nodes");
 		return {
 			index,
 			id: canonicalTuple(["source", "target"], ["character", "character"], [sourceValue, targetValue]),
@@ -37632,8 +37632,8 @@ function analyzePreparedSpace(input) {
 		coordinates: displayPoints[index].coordinates
 	})), resolved.timeOrder, input.mapping.cohortPolicy);
 	const observedGroupCount = new Set(participantPeriods.map((point) => point.group.canonical)).size;
-	if (observedGroupCount > PREPARED_GROUP_LIMIT) reject$7("PREPARED_GROUP_LIMIT_EXCEEDED", "mapping.group", `mapped groups must not exceed ${PREPARED_GROUP_LIMIT}`);
-	if (observedGroupCount * resolved.timeOrder.length > PREPARED_TRAJECTORY_CELL_LIMIT) reject$7("PREPARED_TRAJECTORY_LIMIT_EXCEEDED", "mapping.timeOrder", `group-by-time path cells must not exceed ${PREPARED_TRAJECTORY_CELL_LIMIT}`);
+	if (observedGroupCount > PREPARED_GROUP_LIMIT) reject$6("PREPARED_GROUP_LIMIT_EXCEEDED", "mapping.group", `mapped groups must not exceed ${PREPARED_GROUP_LIMIT}`);
+	if (observedGroupCount * resolved.timeOrder.length > PREPARED_TRAJECTORY_CELL_LIMIT) reject$6("PREPARED_TRAJECTORY_LIMIT_EXCEEDED", "mapping.timeOrder", `group-by-time path cells must not exceed ${PREPARED_TRAJECTORY_CELL_LIMIT}`);
 	const trajectory = buildTrajectories(participantPeriods, resolved.timeOrder);
 	const diagnostics = [{
 		code: "PRECOMPUTED_SPACE_IMPORT",
@@ -37715,107 +37715,6 @@ function analyzePreparedSpace(input) {
 		}
 	};
 }
-function selectedDisplayDimensions(result, filter) {
-	if (filter.dimensions === void 0) {
-		const names = [...result.displaySpace.dimensions];
-		return {
-			names,
-			indexes: names.map((dimension) => result.fullSpace.dimensions.indexOf(dimension)),
-			reselect: false
-		};
-	}
-	const candidate = filter.dimensions;
-	if (!Array.isArray(candidate) || candidate.length !== 3) reject$7("INVALID_PREPARED_DISPLAY_DIMENSIONS", "filter.dimensions", "must select exactly three dimensions");
-	if (candidate.some((dimension) => typeof dimension !== "string" || dimension.trim() === "")) reject$7("INVALID_PREPARED_DISPLAY_DIMENSIONS", "filter.dimensions", "must contain three non-blank dimension names");
-	const names = [
-		candidate[0],
-		candidate[1],
-		candidate[2]
-	];
-	if (new Set(names).size !== 3) reject$7("DUPLICATE_PREPARED_DISPLAY_DIMENSION", "filter.dimensions", "must contain three distinct dimensions");
-	return {
-		names,
-		indexes: names.map((dimension, index) => {
-			const dimensionIndex = result.fullSpace.dimensions.indexOf(dimension);
-			if (dimensionIndex < 0) reject$7("UNKNOWN_PREPARED_DISPLAY_DIMENSION", `filter.dimensions[${index}]`, `dimension ${JSON.stringify(dimension)} is not present in fullSpace.dimensions`);
-			return dimensionIndex;
-		}),
-		reselect: true
-	};
-}
-function projectPreparedCoordinates(coordinates, indexes, path) {
-	const selected = indexes.map((index) => coordinates[index]);
-	if (selected.some((coordinate) => typeof coordinate !== "number" || !Number.isFinite(coordinate))) reject$7("INVALID_PREPARED_DISPLAY_COORDINATE", path, "selected full-space coordinates must be present finite numbers");
-	return selected;
-}
-function deepFreezePreparedSelection(value) {
-	if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
-		for (const nested of Object.values(value)) deepFreezePreparedSelection(nested);
-		Object.freeze(value);
-	}
-	return value;
-}
-/**
-* Display-only group/dimension selection in the already imported coordinate
-* space. Dimension reselection redoes reductions but never fits or rotates.
-*/
-function selectPreparedSpaceDisplay(result, filter = {}) {
-	if (!filter || typeof filter !== "object" || Array.isArray(filter)) reject$7("INVALID_PREPARED_DISPLAY_FILTER", "filter", "must be an object");
-	const groupCandidate = filter.groups;
-	if (groupCandidate !== void 0 && (!Array.isArray(groupCandidate) || groupCandidate.some((group) => typeof group !== "string" || group.trim() === ""))) reject$7("INVALID_PREPARED_DISPLAY_GROUP", "filter.groups", "must contain non-blank canonical group keys");
-	const allowed = filter.groups ? new Set(filter.groups) : null;
-	if (filter.groups && allowed.size !== filter.groups.length) reject$7("DUPLICATE_PREPARED_DISPLAY_GROUP", "filter.groups", "contains duplicate group keys");
-	if (allowed) {
-		const known = new Set(result.displaySpace.trajectory.groupOrder.map((group) => group.canonical));
-		const unknown = [...allowed].filter((group) => !known.has(group));
-		if (unknown.length > 0) reject$7("UNKNOWN_PREPARED_DISPLAY_GROUP", "filter.groups", `contains unknown group keys: ${unknown.join(", ")}`);
-	}
-	const dimensions = selectedDisplayDimensions(result, filter);
-	const displayPoints = dimensions.reselect ? result.fullSpace.points.map((point) => ({
-		pointIndex: point.index,
-		id: point.id,
-		group: point.group,
-		time: point.time,
-		coordinates: projectPreparedCoordinates(point.coordinates, dimensions.indexes, `fullSpace.points[${point.index}].coordinates`)
-	})) : [...result.displaySpace.points];
-	const displayNodes = dimensions.reselect ? result.fullSpace.nodes.map((node) => ({
-		nodeIndex: node.index,
-		code: node.code,
-		coordinates: projectPreparedCoordinates(node.coordinates, dimensions.indexes, `fullSpace.nodes[${node.index}].coordinates`)
-	})) : [...result.displaySpace.nodes];
-	const reduced = dimensions.reselect ? (() => {
-		const participantPeriods = buildParticipantPeriods(result.fullSpace.points.map((point, index) => ({
-			...point,
-			coordinates: displayPoints[index].coordinates
-		})), result.displaySpace.trajectory.timeOrder, result.displaySpace.trajectory.cohortPolicy);
-		const trajectory = buildTrajectories(participantPeriods, result.displaySpace.trajectory.timeOrder);
-		return {
-			participantPeriods,
-			groupOrder: trajectory.groupOrder,
-			centroids: trajectory.centroids,
-			paths: trajectory.paths
-		};
-	})() : {
-		participantPeriods: [...result.displaySpace.trajectory.participantPeriods],
-		groupOrder: [...result.displaySpace.trajectory.groupOrder],
-		centroids: [...result.displaySpace.trajectory.centroids],
-		paths: [...result.displaySpace.trajectory.paths]
-	};
-	const groupOrder = allowed ? reduced.groupOrder.filter((group) => allowed.has(group.canonical)) : [...reduced.groupOrder];
-	const selected = new Set(groupOrder.map((group) => group.canonical));
-	return deepFreezePreparedSelection(structuredClone({
-		space: "prepared-exchange-display-space",
-		dimensions: dimensions.names,
-		points: allowed ? displayPoints.filter((point) => selected.has(point.group.canonical)) : displayPoints,
-		nodes: displayNodes,
-		cohortPolicy: result.displaySpace.trajectory.cohortPolicy,
-		groupOrder,
-		timeOrder: [...result.displaySpace.trajectory.timeOrder],
-		participantPeriods: allowed ? reduced.participantPeriods.filter((point) => selected.has(point.group.canonical)) : reduced.participantPeriods,
-		centroids: allowed ? reduced.centroids.filter((centroid) => selected.has(centroid.group.canonical)) : reduced.centroids,
-		paths: allowed ? reduced.paths.filter((path) => selected.has(path.group.canonical)) : reduced.paths
-	}));
-}
 //#endregion
 //#region src/trajectory-statistics.ts
 var DEFAULT_LIMITS = Object.freeze({
@@ -37846,24 +37745,24 @@ var TrajectoryStatisticsError = class extends Error {
 		this.path = path;
 	}
 };
-function reject$6(code, path, message) {
+function reject$5(code, path, message) {
 	throw new TrajectoryStatisticsError(code, path, message);
 }
 function resolveLimits$1(input) {
 	const result = {};
 	for (const key of Object.keys(DEFAULT_LIMITS)) {
 		const value = input?.[key];
-		if (value !== void 0 && (!Number.isSafeInteger(value) || value < 1)) reject$6("INVALID_TRAJECTORY_LIMIT", `limits.${key}`, "must be a positive safe integer");
-		if (value !== void 0 && value > HARD_LIMITS[key]) reject$6("TRAJECTORY_LIMIT_ABOVE_CEILING", `limits.${key}`, `must not exceed ${HARD_LIMITS[key]}`);
+		if (value !== void 0 && (!Number.isSafeInteger(value) || value < 1)) reject$5("INVALID_TRAJECTORY_LIMIT", `limits.${key}`, "must be a positive safe integer");
+		if (value !== void 0 && value > HARD_LIMITS[key]) reject$5("TRAJECTORY_LIMIT_ABOVE_CEILING", `limits.${key}`, `must not exceed ${HARD_LIMITS[key]}`);
 		result[key] = value ?? DEFAULT_LIMITS[key];
 	}
 	return result;
 }
 function scalarToken$1(component, path) {
-	if (typeof component.name !== "string" || component.name.trim() === "") reject$6("INVALID_IDENTITY_COMPONENT", `${path}.name`, "must be a non-empty string");
-	if (component.declaredType !== void 0 && (typeof component.declaredType !== "string" || component.declaredType.trim() === "" || component.declaredType.length > 256)) reject$6("INVALID_IDENTITY_COMPONENT", `${path}.declaredType`, "must be a non-empty string of at most 256 UTF-16 code units when present");
+	if (typeof component.name !== "string" || component.name.trim() === "") reject$5("INVALID_IDENTITY_COMPONENT", `${path}.name`, "must be a non-empty string");
+	if (component.declaredType !== void 0 && (typeof component.declaredType !== "string" || component.declaredType.trim() === "" || component.declaredType.length > 256)) reject$5("INVALID_IDENTITY_COMPONENT", `${path}.declaredType`, "must be a non-empty string of at most 256 UTF-16 code units when present");
 	if (component.type === "string") {
-		if (typeof component.value !== "string" || component.value.length === 0) reject$6("INVALID_IDENTITY_VALUE", `${path}.value`, "must be a non-empty string for a string component");
+		if (typeof component.value !== "string" || component.value.length === 0) reject$5("INVALID_IDENTITY_VALUE", `${path}.value`, "must be a non-empty string for a string component");
 		return [
 			component.name,
 			"string",
@@ -37872,7 +37771,7 @@ function scalarToken$1(component, path) {
 		];
 	}
 	if (component.type === "boolean") {
-		if (typeof component.value !== "boolean") reject$6("INVALID_IDENTITY_VALUE", `${path}.value`, "must be boolean");
+		if (typeof component.value !== "boolean") reject$5("INVALID_IDENTITY_VALUE", `${path}.value`, "must be boolean");
 		return [
 			component.name,
 			"boolean",
@@ -37880,8 +37779,8 @@ function scalarToken$1(component, path) {
 			component.value ? "true" : "false"
 		];
 	}
-	if (component.type !== "number" || typeof component.value !== "number" || !Number.isFinite(component.value)) reject$6("INVALID_IDENTITY_VALUE", `${path}.value`, "must be a finite number with type number");
-	if (Number.isInteger(component.value) && !Number.isSafeInteger(component.value)) reject$6("UNSAFE_INTEGER_IDENTITY", `${path}.value`, "integer identities above Number.MAX_SAFE_INTEGER must be strings");
+	if (component.type !== "number" || typeof component.value !== "number" || !Number.isFinite(component.value)) reject$5("INVALID_IDENTITY_VALUE", `${path}.value`, "must be a finite number with type number");
+	if (Number.isInteger(component.value) && !Number.isSafeInteger(component.value)) reject$5("UNSAFE_INTEGER_IDENTITY", `${path}.value`, "integer identities above Number.MAX_SAFE_INTEGER must be strings");
 	return [
 		component.name,
 		"number",
@@ -37890,12 +37789,12 @@ function scalarToken$1(component, path) {
 	];
 }
 function normalizeIdentity(identity, path) {
-	if (!identity || !Array.isArray(identity.components) || identity.components.length === 0) reject$6("INVALID_TRAJECTORY_IDENTITY", path, "must contain at least one typed component");
+	if (!identity || !Array.isArray(identity.components) || identity.components.length === 0) reject$5("INVALID_TRAJECTORY_IDENTITY", path, "must contain at least one typed component");
 	const seen = /* @__PURE__ */ new Set();
 	const components = identity.components.map((component, index) => {
-		if (!component || typeof component !== "object") reject$6("INVALID_IDENTITY_COMPONENT", `${path}.components[${index}]`, "must be an object");
+		if (!component || typeof component !== "object") reject$5("INVALID_IDENTITY_COMPONENT", `${path}.components[${index}]`, "must be an object");
 		const token = scalarToken$1(component, `${path}.components[${index}]`);
-		if (seen.has(component.name)) reject$6("DUPLICATE_IDENTITY_COMPONENT", `${path}.components[${index}].name`, "duplicates an earlier component name");
+		if (seen.has(component.name)) reject$5("DUPLICATE_IDENTITY_COMPONENT", `${path}.components[${index}].name`, "duplicates an earlier component name");
 		seen.add(component.name);
 		return {
 			component: { ...component },
@@ -37909,47 +37808,47 @@ function normalizeIdentity(identity, path) {
 	};
 }
 function normalizeNamespace(value, path) {
-	if (typeof value !== "string" || value.trim() === "" || value.length > 256) reject$6("INVALID_TRAJECTORY_NAMESPACE", path, "must be a non-empty string of at most 256 UTF-16 code units");
+	if (typeof value !== "string" || value.trim() === "" || value.length > 256) reject$5("INVALID_TRAJECTORY_NAMESPACE", path, "must be a non-empty string of at most 256 UTF-16 code units");
 	return value;
 }
 function normalizeSeries(input) {
-	if (!input || typeof input !== "object") reject$6("INVALID_TRAJECTORY_INPUT", "input", "must be an object");
+	if (!input || typeof input !== "object") reject$5("INVALID_TRAJECTORY_INPUT", "input", "must be an object");
 	const limits = resolveLimits$1(input.limits);
 	const namespace = normalizeNamespace(input.namespace, "input.namespace");
-	if (!Array.isArray(input.points) || input.points.length === 0) reject$6("EMPTY_TRAJECTORY_POINTS", "input.points", "must contain at least one point");
-	if (input.points.length > limits.maxPoints) reject$6("TRAJECTORY_POINT_LIMIT", "input.points", `exceeds maxPoints=${limits.maxPoints}`);
-	if (!Array.isArray(input.dimensions) || input.dimensions.length === 0) reject$6("INVALID_TRAJECTORY_DIMENSIONS", "input.dimensions", "must be non-empty");
-	if (input.dimensions.length > limits.maxDimensions) reject$6("TRAJECTORY_DIMENSION_LIMIT", "input.dimensions", `exceeds maxDimensions=${limits.maxDimensions}`);
-	if (input.dimensions.some((dimension) => typeof dimension !== "string" || dimension.trim() === "")) reject$6("INVALID_TRAJECTORY_DIMENSIONS", "input.dimensions", "must contain non-empty strings");
-	if (new Set(input.dimensions).size !== input.dimensions.length) reject$6("DUPLICATE_TRAJECTORY_DIMENSION", "input.dimensions", "must be unique");
-	if (!Array.isArray(input.selectedDimensions) || input.selectedDimensions.length !== 3 || new Set(input.selectedDimensions).size !== 3) reject$6("INVALID_SELECTED_DIMENSIONS", "input.selectedDimensions", "must contain exactly three distinct dimensions");
+	if (!Array.isArray(input.points) || input.points.length === 0) reject$5("EMPTY_TRAJECTORY_POINTS", "input.points", "must contain at least one point");
+	if (input.points.length > limits.maxPoints) reject$5("TRAJECTORY_POINT_LIMIT", "input.points", `exceeds maxPoints=${limits.maxPoints}`);
+	if (!Array.isArray(input.dimensions) || input.dimensions.length === 0) reject$5("INVALID_TRAJECTORY_DIMENSIONS", "input.dimensions", "must be non-empty");
+	if (input.dimensions.length > limits.maxDimensions) reject$5("TRAJECTORY_DIMENSION_LIMIT", "input.dimensions", `exceeds maxDimensions=${limits.maxDimensions}`);
+	if (input.dimensions.some((dimension) => typeof dimension !== "string" || dimension.trim() === "")) reject$5("INVALID_TRAJECTORY_DIMENSIONS", "input.dimensions", "must contain non-empty strings");
+	if (new Set(input.dimensions).size !== input.dimensions.length) reject$5("DUPLICATE_TRAJECTORY_DIMENSION", "input.dimensions", "must be unique");
+	if (!Array.isArray(input.selectedDimensions) || input.selectedDimensions.length !== 3 || new Set(input.selectedDimensions).size !== 3) reject$5("INVALID_SELECTED_DIMENSIONS", "input.selectedDimensions", "must contain exactly three distinct dimensions");
 	const selectedIndexes = input.selectedDimensions.map((dimension, index) => {
 		const found = input.dimensions.indexOf(dimension);
-		if (found < 0) reject$6("UNKNOWN_SELECTED_DIMENSION", `input.selectedDimensions[${index}]`, `${JSON.stringify(dimension)} is not declared`);
+		if (found < 0) reject$5("UNKNOWN_SELECTED_DIMENSION", `input.selectedDimensions[${index}]`, `${JSON.stringify(dimension)} is not declared`);
 		return found;
 	});
-	if (!Array.isArray(input.timeOrder) || input.timeOrder.length === 0) reject$6("INVALID_TRAJECTORY_TIME_ORDER", "input.timeOrder", "must be non-empty");
-	if (input.timeOrder.length > limits.maxPeriods) reject$6("TRAJECTORY_PERIOD_LIMIT", "input.timeOrder", `exceeds maxPeriods=${limits.maxPeriods}`);
+	if (!Array.isArray(input.timeOrder) || input.timeOrder.length === 0) reject$5("INVALID_TRAJECTORY_TIME_ORDER", "input.timeOrder", "must be non-empty");
+	if (input.timeOrder.length > limits.maxPeriods) reject$5("TRAJECTORY_PERIOD_LIMIT", "input.timeOrder", `exceeds maxPeriods=${limits.maxPeriods}`);
 	const timeOrder = input.timeOrder.map((time, index) => normalizeIdentity(time, `input.timeOrder[${index}]`));
-	if (new Set(timeOrder.map((time) => time.canonical)).size !== timeOrder.length) reject$6("DUPLICATE_TRAJECTORY_TIME", "input.timeOrder", "contains duplicate typed periods");
-	if (input.cohortPolicy !== "available" && input.cohortPolicy !== "complete") reject$6("INVALID_TRAJECTORY_COHORT", "input.cohortPolicy", "must be available or complete");
+	if (new Set(timeOrder.map((time) => time.canonical)).size !== timeOrder.length) reject$5("DUPLICATE_TRAJECTORY_TIME", "input.timeOrder", "contains duplicate typed periods");
+	if (input.cohortPolicy !== "available" && input.cohortPolicy !== "complete") reject$5("INVALID_TRAJECTORY_COHORT", "input.cohortPolicy", "must be available or complete");
 	const estimand = input.estimand ?? "equal-participant";
-	if (estimand !== "equal-participant" && estimand !== "weighted-participant") reject$6("INVALID_TRAJECTORY_ESTIMAND", "input.estimand", "must be equal-participant or weighted-participant");
+	if (estimand !== "equal-participant" && estimand !== "weighted-participant") reject$5("INVALID_TRAJECTORY_ESTIMAND", "input.estimand", "must be equal-participant or weighted-participant");
 	const timeKeys = new Set(timeOrder.map((time) => time.canonical));
 	const cells = input.points.length * input.dimensions.length;
-	if (!Number.isSafeInteger(cells) || cells > limits.maxCells) reject$6("TRAJECTORY_CELL_LIMIT", "input.points", `exceeds maxCells=${limits.maxCells}`);
+	if (!Number.isSafeInteger(cells) || cells > limits.maxCells) reject$5("TRAJECTORY_CELL_LIMIT", "input.points", `exceeds maxCells=${limits.maxCells}`);
 	const points = input.points.map((point, rowIndex) => {
 		const participant = normalizeIdentity(point.participant, `input.points[${rowIndex}].participant`);
 		const time = normalizeIdentity(point.time, `input.points[${rowIndex}].time`);
 		const stratum = point.stratum === void 0 ? void 0 : normalizeIdentity(point.stratum, `input.points[${rowIndex}].stratum`);
-		if (!timeKeys.has(time.canonical)) reject$6("TRAJECTORY_TIME_ORDER_INCOMPLETE", `input.points[${rowIndex}].time`, "observed period is absent from timeOrder");
-		if (!Array.isArray(point.coordinates) || point.coordinates.length !== input.dimensions.length) reject$6("TRAJECTORY_COORDINATE_SHAPE", `input.points[${rowIndex}].coordinates`, "must align with dimensions");
+		if (!timeKeys.has(time.canonical)) reject$5("TRAJECTORY_TIME_ORDER_INCOMPLETE", `input.points[${rowIndex}].time`, "observed period is absent from timeOrder");
+		if (!Array.isArray(point.coordinates) || point.coordinates.length !== input.dimensions.length) reject$5("TRAJECTORY_COORDINATE_SHAPE", `input.points[${rowIndex}].coordinates`, "must align with dimensions");
 		const coordinates = point.coordinates.map((value, dimensionIndex) => {
-			if (typeof value !== "number" || !Number.isFinite(value)) reject$6("NON_FINITE_TRAJECTORY_COORDINATE", `input.points[${rowIndex}].coordinates[${dimensionIndex}]`, "must be finite");
+			if (typeof value !== "number" || !Number.isFinite(value)) reject$5("NON_FINITE_TRAJECTORY_COORDINATE", `input.points[${rowIndex}].coordinates[${dimensionIndex}]`, "must be finite");
 			return value;
 		});
-		if (estimand === "weighted-participant" && (typeof point.weight !== "number" || !Number.isFinite(point.weight) || point.weight <= 0)) reject$6("INVALID_PARTICIPANT_WEIGHT", `input.points[${rowIndex}].weight`, "must be finite and strictly positive for weighted-participant");
-		if (estimand === "equal-participant" && point.weight !== void 0) reject$6("UNEXPECTED_PARTICIPANT_WEIGHT", `input.points[${rowIndex}].weight`, "must be omitted for equal-participant");
+		if (estimand === "weighted-participant" && (typeof point.weight !== "number" || !Number.isFinite(point.weight) || point.weight <= 0)) reject$5("INVALID_PARTICIPANT_WEIGHT", `input.points[${rowIndex}].weight`, "must be finite and strictly positive for weighted-participant");
+		if (estimand === "equal-participant" && point.weight !== void 0) reject$5("UNEXPECTED_PARTICIPANT_WEIGHT", `input.points[${rowIndex}].weight`, "must be omitted for equal-participant");
 		return {
 			participant,
 			time,
@@ -37959,7 +37858,7 @@ function normalizeSeries(input) {
 			rowIndex
 		};
 	});
-	if (new Set(points.map((point) => point.participant.canonical)).size > limits.maxParticipants) reject$6("TRAJECTORY_PARTICIPANT_LIMIT", "input.points", `exceeds maxParticipants=${limits.maxParticipants}`);
+	if (new Set(points.map((point) => point.participant.canonical)).size > limits.maxParticipants) reject$5("TRAJECTORY_PARTICIPANT_LIMIT", "input.points", `exceeds maxParticipants=${limits.maxParticipants}`);
 	return {
 		input,
 		namespace,
@@ -37974,19 +37873,19 @@ function normalizeSeries(input) {
 }
 function euclidean(delta) {
 	const result = Math.hypot(...delta);
-	if (!Number.isFinite(result)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", "trajectory.computation.distance", "Euclidean distance is outside the finite numeric range");
+	if (!Number.isFinite(result)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", "trajectory.computation.distance", "Euclidean distance is outside the finite numeric range");
 	return result;
 }
 function subtract(right, left) {
 	return right.map((value, index) => {
 		const difference = value - left[index];
-		if (!Number.isFinite(difference)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.delta[${index}]`, "coordinate difference is outside the finite numeric range");
+		if (!Number.isFinite(difference)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.delta[${index}]`, "coordinate difference is outside the finite numeric range");
 		return difference;
 	});
 }
 function scalarDifference(right, left, path) {
 	const difference = right - left;
-	if (!Number.isFinite(difference)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", path, "difference is outside the finite numeric range");
+	if (!Number.isFinite(difference)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", path, "difference is outside the finite numeric range");
 	return difference;
 }
 function compareCanonical(left, right) {
@@ -38000,23 +37899,23 @@ function mean(rows, dimensions) {
 		for (const row of rows) {
 			const scaled = row[index] / rows.length;
 			const next = sum + scaled;
-			if (!Number.isFinite(next)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.mean[${index}]`, "centroid accumulation is outside the finite numeric range");
+			if (!Number.isFinite(next)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.mean[${index}]`, "centroid accumulation is outside the finite numeric range");
 			correction += Math.abs(sum) >= Math.abs(scaled) ? sum - next + scaled : scaled - next + sum;
-			if (!Number.isFinite(correction)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.mean[${index}]`, "centroid correction is outside the finite numeric range");
+			if (!Number.isFinite(correction)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.mean[${index}]`, "centroid correction is outside the finite numeric range");
 			sum = next;
 		}
 		const result = sum + correction;
-		if (!Number.isFinite(result)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.mean[${index}]`, "centroid is outside the finite numeric range");
+		if (!Number.isFinite(result)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.mean[${index}]`, "centroid is outside the finite numeric range");
 		return result;
 	});
 }
 function weightedMean(rows, weights, dimensions) {
 	if (rows.length === 0) return null;
-	if (rows.length !== weights.length) reject$6("TRAJECTORY_WEIGHT_SHAPE", "trajectory.computation.weightedMean", "rows and weights must align");
+	if (rows.length !== weights.length) reject$5("TRAJECTORY_WEIGHT_SHAPE", "trajectory.computation.weightedMean", "rows and weights must align");
 	const weightSum = weights.reduce((sum, weight, index) => {
-		if (!Number.isFinite(weight) || weight <= 0) reject$6("INVALID_PARTICIPANT_WEIGHT", `trajectory.computation.weights[${index}]`, "must be finite and strictly positive");
+		if (!Number.isFinite(weight) || weight <= 0) reject$5("INVALID_PARTICIPANT_WEIGHT", `trajectory.computation.weights[${index}]`, "must be finite and strictly positive");
 		const next = sum + weight;
-		if (!Number.isFinite(next)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", "trajectory.computation.weightSum", "is outside the finite numeric range");
+		if (!Number.isFinite(next)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", "trajectory.computation.weightSum", "is outside the finite numeric range");
 		return next;
 	}, 0);
 	return Array.from({ length: dimensions }, (_, index) => {
@@ -38025,13 +37924,13 @@ function weightedMean(rows, weights, dimensions) {
 		for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
 			const scaled = rows[rowIndex][index] * (weights[rowIndex] / weightSum);
 			const next = sum + scaled;
-			if (!Number.isFinite(next)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.weightedMean[${index}]`, "centroid accumulation is outside the finite numeric range");
+			if (!Number.isFinite(next)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.weightedMean[${index}]`, "centroid accumulation is outside the finite numeric range");
 			correction += Math.abs(sum) >= Math.abs(scaled) ? sum - next + scaled : scaled - next + sum;
-			if (!Number.isFinite(correction)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.weightedMean[${index}]`, "centroid correction is outside the finite numeric range");
+			if (!Number.isFinite(correction)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.weightedMean[${index}]`, "centroid correction is outside the finite numeric range");
 			sum = next;
 		}
 		const result = sum + correction;
-		if (!Number.isFinite(result)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.weightedMean[${index}]`, "centroid is outside the finite numeric range");
+		if (!Number.isFinite(result)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", `trajectory.computation.weightedMean[${index}]`, "centroid is outside the finite numeric range");
 		return result;
 	});
 }
@@ -38065,7 +37964,7 @@ function reduceParticipantPeriods(series) {
 	const complete = new Set([...observedByParticipant.entries()].filter(([, observed]) => [...expected].every((time) => observed.has(time))).map(([participant]) => participant));
 	const timeIndex = new Map(series.timeOrder.map((time, index) => [time.canonical, index]));
 	return [...grouped.values()].sort((left, right) => compareCanonical(left.participant.canonical, right.participant.canonical) || timeIndex.get(left.time.canonical) - timeIndex.get(right.time.canonical)).map((group, index) => {
-		if (new Set(group.rows.map((row) => row.weight)).size !== 1) reject$6("UNSTABLE_PARTICIPANT_PERIOD_WEIGHT", `input.participantPeriods[${index}].weight`, "must remain constant within a participant-period");
+		if (new Set(group.rows.map((row) => row.weight)).size !== 1) reject$5("UNSTABLE_PARTICIPANT_PERIOD_WEIGHT", `input.participantPeriods[${index}].weight`, "must remain constant within a participant-period");
 		const fullCoordinates = mean(group.rows.map((row) => row.coordinates), series.dimensions.length);
 		return {
 			index,
@@ -38112,7 +38011,7 @@ function distanceMetrics(centroids, dimensions) {
 		const stepDistance = euclidean(delta);
 		if (continuous) {
 			const nextCumulative = cumulative + stepDistance;
-			if (!Number.isFinite(nextCumulative)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", "trajectory.computation.cumulativeDistance", "cumulative path distance is outside the finite numeric range");
+			if (!Number.isFinite(nextCumulative)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", "trajectory.computation.cumulativeDistance", "cumulative path distance is outside the finite numeric range");
 			cumulative = nextCumulative;
 		}
 		return {
@@ -38198,29 +38097,29 @@ function analyzeTrajectoryPath(input) {
 	return analyzeNormalizedSeries(normalizeSeries(input));
 }
 function assertComparable(left, right) {
-	if (JSON.stringify(left.dimensions) !== JSON.stringify(right.dimensions)) reject$6("INCOMPATIBLE_TRAJECTORY_DIMENSIONS", "input.sideB.series.dimensions", "must exactly match side A order");
-	if (JSON.stringify(left.selectedDimensions) !== JSON.stringify(right.selectedDimensions)) reject$6("INCOMPATIBLE_SELECTED_DIMENSIONS", "input.sideB.series.selectedDimensions", "must exactly match side A");
-	if (JSON.stringify(left.timeOrder.map((time) => time.canonical)) !== JSON.stringify(right.timeOrder.map((time) => time.canonical))) reject$6("INCOMPATIBLE_TRAJECTORY_TIME", "input.sideB.series.timeOrder", "must exactly match side A typed order");
-	if (left.input.cohortPolicy !== right.input.cohortPolicy) reject$6("INCOMPATIBLE_COHORT_POLICY", "input.sideB.series.cohortPolicy", "must match side A");
-	if (left.estimand !== right.estimand) reject$6("INCOMPATIBLE_TRAJECTORY_ESTIMAND", "input.sideB.series.estimand", "must match side A");
+	if (JSON.stringify(left.dimensions) !== JSON.stringify(right.dimensions)) reject$5("INCOMPATIBLE_TRAJECTORY_DIMENSIONS", "input.sideB.series.dimensions", "must exactly match side A order");
+	if (JSON.stringify(left.selectedDimensions) !== JSON.stringify(right.selectedDimensions)) reject$5("INCOMPATIBLE_SELECTED_DIMENSIONS", "input.sideB.series.selectedDimensions", "must exactly match side A");
+	if (JSON.stringify(left.timeOrder.map((time) => time.canonical)) !== JSON.stringify(right.timeOrder.map((time) => time.canonical))) reject$5("INCOMPATIBLE_TRAJECTORY_TIME", "input.sideB.series.timeOrder", "must exactly match side A typed order");
+	if (left.input.cohortPolicy !== right.input.cohortPolicy) reject$5("INCOMPATIBLE_COHORT_POLICY", "input.sideB.series.cohortPolicy", "must match side A");
+	if (left.estimand !== right.estimand) reject$5("INCOMPATIBLE_TRAJECTORY_ESTIMAND", "input.sideB.series.estimand", "must match side A");
 }
 function pairedIdNames(pairedId, path) {
 	const names = typeof pairedId === "string" ? [pairedId] : pairedId;
-	if (!Array.isArray(names) || names.length === 0 || names.some((name) => typeof name !== "string" || name.trim() === "")) reject$6("INVALID_PAIRED_ID", path, "must be a non-empty component name or non-empty component-name tuple");
-	if (new Set(names).size !== names.length) reject$6("INVALID_PAIRED_ID", path, "component-name tuple must not contain duplicates");
+	if (!Array.isArray(names) || names.length === 0 || names.some((name) => typeof name !== "string" || name.trim() === "")) reject$5("INVALID_PAIRED_ID", path, "must be a non-empty component name or non-empty component-name tuple");
+	if (new Set(names).size !== names.length) reject$5("INVALID_PAIRED_ID", path, "component-name tuple must not contain duplicates");
 	return [...names];
 }
 function pairingToken(participant, pairedId, path) {
 	const names = pairedIdNames(pairedId, "input.pairedId");
 	return JSON.stringify(names.map((name) => {
 		const matches = participant.components.filter((component) => component.name === name);
-		if (matches.length !== 1) reject$6("MISSING_PAIRED_ID", path, `participant identity must contain exactly one ${JSON.stringify(name)} component`);
+		if (matches.length !== 1) reject$5("MISSING_PAIRED_ID", path, `participant identity must contain exactly one ${JSON.stringify(name)} component`);
 		return [name, scalarToken$1(matches[0], `${path}.${name}`)];
 	}));
 }
 function buildComparisonData(input) {
-	if (!input || input.design !== "paired" && input.design !== "independent") reject$6("INVALID_COMPARISON_DESIGN", "input.design", "must be paired or independent");
-	if (typeof input.sideA?.label !== "string" || input.sideA.label.trim() === "" || typeof input.sideB?.label !== "string" || input.sideB.label.trim() === "") reject$6("INVALID_COMPARISON_LABEL", "input.sideA.label", "both sides require non-empty labels");
+	if (!input || input.design !== "paired" && input.design !== "independent") reject$5("INVALID_COMPARISON_DESIGN", "input.design", "must be paired or independent");
+	if (typeof input.sideA?.label !== "string" || input.sideA.label.trim() === "" || typeof input.sideB?.label !== "string" || input.sideB.label.trim() === "") reject$5("INVALID_COMPARISON_LABEL", "input.sideA.label", "both sides require non-empty labels");
 	const left = normalizeSeries(input.sideA.series);
 	const right = normalizeSeries(input.sideB.series);
 	assertComparable(left, right);
@@ -38238,17 +38137,17 @@ function buildComparisonData(input) {
 			const b = /* @__PURE__ */ new Map();
 			for (const row of aRows) {
 				const pair = pairingToken(row.participant, input.pairedId, `input.sideA.series.participantPeriods[${row.index}]`);
-				if (a.has(pair)) reject$6("DUPLICATE_PAIRED_ID_TIME", `input.sideA.series`, "more than one participant has the paired ID at one time");
+				if (a.has(pair)) reject$5("DUPLICATE_PAIRED_ID_TIME", `input.sideA.series`, "more than one participant has the paired ID at one time");
 				a.set(pair, row);
 			}
 			for (const row of bRows) {
 				const pair = pairingToken(row.participant, input.pairedId, `input.sideB.series.participantPeriods[${row.index}]`);
-				if (b.has(pair)) reject$6("DUPLICATE_PAIRED_ID_TIME", `input.sideB.series`, "more than one participant has the paired ID at one time");
+				if (b.has(pair)) reject$5("DUPLICATE_PAIRED_ID_TIME", `input.sideB.series`, "more than one participant has the paired ID at one time");
 				b.set(pair, row);
 			}
 			const aKeys = [...a.keys()].sort();
 			const bKeys = [...b.keys()].sort();
-			if (JSON.stringify(aKeys) !== JSON.stringify(bKeys)) reject$6("UNMATCHED_PAIRED_ID_TIME", `input.timeOrder[${timeIndex}]`, "paired sides must contain exactly the same paired IDs at every observed slice");
+			if (JSON.stringify(aKeys) !== JSON.stringify(bKeys)) reject$5("UNMATCHED_PAIRED_ID_TIME", `input.timeOrder[${timeIndex}]`, "paired sides must contain exactly the same paired IDs at every observed slice");
 			const matched = /* @__PURE__ */ new Map();
 			for (const key of aKeys) {
 				matched.set(key, [a.get(key), b.get(key)]);
@@ -38269,7 +38168,7 @@ function buildComparisonData(input) {
 			pairedMaps: maps
 		};
 	}
-	if (left.namespace === right.namespace) reject$6("INDEPENDENT_NAMESPACE_COLLISION", "input.sideB.series.namespace", "independent sides must use distinct namespaces");
+	if (left.namespace === right.namespace) reject$5("INDEPENDENT_NAMESPACE_COLLISION", "input.sideB.series.namespace", "independent sides must use distinct namespaces");
 	const sideAUnits = groupParticipantPeriods(pathA.participantPeriods, left.namespace);
 	const sideBUnits = groupParticipantPeriods(pathB.participantPeriods, right.namespace);
 	const units = [...sideAUnits, ...sideBUnits].sort((a, b) => compareCanonical(a.key, b.key));
@@ -38452,12 +38351,12 @@ function metricMap(periods, selectedDimensions) {
 	return new Map(metricDescriptors(periods, selectedDimensions).map((metric) => [metric.id, metric.observed]));
 }
 function validateUnitOrder(actual, expected, path) {
-	if (JSON.stringify(actual) !== JSON.stringify(expected)) reject$6("PERMUTATION_UNIT_ORDER_MISMATCH", path, "must exactly match getTrajectoryPermutationUnits()");
+	if (JSON.stringify(actual) !== JSON.stringify(expected)) reject$5("PERMUTATION_UNIT_ORDER_MISMATCH", path, "must exactly match getTrajectoryPermutationUnits()");
 }
 function validateIndexList(indexes, size, path, requirePermutation) {
-	if (!Array.isArray(indexes) || indexes.some((index) => !Number.isSafeInteger(index) || index < 0 || index >= size)) reject$6("INVALID_PERMUTATION_INDEX", path, `indexes must be safe integers in [0, ${size})`);
-	if (new Set(indexes).size !== indexes.length) reject$6("DUPLICATE_PERMUTATION_INDEX", path, "must not repeat indexes");
-	if (requirePermutation && indexes.length !== size) reject$6("INCOMPLETE_PERMUTATION", path, "must contain every unit index exactly once");
+	if (!Array.isArray(indexes) || indexes.some((index) => !Number.isSafeInteger(index) || index < 0 || index >= size)) reject$5("INVALID_PERMUTATION_INDEX", path, `indexes must be safe integers in [0, ${size})`);
+	if (new Set(indexes).size !== indexes.length) reject$5("DUPLICATE_PERMUTATION_INDEX", path, "must not repeat indexes");
+	if (requirePermutation && indexes.length !== size) reject$5("INCOMPLETE_PERMUTATION", path, "must contain every unit index exactly once");
 }
 function permutedCentroidRows(data, input, replicate) {
 	if (input.design === "paired") {
@@ -38503,7 +38402,7 @@ function permutedCentroidRows(data, input, replicate) {
 }
 function holmAdjust(pValues) {
 	pValues.forEach((value, index) => {
-		if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) reject$6("INVALID_P_VALUE", `pValues[${index}]`, "must be finite in [0, 1]");
+		if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) reject$5("INVALID_P_VALUE", `pValues[${index}]`, "must be finite in [0, 1]");
 	});
 	const ordered = pValues.map((value, index) => ({
 		value,
@@ -38522,12 +38421,12 @@ function permutationTests(data, input, observedPeriods) {
 	if (!plan) return [];
 	validateUnitOrder(plan.unitOrder, data.unitOrder, "input.permutationPlan.unitOrder");
 	const limit = Math.min(data.left.limits.maxResamples, data.right.limits.maxResamples);
-	if (!Array.isArray(plan.replicates) || plan.replicates.length === 0 || plan.replicates.length > limit) reject$6("INVALID_PERMUTATION_PLAN", "input.permutationPlan.replicates", `must contain 1..${limit} replicates`);
-	if (input.design === "paired" && plan.kind !== "paired-swap-indices-v1") reject$6("PERMUTATION_DESIGN_MISMATCH", "input.permutationPlan.kind", "paired comparison requires paired-swap-indices-v1");
-	if (input.design === "independent" && plan.kind !== "independent-pool-indices-v1") reject$6("PERMUTATION_DESIGN_MISMATCH", "input.permutationPlan.kind", "independent comparison requires independent-pool-indices-v1");
+	if (!Array.isArray(plan.replicates) || plan.replicates.length === 0 || plan.replicates.length > limit) reject$5("INVALID_PERMUTATION_PLAN", "input.permutationPlan.replicates", `must contain 1..${limit} replicates`);
+	if (input.design === "paired" && plan.kind !== "paired-swap-indices-v1") reject$5("PERMUTATION_DESIGN_MISMATCH", "input.permutationPlan.kind", "paired comparison requires paired-swap-indices-v1");
+	if (input.design === "independent" && plan.kind !== "independent-pool-indices-v1") reject$5("PERMUTATION_DESIGN_MISMATCH", "input.permutationPlan.kind", "independent comparison requires independent-pool-indices-v1");
 	plan.replicates.forEach((replicate, index) => validateIndexList(replicate, data.unitOrder.length, `input.permutationPlan.replicates[${index}]`, input.design === "independent"));
 	const observed = metricDescriptors(observedPeriods, data.left.selectedDimensions);
-	if (observed.length > Math.min(data.left.limits.maxTests, data.right.limits.maxTests)) reject$6("TRAJECTORY_TEST_LIMIT", "comparison.tests", "exceeds configured maxTests");
+	if (observed.length > Math.min(data.left.limits.maxTests, data.right.limits.maxTests)) reject$5("TRAJECTORY_TEST_LIMIT", "comparison.tests", "exceeds configured maxTests");
 	const values = observed.map(() => []);
 	for (const replicate of plan.replicates) {
 		const map = metricMap(comparisonPeriods(permutedCentroidRows(data, input, replicate)), data.left.selectedDimensions);
@@ -38591,14 +38490,14 @@ function allStratum() {
 	}] }, "bootstrap.stratum");
 }
 function buildBootstrapContext(input) {
-	if (input.stratifyBy !== "none" && input.stratifyBy !== "explicit") reject$6("INVALID_BOOTSTRAP_STRATIFICATION", "input.stratifyBy", "must be none or explicit");
+	if (input.stratifyBy !== "none" && input.stratifyBy !== "explicit") reject$5("INVALID_BOOTSTRAP_STRATIFICATION", "input.stratifyBy", "must be none or explicit");
 	const series = normalizeSeries(input.series);
 	const base = analyzeNormalizedSeries(series);
 	const eligible = new Set(base.participantPeriods.filter((row) => row.includedInCohort).map((row) => row.participant.canonical));
 	const grouped = /* @__PURE__ */ new Map();
 	for (const point of series.points) {
 		if (!eligible.has(point.participant.canonical)) continue;
-		if (point.participant.components.some((component) => component.name === BOOTSTRAP_DRAW_COMPONENT)) reject$6("RESERVED_BOOTSTRAP_IDENTITY", `input.series.points[${point.rowIndex}].participant`, `must not contain ${BOOTSTRAP_DRAW_COMPONENT}`);
+		if (point.participant.components.some((component) => component.name === BOOTSTRAP_DRAW_COMPONENT)) reject$5("RESERVED_BOOTSTRAP_IDENTITY", `input.series.points[${point.rowIndex}].participant`, `must not contain ${BOOTSTRAP_DRAW_COMPONENT}`);
 		const current = grouped.get(point.participant.canonical) ?? [];
 		current.push(point);
 		grouped.set(point.participant.canonical, current);
@@ -38607,9 +38506,9 @@ function buildBootstrapContext(input) {
 		const participant = points[0].participant;
 		let stratum = allStratum();
 		if (input.stratifyBy === "explicit") {
-			if (points.some((point) => point.stratum === void 0)) reject$6("MISSING_BOOTSTRAP_STRATUM", `input.series.participant.${participant.display}`, "every eligible participant row requires an explicit stratum");
+			if (points.some((point) => point.stratum === void 0)) reject$5("MISSING_BOOTSTRAP_STRATUM", `input.series.participant.${participant.display}`, "every eligible participant row requires an explicit stratum");
 			const strata = new Map(points.map((point) => [point.stratum.canonical, point.stratum]));
-			if (strata.size !== 1) reject$6("UNSTABLE_BOOTSTRAP_STRATUM", `input.series.participant.${participant.display}`, "stratum must remain constant across the complete participant history");
+			if (strata.size !== 1) reject$5("UNSTABLE_BOOTSTRAP_STRATUM", `input.series.participant.${participant.display}`, "stratum must remain constant across the complete participant history");
 			stratum = [...strata.values()][0];
 		}
 		return {
@@ -38619,7 +38518,7 @@ function buildBootstrapContext(input) {
 			points: [...points].sort((left, right) => left.rowIndex - right.rowIndex)
 		};
 	}).sort((left, right) => compareCanonical(left.key, right.key));
-	if (histories.length === 0) reject$6("EMPTY_BOOTSTRAP_POOL", "input.series", "cohort policy leaves no eligible participant histories");
+	if (histories.length === 0) reject$5("EMPTY_BOOTSTRAP_POOL", "input.series", "cohort policy leaves no eligible participant histories");
 	const stratumMap = /* @__PURE__ */ new Map();
 	histories.forEach((history, index) => {
 		const current = stratumMap.get(history.stratum.canonical) ?? {
@@ -38650,21 +38549,21 @@ function getTrajectoryBootstrapUnits(input) {
 	return buildBootstrapContext(input).units;
 }
 function validateBootstrapUnits(units) {
-	if (!units || units.schemaVersion !== "3dena.trajectory-bootstrap-units.v1" || !Array.isArray(units.unitOrder) || units.unitOrder.length === 0) reject$6("INVALID_BOOTSTRAP_UNITS", "input.units", "must come from getTrajectoryBootstrapUnits()");
-	if (new Set(units.unitOrder).size !== units.unitOrder.length) reject$6("DUPLICATE_BOOTSTRAP_UNIT", "input.units.unitOrder", "must contain unique units");
+	if (!units || units.schemaVersion !== "3dena.trajectory-bootstrap-units.v1" || !Array.isArray(units.unitOrder) || units.unitOrder.length === 0) reject$5("INVALID_BOOTSTRAP_UNITS", "input.units", "must come from getTrajectoryBootstrapUnits()");
+	if (new Set(units.unitOrder).size !== units.unitOrder.length) reject$5("DUPLICATE_BOOTSTRAP_UNIT", "input.units.unitOrder", "must contain unique units");
 	const strata = /* @__PURE__ */ new Set();
 	const indexes = /* @__PURE__ */ new Set();
 	for (const [stratumIndex, stratum] of units.strata.entries()) {
-		if (strata.has(stratum.key.canonical)) reject$6("DUPLICATE_BOOTSTRAP_STRATUM", `input.units.strata[${stratumIndex}]`, "duplicates a stratum key");
+		if (strata.has(stratum.key.canonical)) reject$5("DUPLICATE_BOOTSTRAP_STRATUM", `input.units.strata[${stratumIndex}]`, "duplicates a stratum key");
 		strata.add(stratum.key.canonical);
-		if (stratum.unitIndexes.length === 0) reject$6("EMPTY_BOOTSTRAP_STRATUM", `input.units.strata[${stratumIndex}]`, "must contain at least one unit");
+		if (stratum.unitIndexes.length === 0) reject$5("EMPTY_BOOTSTRAP_STRATUM", `input.units.strata[${stratumIndex}]`, "must contain at least one unit");
 		for (const index of stratum.unitIndexes) {
-			if (!Number.isSafeInteger(index) || index < 0 || index >= units.unitOrder.length) reject$6("INVALID_BOOTSTRAP_INDEX", `input.units.strata[${stratumIndex}].unitIndexes`, "contains an out-of-range index");
-			if (indexes.has(index)) reject$6("DUPLICATE_BOOTSTRAP_UNIT", `input.units.strata[${stratumIndex}].unitIndexes`, "a unit may belong to only one stratum");
+			if (!Number.isSafeInteger(index) || index < 0 || index >= units.unitOrder.length) reject$5("INVALID_BOOTSTRAP_INDEX", `input.units.strata[${stratumIndex}].unitIndexes`, "contains an out-of-range index");
+			if (indexes.has(index)) reject$5("DUPLICATE_BOOTSTRAP_UNIT", `input.units.strata[${stratumIndex}].unitIndexes`, "a unit may belong to only one stratum");
 			indexes.add(index);
 		}
 	}
-	if (indexes.size !== units.unitOrder.length) reject$6("MISSING_BOOTSTRAP_UNIT", "input.units.strata", "strata must partition every unit exactly once");
+	if (indexes.size !== units.unitOrder.length) reject$5("MISSING_BOOTSTRAP_UNIT", "input.units.strata", "strata must partition every unit exactly once");
 }
 function mulberry32$1(seed) {
 	let state = seed >>> 0;
@@ -38679,10 +38578,10 @@ function mulberry32$1(seed) {
 function createSeededTrajectoryBootstrapPlan(input) {
 	validateBootstrapUnits(input.units);
 	const limits = resolveLimits$1(input.limits);
-	if (!Number.isSafeInteger(input.repetitions) || input.repetitions < 1 || input.repetitions > limits.maxResamples) reject$6("BOOTSTRAP_RESAMPLE_LIMIT", "input.repetitions", `must be a safe integer in [1, ${limits.maxResamples}]`);
-	if (!Number.isSafeInteger(input.seed) || input.seed < 0 || input.seed > 4294967295) reject$6("INVALID_BOOTSTRAP_SEED", "input.seed", "must be an unsigned 32-bit integer");
+	if (!Number.isSafeInteger(input.repetitions) || input.repetitions < 1 || input.repetitions > limits.maxResamples) reject$5("BOOTSTRAP_RESAMPLE_LIMIT", "input.repetitions", `must be a safe integer in [1, ${limits.maxResamples}]`);
+	if (!Number.isSafeInteger(input.seed) || input.seed < 0 || input.seed > 4294967295) reject$5("INVALID_BOOTSTRAP_SEED", "input.seed", "must be an unsigned 32-bit integer");
 	const planCells = input.repetitions * input.units.unitOrder.length;
-	if (!Number.isSafeInteger(planCells) || planCells > limits.maxCells) reject$6("BOOTSTRAP_CELL_LIMIT", "input.repetitions", `plan indexes exceed maxCells=${limits.maxCells}`);
+	if (!Number.isSafeInteger(planCells) || planCells > limits.maxCells) reject$5("BOOTSTRAP_CELL_LIMIT", "input.repetitions", `plan indexes exceed maxCells=${limits.maxCells}`);
 	const random = mulberry32$1(input.seed);
 	return deepFreeze$2({
 		kind: "participant-history-resample-indices-v1",
@@ -38702,39 +38601,39 @@ function createSeededTrajectoryBootstrapPlan(input) {
 	});
 }
 function validateBootstrapPlan(plan, context) {
-	if (!plan || plan.kind !== "participant-history-resample-indices-v1") reject$6("INVALID_BOOTSTRAP_PLAN", "input.plan.kind", "must be participant-history-resample-indices-v1");
-	if (JSON.stringify(plan.unitOrder) !== JSON.stringify(context.units.unitOrder)) reject$6("BOOTSTRAP_UNIT_ORDER_MISMATCH", "input.plan.unitOrder", "must exactly match getTrajectoryBootstrapUnits()");
+	if (!plan || plan.kind !== "participant-history-resample-indices-v1") reject$5("INVALID_BOOTSTRAP_PLAN", "input.plan.kind", "must be participant-history-resample-indices-v1");
+	if (JSON.stringify(plan.unitOrder) !== JSON.stringify(context.units.unitOrder)) reject$5("BOOTSTRAP_UNIT_ORDER_MISMATCH", "input.plan.unitOrder", "must exactly match getTrajectoryBootstrapUnits()");
 	const seenStrata = /* @__PURE__ */ new Set();
-	if (!Array.isArray(plan.strata) || plan.strata.length !== context.units.strata.length) reject$6("BOOTSTRAP_STRATA_MISMATCH", "input.plan.strata", "must exactly match the resolved strata");
+	if (!Array.isArray(plan.strata) || plan.strata.length !== context.units.strata.length) reject$5("BOOTSTRAP_STRATA_MISMATCH", "input.plan.strata", "must exactly match the resolved strata");
 	let repetitions;
 	let planIndexCells = 0;
 	plan.strata.forEach((stratum, stratumIndex) => {
-		if (seenStrata.has(stratum.key.canonical)) reject$6("DUPLICATE_BOOTSTRAP_STRATUM", `input.plan.strata[${stratumIndex}]`, "duplicates a stratum key");
+		if (seenStrata.has(stratum.key.canonical)) reject$5("DUPLICATE_BOOTSTRAP_STRATUM", `input.plan.strata[${stratumIndex}]`, "duplicates a stratum key");
 		seenStrata.add(stratum.key.canonical);
 		const expected = context.units.strata[stratumIndex];
-		if (stratum.key.canonical !== expected.key.canonical || JSON.stringify(stratum.unitIndexes) !== JSON.stringify(expected.unitIndexes)) reject$6("BOOTSTRAP_STRATA_MISMATCH", `input.plan.strata[${stratumIndex}]`, "key and unitIndexes must exactly match getTrajectoryBootstrapUnits()");
-		if (!Array.isArray(stratum.replicates) || stratum.replicates.length === 0) reject$6("INVALID_BOOTSTRAP_PLAN", `input.plan.strata[${stratumIndex}].replicates`, "must be non-empty");
+		if (stratum.key.canonical !== expected.key.canonical || JSON.stringify(stratum.unitIndexes) !== JSON.stringify(expected.unitIndexes)) reject$5("BOOTSTRAP_STRATA_MISMATCH", `input.plan.strata[${stratumIndex}]`, "key and unitIndexes must exactly match getTrajectoryBootstrapUnits()");
+		if (!Array.isArray(stratum.replicates) || stratum.replicates.length === 0) reject$5("INVALID_BOOTSTRAP_PLAN", `input.plan.strata[${stratumIndex}].replicates`, "must be non-empty");
 		if (repetitions === void 0) repetitions = stratum.replicates.length;
-		if (stratum.replicates.length !== repetitions) reject$6("BOOTSTRAP_REPLICATE_MISMATCH", `input.plan.strata[${stratumIndex}].replicates`, "every stratum must have the same replicate count");
+		if (stratum.replicates.length !== repetitions) reject$5("BOOTSTRAP_REPLICATE_MISMATCH", `input.plan.strata[${stratumIndex}].replicates`, "every stratum must have the same replicate count");
 		const allowed = new Set(expected.unitIndexes);
 		stratum.replicates.forEach((draw, replicateIndex) => {
-			if (!Array.isArray(draw) || draw.length !== expected.unitIndexes.length) reject$6("BOOTSTRAP_SAMPLE_SIZE_MISMATCH", `input.plan.strata[${stratumIndex}].replicates[${replicateIndex}]`, "must preserve the original stratum sample size");
+			if (!Array.isArray(draw) || draw.length !== expected.unitIndexes.length) reject$5("BOOTSTRAP_SAMPLE_SIZE_MISMATCH", `input.plan.strata[${stratumIndex}].replicates[${replicateIndex}]`, "must preserve the original stratum sample size");
 			draw.forEach((index, drawIndex) => {
-				if (!Number.isSafeInteger(index) || !allowed.has(index)) reject$6("INVALID_BOOTSTRAP_INDEX", `input.plan.strata[${stratumIndex}].replicates[${replicateIndex}][${drawIndex}]`, "must reference a unit inside the same stratum");
+				if (!Number.isSafeInteger(index) || !allowed.has(index)) reject$5("INVALID_BOOTSTRAP_INDEX", `input.plan.strata[${stratumIndex}].replicates[${replicateIndex}][${drawIndex}]`, "must reference a unit inside the same stratum");
 			});
 			planIndexCells += draw.length;
-			if (!Number.isSafeInteger(planIndexCells)) reject$6("BOOTSTRAP_OVERFLOW", "input.plan", "index cell count overflowed safe integer arithmetic");
+			if (!Number.isSafeInteger(planIndexCells)) reject$5("BOOTSTRAP_OVERFLOW", "input.plan", "index cell count overflowed safe integer arithmetic");
 		});
 	});
 	const count = repetitions ?? 0;
-	if (count > context.series.limits.maxResamples) reject$6("BOOTSTRAP_RESAMPLE_LIMIT", "input.plan", `exceeds maxResamples=${context.series.limits.maxResamples}`);
-	if (planIndexCells > context.series.limits.maxCells) reject$6("BOOTSTRAP_CELL_LIMIT", "input.plan", `plan indexes exceed maxCells=${context.series.limits.maxCells}`);
-	if (!plan.generation || typeof plan.generation !== "object") reject$6("INVALID_BOOTSTRAP_GENERATION", "input.plan.generation", "must identify caller-provided or seeded plan custody");
+	if (count > context.series.limits.maxResamples) reject$5("BOOTSTRAP_RESAMPLE_LIMIT", "input.plan", `exceeds maxResamples=${context.series.limits.maxResamples}`);
+	if (planIndexCells > context.series.limits.maxCells) reject$5("BOOTSTRAP_CELL_LIMIT", "input.plan", `plan indexes exceed maxCells=${context.series.limits.maxCells}`);
+	if (!plan.generation || typeof plan.generation !== "object") reject$5("INVALID_BOOTSTRAP_GENERATION", "input.plan.generation", "must identify caller-provided or seeded plan custody");
 	if (plan.generation.kind === "caller-provided") return {
 		repetitions: count,
 		generation: { kind: "caller-provided" }
 	};
-	if (plan.generation.kind !== "seeded" || plan.generation.algorithm !== "mulberry32-uint32-v1" || plan.generation.unitSort !== "utf16-code-unit-ascending" || plan.generation.randomEndpoint !== "zero-inclusive-one-exclusive" || !Number.isSafeInteger(plan.generation.seed) || plan.generation.seed < 0 || plan.generation.seed > 4294967295) reject$6("INVALID_BOOTSTRAP_GENERATION", "input.plan.generation", "seeded custody must use the frozen v1 algorithm, sort, endpoint, and uint32 seed");
+	if (plan.generation.kind !== "seeded" || plan.generation.algorithm !== "mulberry32-uint32-v1" || plan.generation.unitSort !== "utf16-code-unit-ascending" || plan.generation.randomEndpoint !== "zero-inclusive-one-exclusive" || !Number.isSafeInteger(plan.generation.seed) || plan.generation.seed < 0 || plan.generation.seed > 4294967295) reject$5("INVALID_BOOTSTRAP_GENERATION", "input.plan.generation", "seeded custody must use the frozen v1 algorithm, sort, endpoint, and uint32 seed");
 	const expected = createSeededTrajectoryBootstrapPlan({
 		units: context.units,
 		repetitions: count,
@@ -38743,17 +38642,17 @@ function validateBootstrapPlan(plan, context) {
 	});
 	const suppliedDraws = plan.strata.map((stratum) => stratum.replicates);
 	const expectedDraws = expected.strata.map((stratum) => stratum.replicates);
-	if (JSON.stringify(suppliedDraws) !== JSON.stringify(expectedDraws)) reject$6("SEEDED_BOOTSTRAP_PLAN_MISMATCH", "input.plan.strata", "draws do not match the declared frozen algorithm and seed; mark an exact custom plan caller-provided instead");
+	if (JSON.stringify(suppliedDraws) !== JSON.stringify(expectedDraws)) reject$5("SEEDED_BOOTSTRAP_PLAN_MISMATCH", "input.plan.strata", "draws do not match the declared frozen algorithm and seed; mark an exact custom plan caller-provided instead");
 	return {
 		repetitions: count,
 		generation: { ...expected.generation }
 	};
 }
 function trajectoryPercentile(values, probability) {
-	if (!Array.isArray(values) || values.length === 0) reject$6("EMPTY_BOOTSTRAP_VALUES", "values", "must contain at least one finite number");
-	if (typeof probability !== "number" || !Number.isFinite(probability) || probability < 0 || probability > 1) reject$6("INVALID_BOOTSTRAP_PROBABILITY", "probability", "must be finite in [0, 1]");
+	if (!Array.isArray(values) || values.length === 0) reject$5("EMPTY_BOOTSTRAP_VALUES", "values", "must contain at least one finite number");
+	if (typeof probability !== "number" || !Number.isFinite(probability) || probability < 0 || probability > 1) reject$5("INVALID_BOOTSTRAP_PROBABILITY", "probability", "must be finite in [0, 1]");
 	const ordered = values.map((value, index) => {
-		if (typeof value !== "number" || !Number.isFinite(value)) reject$6("NON_FINITE_BOOTSTRAP_VALUE", `values[${index}]`, "must be finite");
+		if (typeof value !== "number" || !Number.isFinite(value)) reject$5("NON_FINITE_BOOTSTRAP_VALUE", `values[${index}]`, "must be finite");
 		return value;
 	}).sort((left, right) => left - right);
 	if (probability === 0) return ordered[0];
@@ -38764,7 +38663,7 @@ function trajectoryPercentile(values, probability) {
 	if (lower === upper) return ordered[lower];
 	const fraction = position - lower;
 	const result = ordered[lower] * (1 - fraction) + ordered[upper] * fraction;
-	if (!Number.isFinite(result)) reject$6("TRAJECTORY_NUMERIC_OVERFLOW", "values", "interpolated percentile is outside the finite numeric range");
+	if (!Number.isFinite(result)) reject$5("TRAJECTORY_NUMERIC_OVERFLOW", "values", "interpolated percentile is outside the finite numeric range");
 	return result;
 }
 function cloneBootstrapSeries(context, plan, replicateIndex) {
@@ -38785,7 +38684,7 @@ function cloneBootstrapSeries(context, plan, replicateIndex) {
 			...context.series.estimand === "weighted-participant" ? { weight: point.weight } : {}
 		});
 	}
-	if (points.length > context.series.limits.maxPoints) reject$6("BOOTSTRAP_POINT_LIMIT", `replicates[${replicateIndex}]`, `exceeds maxPoints=${context.series.limits.maxPoints}`);
+	if (points.length > context.series.limits.maxPoints) reject$5("BOOTSTRAP_POINT_LIMIT", `replicates[${replicateIndex}]`, `exceeds maxPoints=${context.series.limits.maxPoints}`);
 	return {
 		namespace: context.series.namespace,
 		points,
@@ -38812,7 +38711,7 @@ function bootstrapInterval(estimate, values, clusterEligible, confidenceLevel, r
 	};
 }
 function bootstrapTrajectoryPath(input) {
-	if (typeof input.confidenceLevel !== "number" || !Number.isFinite(input.confidenceLevel) || input.confidenceLevel <= 0 || input.confidenceLevel >= 1) reject$6("INVALID_BOOTSTRAP_CONFIDENCE", "input.confidenceLevel", "must be finite and strictly between 0 and 1");
+	if (typeof input.confidenceLevel !== "number" || !Number.isFinite(input.confidenceLevel) || input.confidenceLevel <= 0 || input.confidenceLevel >= 1) reject$5("INVALID_BOOTSTRAP_CONFIDENCE", "input.confidenceLevel", "must be finite and strictly between 0 and 1");
 	const context = buildBootstrapContext({
 		series: input.series,
 		stratifyBy: input.stratifyBy
@@ -38822,10 +38721,10 @@ function bootstrapTrajectoryPath(input) {
 	let computationalCells = 0;
 	for (let replicate = 0; replicate < repetitions; replicate += 1) for (const stratum of input.plan.strata) for (const unitIndex of stratum.replicates[replicate]) {
 		const cells = context.histories[unitIndex].points.length * context.series.dimensions.length;
-		if (!Number.isSafeInteger(cells) || computationalCells > Number.MAX_SAFE_INTEGER - cells) reject$6("BOOTSTRAP_OVERFLOW", "input.plan", "resampled coordinate cell count overflowed safe integer arithmetic");
+		if (!Number.isSafeInteger(cells) || computationalCells > Number.MAX_SAFE_INTEGER - cells) reject$5("BOOTSTRAP_OVERFLOW", "input.plan", "resampled coordinate cell count overflowed safe integer arithmetic");
 		computationalCells += cells;
 	}
-	if (computationalCells > context.series.limits.maxCells) reject$6("BOOTSTRAP_CELL_LIMIT", "input.plan", `resampled coordinates exceed maxCells=${context.series.limits.maxCells}`);
+	if (computationalCells > context.series.limits.maxCells) reject$5("BOOTSTRAP_CELL_LIMIT", "input.plan", `resampled coordinates exceed maxCells=${context.series.limits.maxCells}`);
 	const replicatePaths = Array.from({ length: repetitions }, (_, replicate) => analyzeTrajectoryPath(cloneBootstrapSeries(context, input.plan, replicate)));
 	const requiredFinite = Math.max(Math.ceil(.8 * repetitions), Math.ceil(10 / (1 - input.confidenceLevel) - 1e-12));
 	let insufficientClusters = false;
@@ -38923,19 +38822,19 @@ function deepFreeze$2(value) {
 }
 //#endregion
 //#region src/trajectory-series-adapters.ts
-function reject$5(code, path, message) {
+function reject$4(code, path, message) {
 	throw new TrajectoryStatisticsError(code, path, message);
 }
 function scalarType$1(value, path) {
-	if (value === null) reject$5("MISSING_ADAPTER_IDENTITY", path, "trajectory identities must not be null");
+	if (value === null) reject$4("MISSING_ADAPTER_IDENTITY", path, "trajectory identities must not be null");
 	if (typeof value === "string") return "string";
 	if (typeof value === "boolean") return "boolean";
-	if (!Number.isFinite(value)) reject$5("NON_FINITE_ADAPTER_IDENTITY", path, "numeric trajectory identities must be finite");
-	if (Number.isInteger(value) && !Number.isSafeInteger(value)) reject$5("UNSAFE_ADAPTER_IDENTITY", path, "unsafe integer identities must be source strings");
+	if (!Number.isFinite(value)) reject$4("NON_FINITE_ADAPTER_IDENTITY", path, "numeric trajectory identities must be finite");
+	if (Number.isInteger(value) && !Number.isSafeInteger(value)) reject$4("UNSAFE_ADAPTER_IDENTITY", path, "unsafe integer identities must be source strings");
 	return "number";
 }
 function rawEntityIdentity(key, path) {
-	if (key.columns.length !== key.values.length) reject$5("ADAPTER_IDENTITY_SHAPE", path, "columns and values must align");
+	if (key.columns.length !== key.values.length) reject$4("ADAPTER_IDENTITY_SHAPE", path, "columns and values must align");
 	return { components: key.columns.map((name, index) => {
 		const value = key.values[index] ?? null;
 		return {
@@ -38946,7 +38845,7 @@ function rawEntityIdentity(key, path) {
 	}) };
 }
 function preparedEntityIdentity(key, path) {
-	if (key.columns.length !== key.values.length || key.columnTypes.length !== key.values.length) reject$5("ADAPTER_IDENTITY_SHAPE", path, "columns, declared types, and values must align");
+	if (key.columns.length !== key.values.length || key.columnTypes.length !== key.values.length) reject$4("ADAPTER_IDENTITY_SHAPE", path, "columns, declared types, and values must align");
 	return { components: key.columns.map((name, index) => {
 		const value = key.values[index] ?? null;
 		return {
@@ -38973,9 +38872,9 @@ function preparedTimeIdentity(value) {
 	}] };
 }
 function validateOptions(options) {
-	if (!options || typeof options.group !== "string" || options.group.length === 0) reject$5("INVALID_ADAPTER_GROUP", "options.group", "must be a canonical group key");
-	if (typeof options.namespace !== "string" || options.namespace.trim() === "") reject$5("INVALID_TRAJECTORY_NAMESPACE", "options.namespace", "must be non-empty");
-	if (options.participantIdentity !== void 0 && options.participantIdentity !== "unit" && options.participantIdentity !== "participant-label") reject$5("INVALID_PARTICIPANT_IDENTITY", "options.participantIdentity", "must be unit or participant-label");
+	if (!options || typeof options.group !== "string" || options.group.length === 0) reject$4("INVALID_ADAPTER_GROUP", "options.group", "must be a canonical group key");
+	if (typeof options.namespace !== "string" || options.namespace.trim() === "") reject$4("INVALID_TRAJECTORY_NAMESPACE", "options.namespace", "must be non-empty");
+	if (options.participantIdentity !== void 0 && options.participantIdentity !== "unit" && options.participantIdentity !== "participant-label") reject$4("INVALID_PARTICIPANT_IDENTITY", "options.participantIdentity", "must be unit or participant-label");
 }
 /**
 * Copies one already-computed raw-analysis group into the statistics contract.
@@ -38985,10 +38884,10 @@ function validateOptions(options) {
 function adaptAnalysisResultTrajectorySeries(result, options) {
 	validateOptions(options);
 	const trajectory = result.trajectory;
-	if (!trajectory) reject$5("MISSING_SOURCE_TRAJECTORY", "result.trajectory", "must be present before adapting a group path");
-	if (!trajectory.groupOrder.some((group) => group.canonical === options.group)) reject$5("UNKNOWN_ADAPTER_GROUP", "options.group", "is not present in the source result");
+	if (!trajectory) reject$4("MISSING_SOURCE_TRAJECTORY", "result.trajectory", "must be present before adapting a group path");
+	if (!trajectory.groupOrder.some((group) => group.canonical === options.group)) reject$4("UNKNOWN_ADAPTER_GROUP", "options.group", "is not present in the source result");
 	const points = result.points.filter((point) => point.group?.canonical === options.group);
-	if (points.length === 0) reject$5("EMPTY_ADAPTER_GROUP", "options.group", "contains no source points");
+	if (points.length === 0) reject$4("EMPTY_ADAPTER_GROUP", "options.group", "contains no source points");
 	return {
 		namespace: options.namespace,
 		dimensions: [...result.dimensions],
@@ -38996,7 +38895,7 @@ function adaptAnalysisResultTrajectorySeries(result, options) {
 		timeOrder: trajectory.timeOrder.map(rawTimeIdentity),
 		cohortPolicy: trajectory.cohortPolicy,
 		points: points.map((point) => {
-			if (!point.time) reject$5("MISSING_ADAPTER_TIME", `result.points[${point.index}].time`, "must be present for trajectory statistics");
+			if (!point.time) reject$4("MISSING_ADAPTER_TIME", `result.points[${point.index}].time`, "must be present for trajectory statistics");
 			return {
 				participant: rawEntityIdentity(options.participantIdentity === "participant-label" ? point.participantLabel : point.unit, `result.points[${point.index}].${options.participantIdentity === "participant-label" ? "participantLabel" : "unit"}`),
 				time: rawTimeIdentity(point.time),
@@ -39009,9 +38908,9 @@ function adaptAnalysisResultTrajectorySeries(result, options) {
 function adaptPreparedSpaceTrajectorySeries(result, options) {
 	validateOptions(options);
 	const trajectory = result.displaySpace.trajectory;
-	if (!trajectory.groupOrder.some((group) => group.canonical === options.group)) reject$5("UNKNOWN_ADAPTER_GROUP", "options.group", "is not present in the prepared result");
+	if (!trajectory.groupOrder.some((group) => group.canonical === options.group)) reject$4("UNKNOWN_ADAPTER_GROUP", "options.group", "is not present in the prepared result");
 	const points = result.fullSpace.points.filter((point) => point.group.canonical === options.group);
-	if (points.length === 0) reject$5("EMPTY_ADAPTER_GROUP", "options.group", "contains no prepared points");
+	if (points.length === 0) reject$4("EMPTY_ADAPTER_GROUP", "options.group", "contains no prepared points");
 	return {
 		namespace: options.namespace,
 		dimensions: [...result.fullSpace.dimensions],
@@ -39794,21 +39693,21 @@ var AnalysisTaskExecutionError = class extends Error {
 		this.path = path;
 	}
 };
-function reject$4(code, path, message) {
+function reject$3(code, path, message) {
 	throw new AnalysisTaskExecutionError(code, path, message);
 }
 function canonicalJson(value, path = "value") {
 	if (value === null) return "null";
 	if (typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
 	if (typeof value === "number") {
-		if (!Number.isFinite(value)) reject$4("NON_FINITE_HASH_VALUE", path, "cannot be hashed canonically");
+		if (!Number.isFinite(value)) reject$3("NON_FINITE_HASH_VALUE", path, "cannot be hashed canonically");
 		return Object.is(value, -0) ? "-0" : JSON.stringify(value);
 	}
 	if (Array.isArray(value)) return `[${value.map((entry, index) => canonicalJson(entry, `${path}[${index}]`)).join(",")}]`;
-	if (typeof value !== "object" || value === void 0) reject$4("UNSUPPORTED_HASH_VALUE", path, "contains an unsupported canonical JSON value");
+	if (typeof value !== "object" || value === void 0) reject$3("UNSUPPORTED_HASH_VALUE", path, "contains an unsupported canonical JSON value");
 	const record = value;
 	return `{${Object.keys(record).sort().map((key) => {
-		if (record[key] === void 0) reject$4("UNSUPPORTED_HASH_VALUE", `${path}.${key}`, "must not be undefined");
+		if (record[key] === void 0) reject$3("UNSUPPORTED_HASH_VALUE", `${path}.${key}`, "must not be undefined");
 		return `${JSON.stringify(key)}:${canonicalJson(record[key], `${path}.${key}`)}`;
 	}).join(",")}}`;
 }
@@ -39818,16 +39717,16 @@ function hex(bytes) {
 /** SHA-256 over the v1 lexicographically-keyed canonical JSON encoding. */
 async function hashAnalysisValueV1(value) {
 	const subtle = globalThis.crypto?.subtle;
-	if (!subtle) reject$4("CRYPTO_UNAVAILABLE", "crypto.subtle", "WebCrypto SHA-256 is required by Node >=20.9 and supported browsers");
+	if (!subtle) reject$3("CRYPTO_UNAVAILABLE", "crypto.subtle", "WebCrypto SHA-256 is required by Node >=20.9 and supported browsers");
 	const bytes = new TextEncoder().encode(canonicalJson(value));
 	return hex(new Uint8Array(await subtle.digest("SHA-256", bytes)));
 }
 function exactFields$1(value, allowed, required, path) {
 	const allowedSet = new Set(allowed);
 	const unknown = Object.keys(value).find((field) => !allowedSet.has(field));
-	if (unknown) reject$4("UNKNOWN_EXECUTION_FIELD", path, `contains unknown field ${JSON.stringify(unknown)}`);
+	if (unknown) reject$3("UNKNOWN_EXECUTION_FIELD", path, `contains unknown field ${JSON.stringify(unknown)}`);
 	const missing = required.find((field) => !Object.hasOwn(value, field));
-	if (missing) reject$4("MISSING_EXECUTION_FIELD", path, `is missing required field ${JSON.stringify(missing)}`);
+	if (missing) reject$3("MISSING_EXECUTION_FIELD", path, `is missing required field ${JSON.stringify(missing)}`);
 }
 /**
 * Standalone V2 execution-dataset validator shared by local SDK callers,
@@ -39835,7 +39734,7 @@ function exactFields$1(value, allowed, required, path) {
 * source discriminant and complete raw result fields before any task runs.
 */
 function assertAnalysisExecutionDatasetV2(value, path = "dataset") {
-	if (!value || typeof value !== "object" || Array.isArray(value)) reject$4("INVALID_EXECUTION_DATASET", path, "must be an object");
+	if (!value || typeof value !== "object" || Array.isArray(value)) reject$3("INVALID_EXECUTION_DATASET", path, "must be an object");
 	const dataset = value;
 	exactFields$1(dataset, [
 		"schemaVersion",
@@ -39850,13 +39749,13 @@ function assertAnalysisExecutionDatasetV2(value, path = "dataset") {
 		"specHash",
 		"buildId"
 	], path);
-	if (dataset.schemaVersion !== "3dena.analysis-execution-dataset.v2") reject$4("INVALID_EXECUTION_DATASET", `${path}.schemaVersion`, `must be ${ANALYSIS_EXECUTION_DATASET_VERSION_V2}`);
+	if (dataset.schemaVersion !== "3dena.analysis-execution-dataset.v2") reject$3("INVALID_EXECUTION_DATASET", `${path}.schemaVersion`, `must be ${ANALYSIS_EXECUTION_DATASET_VERSION_V2}`);
 	assertDatasetReceiptV1(dataset.receipt, `${path}.receipt`);
-	if (typeof dataset.specHash !== "string" || !SHA256$1.test(dataset.specHash)) reject$4("INVALID_SPEC_HASH", `${path}.specHash`, "must be a lowercase SHA-256 digest");
-	if (typeof dataset.buildId !== "string" || dataset.buildId.trim() === "") reject$4("INVALID_BUILD_ID", `${path}.buildId`, "must be non-empty");
-	if (dataset.generatedAt !== void 0 && (typeof dataset.generatedAt !== "string" || Number.isNaN(Date.parse(dataset.generatedAt)))) reject$4("INVALID_GENERATED_AT", `${path}.generatedAt`, "must be an ISO timestamp");
+	if (typeof dataset.specHash !== "string" || !SHA256$1.test(dataset.specHash)) reject$3("INVALID_SPEC_HASH", `${path}.specHash`, "must be a lowercase SHA-256 digest");
+	if (typeof dataset.buildId !== "string" || dataset.buildId.trim() === "") reject$3("INVALID_BUILD_ID", `${path}.buildId`, "must be non-empty");
+	if (dataset.generatedAt !== void 0 && (typeof dataset.generatedAt !== "string" || Number.isNaN(Date.parse(dataset.generatedAt)))) reject$3("INVALID_GENERATED_AT", `${path}.generatedAt`, "must be an ISO timestamp");
 	if (dataset.sourceResult === void 0) return;
-	if (!dataset.sourceResult || typeof dataset.sourceResult !== "object" || Array.isArray(dataset.sourceResult)) reject$4("INVALID_SOURCE_RESULT", `${path}.sourceResult`, "must be an object");
+	if (!dataset.sourceResult || typeof dataset.sourceResult !== "object" || Array.isArray(dataset.sourceResult)) reject$3("INVALID_SOURCE_RESULT", `${path}.sourceResult`, "must be an object");
 	const source = dataset.sourceResult;
 	exactFields$1(source, [
 		"sourceKind",
@@ -39867,42 +39766,42 @@ function assertAnalysisExecutionDatasetV2(value, path = "dataset") {
 		"hash",
 		"result"
 	], `${path}.sourceResult`);
-	if (typeof source.hash !== "string" || !SHA256$1.test(source.hash)) reject$4("INVALID_SOURCE_RESULT_HASH", `${path}.sourceResult.hash`, "must be a lowercase SHA-256 digest");
+	if (typeof source.hash !== "string" || !SHA256$1.test(source.hash)) reject$3("INVALID_SOURCE_RESULT_HASH", `${path}.sourceResult.hash`, "must be a lowercase SHA-256 digest");
 	if (source.sourceKind === "raw-jena") {
-		if (!source.result || typeof source.result !== "object" || source.result.schemaVersion !== "3dena.analysis-result.v1") reject$4("SOURCE_KIND_RESULT_MISMATCH", `${path}.sourceResult.result`, "raw-jena must contain 3dena.analysis-result.v1");
+		if (!source.result || typeof source.result !== "object" || source.result.schemaVersion !== "3dena.analysis-result.v1") reject$3("SOURCE_KIND_RESULT_MISMATCH", `${path}.sourceResult.result`, "raw-jena must contain 3dena.analysis-result.v1");
 		assertAnalysisTaskResultV1(source.result, "ena-model", `${path}.sourceResult.result`);
 		return;
 	}
-	if (source.sourceKind !== "prepared-exchange") reject$4("INVALID_SOURCE_KIND", `${path}.sourceResult.sourceKind`, "must be raw-jena or prepared-exchange");
-	if (!source.result || typeof source.result !== "object" || source.result.schemaVersion !== "3dena.prepared-space-result.v1") reject$4("SOURCE_KIND_RESULT_MISMATCH", `${path}.sourceResult.result`, "prepared-exchange must contain 3dena.prepared-space-result.v1");
+	if (source.sourceKind !== "prepared-exchange") reject$3("INVALID_SOURCE_KIND", `${path}.sourceResult.sourceKind`, "must be raw-jena or prepared-exchange");
+	if (!source.result || typeof source.result !== "object" || source.result.schemaVersion !== "3dena.prepared-space-result.v1") reject$3("SOURCE_KIND_RESULT_MISMATCH", `${path}.sourceResult.result`, "prepared-exchange must contain 3dena.prepared-space-result.v1");
 	assertPreparedDerivedSource(source.result);
 	const prepared = source.result;
 	const receipt = dataset.receipt;
-	if (receipt.format !== "ena3d-json") reject$4("PREPARED_RECEIPT_FORMAT_MISMATCH", `${path}.receipt.format`, "must be ena3d-json for a prepared-exchange source");
-	if (prepared.sourceReceipt.sha256 !== receipt.sha256 || prepared.sourceReceipt.byteLength !== receipt.byteLength) reject$4("PREPARED_SOURCE_RECEIPT_MISMATCH", `${path}.sourceResult.result.sourceReceipt`, "does not match the activated exact-byte dataset receipt");
+	if (receipt.format !== "ena3d-json") reject$3("PREPARED_RECEIPT_FORMAT_MISMATCH", `${path}.receipt.format`, "must be ena3d-json for a prepared-exchange source");
+	if (prepared.sourceReceipt.sha256 !== receipt.sha256 || prepared.sourceReceipt.byteLength !== receipt.byteLength) reject$3("PREPARED_SOURCE_RECEIPT_MISMATCH", `${path}.sourceResult.result.sourceReceipt`, "does not match the activated exact-byte dataset receipt");
 }
 function validateDataset(dataset, task) {
-	if (!dataset || dataset.schemaVersion !== "3dena.analysis-execution-dataset.v1" && dataset.schemaVersion !== "3dena.analysis-execution-dataset.v2") reject$4("INVALID_EXECUTION_DATASET", "dataset.schemaVersion", "must be 3dena.analysis-execution-dataset.v1 or 3dena.analysis-execution-dataset.v2");
+	if (!dataset || dataset.schemaVersion !== "3dena.analysis-execution-dataset.v1" && dataset.schemaVersion !== "3dena.analysis-execution-dataset.v2") reject$3("INVALID_EXECUTION_DATASET", "dataset.schemaVersion", "must be 3dena.analysis-execution-dataset.v1 or 3dena.analysis-execution-dataset.v2");
 	if (dataset.schemaVersion === "3dena.analysis-execution-dataset.v2") {
 		assertAnalysisExecutionDatasetV2(dataset);
-		if (task.kind === "ena-model" && dataset.sourceResult?.sourceKind === "prepared-exchange") reject$4("PREPARED_TASK_UNSUPPORTED", "dataset.sourceResult.sourceKind", "ena-model cannot consume PreparedSpaceResult as though it were raw rows");
+		if (task.kind === "ena-model" && dataset.sourceResult?.sourceKind === "prepared-exchange") reject$3("PREPARED_TASK_UNSUPPORTED", "dataset.sourceResult.sourceKind", "ena-model cannot consume PreparedSpaceResult as though it were raw rows");
 	}
 	assertDatasetReceiptV1(dataset.receipt, "dataset.receipt");
-	if (!SHA256$1.test(dataset.specHash)) reject$4("INVALID_SPEC_HASH", "dataset.specHash", "must be a lowercase SHA-256 digest");
-	if (typeof dataset.buildId !== "string" || dataset.buildId.trim() === "") reject$4("INVALID_BUILD_ID", "dataset.buildId", "must be non-empty");
-	if (dataset.receipt.sha256 !== task.owner.datasetHash) reject$4("DATASET_OWNER_MISMATCH", "task.owner.datasetHash", "does not match the activated dataset receipt");
-	if (dataset.specHash !== task.owner.specHash) reject$4("SPEC_OWNER_MISMATCH", "task.owner.specHash", "does not match the activated scientific spec");
-	if (Date.now() > task.deadlineEpochMilliseconds) reject$4("TASK_DEADLINE_EXCEEDED", "task.deadlineEpochMilliseconds", "expired before execution began");
+	if (!SHA256$1.test(dataset.specHash)) reject$3("INVALID_SPEC_HASH", "dataset.specHash", "must be a lowercase SHA-256 digest");
+	if (typeof dataset.buildId !== "string" || dataset.buildId.trim() === "") reject$3("INVALID_BUILD_ID", "dataset.buildId", "must be non-empty");
+	if (dataset.receipt.sha256 !== task.owner.datasetHash) reject$3("DATASET_OWNER_MISMATCH", "task.owner.datasetHash", "does not match the activated dataset receipt");
+	if (dataset.specHash !== task.owner.specHash) reject$3("SPEC_OWNER_MISMATCH", "task.owner.specHash", "does not match the activated scientific spec");
+	if (Date.now() > task.deadlineEpochMilliseconds) reject$3("TASK_DEADLINE_EXCEEDED", "task.deadlineEpochMilliseconds", "expired before execution began");
 	const generatedAt = dataset.generatedAt ?? (/* @__PURE__ */ new Date()).toISOString();
-	if (Number.isNaN(Date.parse(generatedAt))) reject$4("INVALID_GENERATED_AT", "dataset.generatedAt", "must be an ISO timestamp");
+	if (Number.isNaN(Date.parse(generatedAt))) reject$3("INVALID_GENERATED_AT", "dataset.generatedAt", "must be an ISO timestamp");
 	return generatedAt;
 }
 async function sourceResult(dataset, task) {
 	const source = dataset.sourceResult;
-	if (!source) reject$4("MISSING_SOURCE_RESULT", "dataset.sourceResult", `is required for ${task.kind}`);
+	if (!source) reject$3("MISSING_SOURCE_RESULT", "dataset.sourceResult", `is required for ${task.kind}`);
 	let resolved;
 	if (dataset.schemaVersion === "3dena.analysis-execution-dataset.v1") {
-		if (source.result?.schemaVersion !== "3dena.analysis-result.v1") reject$4("INVALID_RAW_SOURCE_RESULT", "dataset.sourceResult.result.schemaVersion", "V1 execution datasets accept raw AnalysisResult only");
+		if (source.result?.schemaVersion !== "3dena.analysis-result.v1") reject$3("INVALID_RAW_SOURCE_RESULT", "dataset.sourceResult.result.schemaVersion", "V1 execution datasets accept raw AnalysisResult only");
 		resolved = {
 			sourceKind: "raw-jena",
 			hash: source.hash,
@@ -39910,7 +39809,7 @@ async function sourceResult(dataset, task) {
 		};
 	} else {
 		const sourceV2 = dataset.sourceResult;
-		if (!sourceV2) reject$4("MISSING_SOURCE_RESULT", "dataset.sourceResult", `is required for ${task.kind}`);
+		if (!sourceV2) reject$3("MISSING_SOURCE_RESULT", "dataset.sourceResult", `is required for ${task.kind}`);
 		exactFields$1(sourceV2, [
 			"sourceKind",
 			"hash",
@@ -39921,38 +39820,38 @@ async function sourceResult(dataset, task) {
 			"result"
 		], "dataset.sourceResult");
 		if (sourceV2.sourceKind === "raw-jena") {
-			if (sourceV2.result?.schemaVersion !== "3dena.analysis-result.v1") reject$4("SOURCE_KIND_RESULT_MISMATCH", "dataset.sourceResult", "raw-jena must contain 3dena.analysis-result.v1");
+			if (sourceV2.result?.schemaVersion !== "3dena.analysis-result.v1") reject$3("SOURCE_KIND_RESULT_MISMATCH", "dataset.sourceResult", "raw-jena must contain 3dena.analysis-result.v1");
 			resolved = sourceV2;
 		} else if (sourceV2.sourceKind === "prepared-exchange") {
-			if (sourceV2.result?.schemaVersion !== "3dena.prepared-space-result.v1") reject$4("SOURCE_KIND_RESULT_MISMATCH", "dataset.sourceResult", "prepared-exchange must contain 3dena.prepared-space-result.v1");
+			if (sourceV2.result?.schemaVersion !== "3dena.prepared-space-result.v1") reject$3("SOURCE_KIND_RESULT_MISMATCH", "dataset.sourceResult", "prepared-exchange must contain 3dena.prepared-space-result.v1");
 			resolved = sourceV2;
-		} else reject$4("INVALID_SOURCE_KIND", "dataset.sourceResult.sourceKind", "must be raw-jena or prepared-exchange");
+		} else reject$3("INVALID_SOURCE_KIND", "dataset.sourceResult.sourceKind", "must be raw-jena or prepared-exchange");
 	}
-	if (!SHA256$1.test(resolved.hash)) reject$4("INVALID_SOURCE_RESULT_HASH", "dataset.sourceResult.hash", "must be a lowercase SHA-256 digest");
-	if (resolved.hash !== task.sourceResultHash) reject$4("SOURCE_RESULT_OWNER_MISMATCH", "task.sourceResultHash", "does not match dataset.sourceResult.hash");
-	if (await hashAnalysisValueV1(resolved.result) !== resolved.hash) reject$4("SOURCE_RESULT_HASH_MISMATCH", "dataset.sourceResult", "result bytes do not match the immutable source hash");
+	if (!SHA256$1.test(resolved.hash)) reject$3("INVALID_SOURCE_RESULT_HASH", "dataset.sourceResult.hash", "must be a lowercase SHA-256 digest");
+	if (resolved.hash !== task.sourceResultHash) reject$3("SOURCE_RESULT_OWNER_MISMATCH", "task.sourceResultHash", "does not match dataset.sourceResult.hash");
+	if (await hashAnalysisValueV1(resolved.result) !== resolved.hash) reject$3("SOURCE_RESULT_HASH_MISMATCH", "dataset.sourceResult", "result bytes do not match the immutable source hash");
 	if (resolved.sourceKind === "prepared-exchange") {
 		assertPreparedDerivedSource(resolved.result);
-		if (dataset.receipt.format !== "ena3d-json") reject$4("PREPARED_RECEIPT_FORMAT_MISMATCH", "dataset.receipt.format", "must be ena3d-json for a prepared-exchange source");
-		if (resolved.result.sourceReceipt.sha256 !== dataset.receipt.sha256 || resolved.result.sourceReceipt.byteLength !== dataset.receipt.byteLength) reject$4("PREPARED_SOURCE_RECEIPT_MISMATCH", "dataset.sourceResult.result.sourceReceipt", "does not match the activated exact-byte dataset receipt");
+		if (dataset.receipt.format !== "ena3d-json") reject$3("PREPARED_RECEIPT_FORMAT_MISMATCH", "dataset.receipt.format", "must be ena3d-json for a prepared-exchange source");
+		if (resolved.result.sourceReceipt.sha256 !== dataset.receipt.sha256 || resolved.result.sourceReceipt.byteLength !== dataset.receipt.byteLength) reject$3("PREPARED_SOURCE_RECEIPT_MISMATCH", "dataset.sourceResult.result.sourceReceipt", "does not match the activated exact-byte dataset receipt");
 	}
 	return resolved;
 }
 function dimensionIndex(result, dimension, path) {
 	const index = result.dimensions.indexOf(dimension);
-	if (index < 0) reject$4("UNKNOWN_DIMENSION", path, `is not retained in the source result: ${JSON.stringify(dimension)}`);
+	if (index < 0) reject$3("UNKNOWN_DIMENSION", path, `is not retained in the source result: ${JSON.stringify(dimension)}`);
 	return index;
 }
 function groupPoints(result, canonical, path) {
 	const points = result.points.filter((point) => point.group?.canonical === canonical);
-	if (points.length === 0) reject$4("UNKNOWN_OR_EMPTY_GROUP", path, "does not select any source points");
+	if (points.length === 0) reject$3("UNKNOWN_OR_EMPTY_GROUP", path, "does not select any source points");
 	return points;
 }
 function identityComponent(name, value, path) {
-	if (value === null) reject$4("MISSING_PAIRED_IDENTITY", path, "paired identity components must not be null");
+	if (value === null) reject$3("MISSING_PAIRED_IDENTITY", path, "paired identity components must not be null");
 	if (typeof value === "number") {
-		if (!Number.isFinite(value)) reject$4("NON_FINITE_PAIRED_IDENTITY", path, "must be finite");
-		if (Number.isInteger(value) && !Number.isSafeInteger(value)) reject$4("UNSAFE_PAIRED_IDENTITY", path, "unsafe integer IDs must be source strings");
+		if (!Number.isFinite(value)) reject$3("NON_FINITE_PAIRED_IDENTITY", path, "must be finite");
+		if (Number.isInteger(value) && !Number.isSafeInteger(value)) reject$3("UNSAFE_PAIRED_IDENTITY", path, "unsafe integer IDs must be source strings");
 		return {
 			name,
 			type: "number",
@@ -40109,24 +40008,24 @@ function trajectorySeries(result, group, namespace, participantIdentity = "unit"
 }
 function executeTrajectoryDynamics(source, task) {
 	const trajectory = source.trajectory;
-	if (!trajectory) reject$4("MISSING_SOURCE_TRAJECTORY", "sourceResult.trajectory", "is required for a trajectory task");
+	if (!trajectory) reject$3("MISSING_SOURCE_TRAJECTORY", "sourceResult.trajectory", "is required for a trajectory task");
 	const series = trajectorySeries(source, task.group, `${task.owner.taskId}:trajectory`);
-	if (task.periods.length !== trajectory.timeOrder.length || task.periods.length !== series.timeOrder.length) reject$4("TRAJECTORY_PERIOD_BINDING_MISMATCH", "task.periods", "must bind every source period exactly once in source order");
+	if (task.periods.length !== trajectory.timeOrder.length || task.periods.length !== series.timeOrder.length) reject$3("TRAJECTORY_PERIOD_BINDING_MISMATCH", "task.periods", "must bind every source period exactly once in source order");
 	const periods = task.periods.map((period, index) => {
 		const sourceTime = trajectory.timeOrder[index];
 		const seriesTime = series.timeOrder[index];
-		if (!sourceTime || !seriesTime || sourceTime.canonical !== period.sourceTimeCanonical) reject$4("TRAJECTORY_PERIOD_BINDING_MISMATCH", `task.periods[${index}].sourceTimeCanonical`, "does not match the immutable source trajectory time key at this index");
+		if (!sourceTime || !seriesTime || sourceTime.canonical !== period.sourceTimeCanonical) reject$3("TRAJECTORY_PERIOD_BINDING_MISMATCH", `task.periods[${index}].sourceTimeCanonical`, "does not match the immutable source trajectory time key at this index");
 		return {
 			time: seriesTime,
 			value: structuredClone(period.value)
 		};
 	});
 	const sourcePoints = groupPoints(source, task.group, "task.group");
-	if (sourcePoints.length !== series.points.length) reject$4("TRAJECTORY_ADAPTER_SHAPE_MISMATCH", "sourceResult.points", "adapter point order does not match the immutable source group");
+	if (sourcePoints.length !== series.points.length) reject$3("TRAJECTORY_ADAPTER_SHAPE_MISMATCH", "sourceResult.points", "adapter point order does not match the immutable source group");
 	const points = series.points.map((point, index) => {
 		if (task.estimand.kind === "equal-participant-v1") return { ...point };
 		const value = sourcePoints[index].metadata[task.estimand.metadataField];
-		if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) reject$4("INVALID_TRAJECTORY_WEIGHT", `sourceResult.points[${sourcePoints[index].index}].metadata.${task.estimand.metadataField}`, "weighted trajectories require a finite, strictly positive numeric metadata value for every point");
+		if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) reject$3("INVALID_TRAJECTORY_WEIGHT", `sourceResult.points[${sourcePoints[index].index}].metadata.${task.estimand.metadataField}`, "weighted trajectories require a finite, strictly positive numeric metadata value for every point");
 		return {
 			...point,
 			weight: value
@@ -40144,7 +40043,7 @@ function executeTrajectoryDynamics(source, task) {
 			estimand: { kind: task.estimand.kind }
 		});
 	} catch (error) {
-		if (error instanceof TrajectoryDynamicsError) reject$4(error.code, `trajectory.${error.path}`, error.message);
+		if (error instanceof TrajectoryDynamicsError) reject$3(error.code, `trajectory.${error.path}`, error.message);
 		throw error;
 	}
 }
@@ -40161,11 +40060,11 @@ function executePreparedTrajectoryDynamics(source, task) {
 	});
 	task.selectedDimensions.forEach((dimension, index) => preparedDimensionIndex(source, dimension, `task.selectedDimensions[${index}]`));
 	const sourceTimeOrder = source.displaySpace.trajectory.timeOrder;
-	if (task.periods.length !== sourceTimeOrder.length || task.periods.length !== series.timeOrder.length) reject$4("TRAJECTORY_PERIOD_BINDING_MISMATCH", "task.periods", "must bind every prepared source period exactly once in source order");
+	if (task.periods.length !== sourceTimeOrder.length || task.periods.length !== series.timeOrder.length) reject$3("TRAJECTORY_PERIOD_BINDING_MISMATCH", "task.periods", "must bind every prepared source period exactly once in source order");
 	const periods = task.periods.map((period, index) => {
 		const sourceTime = sourceTimeOrder[index];
 		const seriesTime = series.timeOrder[index];
-		if (!sourceTime || !seriesTime || sourceTime.canonical !== period.sourceTimeCanonical) reject$4("TRAJECTORY_PERIOD_BINDING_MISMATCH", `task.periods[${index}].sourceTimeCanonical`, "does not match the immutable prepared time key at this index");
+		if (!sourceTime || !seriesTime || sourceTime.canonical !== period.sourceTimeCanonical) reject$3("TRAJECTORY_PERIOD_BINDING_MISMATCH", `task.periods[${index}].sourceTimeCanonical`, "does not match the immutable prepared time key at this index");
 		return {
 			time: seriesTime,
 			value: structuredClone(period.value)
@@ -40175,7 +40074,7 @@ function executePreparedTrajectoryDynamics(source, task) {
 	const points = series.points.map((point, index) => {
 		if (task.estimand.kind === "equal-participant-v1") return { ...point };
 		const weight = sourcePoints[index]?.metadata[task.estimand.metadataField];
-		if (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0) reject$4("INVALID_TRAJECTORY_WEIGHT", `sourceResult.fullSpace.points[${sourcePoints[index]?.index ?? index}].metadata.${task.estimand.metadataField}`, "weighted prepared trajectories require one finite, strictly positive numeric metadata value per point");
+		if (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0) reject$3("INVALID_TRAJECTORY_WEIGHT", `sourceResult.fullSpace.points[${sourcePoints[index]?.index ?? index}].metadata.${task.estimand.metadataField}`, "weighted prepared trajectories require one finite, strictly positive numeric metadata value per point");
 		return {
 			...point,
 			weight
@@ -40203,7 +40102,7 @@ function executePreparedTrajectoryDynamics(source, task) {
 			}
 		};
 	} catch (error) {
-		if (error instanceof TrajectoryDynamicsError) reject$4(error.code, `trajectory.${error.path}`, error.message);
+		if (error instanceof TrajectoryDynamicsError) reject$3(error.code, `trajectory.${error.path}`, error.message);
 		throw error;
 	}
 }
@@ -40219,17 +40118,17 @@ function decodePreparedBase64(value) {
 	try {
 		binary = globalThis.atob(value);
 	} catch {
-		reject$4("INVALID_PREPARED_BASE64", "task.input.exactBytesBase64", "must decode as canonical base64");
+		reject$3("INVALID_PREPARED_BASE64", "task.input.exactBytesBase64", "must decode as canonical base64");
 	}
-	if (globalThis.btoa(binary) !== value) reject$4("INVALID_PREPARED_BASE64", "task.input.exactBytesBase64", "must use canonical padding and trailing bits");
+	if (globalThis.btoa(binary) !== value) reject$3("INVALID_PREPARED_BASE64", "task.input.exactBytesBase64", "must use canonical padding and trailing bits");
 	const bytes = new Uint8Array(binary.length);
 	for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
 	return bytes;
 }
 async function executePreparedImport(dataset, task) {
-	if (dataset.receipt.format !== "ena3d-json") reject$4("PREPARED_RECEIPT_FORMAT_MISMATCH", "dataset.receipt.format", "must be ena3d-json for prepared-import");
+	if (dataset.receipt.format !== "ena3d-json") reject$3("PREPARED_RECEIPT_FORMAT_MISMATCH", "dataset.receipt.format", "must be ena3d-json for prepared-import");
 	const artifact = await decodeEna3dExchangeV1WithSha256(decodePreparedBase64(task.input.exactBytesBase64));
-	if (artifact.sha256 !== dataset.receipt.sha256 || artifact.byteLength !== dataset.receipt.byteLength) reject$4("PREPARED_SOURCE_RECEIPT_MISMATCH", "task.input.exactBytesBase64", "does not match the immutable upload receipt");
+	if (artifact.sha256 !== dataset.receipt.sha256 || artifact.byteLength !== dataset.receipt.byteLength) reject$3("PREPARED_SOURCE_RECEIPT_MISMATCH", "task.input.exactBytesBase64", "does not match the immutable upload receipt");
 	const result = analyzePreparedSpace({
 		source: {
 			artifact,
@@ -40238,7 +40137,7 @@ async function executePreparedImport(dataset, task) {
 		mapping: task.input.mapping
 	});
 	const dimensions = result.fullSpace.dimensions;
-	if (dataset.receipt.rows !== result.fullSpace.points.length || dataset.receipt.columns !== dimensions.length || dataset.receipt.schema.headers.length !== dimensions.length || dataset.receipt.schema.columns.length !== dimensions.length || dimensions.some((dimension, index) => dataset.receipt.schema.headers[index] !== dimension || dataset.receipt.schema.columns[index]?.name !== dimension || dataset.receipt.schema.columns[index]?.inferredType !== "number" || dataset.receipt.schema.columns[index]?.roles.length !== 1 || dataset.receipt.schema.columns[index]?.roles[0] !== "unmapped")) reject$4("PREPARED_INVENTORY_MISMATCH", "dataset.receipt", "does not match the service-decoded prepared exchange result");
+	if (dataset.receipt.rows !== result.fullSpace.points.length || dataset.receipt.columns !== dimensions.length || dataset.receipt.schema.headers.length !== dimensions.length || dataset.receipt.schema.columns.length !== dimensions.length || dimensions.some((dimension, index) => dataset.receipt.schema.headers[index] !== dimension || dataset.receipt.schema.columns[index]?.name !== dimension || dataset.receipt.schema.columns[index]?.inferredType !== "number" || dataset.receipt.schema.columns[index]?.roles.length !== 1 || dataset.receipt.schema.columns[index]?.roles[0] !== "unmapped")) reject$3("PREPARED_INVENTORY_MISMATCH", "dataset.receipt", "does not match the service-decoded prepared exchange result");
 	return result;
 }
 async function executeTaskResult(dataset, task) {
@@ -40304,7 +40203,7 @@ async function executeTaskResult(dataset, task) {
 			});
 			if (paired) {
 				const pairedId = source.sourceKind === "raw-jena" ? source.result.points.find((point) => point.group?.canonical === task.groups[0])?.participantLabel.columns ?? [] : source.result.fullSpace.points.find((point) => point.group.canonical === task.groups[0])?.participant.columns ?? [];
-				if (pairedId.length === 0) reject$4("MISSING_PAIRED_ID", "sourceResult.points", "does not expose a participant-label identity");
+				if (pairedId.length === 0) reject$3("MISSING_PAIRED_ID", "sourceResult.points", "does not expose a participant-label identity");
 				return {
 					result: source.sourceKind === "prepared-exchange" ? withPreparedDiagnostic(compareTrajectoryPaths({
 						design: "paired",
@@ -40383,7 +40282,7 @@ async function executeAnalysisTask(dataset, task) {
 	assertAnalysisTaskV1(task);
 	const generatedAt = validateDataset(dataset, task);
 	const { result, sourceKind } = await executeTaskResult(dataset, task);
-	if (Date.now() > task.deadlineEpochMilliseconds) reject$4("TASK_DEADLINE_EXCEEDED", "task.deadlineEpochMilliseconds", "expired before result publication");
+	if (Date.now() > task.deadlineEpochMilliseconds) reject$3("TASK_DEADLINE_EXCEEDED", "task.deadlineEpochMilliseconds", "expired before result publication");
 	assertAnalysisTaskResultV1(result, task.kind);
 	const resultHash = await hashAnalysisValueV1(result);
 	const sourceSchemaVersion = task.kind === "ena-model" ? null : dataset.sourceResult?.result.schemaVersion ?? null;
@@ -43350,7 +43249,7 @@ var ExportBundleError = class extends Error {
 	}
 };
 var ENCODER = new TextEncoder();
-function reject$3(code, path, message) {
+function reject$2(code, path, message) {
 	throw new ExportBundleError(code, path, message);
 }
 function typedRaw(value) {
@@ -43369,20 +43268,20 @@ function stableJson(value, path = "value") {
 	if (value === null) return "null";
 	if (typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
 	if (typeof value === "number") {
-		if (!Number.isFinite(value)) reject$3("NON_FINITE_JSON", path, "cannot be emitted in deterministic JSON");
+		if (!Number.isFinite(value)) reject$2("NON_FINITE_JSON", path, "cannot be emitted in deterministic JSON");
 		return Object.is(value, -0) ? "-0" : JSON.stringify(value);
 	}
 	if (Array.isArray(value)) return `[${value.map((entry, index) => stableJson(entry, `${path}[${index}]`)).join(",")}]`;
-	if (!value || typeof value !== "object") reject$3("INVALID_JSON_VALUE", path, "contains an unsupported value");
+	if (!value || typeof value !== "object") reject$2("INVALID_JSON_VALUE", path, "contains an unsupported value");
 	const record = value;
 	return `{${Object.keys(record).sort().map((key) => {
-		if (record[key] === void 0) reject$3("INVALID_JSON_VALUE", `${path}.${key}`, "must not be undefined");
+		if (record[key] === void 0) reject$2("INVALID_JSON_VALUE", `${path}.${key}`, "must not be undefined");
 		return `${JSON.stringify(key)}:${stableJson(record[key], `${path}.${key}`)}`;
 	}).join(",")}}`;
 }
 async function sha256Bytes(bytes) {
 	const subtle = globalThis.crypto?.subtle;
-	if (!subtle) reject$3("CRYPTO_UNAVAILABLE", "crypto.subtle", "WebCrypto SHA-256 is required");
+	if (!subtle) reject$2("CRYPTO_UNAVAILABLE", "crypto.subtle", "WebCrypto SHA-256 is required");
 	const snapshot = new Uint8Array(bytes.byteLength);
 	snapshot.set(bytes);
 	return [...new Uint8Array(await subtle.digest("SHA-256", snapshot))].map((value) => value.toString(16).padStart(2, "0")).join("");
@@ -43961,7 +43860,7 @@ function validatePortfolio(value) {
 		schemaVersion: "3dena.analysis-export-portfolio.v1",
 		analysis: value
 	};
-	if (value.schemaVersion !== "3dena.analysis-export-portfolio.v1") reject$3("UNSUPPORTED_EXPORT_RESULT", "result.schemaVersion", "is unsupported");
+	if (value.schemaVersion !== "3dena.analysis-export-portfolio.v1") reject$2("UNSUPPORTED_EXPORT_RESULT", "result.schemaVersion", "is unsupported");
 	const allowed = /* @__PURE__ */ new Set([
 		"schemaVersion",
 		"analysis",
@@ -43973,13 +43872,13 @@ function validatePortfolio(value) {
 		"bootstrap"
 	]);
 	const unknown = Object.keys(value).find((field) => !allowed.has(field));
-	if (unknown) reject$3("INVALID_EXPORT_PORTFOLIO", "result", `contains unknown field ${JSON.stringify(unknown)}`);
-	if (value.analysis.schemaVersion !== "3dena.analysis-result.v1" && value.analysis.schemaVersion !== "3dena.prepared-space-result.v1") reject$3("INVALID_EXPORT_PORTFOLIO", "result.analysis", "must contain a raw or prepared result");
+	if (unknown) reject$2("INVALID_EXPORT_PORTFOLIO", "result", `contains unknown field ${JSON.stringify(unknown)}`);
+	if (value.analysis.schemaVersion !== "3dena.analysis-result.v1" && value.analysis.schemaVersion !== "3dena.prepared-space-result.v1") reject$2("INVALID_EXPORT_PORTFOLIO", "result.analysis", "must contain a raw or prepared result");
 	return value;
 }
 function bundleName(value) {
 	const name = value ?? "3dena-analysis.zip";
-	if (name.length > 255 || !name.toLocaleLowerCase("en-US").endsWith(".zip") || name.includes("/") || name.includes("\\") || /[\u0000-\u001f\u007f]/u.test(name)) reject$3("INVALID_EXPORT_FILE_NAME", "options.fileName", "must be a safe .zip basename");
+	if (name.length > 255 || !name.toLocaleLowerCase("en-US").endsWith(".zip") || name.includes("/") || name.includes("\\") || /[\u0000-\u001f\u007f]/u.test(name)) reject$2("INVALID_EXPORT_FILE_NAME", "options.fileName", "must be a safe .zip basename");
 	return name;
 }
 function aggregateTrajectoryEnvelope(bundle) {
@@ -44393,11 +44292,11 @@ function longitudinalParticipantEntry(bundle) {
 	});
 }
 async function createLongitudinalExportBundleV2(bundle, options) {
-	if (!options || typeof options !== "object" || Array.isArray(options)) reject$3("INVALID_EXPORT_OPTIONS", "options", "must be an object");
+	if (!options || typeof options !== "object" || Array.isArray(options)) reject$2("INVALID_EXPORT_OPTIONS", "options", "must be an object");
 	await verifyLongitudinalAnalysisBundleV2(bundle);
-	if (!options.plotlySpec || options.plotlySpec.schemaVersion !== "3dena.trajectory-plotly-spec.v2") reject$3("INVALID_TRAJECTORY_PLOTLY_SPEC", "options.plotlySpec", "must be a compiled V2 trajectory Plotly spec");
-	if (options.plotlySpec.resultHash !== bundle.identity.resultHash) reject$3("PLOTLY_RESULT_BINDING_MISMATCH", "options.plotlySpec.resultHash", "does not match the exported longitudinal result");
-	if (options.includeParticipantLevel !== void 0 && typeof options.includeParticipantLevel !== "boolean") reject$3("INVALID_PARTICIPANT_EXPORT_OPTION", "options.includeParticipantLevel", "must be boolean");
+	if (!options.plotlySpec || options.plotlySpec.schemaVersion !== "3dena.trajectory-plotly-spec.v2") reject$2("INVALID_TRAJECTORY_PLOTLY_SPEC", "options.plotlySpec", "must be a compiled V2 trajectory Plotly spec");
+	if (options.plotlySpec.resultHash !== bundle.identity.resultHash) reject$2("PLOTLY_RESULT_BINDING_MISMATCH", "options.plotlySpec.resultHash", "does not match the exported longitudinal result");
+	if (options.includeParticipantLevel !== void 0 && typeof options.includeParticipantLevel !== "boolean") reject$2("INVALID_PARTICIPANT_EXPORT_OPTION", "options.includeParticipantLevel", "must be boolean");
 	const participantLevelIncluded = options.includeParticipantLevel === true;
 	const pending = [
 		json("analysis.json", aggregateTrajectoryEnvelope(bundle)),
@@ -44474,12 +44373,12 @@ async function createLongitudinalExportBundleV2(bundle, options) {
 }
 async function createExportBundle(result, options) {
 	if (result.schemaVersion === "3dena.longitudinal-analysis-bundle.v2") return createLongitudinalExportBundleV2(result, options);
-	if (!options || typeof options !== "object" || Array.isArray(options)) reject$3("INVALID_EXPORT_OPTIONS", "options", "must be an object");
+	if (!options || typeof options !== "object" || Array.isArray(options)) reject$2("INVALID_EXPORT_OPTIONS", "options", "must be an object");
 	const legacyOptions = options;
 	assertProvenanceManifestV1(legacyOptions.provenance, "options.provenance");
-	if (await hashAnalysisValueV1(result) !== legacyOptions.provenance.resultHash) reject$3("RESULT_HASH_MISMATCH", "options.provenance.resultHash", "does not match the exported result or portfolio");
+	if (await hashAnalysisValueV1(result) !== legacyOptions.provenance.resultHash) reject$2("RESULT_HASH_MISMATCH", "options.provenance.resultHash", "does not match the exported result or portfolio");
 	const portfolio = validatePortfolio(result);
-	if (portfolio.analysis.schemaVersion === "3dena.prepared-space-result.v1" !== (legacyOptions.provenance.sourceKind === "prepared-exchange")) reject$3("PROVENANCE_SOURCE_MISMATCH", "options.provenance.sourceKind", "does not match the exported analysis source");
+	if (portfolio.analysis.schemaVersion === "3dena.prepared-space-result.v1" !== (legacyOptions.provenance.sourceKind === "prepared-exchange")) reject$2("PROVENANCE_SOURCE_MISMATCH", "options.provenance.sourceKind", "does not match the exported analysis source");
 	const pending = portfolio.analysis.schemaVersion === "3dena.prepared-space-result.v1" ? preparedEntries(portfolio.analysis) : rawEntries(portfolio.analysis);
 	if (portfolio.comparison) pending.push(comparisonEntry(portfolio.comparison));
 	if (portfolio.change) pending.push(changeEntry(portfolio.change));
@@ -44527,88 +44426,6 @@ async function createExportBundle(result, options) {
 	});
 }
 //#endregion
-//#region src/display.ts
-init_types();
-function reject$2(code, path, message) {
-	throw new AnalysisValidationError([{
-		code,
-		path,
-		message
-	}]);
-}
-function selectDimensions(result, requested) {
-	const names = requested ?? [...result.axes];
-	if (!Array.isArray(names) || names.length !== 3 || names.some((name) => typeof name !== "string" || name.trim() === "")) reject$2("INVALID_DISPLAY_DIMENSIONS", "filter.dimensions", "must contain exactly three non-empty dimension names");
-	if (new Set(names).size !== 3) reject$2("DUPLICATE_DISPLAY_DIMENSION", "filter.dimensions", "must contain three distinct dimension names");
-	const indexes = names.map((name) => result.dimensions.indexOf(name));
-	const missing = indexes.findIndex((index) => index < 0);
-	if (missing >= 0) reject$2("UNKNOWN_DISPLAY_DIMENSION", `filter.dimensions[${missing}]`, `${JSON.stringify(names[missing])} is not present in result.dimensions`);
-	return {
-		names: [...names],
-		indexes
-	};
-}
-function project(values, indexes, path) {
-	const selected = indexes.map((index) => values[index]);
-	if (selected.some((value) => !Number.isFinite(value))) reject$2("INVALID_DISPLAY_COORDINATE", path, "selected full-space coordinates must be finite");
-	return selected;
-}
-/**
-* Selects existing coordinates for presentation without raw rows, jENA, or a
-* model callback. The source result and its formal-export rows are untouched.
-*/
-function selectAnalysisDisplay(result, filter = {}) {
-	const dimensions = selectDimensions(result, filter.dimensions);
-	const knownGroups = new Set(result.trajectory?.groupOrder.map((group) => group.canonical) ?? []);
-	const requestedGroups = filter.groups ?? [...knownGroups];
-	if (!Array.isArray(requestedGroups) || requestedGroups.some((group) => typeof group !== "string" || group.length === 0)) reject$2("INVALID_DISPLAY_GROUP", "filter.groups", "must be an array of canonical group keys");
-	if (new Set(requestedGroups).size !== requestedGroups.length) reject$2("DUPLICATE_DISPLAY_GROUP", "filter.groups", "must not contain duplicate canonical group keys");
-	const unknownGroup = requestedGroups.find((group) => !knownGroups.has(group));
-	if (unknownGroup !== void 0) reject$2("UNKNOWN_DISPLAY_GROUP", "filter.groups", `unknown canonical group key ${JSON.stringify(unknownGroup)}`);
-	const selectedGroups = new Set(requestedGroups);
-	const includesPoint = (group) => filter.groups === void 0 || group !== void 0 && selectedGroups.has(group);
-	const points = result.points.filter((point) => includesPoint(point.group?.canonical)).map((point) => ({
-		pointIndex: point.index,
-		id: point.id,
-		...point.group ? { group: point.group } : {},
-		...point.time ? { time: point.time } : {},
-		coordinates: project(point.fullCoordinates, dimensions.indexes, `result.points[${point.index}].fullCoordinates`)
-	}));
-	const nodes = result.nodes.map((node) => ({
-		nodeIndex: node.index,
-		code: node.code,
-		coordinates: project(node.fullCoordinates, dimensions.indexes, `result.nodes[${node.index}].fullCoordinates`)
-	}));
-	const trajectory = result.trajectory;
-	return {
-		space: "analysis-result-rotation-display",
-		dimensions: dimensions.names,
-		points,
-		nodes,
-		...trajectory ? { trajectory: {
-			cohortPolicy: trajectory.cohortPolicy,
-			groupOrder: trajectory.groupOrder.filter((group) => selectedGroups.has(group.canonical)),
-			timeOrder: trajectory.timeOrder,
-			participantPeriods: trajectory.participantPeriods.filter((point) => selectedGroups.has(point.group.canonical)).map((point) => ({
-				participantPeriodIndex: point.index,
-				participant: point.participant,
-				group: point.group,
-				time: point.time,
-				coordinates: project(point.fullCoordinates, dimensions.indexes, `result.trajectory.participantPeriods[${point.index}].fullCoordinates`),
-				includedInCohort: point.includedInCohort
-			})),
-			centroids: trajectory.centroids.filter((centroid) => selectedGroups.has(centroid.group.canonical)).map((centroid) => ({
-				centroidIndex: centroid.index,
-				group: centroid.group,
-				time: centroid.time,
-				coordinates: project(centroid.fullCoordinates, dimensions.indexes, `result.trajectory.centroids[${centroid.index}].fullCoordinates`),
-				participantCount: centroid.participantCount
-			})),
-			paths: trajectory.paths.filter((path) => selectedGroups.has(path.group.canonical))
-		} } : {}
-	};
-}
-//#endregion
 //#region src/plotly-spec.ts
 var PlotlySpecCompilationError = class extends Error {
 	code;
@@ -44644,12 +44461,30 @@ function hashString(value) {
 function groupColor(canonical) {
 	return COLORS[hashString(canonical) % COLORS.length] ?? COLORS[0];
 }
-function rawDisplay(result, displaySpec) {
-	const selection = selectAnalysisDisplay(result, {
-		dimensions: [...displaySpec.dimensions],
-		...displaySpec.groups ? { groups: [...displaySpec.groups] } : {}
+function dimensionIndexes(available, requested, code) {
+	return requested.map((dimension, index) => {
+		const selected = available.indexOf(dimension);
+		if (selected < 0) reject$1(code, `displaySpec.dimensions[${index}]`, `${JSON.stringify(dimension)} is not present in the fitted coordinate space`);
+		return selected;
 	});
-	const selectedIndexes = new Set(selection.points.map((point) => point.pointIndex));
+}
+function projectCoordinates(coordinates, indexes, path) {
+	const selected = indexes.map((index) => coordinates[index]);
+	if (selected.some((coordinate) => typeof coordinate !== "number" || !Number.isFinite(coordinate))) reject$1("INVALID_DISPLAY_COORDINATE", path, "selected fitted coordinates must be finite numbers");
+	return selected;
+}
+function selectedGroups(available, requested, code) {
+	if (requested === void 0) return null;
+	const known = new Set(available);
+	const unknown = requested.find((group) => !known.has(group));
+	if (unknown !== void 0) reject$1(code, "displaySpec.groups", `unknown canonical group key ${JSON.stringify(unknown)}`);
+	return new Set(requested);
+}
+function rawDisplay(result, displaySpec) {
+	const indexes = dimensionIndexes(result.dimensions, displaySpec.dimensions, "UNKNOWN_DISPLAY_DIMENSION");
+	const groups = selectedGroups(result.points.flatMap((point) => point.group ? [point.group.canonical] : []), displaySpec.groups, "UNKNOWN_DISPLAY_GROUP");
+	const points = result.points.filter((point) => groups === null || point.group !== void 0 && groups.has(point.group.canonical));
+	const selectedIndexes = new Set(points.map((point) => point.index));
 	const edges = result.edges.map((edge) => {
 		const weights = result.points.filter((point) => selectedIndexes.has(point.index)).map((point) => point.lineWeights[edge.index]);
 		const meanWeight = weights.length === 0 ? edge.meanWeight : weights.reduce((sum, value) => sum + value, 0) / weights.length;
@@ -44662,35 +44497,26 @@ function rawDisplay(result, displaySpec) {
 	});
 	return {
 		source: "raw-jena",
-		dimensions: [...selection.dimensions],
-		points: selection.points.map((point) => ({
-			label: point.id.display,
+		dimensions: [...displaySpec.dimensions],
+		points: points.map((point) => ({
+			label: point.participantLabel.display,
 			groupCanonical: point.group?.canonical ?? "@3dena/ungrouped",
 			groupDisplay: point.group?.display ?? "All participants",
-			timeDisplay: point.time?.display ?? null,
-			coordinates: [...point.coordinates]
+			coordinates: projectCoordinates(point.fullCoordinates, indexes, `result.points[${point.index}].fullCoordinates`)
 		})),
-		nodes: selection.nodes.map((node) => ({
-			index: node.nodeIndex,
+		nodes: result.nodes.map((node) => ({
+			index: node.index,
 			code: node.code,
-			coordinates: [...node.coordinates]
+			coordinates: projectCoordinates(node.fullCoordinates, indexes, `result.nodes[${node.index}].fullCoordinates`)
 		})),
-		edges,
-		centroids: selection.trajectory?.centroids.map((centroid) => ({
-			groupCanonical: centroid.group.canonical,
-			groupDisplay: centroid.group.display,
-			timeDisplay: centroid.time.display,
-			participantCount: centroid.participantCount,
-			coordinates: [...centroid.coordinates]
-		})) ?? []
+		edges
 	};
 }
 function preparedDisplay(result, displaySpec) {
-	const selection = selectPreparedSpaceDisplay(result, {
-		dimensions: [...displaySpec.dimensions],
-		...displaySpec.groups ? { groups: [...displaySpec.groups] } : {}
-	});
-	const selectedIndexes = new Set(selection.points.map((point) => point.pointIndex));
+	const indexes = dimensionIndexes(result.fullSpace.dimensions, displaySpec.dimensions, "UNKNOWN_PREPARED_DISPLAY_DIMENSION");
+	const groups = selectedGroups(result.fullSpace.points.map((point) => point.group.canonical), displaySpec.groups, "UNKNOWN_PREPARED_DISPLAY_GROUP");
+	const points = result.fullSpace.points.filter((point) => groups === null || groups.has(point.group.canonical));
+	const selectedIndexes = new Set(points.map((point) => point.index));
 	const edges = result.fullSpace.edges.map((edge) => {
 		const weights = result.fullSpace.lineWeights.values.filter((_, index) => selectedIndexes.has(index)).map((row) => row[edge.index]);
 		const meanWeight = weights.length === 0 ? edge.meanWeight : weights.reduce((sum, value) => sum + value, 0) / weights.length;
@@ -44703,27 +44529,19 @@ function preparedDisplay(result, displaySpec) {
 	});
 	return {
 		source: "prepared-exchange",
-		dimensions: [...selection.dimensions],
-		points: selection.points.map((point) => ({
-			label: point.id.display,
+		dimensions: [...displaySpec.dimensions],
+		points: points.map((point) => ({
+			label: point.participantLabel.display,
 			groupCanonical: point.group.canonical,
 			groupDisplay: point.group.display,
-			timeDisplay: point.time.display,
-			coordinates: [...point.coordinates]
+			coordinates: projectCoordinates(point.coordinates, indexes, `result.fullSpace.points[${point.index}].coordinates`)
 		})),
-		nodes: selection.nodes.map((node) => ({
-			index: node.nodeIndex,
+		nodes: result.fullSpace.nodes.map((node) => ({
+			index: node.index,
 			code: node.code,
-			coordinates: [...node.coordinates]
+			coordinates: projectCoordinates(node.coordinates, indexes, `result.fullSpace.nodes[${node.index}].coordinates`)
 		})),
-		edges,
-		centroids: selection.centroids.map((centroid) => ({
-			groupCanonical: centroid.group.canonical,
-			groupDisplay: centroid.group.display,
-			timeDisplay: centroid.time.display,
-			participantCount: centroid.participantCount,
-			coordinates: [...centroid.coordinates]
-		}))
+		edges
 	};
 }
 function normalize(result, displaySpec) {
@@ -44753,8 +44571,7 @@ function pointTraces(display, spec) {
 		name: points[0].groupDisplay,
 		...coordinateFields(points.map((point) => point.coordinates), spec.plotDimension),
 		text: points.map((point) => point.label),
-		customdata: points.map((point) => [point.timeDisplay]),
-		hovertemplate: "%{text}<br>%{customdata[0]}<extra></extra>",
+		hovertemplate: "%{text}<extra></extra>",
 		marker: {
 			color: groupColor(canonical),
 			size: spec.style.pointSize,
@@ -44807,36 +44624,8 @@ function edgeTraces(display, spec) {
 		});
 	});
 }
-function centroidTraces(display, spec) {
-	const groups = /* @__PURE__ */ new Map();
-	for (const centroid of display.centroids) groups.set(centroid.groupCanonical, [...groups.get(centroid.groupCanonical) ?? [], centroid]);
-	return [...groups.entries()].map(([canonical, centroids]) => trace(spec.plotDimension, {
-		mode: "markers+text",
-		name: `${centroids[0].groupDisplay} centroids`,
-		...coordinateFields(centroids.map((centroid) => centroid.coordinates), spec.plotDimension),
-		text: centroids.map((centroid) => centroid.timeDisplay),
-		customdata: centroids.map((centroid) => [centroid.participantCount]),
-		hovertemplate: "%{text}<br>n=%{customdata[0]}<extra></extra>",
-		marker: {
-			symbol: "square",
-			color: groupColor(canonical),
-			size: spec.style.pointSize + 4,
-			line: {
-				color: "#ffffff",
-				width: 1.5
-			}
-		}
-	}, {
-		role: "centroid",
-		groupCanonical: canonical
-	}));
-}
 function axisTraces(display, spec) {
-	const coordinates = [
-		...display.points.map((point) => point.coordinates),
-		...display.nodes.map((node) => node.coordinates),
-		...display.centroids.map((centroid) => centroid.coordinates)
-	];
+	const coordinates = [...display.points.map((point) => point.coordinates), ...display.nodes.map((node) => node.coordinates)];
 	const extent = Math.max(1, ...coordinates.flatMap((point) => point.map(Math.abs))) * 1.08;
 	const output = [];
 	for (let axis = 0; axis < 3; axis += 1) {
@@ -44915,7 +44704,6 @@ function compilePlotlySpec(result, displaySpec) {
 	if (displaySpec.traces.network) data.push(...edgeTraces(display, displaySpec));
 	if (displaySpec.traces.points) data.push(...pointTraces(display, displaySpec));
 	if (displaySpec.traces.nodes) data.push(nodeTrace(display, displaySpec));
-	if (displaySpec.traces.centroids) data.push(...centroidTraces(display, displaySpec));
 	const axis = (title) => ({
 		title,
 		showgrid: displaySpec.showGrid,
