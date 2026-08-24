@@ -4,12 +4,12 @@
   "package": {
     "name": "j-3dena",
     "version": "0.2.0-implemented-unverified.0",
-    "buildId": "3a62587f5b9973a4ce16b2c3073bb83bc8a28cd7-dirty"
+    "buildId": "a6f660351b1ecf48b5cd82a6bb6b18f6000f7318"
   },
   "source": {
-    "repositoryHead": "3a62587f5b9973a4ce16b2c3073bb83bc8a28cd7",
-    "dirtyWorktree": true,
-    "generatedAt": "2026-08-24T01:47:07.000Z"
+    "repositoryHead": "a6f660351b1ecf48b5cd82a6bb6b18f6000f7318",
+    "dirtyWorktree": false,
+    "generatedAt": "2026-08-24T01:49:29.000Z"
   },
   "contracts": {
     "analysis": "3dena.analysis-task.v1",
@@ -45,8 +45,8 @@
     "runtimeNpmPeers": 1
   },
   "artifacts": {
-    "indexJsSha256": "a74eb1f2ac1766c30131cc5ebd3e975a88f277d818ef9a3f190cdf9ab00b60bb",
-    "indexJsMapSha256": "26671540233fd47446769a44e62ff8c3678775d20bc9bbed0965bc8a61f3fafa",
+    "indexJsSha256": "2c10d160fae83c2dda15c68f1853039f2d15901db479f07c450d3c1bff051cc3",
+    "indexJsMapSha256": "c9edfb50d7b1d7a1bdae6729d91759f61da5cc1cc1d9c8eca6460df98457be77",
     "schemaIndexSha256": "2f5550cf0fc076654a3086039d54342b42cc55ac2380e1418ddf2ed6b88f499a"
   }
 }
