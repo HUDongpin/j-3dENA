@@ -6,7 +6,7 @@ import type { PreparedSpaceResult } from "./prepared-types.js";
 import { type StatisticsTaskResultV1 } from "./task-executor.js";
 import type { TrajectoryBootstrapResult, TrajectoryComparisonResult, TrajectoryPathStatistics } from "./trajectory-statistics.js";
 import type { AnalysisResult } from "./types.js";
-import { type LongitudinalAnalysisBundleV2, type TrajectoryPlotlySpecV2 } from "./longitudinal-v2.js";
+import { type LongitudinalAnalysisBundleV2, type TrajectoryDisplaySpecV2 } from "./longitudinal-v2.js";
 export interface AnalysisExportPortfolioV1 {
     schemaVersion: "3dena.analysis-export-portfolio.v1";
     analysis: AnalysisResult | PreparedSpaceResult;
@@ -49,11 +49,10 @@ export interface ExportBundleV1 {
 }
 export interface CreateLongitudinalExportBundleOptionsV2 {
     /**
-     * Presenter spec shown to the researcher. Aggregate exports omit its
-     * participant and individual-path traces unless participant export is
-     * explicitly enabled.
+     * Display-only inputs used by the package to compile the exported presenter
+     * spec. Caller-supplied Plotly payloads are never accepted into the bundle.
      */
-    plotlySpec: TrajectoryPlotlySpecV2;
+    displaySpec: TrajectoryDisplaySpecV2;
     /** Participant identifiers and histories are omitted unless the researcher explicitly opts in. */
     includeParticipantLevel?: boolean;
     fileName?: string;
