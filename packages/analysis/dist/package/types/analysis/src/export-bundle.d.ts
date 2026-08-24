@@ -48,7 +48,11 @@ export interface ExportBundleV1 {
     manifest: ExportManifestV1;
 }
 export interface CreateLongitudinalExportBundleOptionsV2 {
-    /** Exact presenter spec shown to the researcher; it remains separate from the scientific envelope. */
+    /**
+     * Presenter spec shown to the researcher. Aggregate exports omit its
+     * participant and individual-path traces unless participant export is
+     * explicitly enabled.
+     */
     plotlySpec: TrajectoryPlotlySpecV2;
     /** Participant identifiers and histories are omitted unless the researcher explicitly opts in. */
     includeParticipantLevel?: boolean;
