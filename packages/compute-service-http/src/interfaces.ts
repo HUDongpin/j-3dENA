@@ -87,6 +87,11 @@ export interface ComputeHttpReadinessProbe {
   check(): Promise<boolean>;
 }
 
+export interface ComputeHttpDeletionLifecycleProbe {
+  capacityReleased(taskId: string): Promise<boolean>;
+  terminationObserved(taskId: string): Promise<boolean>;
+}
+
 export type ComputeHttpRateLimitClassV1 =
   | "dataset-upload"
   | "dataset-mutation"
@@ -135,4 +140,5 @@ export interface ComputeHttpRouterInfrastructure {
   readonly rateLimiter: ComputeHttpRateLimiter;
   readonly datasetWorkflow?: ComputeHttpDatasetWorkflowService;
   readonly sourceResults?: ComputeHttpSourceResultResolver;
+  readonly deletionLifecycle?: ComputeHttpDeletionLifecycleProbe;
 }

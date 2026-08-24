@@ -491,6 +491,7 @@ function aggregateTrajectoryEnvelope(bundle: LongitudinalAnalysisBundleV2) {
       ...structuredClone(entry),
       result: { ...structuredClone(entry.result), base: redactPath(structuredClone(entry.result.base)) },
     })),
+    codeGeometry: structuredClone(bundle.codeGeometry),
     networkOverlays: structuredClone(bundle.networkOverlays),
     diagnostics: structuredClone(bundle.diagnostics),
     execution: structuredClone(bundle.execution),
@@ -569,7 +570,9 @@ function longitudinalMetadataEntry(bundle: LongitudinalAnalysisBundleV2): Pendin
     ["estimand", "contract", stableJson(bundle.runSpec.estimand)],
     ["dimensions", "selected", stableJson(bundle.model.selectedDimensions)],
     ["dimensions", "full_rotation", stableJson(bundle.model.fullRotationDimensions)],
+    ["codes", "fitted_geometry", stableJson(bundle.codeGeometry)],
     ["time", "ordered_periods", stableJson(bundle.runSpec.orderedPeriods)],
+    ["binding", "request_hash", bundle.identity.requestHash],
     ["execution", "target", bundle.execution.target],
     ["execution", "evidence_status", bundle.execution.evidenceStatus],
   ];
@@ -661,7 +664,7 @@ async function createLongitudinalExportBundleV2(
     longitudinalPathEntry(bundle),
     longitudinalMetadataEntry(bundle),
     longitudinalInferenceEntry(bundle),
-    longitudinalBootstrapEntry(bundle),
+    ...(bundle.bootstrap.length > 0 ? [longitudinalBootstrapEntry(bundle)] : []),
     json("plotly-spec.json", options.plotlySpec),
   ];
   if (participantLevelIncluded) pending.push(longitudinalParticipantEntry(bundle));

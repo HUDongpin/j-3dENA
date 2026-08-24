@@ -1,8 +1,12 @@
-export interface MigrationConfigV1 {
+export interface MigrationEntryConfigV2 {
+  readonly path: string;
+  readonly sha256: string;
+  readonly version: string;
+}
+
+export interface MigrationConfigV2 {
   readonly databaseUrlEnv: string;
-  readonly migrationPath: string;
-  readonly migrationSha256: string;
-  readonly migrationVersion: string;
+  readonly migrations: readonly MigrationEntryConfigV2[];
 }
 
 export interface MigrationClientV1 {
@@ -12,12 +16,17 @@ export interface MigrationClientV1 {
 
 export type MigrationConnectorV1 = (connectionString: string) => Promise<MigrationClientV1>;
 
+export function migrationManifestSha256(
+  migrations: readonly Pick<MigrationEntryConfigV2, "version" | "sha256">[],
+): string;
+
 export function loadMigrationConfig(
   path: string,
   environment?: Readonly<Record<string, string | undefined>>,
 ): Promise<Readonly<{
-  config: MigrationConfigV1;
-  bytes: Uint8Array;
+  config: MigrationConfigV2;
+  migrations: readonly (MigrationEntryConfigV2 & { readonly bytes: Uint8Array })[];
+  migrationManifestSha256: string;
   connectionString: string;
 }>>;
 

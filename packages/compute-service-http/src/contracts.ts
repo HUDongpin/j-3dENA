@@ -13,6 +13,10 @@ export const COMPUTE_HTTP_EXECUTION_INPUT_VERSION =
   "3dena.compute-scientific-stored-input.v1" as const;
 export const COMPUTE_HTTP_CONTRACT_VERSION = "3dena.compute-http.v1" as const;
 
+export type ComputeHttpTaskKindV1 =
+  | AnalysisTaskV1["kind"]
+  | "longitudinal-analysis-v2";
+
 export interface ReservedDatasetV1 {
   readonly sha256: string;
   readonly byteLength: number;
@@ -42,11 +46,14 @@ export interface ComputeHttpJobRecordV1 {
   /** Successful ENA job whose service-owned result authorizes this derived job. */
   readonly sourceJobId?: string;
   readonly sourceResultHash?: string;
+  /** Exact immutable dedicated longitudinal worker input receipt. */
+  readonly longitudinalInputSha256?: string;
+  readonly longitudinalInputByteLength?: number;
   readonly createdAtMs: number;
   readonly updatedAtMs: number;
   readonly expiresAtMs: number;
   readonly owner?: TaskOwnerV1;
-  readonly taskKind?: AnalysisTaskV1["kind"];
+  readonly taskKind?: ComputeHttpTaskKindV1;
   readonly coreTaskId?: string;
   readonly executionObjectKey?: string;
   readonly executeIdempotencyHash?: string;
@@ -55,6 +62,10 @@ export interface ComputeHttpJobRecordV1 {
   readonly deleteIdempotencyHash?: string;
   readonly deleteRequestedAtMs?: number;
   readonly deleteCancelled?: boolean;
+  /** Monotonic: true when an execution may have owned distributed capacity. */
+  readonly deleteTerminationRequired?: boolean;
+  /** Monotonic: true once any durable capacity slot is observed. */
+  readonly deleteCapacityReserved?: boolean;
 }
 
 export interface ComputeExecutionInputV1 {

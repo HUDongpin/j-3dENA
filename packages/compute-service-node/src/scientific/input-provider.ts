@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { ANALYSIS_CONTRACT_VERSION_V1 } from "@3dena/analysis";
 import type { ProcessLaunchContextV1 } from "@3dena/compute-service-core";
 
 import {
@@ -8,20 +9,40 @@ import {
   SCIENTIFIC_EXECUTION_INPUT_VERSION,
   SCIENTIFIC_INPUT_PROVIDER_VERSION,
   SCIENTIFIC_JSON_INPUT_PROVIDER_OPTIONS_VERSION,
+  SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION,
+  SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2,
+  SCIENTIFIC_STORED_LONGITUDINAL_INPUT_VERSION,
   SCIENTIFIC_STORED_INPUT_VERSION,
   type ScientificExecutionInputV1,
   type ScientificInputProviderV1,
   type ScientificJsonInputProviderOptionsV1,
+  type ScientificLongitudinalExecutionInputV2,
+  type ScientificStoredLongitudinalInputV2,
+  type ScientificWorkerExecutionInput,
 } from "./contracts";
 import { scientificWorkerError } from "./errors";
 import {
   assertScientificExecutionInput,
+  bindAndHashPersistentLongitudinalRequestV2,
   hasExactKeys,
   isRecord,
 } from "./validation";
 
 function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+function storedAnalysisOwnerMatches(
+  value: unknown,
+  context: ProcessLaunchContextV1,
+): boolean {
+  return isRecord(value)
+    && hasExactKeys(value, ["contractVersion", "datasetHash", "specHash", "runId", "taskId"])
+    && value.contractVersion === ANALYSIS_CONTRACT_VERSION_V1
+    && value.datasetHash === context.owner.datasetHash
+    && value.specHash === context.owner.specHash
+    && value.runId === context.owner.runId
+    && value.taskId === context.owner.taskId;
 }
 
 export class JsonObjectStoreScientificInputProvider
@@ -60,7 +81,7 @@ export class JsonObjectStoreScientificInputProvider
   async load(
     context: ProcessLaunchContextV1,
     signal: AbortSignal,
-  ): Promise<ScientificExecutionInputV1> {
+  ): Promise<ScientificWorkerExecutionInput> {
     if (signal.aborted) scientificWorkerError("SESSION_ABORTED");
     const expected = context.request.input;
     if (expected.byteLength > this.#maxInputBytes) {
@@ -95,13 +116,43 @@ export class JsonObjectStoreScientificInputProvider
     } catch {
       scientificWorkerError("INVALID_EXECUTION_INPUT");
     }
-    if (
-      !isRecord(parsed) ||
-      !hasExactKeys(parsed, ["version", "dataset", "task"]) ||
-      parsed.version !== SCIENTIFIC_STORED_INPUT_VERSION
-    ) {
+    if (!isRecord(parsed)) {
       scientificWorkerError("INVALID_EXECUTION_INPUT");
     }
+    if (parsed.version === SCIENTIFIC_STORED_LONGITUDINAL_INPUT_VERSION) {
+      if (
+        !hasExactKeys(parsed, [
+          "version",
+          "kind",
+          "owner",
+          "deadlineAtMs",
+          "request",
+        ]) ||
+        parsed.kind !== SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2 ||
+        !storedAnalysisOwnerMatches(parsed.owner, context)
+      ) scientificWorkerError("INVALID_EXECUTION_INPUT");
+      const stored = parsed as unknown as ScientificStoredLongitudinalInputV2;
+      const bound = await bindAndHashPersistentLongitudinalRequestV2(stored.request);
+      const execution: ScientificLongitudinalExecutionInputV2 = {
+        version: SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION,
+        kind: SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2,
+        source: {
+          key: expected.key,
+          sha256: expected.sha256,
+          byteLength: expected.byteLength,
+        },
+        owner: { ...context.owner },
+        deadlineAtMs: stored.deadlineAtMs,
+        requestHash: bound.requestHash,
+        request: bound.request,
+      };
+      assertScientificExecutionInput(execution, context);
+      return structuredClone(execution);
+    }
+    if (
+      !hasExactKeys(parsed, ["version", "dataset", "task"]) ||
+      parsed.version !== SCIENTIFIC_STORED_INPUT_VERSION
+    ) scientificWorkerError("INVALID_EXECUTION_INPUT");
     const execution: ScientificExecutionInputV1 = {
       version: SCIENTIFIC_EXECUTION_INPUT_VERSION,
       source: {

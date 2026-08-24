@@ -20,23 +20,33 @@ import {
   type ComputeHttpProgressEventInput,
   type HttpRepositoryCompareAndSetResult,
   type HttpRepositoryCreateResult,
+  type ComputeHttpDeletionLifecycleProbe,
 } from "@3dena/compute-service-http";
 
 import {
+  EXTERNAL_TERMINATION_OBSERVATION_VERSION,
   PERSISTENT_LEASE_CLAIM_VERSION,
-  RECOVERY_RECEIPT_VERSION,
+  RECOVERY_RECEIPT_VERSION_V2,
+  TERMINATION_RECONCILIATION_RECEIPT_VERSION,
+  type ExternalTerminationObservationV1,
   type PersistentLeaseClaimV1,
   type PersistentLeaseCoordinatorV1,
   type RecoveryDisposition,
-  type RecoveryReceiptV1,
+  type RecoveryReceiptV2,
+  type TerminationReconciliationReceiptV1,
 } from "./contracts";
 import { persistentError } from "./errors";
 import {
+  canonicalStringify,
   cloneFrozen,
   hasExactKeys,
   isRecord,
   OPAQUE_ID,
 } from "./util";
+import type {
+  PersistentTemporalDueSourceV1,
+  PersistentTemporalWorkItemV1,
+} from "./temporal-sweeper";
 
 export interface SqlQueryResult<Row extends Record<string, unknown>> {
   readonly rows: readonly Row[];
@@ -114,7 +124,7 @@ export class PostgresAuthoritativeClock implements ComputeClock {
 
   async synchronize(): Promise<number> {
     const result = await this.#database.query<TimeRow>(
-      "SELECT extract(epoch FROM clock_timestamp()) * 1000 AS now_ms",
+      "SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint AS now_ms",
     );
     this.#serverNowMs = safeInteger(result.rows[0]?.now_ms);
     return this.#serverNowMs;
@@ -123,6 +133,197 @@ export class PostgresAuthoritativeClock implements ComputeClock {
   now(): number {
     if (this.#serverNowMs === null) persistentError("DATABASE_FAILURE");
     return this.#serverNowMs;
+  }
+}
+
+export class PostgresDeletionLifecycleProbe
+  implements ComputeHttpDeletionLifecycleProbe
+{
+  constructor(private readonly database: SqlQueryExecutor) {}
+
+  async capacityReleased(taskId: string): Promise<boolean> {
+    if (!OPAQUE_ID.test(taskId)) persistentError("CONFIGURATION_INVALID");
+    const result = await this.database.query<{
+      capacity_released: unknown;
+      [key: string]: unknown;
+    }>(
+      `SELECT NOT EXISTS (
+         SELECT 1 FROM compute_capacity_slots WHERE task_id = $1
+       ) AS capacity_released`,
+      [taskId],
+    );
+    const value = result.rows[0]?.capacity_released;
+    if (typeof value !== "boolean") persistentError("DATABASE_FAILURE");
+    return value;
+  }
+
+  async terminationObserved(taskId: string): Promise<boolean> {
+    if (!OPAQUE_ID.test(taskId)) persistentError("CONFIGURATION_INVALID");
+    const result = await this.database.query<{
+      termination_observed: unknown;
+      [key: string]: unknown;
+    }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM compute_jobs AS j
+         JOIN compute_termination_reconciliation_receipts AS receipt
+           ON receipt.task_ref = j.task_ref
+         WHERE j.task_id = $1
+           AND receipt.receipt->>'terminationObserved' = 'true'
+       ) AS termination_observed`,
+      [taskId],
+    );
+    const value = result.rows[0]?.termination_observed;
+    if (typeof value !== "boolean") persistentError("DATABASE_FAILURE");
+    return value;
+  }
+}
+
+/**
+ * Selects a bounded temporal work page using PostgreSQL server time. A
+ * database-backed singleton lease prevents multiple API runtimes from
+ * repeatedly selecting the same page while the previous holder is healthy;
+ * row locks isolate concurrent maintenance statements without requiring a
+ * host-local clock or a full-table repository list.
+ */
+export class PostgresTemporalDueSource implements PersistentTemporalDueSourceV1 {
+  readonly #database: PostgresDatabase;
+  readonly #holderId: string;
+  readonly #leaseDurationMs: number;
+  readonly #batchSize: number;
+
+  constructor(
+    database: PostgresDatabase,
+    input: Readonly<{
+      holderId: string;
+      leaseDurationMs?: number;
+      batchSize?: number;
+    }>,
+  ) {
+    if (!(database instanceof PostgresDatabase) || !OPAQUE_ID.test(input.holderId)) {
+      persistentError("CONFIGURATION_INVALID");
+    }
+    this.#leaseDurationMs = input.leaseDurationMs ?? 5_000;
+    this.#batchSize = input.batchSize ?? 100;
+    if (!Number.isSafeInteger(this.#leaseDurationMs) || this.#leaseDurationMs < 1_000 ||
+        this.#leaseDurationMs > 60_000 || !Number.isSafeInteger(this.#batchSize) ||
+        this.#batchSize < 1 || this.#batchSize > 500) {
+      persistentError("CONFIGURATION_INVALID");
+    }
+    this.#database = database;
+    this.#holderId = input.holderId;
+  }
+
+  async claimDue(): Promise<readonly PersistentTemporalWorkItemV1[]> {
+    return this.#database.transaction(async (sql) => {
+      const lease = await sql.query<{ lease_epoch: unknown; [key: string]: unknown }>(
+        `INSERT INTO compute_scheduler_leases
+           (lease_name, holder_id, lease_epoch, expires_at, updated_at)
+         VALUES ('temporal-control-v1', $1, 1,
+           clock_timestamp() + ($2::bigint * interval '1 millisecond'),
+           clock_timestamp())
+         ON CONFLICT (lease_name) DO UPDATE SET
+           holder_id = EXCLUDED.holder_id,
+           lease_epoch = compute_scheduler_leases.lease_epoch + 1,
+           expires_at = EXCLUDED.expires_at,
+           updated_at = clock_timestamp()
+         WHERE compute_scheduler_leases.holder_id = EXCLUDED.holder_id
+            OR compute_scheduler_leases.expires_at <= clock_timestamp()
+         RETURNING lease_epoch`,
+        [this.#holderId, this.#leaseDurationMs],
+      );
+      if (lease.rowCount === 0) return Object.freeze([]);
+      if (lease.rowCount !== 1) persistentError("DATABASE_FAILURE");
+      const leaseEpoch = safeInteger(lease.rows[0]?.lease_epoch);
+
+      // Keep both control planes live under a permanently backlogged peer.
+      // A one-item page alternates by durable lease epoch; larger pages reserve
+      // a fixed slice for HTTP privacy cleanup instead of using only leftover
+      // capacity after core jobs.
+      const taskLimit = this.#batchSize === 1
+        ? (leaseEpoch % 2 === 0 ? 1 : 0)
+        : Math.ceil(this.#batchSize / 2);
+      const httpLimit = this.#batchSize - taskLimit;
+
+      const tasks = taskLimit === 0
+        ? { rows: [], rowCount: 0 }
+        : await sql.query<{ task_id: unknown; [key: string]: unknown }>(
+        `SELECT j.task_id FROM compute_jobs AS j
+         WHERE (
+           (j.state IN ('queued','leased','starting','running','cancelling')
+             AND j.deadline_at <= clock_timestamp())
+           OR (j.state <> 'deleted' AND j.expires_at <= clock_timestamp())
+           OR (j.state = 'deleting' AND NOT EXISTS (
+             SELECT 1 FROM compute_capacity_slots AS s WHERE s.task_id = j.task_id
+           ))
+         )
+         ORDER BY LEAST(j.deadline_at, j.expires_at), j.task_id
+         FOR UPDATE OF j SKIP LOCKED
+         LIMIT $1`,
+        [taskLimit],
+      );
+      const work: PersistentTemporalWorkItemV1[] = tasks.rows.map((row) => {
+        if (typeof row.task_id !== "string" || !OPAQUE_ID.test(row.task_id)) {
+          persistentError("DATABASE_FAILURE");
+        }
+        return Object.freeze({ kind: "task" as const, id: row.task_id });
+      });
+      if (httpLimit > 0) {
+        const deletions = await sql.query<{
+          job_id: unknown;
+          work_kind: unknown;
+          [key: string]: unknown;
+        }>(
+          `SELECT h.job_id,
+             CASE
+               WHEN h.record ? 'deleteRequestedAtMs' OR NOT EXISTS (
+                 SELECT 1 FROM compute_jobs AS core
+                 WHERE core.task_id = h.record->>'coreTaskId'
+               ) THEN 'http-deletion'
+               ELSE 'http-reconcile'
+             END AS work_kind
+           FROM compute_http_jobs AS h
+           WHERE NOT (h.record ? 'inputDeletedAtMs')
+             AND (
+               h.record ? 'deleteRequestedAtMs'
+               OR (
+                 h.record->>'taskKind' = 'longitudinal-analysis-v2'
+                 AND h.record ? 'coreTaskId'
+                 AND (
+                   (
+                     jsonb_typeof(h.record->'createdAtMs') = 'number'
+                     AND (h.record->>'createdAtMs')::bigint + 60000 <=
+                       floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint
+                     AND NOT EXISTS (
+                       SELECT 1 FROM compute_jobs AS core
+                       WHERE core.task_id = h.record->>'coreTaskId'
+                     )
+                   )
+                   OR EXISTS (
+                     SELECT 1 FROM compute_jobs AS core
+                     WHERE core.task_id = h.record->>'coreTaskId'
+                       AND core.state IN (
+                         'succeeded','failed','cancelled','timed_out','expired','deleted'
+                       )
+                   )
+                 )
+               )
+             )
+           ORDER BY h.updated_at, h.job_id
+           FOR UPDATE OF h SKIP LOCKED
+           LIMIT $1`,
+          [httpLimit],
+        );
+        for (const row of deletions.rows) {
+          if (typeof row.job_id !== "string" || !OPAQUE_ID.test(row.job_id) ||
+              (row.work_kind !== "http-deletion" &&
+                row.work_kind !== "http-reconcile")) {
+            persistentError("DATABASE_FAILURE");
+          }
+          work.push(Object.freeze({ kind: row.work_kind, id: row.job_id }));
+        }
+      }
+      return Object.freeze(work);
+    });
   }
 }
 
@@ -142,6 +343,7 @@ interface SlotRow {
   readonly task_id?: string | null;
   readonly lease_epoch?: string | number | null;
   readonly record?: unknown;
+  readonly quarantined_at?: unknown;
   [key: string]: unknown;
 }
 
@@ -196,6 +398,48 @@ function dateFromMs(milliseconds: number): string {
     persistentError("DATABASE_CONFLICT");
   }
   return new Date(milliseconds).toISOString();
+}
+
+async function persistExactTerminationReceipt(
+  sql: SqlQueryExecutor,
+  receipt: TerminationReconciliationReceiptV1,
+  providerReceiptId: string | null,
+  observation: ExternalTerminationObservationV1 | null,
+): Promise<void> {
+  const inserted = await sql.query(
+    `INSERT INTO compute_termination_reconciliation_receipts
+       (task_ref, lease_epoch, fencing_epoch, reconciled_at, source,
+         provider_receipt_id, observation, receipt)
+     VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb)
+     ON CONFLICT DO NOTHING`,
+    [receipt.taskRef, receipt.leaseEpoch, receipt.fencingEpoch,
+      dateFromMs(receipt.reconciledAtMs), receipt.source,
+      providerReceiptId, observation === null ? null : JSON.stringify(observation),
+      JSON.stringify(receipt)],
+  );
+  if (inserted.rowCount === 1) return;
+  if (inserted.rowCount !== 0) persistentError("RECOVERY_CONFLICT");
+  const existing = await sql.query<{
+    source: unknown;
+    provider_receipt_id: unknown;
+    observation: unknown;
+    receipt: unknown;
+    [key: string]: unknown;
+  }>(
+    `SELECT source, provider_receipt_id, observation, receipt
+     FROM compute_termination_reconciliation_receipts
+     WHERE task_ref = $1 AND lease_epoch = $2 AND fencing_epoch = $3
+     FOR UPDATE`,
+    [receipt.taskRef, receipt.leaseEpoch, receipt.fencingEpoch],
+  );
+  const observed = existing.rows[0];
+  if (existing.rowCount !== 1 || observed === undefined ||
+      observed.source !== receipt.source ||
+      observed.provider_receipt_id !== providerReceiptId ||
+      canonicalStringify(observed.observation) !== canonicalStringify(observation) ||
+      canonicalStringify(observed.receipt) !== canonicalStringify(receipt)) {
+    persistentError("RECOVERY_CONFLICT");
+  }
 }
 
 export class PostgresComputeTaskRepository implements ComputeTaskRepository {
@@ -275,6 +519,15 @@ export class PostgresComputeTaskRepository implements ComputeTaskRepository {
            updated_at = $6, deadline_at = $7, expires_at = $8, record = $9::jsonb
        WHERE task_id = $1 AND revision = $2
          AND task_ref = $10 AND request_fingerprint = $11
+         AND (
+           claim_fencing_epoch IS NULL OR EXISTS (
+             SELECT 1 FROM compute_capacity_slots fenced
+             WHERE fenced.slot_number = compute_jobs.claim_slot_number
+               AND fenced.task_id = compute_jobs.task_id
+               AND fenced.fencing_epoch = compute_jobs.claim_fencing_epoch
+               AND fenced.lease_epoch = compute_jobs.lease_epoch
+           )
+         )
        RETURNING record`,
       [
         taskId,
@@ -563,7 +816,8 @@ export class PostgresDistributedLeaseCoordinator
       await sql.query(
         `INSERT INTO compute_capacity_slots (slot_number, enabled)
          SELECT value, true FROM generate_series(1, $1::integer) AS value
-         ON CONFLICT (slot_number) DO UPDATE SET enabled = true`,
+         ON CONFLICT (slot_number) DO UPDATE SET enabled =
+           (compute_capacity_slots.quarantined_at IS NULL)`,
         [limit],
       );
       const disabled = await sql.query(
@@ -597,7 +851,7 @@ export class PostgresDistributedLeaseCoordinator
       const nowMs = safeInteger(time.rows[0]?.now_ms);
       const slotResult = await sql.query<SlotRow>(
         `SELECT slot_number, fencing_epoch FROM compute_capacity_slots
-         WHERE enabled = true AND (holder_id IS NULL OR expires_at <= clock_timestamp())
+         WHERE enabled = true AND holder_id IS NULL
          ORDER BY slot_number FOR UPDATE SKIP LOCKED LIMIT 1`,
       );
       const slot = slotResult.rows[0];
@@ -636,18 +890,23 @@ export class PostgresDistributedLeaseCoordinator
         updatedAtMs: nowMs,
       });
       const fencingEpoch = safeInteger(slot.fencing_epoch) + 1;
-      await sql.query(
+      const jobUpdate = await sql.query(
         `UPDATE compute_jobs SET state = 'leased', revision = $2, lease_epoch = $3,
-           updated_at = $4, record = $5::jsonb WHERE task_id = $1`,
-        [taskId, next.revision, next.leaseEpoch, dateFromMs(nowMs), JSON.stringify(next)],
+           updated_at = $4, record = $5::jsonb, claim_slot_number = $6,
+           claim_fencing_epoch = $7 WHERE task_id = $1`,
+        [taskId, next.revision, next.leaseEpoch, dateFromMs(nowMs),
+          JSON.stringify(next), slot.slot_number, fencingEpoch],
       );
-      await sql.query(
+      const slotUpdate = await sql.query(
         `UPDATE compute_capacity_slots SET fencing_epoch = $2, holder_id = $3,
            task_id = $4, lease_id = $5, lease_epoch = $6,
            heartbeat_at = $7, expires_at = $8 WHERE slot_number = $1`,
         [slot.slot_number, fencingEpoch, input.holderId, taskId, input.leaseId,
           lease.epoch, dateFromMs(nowMs), dateFromMs(lease.expiresAtMs)],
       );
+      if (jobUpdate.rowCount !== 1 || slotUpdate.rowCount !== 1) {
+        persistentError("RECOVERY_CONFLICT");
+      }
       return Object.freeze({
         version: PERSISTENT_LEASE_CLAIM_VERSION,
         slot: slot.slot_number,
@@ -703,49 +962,261 @@ export class PostgresDistributedLeaseCoordinator
       if (expiresAtMs <= nowMs) persistentError("RECOVERY_CONFLICT");
       const lease = cloneFrozen({ ...record.lease, expiresAtMs });
       const next = cloneFrozen({ ...record, lease, revision: record.revision + 1, updatedAtMs: nowMs });
-      await sql.query(
+      const jobUpdate = await sql.query(
         `UPDATE compute_jobs SET revision = $2, updated_at = $3, record = $4::jsonb
          WHERE task_id = $1`,
         [claim.taskId, next.revision, dateFromMs(nowMs), JSON.stringify(next)],
       );
-      await sql.query(
+      const slotUpdate = await sql.query(
         `UPDATE compute_capacity_slots SET heartbeat_at = $2, expires_at = $3
          WHERE slot_number = $1`,
         [claim.slot, dateFromMs(nowMs), dateFromMs(expiresAtMs)],
       );
+      if (jobUpdate.rowCount !== 1 || slotUpdate.rowCount !== 1) {
+        persistentError("RECOVERY_CONFLICT");
+      }
       return Object.freeze({ ...claim, lease, record: next });
     });
   }
 
   async release(claim: PersistentLeaseClaimV1): Promise<boolean> {
-    const result = await this.#database.query(
-      `UPDATE compute_capacity_slots
-       SET holder_id = NULL, task_id = NULL, lease_id = NULL, lease_epoch = NULL,
+    return this.#database.transaction(async (sql) => {
+      const locked = await sql.query(
+        `SELECT slot_number FROM compute_capacity_slots
+         WHERE slot_number = $1 AND fencing_epoch = $2 AND holder_id = $3
+           AND task_id = $4 AND lease_id = $5 AND lease_epoch = $6
+         FOR UPDATE`,
+        [claim.slot, claim.fencingEpoch, claim.holderId, claim.taskId,
+          claim.lease.leaseId, claim.lease.epoch],
+      );
+      if (locked.rowCount === 0) return false;
+      if (locked.rowCount !== 1) persistentError("DATABASE_FAILURE");
+      const job = await sql.query(
+        `UPDATE compute_jobs SET claim_slot_number = NULL,
+           claim_fencing_epoch = NULL
+         WHERE task_id = $1 AND claim_slot_number = $2
+           AND claim_fencing_epoch = $3 AND lease_epoch = $4`,
+        [claim.taskId, claim.slot, claim.fencingEpoch, claim.lease.epoch],
+      );
+      const slot = await sql.query(
+        `UPDATE compute_capacity_slots
+         SET holder_id = NULL, task_id = NULL, lease_id = NULL, lease_epoch = NULL,
            heartbeat_at = NULL, expires_at = NULL
-       WHERE slot_number = $1 AND fencing_epoch = $2 AND holder_id = $3
-         AND task_id = $4 AND lease_id = $5 AND lease_epoch = $6`,
-      [claim.slot, claim.fencingEpoch, claim.holderId, claim.taskId,
-        claim.lease.leaseId, claim.lease.epoch],
-    );
-    return result.rowCount === 1;
+         WHERE slot_number = $1 AND fencing_epoch = $2 AND holder_id = $3
+           AND task_id = $4 AND lease_id = $5 AND lease_epoch = $6`,
+        [claim.slot, claim.fencingEpoch, claim.holderId, claim.taskId,
+          claim.lease.leaseId, claim.lease.epoch],
+      );
+      if (job.rowCount !== 1 || slot.rowCount !== 1) persistentError("RECOVERY_CONFLICT");
+      return true;
+    });
   }
 
-  async recoverExpiredClaims(): Promise<readonly RecoveryReceiptV1[]> {
+  async reconcileObservedTermination(
+    claim: PersistentLeaseClaimV1,
+  ): Promise<boolean> {
+    return this.#database.transaction(async (sql) => {
+      const locked = await sql.query<SlotRow>(
+        `SELECT s.slot_number, s.fencing_epoch, s.task_id, s.lease_epoch, j.record
+         FROM compute_capacity_slots s
+         JOIN compute_jobs j ON j.task_id = s.task_id
+         WHERE s.slot_number = $1 AND s.fencing_epoch = $2
+           AND s.holder_id = $3 AND s.task_id = $4
+           AND s.lease_id = $5 AND s.lease_epoch = $6
+         FOR UPDATE OF s, j`,
+        [claim.slot, claim.fencingEpoch, claim.holderId, claim.taskId,
+          claim.lease.leaseId, claim.lease.epoch],
+      );
+      const row = locked.rows[0];
+      if (row === undefined) return false;
+      assertCoreRecord(row.record);
+      if (row.record.execution !== undefined ||
+          !["succeeded", "failed", "cancelled", "timed_out", "expired", "deleting", "deleted"]
+            .includes(row.record.state)) {
+        persistentError("RECOVERY_CONFLICT");
+      }
+      const time = await sql.query<TimeRow>(
+        "SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint AS now_ms",
+      );
+      const reconciledAtMs = safeInteger(time.rows[0]?.now_ms);
+      const receipt: TerminationReconciliationReceiptV1 = Object.freeze({
+        version: TERMINATION_RECONCILIATION_RECEIPT_VERSION,
+        taskRef: row.record.taskRef,
+        leaseEpoch: claim.lease.epoch,
+        fencingEpoch: claim.fencingEpoch,
+        reconciledAtMs,
+        terminationObserved: true,
+        capacityReleased: true,
+        source: "owning-worker",
+      });
+      await persistExactTerminationReceipt(sql, receipt, null, null);
+      const job = await sql.query(
+        `UPDATE compute_jobs SET claim_slot_number = NULL,
+           claim_fencing_epoch = NULL
+         WHERE task_id = $1 AND claim_slot_number = $2
+           AND claim_fencing_epoch = $3 AND lease_epoch = $4`,
+        [claim.taskId, claim.slot, claim.fencingEpoch, claim.lease.epoch],
+      );
+      const slot = await sql.query(
+        `UPDATE compute_capacity_slots
+         SET holder_id = NULL, task_id = NULL, lease_id = NULL,
+           lease_epoch = NULL, heartbeat_at = NULL, expires_at = NULL
+         WHERE slot_number = $1 AND fencing_epoch = $2
+           AND holder_id = $3 AND task_id = $4`,
+        [claim.slot, claim.fencingEpoch, claim.holderId, claim.taskId],
+      );
+      if (job.rowCount !== 1 || slot.rowCount !== 1) {
+        persistentError("RECOVERY_CONFLICT");
+      }
+      return true;
+    });
+  }
+
+  async reconcileQuarantinedClaim(input: Readonly<{
+    slot: number;
+    recoveryFencingEpoch: number;
+    observation: ExternalTerminationObservationV1;
+  }>): Promise<TerminationReconciliationReceiptV1> {
+    if (!Number.isSafeInteger(input.slot) || input.slot < 1 ||
+        !Number.isSafeInteger(input.recoveryFencingEpoch) ||
+        input.recoveryFencingEpoch < 1 ||
+        input.observation.version !== EXTERNAL_TERMINATION_OBSERVATION_VERSION ||
+        !OPAQUE_ID.test(input.observation.taskId) ||
+        !OPAQUE_ID.test(input.observation.executionId) ||
+        (input.observation.childId !== null && !OPAQUE_ID.test(input.observation.childId)) ||
+        !Number.isSafeInteger(input.observation.observedAtMs) ||
+        input.observation.observedAtMs < 0 ||
+        !OPAQUE_ID.test(input.observation.providerReceiptId) ||
+        !["completed", "crashed", "terminated", "launch_rejected"]
+          .includes(input.observation.kind)) {
+      persistentError("CONFIGURATION_INVALID");
+    }
+    return this.#database.transaction(async (sql) => {
+      const isolatedEpoch = input.recoveryFencingEpoch + 1;
+      const locked = await sql.query<SlotRow>(
+        `SELECT s.slot_number, s.fencing_epoch, s.task_id, s.lease_epoch, j.record
+         FROM compute_capacity_slots s
+         JOIN compute_jobs j ON j.task_id = s.task_id
+         WHERE s.slot_number = $1 AND s.fencing_epoch = $2
+           AND s.task_id = $3 AND s.quarantined_at IS NOT NULL
+         FOR UPDATE OF s, j`,
+        [input.slot, isolatedEpoch, input.observation.taskId],
+      );
+      const row = locked.rows[0];
+      if (row === undefined) persistentError("RECOVERY_CONFLICT");
+      assertCoreRecord(row.record);
+      const execution = row.record.execution;
+      if (execution?.executionId !== input.observation.executionId ||
+          (input.observation.childId !== null &&
+            execution.childId !== input.observation.childId)) {
+        persistentError("RECOVERY_CONFLICT");
+      }
+      const mutable = withoutKeys(row.record as unknown as Record<string, unknown>, [
+        "lease", "execution", "pendingStopOutcome",
+      ]);
+      let target: ComputeJobState;
+      if (input.observation.observedAtMs >= row.record.request.expiresAtMs) {
+        target = "expired";
+        delete mutable.result;
+        delete mutable.failure;
+      } else if (input.observation.observedAtMs >= row.record.request.deadlineAtMs) {
+        target = "timed_out";
+        delete mutable.result;
+        delete mutable.failure;
+      } else if (row.record.pendingStopOutcome === "deleted") {
+        target = "deleting";
+        delete mutable.result;
+        delete mutable.failure;
+      } else if (row.record.pendingStopOutcome !== undefined &&
+          row.record.pendingStopOutcome !== "queued") {
+        target = row.record.pendingStopOutcome;
+        delete mutable.result;
+        if (target !== "failed") delete mutable.failure;
+      } else if (input.observation.kind === "completed" && row.record.result !== undefined) {
+        target = "succeeded";
+        delete mutable.failure;
+      } else if (input.observation.kind === "launch_rejected" ||
+          input.observation.kind === "crashed") {
+        target = "failed";
+        delete mutable.result;
+        mutable.failure = {
+          code: input.observation.kind === "launch_rejected"
+            ? "PROCESS_START_FAILED"
+            : "PROCESS_CRASHED",
+          atMs: input.observation.observedAtMs,
+        };
+      } else {
+        target = "queued";
+        delete mutable.result;
+        delete mutable.failure;
+      }
+      const next = cloneFrozen({
+        ...mutable,
+        state: target,
+        revision: row.record.revision + 1,
+        updatedAtMs: input.observation.observedAtMs,
+      }) as unknown as ComputeJobRecordV1;
+      assertCoreRecord(next);
+      const receipt: TerminationReconciliationReceiptV1 = Object.freeze({
+        version: TERMINATION_RECONCILIATION_RECEIPT_VERSION,
+        taskRef: row.record.taskRef,
+        leaseEpoch: safeInteger(row.lease_epoch),
+        fencingEpoch: isolatedEpoch,
+        reconciledAtMs: input.observation.observedAtMs,
+        terminationObserved: true,
+        capacityReleased: true,
+        source: "external-quarantine-reconcile",
+      });
+      await persistExactTerminationReceipt(
+        sql,
+        receipt,
+        input.observation.providerReceiptId,
+        input.observation,
+      );
+      const job = await sql.query(
+        `UPDATE compute_jobs SET state = $2, revision = $3, updated_at = $4,
+           record = $5::jsonb, claim_slot_number = NULL,
+           claim_fencing_epoch = NULL
+         WHERE task_id = $1 AND claim_slot_number = $6
+           AND claim_fencing_epoch = $7`,
+        [input.observation.taskId, next.state, next.revision,
+          dateFromMs(next.updatedAtMs), JSON.stringify(next), input.slot,
+          input.recoveryFencingEpoch],
+      );
+      const slot = await sql.query(
+        `UPDATE compute_capacity_slots SET enabled = true,
+           holder_id = NULL, task_id = NULL, lease_id = NULL,
+           lease_epoch = NULL, heartbeat_at = NULL, expires_at = NULL,
+           quarantined_at = NULL, quarantine_receipt = NULL
+         WHERE slot_number = $1 AND fencing_epoch = $2
+           AND task_id = $3 AND quarantined_at IS NOT NULL`,
+        [input.slot, isolatedEpoch, input.observation.taskId],
+      );
+      if (job.rowCount !== 1 || slot.rowCount !== 1) {
+        persistentError("RECOVERY_CONFLICT");
+      }
+      return receipt;
+    });
+  }
+
+  async recoverExpiredClaims(): Promise<readonly RecoveryReceiptV2[]> {
     return this.#database.transaction(async (sql) => {
       const time = await sql.query<TimeRow>(
         "SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint AS now_ms",
       );
       const nowMs = safeInteger(time.rows[0]?.now_ms);
       const slots = await sql.query<SlotRow>(
-        `SELECT s.slot_number, s.fencing_epoch, s.task_id, s.lease_epoch, j.record
+        `SELECT s.slot_number, s.fencing_epoch, s.task_id, s.lease_epoch,
+           s.quarantined_at, j.record
          FROM compute_capacity_slots s
          JOIN compute_jobs j ON j.task_id = s.task_id
-         WHERE s.holder_id IS NOT NULL AND s.expires_at <= clock_timestamp()
+         WHERE s.holder_id IS NOT NULL AND s.quarantined_at IS NULL
+           AND s.expires_at <= clock_timestamp()
          ORDER BY s.expires_at, s.slot_number
          FOR UPDATE OF s, j SKIP LOCKED LIMIT $1`,
         [this.#recoveryBatchSize],
       );
-      const receipts: RecoveryReceiptV1[] = [];
+      const receipts: RecoveryReceiptV2[] = [];
       for (const slot of slots.rows) {
         if (slot.task_id === undefined || slot.task_id === null || slot.record === undefined) {
           persistentError("DATABASE_FAILURE");
@@ -754,6 +1225,37 @@ export class PostgresDistributedLeaseCoordinator
         const previousEpoch = safeInteger(slot.lease_epoch);
         const fencingEpoch = safeInteger(slot.fencing_epoch);
         if (slot.record.lease?.epoch !== previousEpoch) persistentError("RECOVERY_CONFLICT");
+        if (slot.record.execution !== undefined ||
+            ["starting", "running", "cancelling"].includes(slot.record.state)) {
+          const receipt: RecoveryReceiptV2 = Object.freeze({
+            version: RECOVERY_RECEIPT_VERSION_V2,
+            taskRef: slot.record.taskRef,
+            previousLeaseEpoch: previousEpoch,
+            fencingEpoch,
+            disposition: "quarantined",
+            recoveredAtMs: nowMs,
+            terminationObserved: false,
+            capacityReleased: false,
+            isolated: true,
+          });
+          const quarantined = await sql.query(
+            `UPDATE compute_capacity_slots
+             SET enabled = false, fencing_epoch = fencing_epoch + 1,
+               quarantined_at = $2, quarantine_receipt = $3::jsonb
+             WHERE slot_number = $1 AND quarantined_at IS NULL`,
+            [slot.slot_number, dateFromMs(nowMs), JSON.stringify(receipt)],
+          );
+          if (quarantined.rowCount !== 1) persistentError("RECOVERY_CONFLICT");
+          await sql.query(
+            `INSERT INTO compute_recovery_receipts
+               (task_ref, previous_lease_epoch, fencing_epoch, recovered_at, disposition, receipt)
+             VALUES ($1,$2,$3,$4,$5,$6::jsonb) ON CONFLICT DO NOTHING`,
+            [receipt.taskRef, previousEpoch, fencingEpoch, dateFromMs(nowMs),
+              receipt.disposition, JSON.stringify(receipt)],
+          );
+          receipts.push(receipt);
+          continue;
+        }
         const target = recoveryState(slot.record, nowMs);
         const mutable = withoutKeys(slot.record as unknown as Record<string, unknown>, [
           "lease", "execution", "pendingStopOutcome",
@@ -767,24 +1269,60 @@ export class PostgresDistributedLeaseCoordinator
           updatedAtMs: nowMs,
         }) as unknown as ComputeJobRecordV1;
         assertCoreRecord(next);
-        await sql.query(
+        const jobUpdate = await sql.query(
           `UPDATE compute_jobs SET state = $2, revision = $3, updated_at = $4,
-             record = $5::jsonb WHERE task_id = $1`,
-          [slot.task_id, next.state, next.revision, dateFromMs(nowMs), JSON.stringify(next)],
+             record = $5::jsonb, claim_slot_number = NULL,
+             claim_fencing_epoch = NULL WHERE task_id = $1
+               AND claim_slot_number = $6 AND claim_fencing_epoch = $7
+               AND lease_epoch = $8`,
+          [slot.task_id, next.state, next.revision, dateFromMs(nowMs), JSON.stringify(next),
+            slot.slot_number, fencingEpoch, previousEpoch],
         );
-        await sql.query(
+        const slotUpdate = await sql.query(
           `UPDATE compute_capacity_slots
            SET holder_id = NULL, task_id = NULL, lease_id = NULL, lease_epoch = NULL,
-             heartbeat_at = NULL, expires_at = NULL WHERE slot_number = $1`,
-          [slot.slot_number],
+             heartbeat_at = NULL, expires_at = NULL
+           WHERE slot_number = $1 AND fencing_epoch = $2 AND task_id = $3
+             AND lease_epoch = $4`,
+          [slot.slot_number, fencingEpoch, slot.task_id, previousEpoch],
         );
-        const receipt: RecoveryReceiptV1 = Object.freeze({
-          version: RECOVERY_RECEIPT_VERSION,
+        if (jobUpdate.rowCount !== 1 || slotUpdate.rowCount !== 1) {
+          persistentError("RECOVERY_CONFLICT");
+        }
+        const terminationObserved = [
+          "succeeded", "failed", "cancelled", "timed_out", "expired", "deleting", "deleted",
+        ].includes(slot.record.state);
+        if (terminationObserved) {
+          const terminationReceipt: TerminationReconciliationReceiptV1 = Object.freeze({
+            version: TERMINATION_RECONCILIATION_RECEIPT_VERSION,
+            taskRef: slot.record.taskRef,
+            leaseEpoch: previousEpoch,
+            fencingEpoch,
+            reconciledAtMs: nowMs,
+            terminationObserved: true,
+            capacityReleased: true,
+            source: "expired-claim-recovery",
+          });
+          await sql.query(
+            `INSERT INTO compute_termination_reconciliation_receipts
+               (task_ref, lease_epoch, fencing_epoch, reconciled_at, source, receipt)
+             VALUES ($1,$2,$3,$4,$5,$6::jsonb) ON CONFLICT DO NOTHING`,
+            [terminationReceipt.taskRef, terminationReceipt.leaseEpoch,
+              terminationReceipt.fencingEpoch,
+              dateFromMs(terminationReceipt.reconciledAtMs),
+              terminationReceipt.source, JSON.stringify(terminationReceipt)],
+          );
+        }
+        const receipt: RecoveryReceiptV2 = Object.freeze({
+          version: RECOVERY_RECEIPT_VERSION_V2,
           taskRef: slot.record.taskRef,
           previousLeaseEpoch: previousEpoch,
           fencingEpoch,
           disposition: target.disposition,
           recoveredAtMs: nowMs,
+          terminationObserved,
+          capacityReleased: true,
+          isolated: false,
         });
         await sql.query(
           `INSERT INTO compute_recovery_receipts

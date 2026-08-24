@@ -1,8 +1,8 @@
 import {
   ANALYSIS_CONTRACT_VERSION_V1,
   assertAnalysisResultEnvelopeV1,
-  type AnalysisClientV1,
-  type AnalysisDeletionReceiptV1,
+  type AnalysisClientV2,
+  type AnalysisDeletionReceiptV2,
   type AnalysisComputeBuildInfoV1,
   type AnalysisJobReferenceV1,
   type AnalysisJobResultReferenceV1,
@@ -44,7 +44,7 @@ export interface VerifiedRemoteAnalysisResult {
 }
 
 export interface RunRemoteAnalysisOptions {
-  readonly client: AnalysisClientV1;
+  readonly client: AnalysisClientV2;
   readonly binding: RemoteExecutionBinding;
   readonly approvedRemoteBuild: ApprovedRemoteBuildIdentity | null;
   readonly currentWebBuildId: string | null;
@@ -68,13 +68,6 @@ function fail(code: string, message: string): never {
   throw new RemoteAnalysisRuntimeError(code, message);
 }
 
-function randomKey(prefix: string): string {
-  const random = typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  return `${prefix}-${random}`;
-}
-
 function sameOwner(
   actual: AnalysisResultEnvelopeV1["owner"],
   expected: AnalysisTaskV1["owner"],
@@ -91,6 +84,16 @@ async function sha256(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
   return [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+async function deletionOperationKey(reference: AnalysisJobReferenceV1): Promise<string> {
+  // The operation identity must survive a lost response and a caller retry.
+  // The capability token remains authorization only and is deliberately not
+  // reflected in the idempotency key.
+  const digest = await sha256(new TextEncoder().encode(
+    `3dena.delete-job.v2\u0000${reference.jobId}`,
+  ));
+  return `delete-v2-${digest}`;
 }
 
 function extractEnvelope(value: unknown): unknown {
@@ -121,7 +124,7 @@ function wait(milliseconds: number, signal?: AbortSignal): Promise<void> {
 }
 
 export async function assertApprovedComputeBuild(
-  client: AnalysisClientV1,
+  client: AnalysisClientV2,
   approvedRemoteBuild: ApprovedRemoteBuildIdentity | null,
   currentWebBuildId: string | null,
 ): Promise<AnalysisComputeBuildInfoV1> {
@@ -256,11 +259,17 @@ export async function runRemoteAnalysis(
 }
 
 export async function cancelRemoteAnalysis(
-  client: AnalysisClientV1,
+  client: AnalysisClientV2,
   reference: AnalysisJobReferenceV1,
-): Promise<AnalysisDeletionReceiptV1> {
+): Promise<AnalysisDeletionReceiptV2> {
   const receipt = await deleteRemoteJobData(client, reference);
-  if (!receipt.cancelled) {
+  if (
+    !receipt.cancelled ||
+    !receipt.intentAccepted ||
+    receipt.termination === "pending" ||
+    receipt.capacity === "held" ||
+    receipt.objects !== "deleted"
+  ) {
     fail(
       "CANCELLATION_NOT_OBSERVED",
       "The service deleted job data but did not attest cancellation.",
@@ -270,11 +279,24 @@ export async function cancelRemoteAnalysis(
 }
 
 export async function deleteRemoteJobData(
-  client: AnalysisClientV1,
+  client: AnalysisClientV2,
   reference: AnalysisJobReferenceV1,
-): Promise<AnalysisDeletionReceiptV1> {
-  const receipt = await client.deleteJob(reference, randomKey("delete"));
-  if (!receipt.inputDeleted || !receipt.resultDeleted) {
+): Promise<AnalysisDeletionReceiptV2> {
+  const operationKey = await deletionOperationKey(reference);
+  let receipt: AnalysisDeletionReceiptV2;
+  try {
+    receipt = await client.deleteJobUntilComplete(reference, operationKey);
+  } catch {
+    fail(
+      "DELETION_NOT_OBSERVED",
+      "The service did not finish the durable deletion lifecycle.",
+    );
+  }
+  if (
+    !receipt.inputDeleted ||
+    !receipt.resultDeleted ||
+    receipt.objects !== "deleted"
+  ) {
     fail(
       "DELETION_NOT_OBSERVED",
       "The service did not attest deletion of all input and result data.",

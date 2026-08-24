@@ -9,6 +9,7 @@ export type { ScientificComputeWorkerErrorCode } from "./errors";
 export { FileSystemImmutableResultStore } from "./file-result-store";
 export { JsonObjectStoreScientificInputProvider } from "./input-provider";
 export { ScientificWorkerSessionAdapter } from "./session-adapter";
+export { executeScientificLongitudinalInputV2 } from "./worker-runtime";
 
 /** Resolves the audited bundle produced by `npm run build:worker`. */
 export function resolveScientificWorkerEntry(): string {

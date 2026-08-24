@@ -1,27 +1,26 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
 import {
   ANALYSIS_CONTRACT_VERSION_V1,
   assertAnalysisResultEnvelopeV1,
+  verifyLongitudinalAnalysisBundleV2,
   type AnalysisResultEnvelopeV1,
   type AnalysisTaskResultV1,
+  type LongitudinalAnalysisBundleV2,
 } from "@3dena/analysis";
 import {
   ComputeServiceCore,
   type ComputeAuditSink,
   type ComputeIdFactory,
-  type ComputeProcessSupervisor,
-  type ProcessLaunchContextV1,
-  type ProcessLaunchControlV1,
-  type ProcessTerminationReason,
-  type SupervisedChildProcess,
+  type ComputeObjectStore,
+  type TaskOwnerV1,
 } from "@3dena/compute-service-core";
 import {
-  COMPUTE_HTTP_CONTRACT_VERSION,
   ComputeV1HttpRouter,
   HmacComputeHttpCapabilityCodec,
+  type ApprovedLongitudinalExecutionBuildV2,
   type ComputeHttpIdFactory,
   type ComputeHttpObjectUrlIssuer,
 } from "@3dena/compute-service-http";
@@ -50,7 +49,9 @@ import {
   PostgresComputeHttpJobRepository,
   PostgresComputeTaskRepository,
   PostgresDatabase,
+  PostgresDeletionLifecycleProbe,
   PostgresDistributedLeaseCoordinator,
+  PostgresTemporalDueSource,
   type PgCompatibleClient,
   type PgCompatiblePool,
   type SqlQueryResult,
@@ -64,9 +65,18 @@ import {
 import {
   PersistentObjectRetentionSweeper,
   PostgresObjectLedger,
+  VercelBlobOrphanReconciliationSweeper,
   VercelPrivateBlobObjectStore,
 } from "./vercel-blob";
-import { PersistentComputeWorker } from "./worker";
+import {
+  PersistentTemporalTaskSweeper,
+  runPersistentTemporalSweepLoop,
+} from "./temporal-sweeper";
+import {
+  DurableControlPlaneProcessSupervisor,
+  PersistentComputeWorker,
+} from "./worker";
+import { canonicalStringify, hasExactKeys, LOWER_SHA256 } from "./util";
 
 const MAX_REQUEST_HEADERS = 64;
 const MAX_REQUEST_HEADER_BYTES = 16 * 1024;
@@ -118,22 +128,6 @@ class RandomComputeIdFactory implements ComputeIdFactory {
 class RandomComputeHttpIdFactory implements ComputeHttpIdFactory {
   nextId(namespace: "dataset" | "job" | "request"): string {
     return `${namespace}-${randomUUID()}`;
-  }
-}
-
-class ApiFailClosedProcessSupervisor implements ComputeProcessSupervisor {
-  async spawn(
-    _context: ProcessLaunchContextV1,
-    _control: ProcessLaunchControlV1,
-  ): Promise<SupervisedChildProcess> {
-    throw new TypeError("The API process cannot launch scientific children.");
-  }
-
-  async requestTermination(
-    _childId: string,
-    _reason: ProcessTerminationReason,
-  ): Promise<void> {
-    throw new TypeError("The API process owns no scientific child.");
   }
 }
 
@@ -201,15 +195,50 @@ async function verifyCapacity(database: PostgresDatabase, expected: number): Pro
   }
 }
 
-class CoreScientificResultPublisher implements ScientificResultPublisherV1 {
+interface ScientificPublicationClock {
+  synchronize(): Promise<number>;
+}
+
+interface ScientificSourceResultRecorder {
+  record(record: PublishedScientificResultRecordV1): Promise<void>;
+}
+
+function ownerMatches(left: unknown, right: TaskOwnerV1): boolean {
+  return isRecord(left) &&
+    hasExactKeys(left, ["contractVersion", "datasetHash", "specHash", "runId", "taskId"]) &&
+    canonicalStringify(left) === canonicalStringify(right);
+}
+
+function analysisOwnerMatches(left: unknown, right: TaskOwnerV1): boolean {
+  return isRecord(left) &&
+    hasExactKeys(left, ["contractVersion", "datasetHash", "specHash", "runId", "taskId"]) &&
+    left.contractVersion === ANALYSIS_CONTRACT_VERSION_V1 &&
+    left.datasetHash === right.datasetHash &&
+    left.specHash === right.specHash &&
+    left.runId === right.runId &&
+    left.taskId === right.taskId;
+}
+
+function sha256(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+/**
+ * Final publication fence used by the production worker runtime. Artifact
+ * bytes and their immutable scientific binding are validated before the core
+ * is allowed to record success; a malformed artifact can therefore never
+ * create a contradictory successful core record.
+ */
+export class CoreScientificResultPublisher implements ScientificResultPublisherV1 {
   readonly version = SCIENTIFIC_RESULT_PUBLISHER_VERSION;
 
   constructor(
     private readonly core: ComputeServiceCore,
-    private readonly clock: PostgresAuthoritativeClock,
-    private readonly objectStore: VercelPrivateBlobObjectStore,
-    private readonly sourceResults: PostgresPublishedSourceResultRegistry,
+    private readonly clock: ScientificPublicationClock,
+    private readonly objectStore: ComputeObjectStore,
+    private readonly sourceResults: ScientificSourceResultRecorder,
     private readonly buildId: string,
+    private readonly approvedLongitudinalBuild: ApprovedLongitudinalExecutionBuildV2,
   ) {}
 
   async publish(
@@ -218,6 +247,82 @@ class CoreScientificResultPublisher implements ScientificResultPublisherV1 {
   ): Promise<ScientificPublicationReceiptV1> {
     if (signal.aborted) throw new TypeError("Scientific publication was cancelled.");
     await this.clock.synchronize();
+    const task = await this.core.getTask(request.owner.taskId);
+    if (task === null || !ownerMatches(request.owner, task.request.owner)) {
+      throw new TypeError("Scientific publication owner is invalid.");
+    }
+    const bytes = await this.objectStore.get(request.object.key);
+    if (
+      bytes === null ||
+      bytes.byteLength !== request.object.byteLength ||
+      sha256(bytes) !== request.object.sha256
+    ) {
+      throw new TypeError("Published result bytes are unavailable.");
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    } catch {
+      throw new TypeError("Published result artifact is invalid.");
+    }
+    if (!isRecord(parsed)) {
+      throw new TypeError("Published result artifact is invalid.");
+    }
+    let sourceEnvelope: AnalysisResultEnvelopeV1<AnalysisTaskResultV1> | undefined;
+    if (parsed.version === "3dena.compute-scientific-longitudinal-result-artifact.v2") {
+      const bundle = parsed.bundle;
+      if (
+        !hasExactKeys(parsed, ["version", "owner", "taskKind", "requestHash", "bundle"]) ||
+        parsed.taskKind !== "longitudinal-analysis-v2" ||
+        task.request.taskKind !== "longitudinal-analysis-v2" ||
+        !ownerMatches(parsed.owner, task.request.owner) ||
+        typeof parsed.requestHash !== "string" ||
+        !LOWER_SHA256.test(parsed.requestHash) ||
+        !isRecord(bundle)
+      ) {
+        throw new TypeError("Published longitudinal result artifact is invalid.");
+      }
+      try {
+        await verifyLongitudinalAnalysisBundleV2(bundle);
+      } catch {
+        throw new TypeError("Published longitudinal result artifact is invalid.");
+      }
+      const typed = bundle as unknown as LongitudinalAnalysisBundleV2;
+      const expectedBuild = this.approvedLongitudinalBuild;
+      if (
+        typed.identity.datasetHash !== task.request.owner.datasetHash ||
+        typed.identity.specHash !== task.request.owner.specHash ||
+        typed.identity.runId !== task.request.owner.runId ||
+        typed.identity.requestHash !== parsed.requestHash ||
+        typed.execution.target !== "persistent-compute-service" ||
+        typed.execution.jenaVersion !== expectedBuild.jenaVersion ||
+        typed.execution.jenaCommit !== expectedBuild.jenaCommit ||
+        typed.execution.jenaTarballIntegrity !== expectedBuild.jenaTarballIntegrity ||
+        typed.execution.sdkVersion !== expectedBuild.sdkVersion ||
+        typed.execution.buildId !== expectedBuild.buildId
+      ) {
+        throw new TypeError("Published longitudinal result binding is invalid.");
+      }
+    } else {
+      if (
+        !hasExactKeys(parsed, ["version", "owner", "taskKind", "envelope"]) ||
+        parsed.version !== "3dena.compute-scientific-result-artifact.v1" ||
+        parsed.taskKind !== task.request.taskKind ||
+        !analysisOwnerMatches(parsed.owner, task.request.owner) ||
+        !isRecord(parsed.envelope)
+      ) {
+        throw new TypeError("Published result artifact is invalid.");
+      }
+      assertAnalysisResultEnvelopeV1(parsed.envelope);
+      sourceEnvelope = parsed.envelope as AnalysisResultEnvelopeV1<AnalysisTaskResultV1>;
+      if (
+        sourceEnvelope.taskKind !== task.request.taskKind ||
+        !analysisOwnerMatches(sourceEnvelope.owner, task.request.owner)
+      ) {
+        throw new TypeError("Published result binding is invalid.");
+      }
+    }
+    if (signal.aborted) throw new TypeError("Scientific publication was cancelled.");
     const record = await this.core.publishResult(
       request.owner.taskId,
       request.lease,
@@ -237,21 +342,10 @@ class CoreScientificResultPublisher implements ScientificResultPublisherV1 {
       object: structuredClone(request.object),
       publishedAtMs: publication.publishedAtMs,
     });
-    const bytes = await this.objectStore.get(request.object.key);
-    if (bytes === null || bytes.byteLength !== request.object.byteLength) {
-      throw new TypeError("Published result bytes are unavailable.");
-    }
-    const parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
-    if (!isRecord(parsed) || parsed.version !== "3dena.compute-scientific-result-artifact.v1" ||
-        !isRecord(parsed.envelope)) {
-      throw new TypeError("Published result artifact is invalid.");
-    }
-    assertAnalysisResultEnvelopeV1(parsed.envelope);
-    const envelope = parsed.envelope as AnalysisResultEnvelopeV1<AnalysisTaskResultV1>;
-    if (envelope.taskKind === "ena-model" || envelope.taskKind === "prepared-import") {
+    if (sourceEnvelope?.taskKind === "ena-model" || sourceEnvelope?.taskKind === "prepared-import") {
       const index: PublishedScientificResultRecordV1 = {
-        sourceResultHash: envelope.provenance.resultHash,
-        owner: envelope.owner,
+        sourceResultHash: sourceEnvelope.provenance.resultHash,
+        owner: sourceEnvelope.owner,
         buildId: this.buildId,
         object: request.object,
         publishedAtMs: publication.publishedAtMs,
@@ -273,6 +367,7 @@ interface CommonRuntime {
   readonly readiness: BuildApprovalReadinessProbe;
   readonly auditSink: ComputeAuditSink;
   readonly sweeper: PersistentObjectRetentionSweeper;
+  readonly orphanSweeper: VercelBlobOrphanReconciliationSweeper;
 }
 
 async function createCommonRuntime(
@@ -300,10 +395,10 @@ async function createCommonRuntime(
   });
   const publicKeys = await loadPublicKeys(config.publicKeysPath);
   const registry = new PostgresBuildApprovalRegistry(database, publicKeys);
-  const migration = {
-    version: config.manifest.migrationVersion,
-    sha256: config.manifest.migrationSha256,
-  };
+  const migration = config.manifest.migrationManifest.map((entry) => ({
+    version: entry.version,
+    sha256: entry.sha256,
+  }));
   const readiness = new BuildApprovalReadinessProbe({
     registry,
     expected: config.expectedBuild,
@@ -332,6 +427,13 @@ async function createCommonRuntime(
     readiness,
     auditSink: new PostgresComputeAuditSink(database),
     sweeper: new PersistentObjectRetentionSweeper({ store: objectStore, ledger, clock }),
+    orphanSweeper: new VercelBlobOrphanReconciliationSweeper({
+      client: blobClient,
+      token: config.blobToken,
+      namespace: config.blobNamespace,
+      ledger,
+      clock,
+    }),
   };
 }
 
@@ -424,6 +526,7 @@ async function retentionLoop(common: CommonRuntime, signal: AbortSignal): Promis
     try {
       await common.clock.synchronize();
       await common.sweeper.sweep();
+      await common.orphanSweeper.sweep();
     } catch {
       process.stderr.write("COMPUTE_RETENTION_SWEEP_FAILED\n");
     }
@@ -440,12 +543,13 @@ export async function runApiRuntime(
   const core = new ComputeServiceCore({
     repository,
     objectStore: common.objectStore,
-    processSupervisor: new ApiFailClosedProcessSupervisor(),
+    processSupervisor: new DurableControlPlaneProcessSupervisor(),
     auditSink: common.auditSink,
     clock: common.clock,
     idFactory: new RandomComputeIdFactory(),
     maxConcurrency: 1,
     maxLeaseDurationMs: 120_000,
+    deferProcessOwnedDeletionCompletion: true,
   });
   const capabilityCodec = new HmacComputeHttpCapabilityCodec(config.capabilityHmacSecret);
   const router = new ComputeV1HttpRouter({
@@ -478,9 +582,12 @@ export async function runApiRuntime(
         clock: common.clock,
       }),
       sourceResults: common.sourceResults,
+      deletionLifecycle: new PostgresDeletionLifecycleProbe(common.database),
     },
     allowedOrigins: config.allowedOrigins,
     buildIdentity: config.publicBuildIdentity,
+    approvedLongitudinalBuild: config.approvedLongitudinalBuild,
+    longitudinalServiceTokenSha256: config.longitudinalServiceTokenSha256,
   });
   const server = createServer({
     maxHeaderSize: MAX_REQUEST_HEADER_BYTES,
@@ -513,11 +620,33 @@ export async function runApiRuntime(
   signal.addEventListener("abort", stop, { once: true });
   if (signal.aborted) stop();
   const retention = retentionLoop(common, signal);
+  const temporal = runPersistentTemporalSweepLoop({
+    sweeper: new PersistentTemporalTaskSweeper({
+      source: new PostgresTemporalDueSource(common.database, {
+        holderId: config.holderId,
+        leaseDurationMs: 5_000,
+        batchSize: 100,
+      }),
+      core,
+      reconcileHttpDeletion: (jobId) => router.reconcileDurableDeletion(jobId),
+      reconcileHttpJob: async (jobId) => {
+        await router.reconcileJob(jobId);
+        return true;
+      },
+      onTaskFailure: () => process.stderr.write("COMPUTE_TEMPORAL_TASK_SWEEP_FAILED\n"),
+    }),
+    signal,
+    intervalMs: 1_000,
+    beforeCycle: async () => {
+      await common.clock.synchronize();
+    },
+    onCycleFailure: () => process.stderr.write("COMPUTE_TEMPORAL_SWEEP_FAILED\n"),
+  });
   try {
     await closed;
   } finally {
     signal.removeEventListener("abort", stop);
-    await retention;
+    await Promise.all([retention, temporal]);
     await core.settleBackground();
     await common.pool.end();
   }
@@ -568,6 +697,7 @@ export async function runWorkerRuntime(
     idFactory: new RandomComputeIdFactory(),
     maxConcurrency: 1,
     maxLeaseDurationMs: 120_000,
+    deferProcessOwnedDeletionCompletion: true,
   });
   publisher = new CoreScientificResultPublisher(
     core,
@@ -575,6 +705,7 @@ export async function runWorkerRuntime(
     common.objectStore,
     common.sourceResults,
     config.expectedBuild.flyBuildId,
+    config.approvedLongitudinalBuild,
   );
   const worker = new PersistentComputeWorker({
     holderId: config.holderId,
@@ -599,8 +730,3 @@ export async function runWorkerRuntime(
     await common.pool.end();
   }
 }
-
-export const RUNTIME_CONTRACT_VERSIONS = Object.freeze([
-  ANALYSIS_CONTRACT_VERSION_V1,
-  COMPUTE_HTTP_CONTRACT_VERSION,
-].sort());

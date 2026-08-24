@@ -1,0 +1,20 @@
+{
+  "databaseUrlEnv": "NEON_DIRECT_DATABASE_URL",
+  "migrations": [
+    {
+      "path": "../migrations/0001_persistent_compute.sql",
+      "sha256": "2ada0828852d69dfebfaf3da96d41ba69dd91b522117fd868fad1665239e568e",
+      "version": "0001-persistent-compute"
+    },
+    {
+      "path": "../migrations/0002_persistent_control_plane.sql",
+      "sha256": "3df697fed6ca0ad6e4106d2f1c649b877e16a64ea3228ef23aea8d5540a30a21",
+      "version": "0002-persistent-control-plane"
+    },
+    {
+      "path": "../migrations/0003_build_approval_v3.sql",
+      "sha256": "104cdcb19e043d8bd65d717dc19fb0285a45627260278f1bee8e4a5197218326",
+      "version": "0003-build-approval-v3"
+    }
+  ]
+}

@@ -12,6 +12,9 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(scriptDirectory, "../../..");
 const packageDirectory = resolve(process.argv[2] ?? resolve(scriptDirectory, "../dist/package"));
 const jenaTarball = resolve(repositoryRoot, "vendor/jena-js/jena-js-0.7.0-ona.0.tgz");
+const evidenceDirectory = process.env.THREEDENA_PUBLIC_PACKAGE_EVIDENCE_DIR === undefined
+  ? null
+  : resolve(repositoryRoot, process.env.THREEDENA_PUBLIC_PACKAGE_EVIDENCE_DIR);
 const npmCli = process.env.npm_execpath;
 if (!npmCli) throw new Error("PUBLIC_PACKAGE_SMOKE_FAILED: npm_execpath is required");
 
@@ -237,6 +240,20 @@ try {
     frameworkDependencySource: "repository-lockfile-installed-packages",
     status: "IMPLEMENTED_UNVERIFIED"
   };
+  if (evidenceDirectory !== null) {
+    await mkdir(evidenceDirectory, { recursive: true });
+    await cp(tarball, resolve(evidenceDirectory, packReceipt.filename));
+    await writeFile(
+      resolve(evidenceDirectory, "npm-pack.json"),
+      `${JSON.stringify(packReceipts, null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      resolve(evidenceDirectory, "public-package-smoke-receipt.json"),
+      `${JSON.stringify(receipt, null, 2)}\n`,
+      "utf8",
+    );
+  }
   process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
   completed = true;
 } finally {

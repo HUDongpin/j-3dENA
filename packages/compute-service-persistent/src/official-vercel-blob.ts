@@ -3,10 +3,12 @@ import {
   del,
   get,
   head,
+  list,
   put,
   type GetBlobResult,
   type HeadBlobResult,
   type PutBlobResult,
+  type ListBlobResult,
 } from "@vercel/blob";
 
 import type {
@@ -30,6 +32,12 @@ export interface OfficialVercelBlobBindingsV1 {
     }>,
   ): Promise<GetBlobResult | null>;
   del(pathname: string, options: Readonly<{ token: string }>): Promise<void>;
+  list(options: Readonly<{
+    token: string;
+    prefix: string;
+    cursor?: string;
+    limit: number;
+  }>): Promise<ListBlobResult>;
   isNotFound(error: unknown): boolean;
 }
 
@@ -40,6 +48,7 @@ const OFFICIAL_BINDINGS: OfficialVercelBlobBindingsV1 = {
   head,
   get,
   del,
+  list,
   isNotFound(error: unknown): boolean {
     return error instanceof BlobNotFoundError;
   },
@@ -70,10 +79,14 @@ export class OfficialVercelPrivateBlobClient
   async head(
     pathname: string,
     token: string,
-  ): Promise<Readonly<{ pathname: string; size: number }> | null> {
+  ): Promise<Readonly<{ pathname: string; size: number; uploadedAtMs: number }> | null> {
     try {
       const result = await this.#bindings.head(pathname, { token });
-      return Object.freeze({ pathname: result.pathname, size: result.size });
+      return Object.freeze({
+        pathname: result.pathname,
+        size: result.size,
+        uploadedAtMs: result.uploadedAt.getTime(),
+      });
     } catch (error) {
       if (this.#bindings.isNotFound(error)) return null;
       throw error;
@@ -95,5 +108,31 @@ export class OfficialVercelPrivateBlobClient
 
   del(pathname: string, token: string): Promise<void> {
     return this.#bindings.del(pathname, { token });
+  }
+
+  async list(
+    prefix: string,
+    token: string,
+    cursor: string | null,
+    limit: number,
+  ): Promise<Readonly<{
+    blobs: readonly Readonly<{ pathname: string; uploadedAtMs: number }>[];
+    cursor: string | null;
+    hasMore: boolean;
+  }>> {
+    const result = await this.#bindings.list({
+      token,
+      prefix,
+      ...(cursor === null ? {} : { cursor }),
+      limit,
+    });
+    return Object.freeze({
+      blobs: Object.freeze(result.blobs.map((blob) => Object.freeze({
+        pathname: blob.pathname,
+        uploadedAtMs: blob.uploadedAt.getTime(),
+      }))),
+      cursor: result.cursor ?? null,
+      hasMore: result.hasMore,
+    });
   }
 }

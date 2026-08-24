@@ -26,12 +26,14 @@ import {
 const COMMIT = /^[a-f0-9]{40}$/u;
 const IMAGE_DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const VERSION = /^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u;
+const TARBALL_INTEGRITY = /^sha512-[A-Za-z0-9+/]+={0,2}$/u;
 
 const CANDIDATE_KEYS = [
   "version", "releaseId", "environment", "gitCommit", "vercelDeploymentId",
   "vercelBuildId", "flyImageDigest", "flyBuildId", "analysisTarballSha256",
-  "jenaVersion", "jenaCommit", "jenaTarballSha256", "lockfileSha256",
-  "sbomSha256", "schemaBundleSha256", "migrationVersion", "migrationSha256", "contractVersions",
+  "jenaVersion", "jenaCommit", "jenaTarballSha256", "jenaTarballIntegrity",
+  "sdkVersion", "buildId", "lockfileSha256",
+  "sbomSha256", "schemaBundleSha256", "migrationManifestSha256", "contractVersions",
   "implementationActorIds",
 ] as const;
 const APPROVAL_KEYS = [
@@ -70,11 +72,14 @@ export function assertBuildApprovalCandidate(
     typeof value.jenaVersion !== "string" || !VERSION.test(value.jenaVersion) ||
     typeof value.jenaCommit !== "string" || !COMMIT.test(value.jenaCommit) ||
     typeof value.jenaTarballSha256 !== "string" || !LOWER_SHA256.test(value.jenaTarballSha256) ||
+    typeof value.jenaTarballIntegrity !== "string" || !TARBALL_INTEGRITY.test(value.jenaTarballIntegrity) ||
+    typeof value.sdkVersion !== "string" || !VERSION.test(value.sdkVersion) ||
+    typeof value.buildId !== "string" || !OPAQUE_ID.test(value.buildId) ||
     typeof value.lockfileSha256 !== "string" || !LOWER_SHA256.test(value.lockfileSha256) ||
     typeof value.sbomSha256 !== "string" || !LOWER_SHA256.test(value.sbomSha256) ||
     typeof value.schemaBundleSha256 !== "string" || !LOWER_SHA256.test(value.schemaBundleSha256) ||
-    typeof value.migrationVersion !== "string" || !VERSION.test(value.migrationVersion) ||
-    typeof value.migrationSha256 !== "string" || !LOWER_SHA256.test(value.migrationSha256) ||
+    typeof value.migrationManifestSha256 !== "string" ||
+      !LOWER_SHA256.test(value.migrationManifestSha256) ||
     contractVersions === null || contractVersions.length < 1 ||
     contractVersions.some((item) => typeof item !== "string" || !VERSION.test(item)) ||
     new Set(contractVersions).size !== contractVersions.length ||
@@ -218,7 +223,8 @@ export class PostgresBuildApprovalRegistry implements BuildApprovalRegistry {
     if (!isRecord(expected) || !hasExactKeys(expected, [
       "releaseId", "environment", "gitCommit", "vercelDeploymentId",
       "vercelBuildId", "flyImageDigest", "flyBuildId", "approvalManifestSha256",
-      "migrationVersion", "migrationSha256", "contractVersions",
+      "migrationManifestSha256", "contractVersions", "jenaVersion", "jenaCommit",
+      "jenaTarballIntegrity", "sdkVersion", "buildId",
     ])) return false;
     const result = await this.#database.query<ApprovalRow>(
       `WITH latest_activation AS (
@@ -247,10 +253,15 @@ export class PostgresBuildApprovalRegistry implements BuildApprovalRegistry {
     if (approval === undefined) return false;
     try {
       assertBuildApproval(approval, this.#publicKeys);
-      return approval.candidate.migrationVersion === expected.migrationVersion &&
-        approval.candidate.migrationSha256 === expected.migrationSha256 &&
+      return approval.candidate.migrationManifestSha256 ===
+          expected.migrationManifestSha256 &&
         canonicalStringify(approval.candidate.contractVersions) ===
-          canonicalStringify(expected.contractVersions);
+          canonicalStringify(expected.contractVersions) &&
+        approval.candidate.jenaVersion === expected.jenaVersion &&
+        approval.candidate.jenaCommit === expected.jenaCommit &&
+        approval.candidate.jenaTarballIntegrity === expected.jenaTarballIntegrity &&
+        approval.candidate.sdkVersion === expected.sdkVersion &&
+        approval.candidate.buildId === expected.buildId;
     } catch {
       return false;
     }

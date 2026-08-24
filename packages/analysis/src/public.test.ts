@@ -9,6 +9,7 @@ describe("public npm facade", () => {
       "assertAnalysisExecutionDatasetV2",
       "assertAnalysisResultEnvelopeV1",
       "assertLongitudinalAnalysisBundleV2",
+      "assertLongitudinalExecutionRequestV2",
       "assertTrajectoryRunSpecV2",
       "compilePlotlySpec",
       "compileTrajectoryPlotlySpec",
@@ -18,6 +19,7 @@ describe("public npm facade", () => {
       "executeLongitudinalAnalysisV2",
       "getAnalysisBuildIdentityV2",
       "hashAnalysisValueV1",
+      "hashLongitudinalExecutionRequestV2",
       "inspectDataset",
       "verifyLongitudinalAnalysisBundleV2",
     ]);

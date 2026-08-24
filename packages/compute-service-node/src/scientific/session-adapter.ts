@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 
 import {
   ANALYSIS_CONTRACT_VERSION_V1,
-  RESULT_ENVELOPE_VERSION_V1,
+  assertAnalysisResultEnvelopeV1,
+  getAnalysisBuildIdentityV2,
+  verifyLongitudinalAnalysisBundleV2,
 } from "@3dena/analysis";
 import type { ImmutableObjectDescriptor } from "@3dena/compute-service-core";
 
@@ -16,6 +18,9 @@ import {
   HARD_MAX_SCIENTIFIC_ARTIFACT_BYTES,
   SCIENTIFIC_ARTIFACT_PUT_ACK_VERSION,
   SCIENTIFIC_INPUT_PROVIDER_VERSION,
+  SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION,
+  SCIENTIFIC_LONGITUDINAL_RESULT_ARTIFACT_VERSION,
+  SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2,
   SCIENTIFIC_PUBLICATION_ACK_VERSION,
   SCIENTIFIC_RESULT_ARTIFACT_VERSION,
   SCIENTIFIC_RESULT_PUBLISHER_VERSION,
@@ -42,7 +47,13 @@ import {
 
 interface SessionBinding {
   readonly descriptor: ImmutableObjectDescriptor;
+  readonly longitudinalRequestHash?: string;
   publicationReceipt?: ScientificPublicationReceiptV1;
+}
+
+interface ExpectedLongitudinalBindingV2 {
+  readonly requestHash: string;
+  readonly sourceResultHash: string;
 }
 
 function sha256(bytes: Uint8Array): string {
@@ -70,10 +81,11 @@ function analysisOwnerMatches(
   );
 }
 
-function assertArtifactBinding(
+async function assertArtifactBinding(
   bytes: Uint8Array,
   session: NodeWorkerSessionV1,
-): void {
+  expectedLongitudinal: ExpectedLongitudinalBindingV2 | undefined,
+): Promise<void> {
   let artifact: unknown;
   try {
     artifact = JSON.parse(
@@ -82,28 +94,75 @@ function assertArtifactBinding(
   } catch {
     scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
   }
+  if (!isRecord(artifact)) {
+    scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
+  }
+  if (artifact.version === SCIENTIFIC_LONGITUDINAL_RESULT_ARTIFACT_VERSION) {
+    const bundle = isRecord(artifact.bundle) ? artifact.bundle : undefined;
+    const identity = bundle !== undefined && isRecord(bundle.identity)
+      ? bundle.identity
+      : undefined;
+    const execution = bundle !== undefined && isRecord(bundle.execution)
+      ? bundle.execution
+      : undefined;
+    if (
+      !hasExactKeys(artifact, ["version", "owner", "taskKind", "requestHash", "bundle"]) ||
+      artifact.taskKind !== SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2 ||
+      session.context.request.taskKind !== SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2 ||
+      !isRecord(artifact.owner) ||
+      !hasExactKeys(artifact.owner, [
+        "contractVersion",
+        "datasetHash",
+        "specHash",
+        "runId",
+        "taskId",
+      ]) ||
+      artifact.owner.contractVersion !== session.context.owner.contractVersion ||
+      artifact.owner.datasetHash !== session.context.owner.datasetHash ||
+      artifact.owner.specHash !== session.context.owner.specHash ||
+      artifact.owner.runId !== session.context.owner.runId ||
+      artifact.owner.taskId !== session.context.owner.taskId ||
+      expectedLongitudinal === undefined ||
+      artifact.requestHash !== expectedLongitudinal.requestHash ||
+      bundle === undefined ||
+      identity?.datasetHash !== session.context.owner.datasetHash ||
+      identity.specHash !== session.context.owner.specHash ||
+      identity.runId !== session.context.owner.runId ||
+      identity.sourceResultHash !== expectedLongitudinal.sourceResultHash ||
+      identity.requestHash !== expectedLongitudinal.requestHash ||
+      execution?.target !== "persistent-compute-service"
+    ) scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
+    const build = getAnalysisBuildIdentityV2();
+    if (
+      (process.env.NODE_ENV === "production" && !build.bound)
+      || execution?.jenaVersion !== build.jenaVersion
+      || execution.jenaCommit !== build.jenaCommit
+      || execution.jenaTarballIntegrity !== build.jenaTarballIntegrity
+      || execution.sdkVersion !== build.sdkVersion
+      || execution.buildId !== build.buildId
+      || identity.jenaBuildId !== `jena-js@${build.jenaVersion}+${build.jenaCommit}:${build.buildId}`
+    ) scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
+    try {
+      await verifyLongitudinalAnalysisBundleV2(bundle);
+    } catch {
+      scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
+    }
+    return;
+  }
+  try {
+    if (!isRecord(artifact.envelope)) throw new TypeError("INVALID_ENVELOPE");
+    assertAnalysisResultEnvelopeV1(artifact.envelope);
+  } catch {
+    scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
+  }
   if (
-    !isRecord(artifact) ||
     !hasExactKeys(artifact, ["version", "owner", "taskKind", "envelope"]) ||
     artifact.version !== SCIENTIFIC_RESULT_ARTIFACT_VERSION ||
     artifact.taskKind !== session.context.request.taskKind ||
     !analysisOwnerMatches(artifact.owner, session) ||
-    !isRecord(artifact.envelope) ||
-    !hasExactKeys(artifact.envelope, [
-      "schemaVersion",
-      "owner",
-      "taskKind",
-      "result",
-      "diagnostics",
-      "evidence",
-      "provenance",
-    ]) ||
-    artifact.envelope.schemaVersion !== RESULT_ENVELOPE_VERSION_V1 ||
     artifact.envelope.taskKind !== session.context.request.taskKind ||
     !analysisOwnerMatches(artifact.envelope.owner, session)
-  ) {
-    scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
-  }
+  ) scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
 }
 
 export class ScientificWorkerSessionAdapter
@@ -115,6 +174,7 @@ export class ScientificWorkerSessionAdapter
   readonly #publisher: ScientificSessionAdapterOptionsV1["publisher"];
   readonly #maxResultBytes: number;
   readonly #bindings = new Map<string, SessionBinding>();
+  readonly #expectedLongitudinal = new Map<string, ExpectedLongitudinalBindingV2>();
   readonly #failureCounts = new Map<ScientificWorkerFailureCodeV1, number>();
   #totalFailures = 0;
 
@@ -170,6 +230,17 @@ export class ScientificWorkerSessionAdapter
       scientificWorkerError("INVALID_EXECUTION_INPUT");
     }
     if (control.signal.aborted) scientificWorkerError("SESSION_ABORTED");
+    if (input.version === SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION) {
+      this.#expectedLongitudinal.set(context.executionId, {
+        requestHash: input.requestHash,
+        sourceResultHash: input.request.pathTask.runSpec.sourceResultHash,
+      });
+      control.signal.addEventListener(
+        "abort",
+        () => this.#expectedLongitudinal.delete(context.executionId),
+        { once: true },
+      );
+    }
     return {
       version: SCIENTIFIC_WORKER_LAUNCH_VERSION,
       input,
@@ -191,6 +262,7 @@ export class ScientificWorkerSessionAdapter
       assertWorkerFailure(message, session.executionId);
       this.#recordFailure(message.code);
       this.#bindings.delete(session.childId);
+      this.#expectedLongitudinal.delete(session.executionId);
       return;
     }
     if (isRecord(message) && message.type === "artifact-put-request") {
@@ -232,7 +304,8 @@ export class ScientificWorkerSessionAdapter
     ) {
       scientificWorkerError("ARTIFACT_CHECKSUM_MISMATCH");
     }
-    assertArtifactBinding(message.bytes, session);
+    const expectedLongitudinal = this.#expectedLongitudinal.get(session.executionId);
+    await assertArtifactBinding(message.bytes, session, expectedLongitudinal);
     const existingBinding = this.#bindings.get(session.childId);
     if (
       existingBinding !== undefined &&
@@ -264,11 +337,15 @@ export class ScientificWorkerSessionAdapter
       );
     }
     if (existingBinding === undefined) {
-      this.#bindings.set(session.childId, { descriptor: message.object });
+      this.#bindings.set(session.childId, {
+        descriptor: message.object,
+        ...(expectedLongitudinal === undefined ? {} : { longitudinalRequestHash: expectedLongitudinal.requestHash }),
+      });
       session.signal.addEventListener(
         "abort",
         () => {
           this.#bindings.delete(session.childId);
+          this.#expectedLongitudinal.delete(session.executionId);
         },
         { once: true },
       );
@@ -290,7 +367,9 @@ export class ScientificWorkerSessionAdapter
     const binding = this.#bindings.get(session.childId);
     if (
       binding === undefined ||
-      !descriptorsEqual(binding.descriptor, message.object)
+      !descriptorsEqual(binding.descriptor, message.object) ||
+      (session.context.request.taskKind === SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2
+        && binding.longitudinalRequestHash === undefined)
     ) {
       scientificWorkerError("INVALID_WORKER_MESSAGE");
     }
@@ -311,6 +390,7 @@ export class ScientificWorkerSessionAdapter
       type: "publication-ack",
       receipt: structuredClone(binding.publicationReceipt),
     });
+    this.#expectedLongitudinal.delete(session.executionId);
   }
 
   #recordFailure(code: ScientificWorkerFailureCodeV1): void {

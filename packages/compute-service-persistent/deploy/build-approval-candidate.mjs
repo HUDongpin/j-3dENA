@@ -42,15 +42,37 @@ async function fileSha256(pathname) {
 const input = JSON.parse(await readFile(resolve(inputPath), "utf8"));
 exact(input, [
   "releaseId", "environment", "gitCommit", "vercelDeploymentId", "vercelBuildId",
-  "flyImageDigest", "flyBuildId", "jenaVersion", "jenaCommit", "migrationVersion",
+  "flyImageDigest", "flyBuildId", "jenaVersion", "jenaCommit", "sdkVersion", "buildId", "migrations",
   "contractVersions", "implementationActorIds", "artifacts",
 ], "input");
 exact(input.artifacts, [
-  "analysisTarball", "jenaTarball", "lockfile", "sbom", "schemaBundle", "migration",
+  "analysisTarball", "jenaTarball", "lockfile", "sbom", "schemaBundle",
 ], "input.artifacts");
 
+if (!Array.isArray(input.migrations) || input.migrations.length < 1) {
+  throw new Error("input.migrations is invalid");
+}
+const migrationManifest = [];
+for (const [index, migration] of input.migrations.entries()) {
+  exact(migration, ["path", "version"], `input.migrations[${index}]`);
+  if (typeof migration.path !== "string" || migration.path.trim() === "" ||
+      typeof migration.version !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u.test(migration.version)) {
+    throw new Error(`input.migrations[${index}] is invalid`);
+  }
+  migrationManifest.push({
+    sha256: await fileSha256(migration.path),
+    version: migration.version,
+  });
+}
+if (new Set(migrationManifest.map((entry) => entry.version)).size !== migrationManifest.length ||
+    [...migrationManifest].sort((left, right) => left.version.localeCompare(right.version))
+      .some((entry, index) => entry.version !== migrationManifest[index].version)) {
+  throw new Error("input.migrations must be unique and ordered");
+}
+
 const candidate = {
-  version: "3dena.build-approval-candidate.v1",
+  version: "3dena.build-approval-candidate.v3",
   releaseId: input.releaseId,
   environment: input.environment,
   gitCommit: input.gitCommit,
@@ -62,11 +84,15 @@ const candidate = {
   jenaVersion: input.jenaVersion,
   jenaCommit: input.jenaCommit,
   jenaTarballSha256: await fileSha256(input.artifacts.jenaTarball),
+  jenaTarballIntegrity: `sha512-${createHash("sha512")
+    .update(await readFile(resolve(input.artifacts.jenaTarball))).digest("base64")}`,
+  sdkVersion: input.sdkVersion,
+  buildId: input.buildId,
   lockfileSha256: await fileSha256(input.artifacts.lockfile),
   sbomSha256: await fileSha256(input.artifacts.sbom),
   schemaBundleSha256: await fileSha256(input.artifacts.schemaBundle),
-  migrationVersion: input.migrationVersion,
-  migrationSha256: await fileSha256(input.artifacts.migration),
+  migrationManifestSha256: createHash("sha256")
+    .update(JSON.stringify(migrationManifest), "utf8").digest("hex"),
   contractVersions: input.contractVersions,
   implementationActorIds: input.implementationActorIds,
 };

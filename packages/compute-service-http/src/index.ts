@@ -20,6 +20,17 @@ export {
 } from "./in-memory";
 export { InMemoryComputeHttpDatasetWorkflowService } from "./dataset-in-memory";
 export { ComputeV1HttpRouter } from "./router";
+export {
+  LONGITUDINAL_COMPUTE_CAPABILITY_VERSION_V2,
+  LONGITUDINAL_COMPUTE_STATUS_URLS_VERSION_V2,
+  LONGITUDINAL_COMPUTE_STORED_INPUT_VERSION_V2,
+  LONGITUDINAL_COMPUTE_SUBMISSION_VERSION_V2,
+  LONGITUDINAL_COMPUTE_TASK_KIND_V2,
+  MAX_LONGITUDINAL_STORED_INPUT_BYTES_V2,
+  LongitudinalComputeSubmissionErrorV2,
+  assertApprovedLongitudinalExecutionBuildV2,
+  materializeLongitudinalComputeSubmissionV2,
+} from "./longitudinal-contracts";
 
 export type {
   AnalysisJobEventV1,
@@ -28,8 +39,18 @@ export type {
   ComputeHttpCreateFingerprintInput,
   ComputeHttpJobRecordV1,
   ComputeHttpProgressEventInput,
+  ComputeHttpTaskKindV1,
   ReservedDatasetV1,
 } from "./contracts";
+export type {
+  ApprovedLongitudinalExecutionBuildV2,
+  LongitudinalComputeCapabilityV2,
+  LongitudinalComputeStatusUrlsV2,
+  LongitudinalComputeSubmissionErrorCodeV2,
+  LongitudinalComputeSubmissionV2,
+  MaterializedLongitudinalComputeSubmissionV2,
+  ScientificStoredLongitudinalInputV2,
+} from "./longitudinal-contracts";
 export type {
   ActivateComputeDatasetRequestV1,
   ComputeDatasetActivationReceiptV1,
@@ -64,6 +85,7 @@ export type { ComputeHttpDatasetWorkflowService } from "./dataset-interface";
 export type { ComputeHttpErrorCode } from "./errors";
 export type {
   ComputeHttpCapabilityCodec,
+  ComputeHttpDeletionLifecycleProbe,
   ComputeHttpEventBroker,
   ComputeHttpIdFactory,
   ComputeHttpJobRepository,

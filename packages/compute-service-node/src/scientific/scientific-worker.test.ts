@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   ANALYSIS_CONTRACT_VERSION_V1,
@@ -12,6 +12,13 @@ import {
   ANALYSIS_TASK_VERSION_V1,
   DATASET_RECEIPT_VERSION_V1,
   executeAnalysisTask,
+  executeLongitudinalAnalysisV2,
+  getAnalysisBuildIdentityV2,
+  hashAnalysisValueV1,
+  hashLongitudinalExecutionRequestV2,
+  verifyLongitudinalAnalysisBundleV2,
+  type LongitudinalExecutionRequestV2,
+  type AnalysisResult,
   type AnalysisExecutionDataset,
   type AnalysisExecutionDatasetV1,
   type AnalysisExecutionDatasetV2,
@@ -27,13 +34,31 @@ import {
   ComputeServiceCore,
   InMemoryComputeAuditSink,
   InMemoryComputeObjectStore,
+  InMemoryComputeProcessSupervisor,
   InMemoryComputeTaskRepository,
+  ManualComputeClock,
   SequenceComputeIdFactory,
   type ComputeClock,
   type ComputeTaskRequestV1,
   type ComputeObjectStore,
   type ProcessLaunchContextV1,
 } from "@3dena/compute-service-core";
+import {
+  ComputeV1HttpRouter,
+  HmacComputeHttpCapabilityCodec,
+  InMemoryComputeHttpEventBroker,
+  InMemoryComputeHttpJobRepository,
+  InMemoryComputeHttpObjectUrlIssuer,
+  LONGITUDINAL_COMPUTE_STORED_INPUT_VERSION_V2,
+  LONGITUDINAL_COMPUTE_SUBMISSION_VERSION_V2,
+  LONGITUDINAL_COMPUTE_TASK_KIND_V2,
+  SequenceComputeHttpIdFactory,
+  StaticComputeHttpReadinessProbe,
+  type ApprovedLongitudinalExecutionBuildV2,
+  type LongitudinalComputeCapabilityV2,
+  type LongitudinalComputeSubmissionV2,
+  type ScientificStoredLongitudinalInputV2 as HttpScientificStoredLongitudinalInputV2,
+} from "@3dena/compute-service-http";
 
 import {
   FILE_SYSTEM_RESULT_STORE_OPTIONS_VERSION,
@@ -43,28 +68,42 @@ import {
   SCIENTIFIC_EXECUTION_INPUT_VERSION,
   SCIENTIFIC_INPUT_PROVIDER_VERSION,
   SCIENTIFIC_JSON_INPUT_PROVIDER_OPTIONS_VERSION,
+  SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION,
+  SCIENTIFIC_LONGITUDINAL_RESULT_ARTIFACT_VERSION,
+  SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2,
   SCIENTIFIC_PUBLICATION_RECEIPT_VERSION,
   SCIENTIFIC_RESULT_PUBLISHER_VERSION,
   SCIENTIFIC_RESULT_ARTIFACT_VERSION,
   SCIENTIFIC_SESSION_ADAPTER_OPTIONS_VERSION,
   SCIENTIFIC_STORED_INPUT_VERSION,
+  SCIENTIFIC_STORED_LONGITUDINAL_INPUT_VERSION,
   SCIENTIFIC_WORKER_PROTOCOL_VERSION,
   FileSystemImmutableResultStore,
   JsonObjectStoreScientificInputProvider,
   NodeComputeProcessSupervisor,
   ScientificWorkerSessionAdapter,
+  executeScientificLongitudinalInputV2,
   resolveScientificWorkerEntry,
   type ScientificPublicationRequestV1,
   type ScientificPublicationReceiptV1,
   type ScientificResultArtifactV1,
+  type ScientificLongitudinalResultArtifactV2,
   type ScientificStoredInputV1,
   type NodeWorkerSessionV1,
 } from "../index";
+import { bindPersistentLongitudinalRequestV2 } from "./validation";
 
 const DATASET_HASH = "a".repeat(64);
 const SPEC_HASH = "b".repeat(64);
 const PRIVATE_PARTICIPANT_ID =
   "PRIVATE_PARTICIPANT_ID_MUST_NOT_ESCAPE_SCIENTIFIC_CHILD";
+const HTTP_ORIGIN = "https://app.example";
+const HTTP_SERVICE_TOKEN =
+  "test-only-longitudinal-service-token-with-at-least-32-bytes";
+const FIXED_PROJECTION_SEMANTICS =
+  "one immutable fitted jENA rotation; fixed projectIn full-space recovery; participant-period reduction before group-time centroids";
+const FIXED_PROJECTION_DIAGNOSTIC =
+  "Full-space coordinates were projected by jENA against the immutable successful-fit rotation; no ENA accumulation or rotation fit was repeated.";
 
 interface Deferred<T> {
   readonly promise: Promise<T>;
@@ -281,15 +320,281 @@ async function createStoredInput(
   return { input, task };
 }
 
+async function longitudinalRequest(
+  taskId: string,
+): Promise<LongitudinalExecutionRequestV2> {
+  const sourceTask = analysisTask(`${taskId}-source`, Date.now() + 60_000);
+  const sourceEnvelope = await executeAnalysisTask(dataset(), sourceTask);
+  if (
+    sourceEnvelope.taskKind !== "ena-model" ||
+    sourceEnvelope.result.schemaVersion !== "3dena.analysis-result.v1"
+  ) throw new Error("Expected a fitted longitudinal ENA source result.");
+  const result = sourceEnvelope.result;
+  const trajectory = result.trajectory;
+  if (trajectory === undefined) {
+    throw new Error("Expected a fitted longitudinal ENA trajectory.");
+  }
+  const runId = `run-${taskId}`;
+  const sourceResultHash = sourceEnvelope.provenance.resultHash;
+  const executionDataset: AnalysisExecutionDatasetV2 = {
+    schemaVersion: ANALYSIS_EXECUTION_DATASET_VERSION_V2,
+    receipt: dataset().receipt,
+    specHash: SPEC_HASH,
+    buildId: "compute-scientific-longitudinal-source",
+    generatedAt: "2026-08-24T00:00:00.000Z",
+    sourceResult: {
+      sourceKind: "raw-jena",
+      hash: sourceResultHash,
+      result,
+    },
+  };
+  const participantColumns = result.points[0]?.participantLabel.columns;
+  if (participantColumns === undefined || participantColumns.length === 0) {
+    throw new Error("Expected immutable participant identity columns.");
+  }
+  const { bound: _bound, ...build } = getAnalysisBuildIdentityV2();
+  return {
+    dataset: executionDataset,
+    pathTask: {
+      schemaVersion: "3dena.trajectory-path-task.v2",
+      kind: "trajectory-path-v2",
+      datasetHash: DATASET_HASH,
+      specHash: SPEC_HASH,
+      runId,
+      runSpec: {
+        schemaVersion: "3dena.trajectory-run-spec.v2",
+        sourceResultHash,
+        participantColumns: [...participantColumns],
+        timeColumn: "Lesson",
+        groupColumn: "Group",
+        orderedPeriods: trajectory.timeOrder.map((time, index) => ({
+          identity: {
+            components: [{
+              name: "Lesson",
+              type: typeof time.value === "boolean"
+                ? "boolean"
+                : typeof time.value === "number"
+                  ? "number"
+                  : "string",
+              value: time.value ?? time.display,
+            }],
+          },
+          sourceTimeCanonical: time.canonical,
+          displayLabel: time.display,
+          expected: true,
+          value: { type: "ordered-index-v2", index },
+        })),
+        selectedDimensions: [...result.axes],
+        cohortPolicy: "available",
+        missingValuePolicy: "complete-analytical-rows",
+        estimand: { kind: "equal-participant" },
+      },
+    },
+    execution: {
+      // Deliberately untrusted: the worker must normalize this server-side.
+      target: "browser-worker",
+      ...build,
+      seed: 2026,
+    },
+  };
+}
+
+async function httpLongitudinalSubmission(
+  taskId: string,
+): Promise<{
+  readonly submission: LongitudinalComputeSubmissionV2;
+  readonly approvedBuild: ApprovedLongitudinalExecutionBuildV2;
+}> {
+  const request = structuredClone(await longitudinalRequest(taskId));
+  const source = request.dataset.sourceResult;
+  if (source === undefined) throw new Error("Expected a longitudinal source result.");
+  const result = source.result as AnalysisResult;
+  const jenaReceipt = JSON.parse(readFileSync(
+    new URL("../../../../vendor/jena-js/RECEIPT.json", import.meta.url),
+    "utf8",
+  )) as {
+    readonly version: string;
+    readonly officialCommit: string;
+    readonly tarballIntegrity: string;
+  };
+  const analysisManifest = JSON.parse(readFileSync(
+    new URL("../../../../packages/analysis/package.json", import.meta.url),
+    "utf8",
+  )) as { readonly version: string };
+  const approvedBuild: ApprovedLongitudinalExecutionBuildV2 = {
+    jenaVersion: jenaReceipt.version,
+    jenaCommit: jenaReceipt.officialCommit,
+    jenaTarballIntegrity: jenaReceipt.tarballIntegrity,
+    sdkVersion: analysisManifest.version,
+    buildId: "http-node-integration-build",
+  };
+  const participantTokens = new Map<string, string>();
+  const unitTokens = new Map<string, string>();
+  const stepTokens = new Map<string, string>();
+  const opaqueToken = (
+    map: Map<string, string>,
+    canonical: string,
+    namespace: string,
+  ): string => {
+    const existing = map.get(canonical);
+    if (existing !== undefined) return existing;
+    const created = `${namespace}-${map.size + 1}-${createHash("sha256")
+      .update(canonical)
+      .digest("hex")
+      .slice(0, 32)}`;
+    map.set(canonical, created);
+    return created;
+  };
+  const groupColumn = request.pathTask.runSpec.groupColumn;
+  const timeColumn = request.pathTask.runSpec.timeColumn;
+  result.points = result.points.map((point) => {
+    const group = point.group;
+    const time = point.time;
+    const originalStep = point.step;
+    if (group === undefined || time === undefined || originalStep === undefined) {
+      throw new Error("Expected fitted longitudinal point identities.");
+    }
+    const participantToken = opaqueToken(
+      participantTokens,
+      point.participantLabel.canonical,
+      "participant",
+    );
+    const unitToken = opaqueToken(unitTokens, point.unit.canonical, "unit");
+    const stepToken = opaqueToken(stepTokens, originalStep.canonical, "step");
+    let unitTokenWritten = false;
+    const unitValues = point.unit.columns.map((column) => {
+      if (groupColumn !== null && column === groupColumn) return group.value;
+      if (!unitTokenWritten) {
+        unitTokenWritten = true;
+        return unitToken;
+      }
+      return "@opaque-unit-component";
+    });
+    let stepTokenWritten = false;
+    const stepValues = originalStep.columns.map((column) => {
+      if (column === timeColumn) return time.value;
+      if (!stepTokenWritten) {
+        stepTokenWritten = true;
+        return stepToken;
+      }
+      return "@opaque-step-component";
+    });
+    const unit = {
+      columns: [...point.unit.columns],
+      values: unitValues,
+      canonical: `opaque-unit:${unitToken}`,
+      display: "Opaque unit",
+    };
+    const step = {
+      columns: [...originalStep.columns],
+      values: stepValues,
+      canonical: `opaque-step:${stepToken}`,
+      display: "Opaque step",
+    };
+    return {
+      ...point,
+      participantLabel: {
+        columns: [...point.participantLabel.columns],
+        values: point.participantLabel.columns.map((_, index) => (
+          index === 0 ? participantToken : "@opaque-component"
+        )),
+        canonical: `opaque-participant:${participantToken}`,
+        display: "Opaque participant",
+      },
+      unit,
+      step,
+      id: {
+        columns: [...unit.columns, ...step.columns],
+        values: [...unit.values, ...step.values],
+        canonical: `opaque-point:${unitToken}:${stepToken}`,
+        display: "Opaque fitted point",
+      },
+      metadata: {},
+    };
+  });
+  result.accumulation.modelCounts.rowKeys = result.points.map((point) =>
+    structuredClone(point.id));
+  result.accumulation.rowCounts = {
+    rowKeys: [],
+    columns: [...result.accumulation.rowCounts.columns],
+    values: [],
+  };
+  result.trajectory!.participantPeriods = [];
+  result.trajectory!.centroids = [];
+  result.trajectory!.paths = result.trajectory!.paths.map((path) => ({
+    group: structuredClone(path.group),
+    steps: path.steps.map((step) => ({
+      time: structuredClone(step.time),
+      centroidIndex: null,
+    })),
+  }));
+  result.summary.rowCountRows = 0;
+  result.summary.participantPeriods = 0;
+  result.summary.trajectoryCentroids = 0;
+  result.summary.units = new Set(result.points.map((point) => point.unit.canonical)).size;
+  result.diagnostics = [{
+    code: "FITTED_JENA_FIXED_ROTATION_ADAPTER_V2",
+    severity: "info",
+    message: FIXED_PROJECTION_DIAGNOSTIC,
+    path: "provenance.resultSemantics",
+  }];
+  result.provenance.adapter = "@3dena/analysis";
+  result.provenance.adapterVersion = approvedBuild.sdkVersion;
+  result.provenance.jenaPackage = "jena-js";
+  result.provenance.jenaVersion = approvedBuild.jenaVersion;
+  result.provenance.jenaCommit = approvedBuild.jenaCommit;
+  result.provenance.resultSemantics = FIXED_PROJECTION_SEMANTICS;
+  request.dataset.buildId = approvedBuild.buildId;
+  source.hash = await hashAnalysisValueV1(result);
+  request.pathTask.runSpec.sourceResultHash = source.hash;
+  const specHash = await hashAnalysisValueV1(request.pathTask.runSpec);
+  request.dataset.specHash = specHash;
+  request.pathTask.specHash = specHash;
+  request.dataset.receipt.activationIdentity =
+    `open-ena:${request.pathTask.datasetHash}:${specHash}`;
+  return {
+    approvedBuild,
+    submission: {
+      schemaVersion: LONGITUDINAL_COMPUTE_SUBMISSION_VERSION_V2,
+      dataset: request.dataset,
+      pathTask: request.pathTask,
+      seed: request.execution.seed,
+      processingPolicyConfirmed: true,
+    },
+  };
+}
+
+async function createStoredLongitudinalInput(
+  store: ComputeObjectStore,
+  taskId: string,
+  deadlineAtMs: number,
+  requestOverride?: LongitudinalExecutionRequestV2,
+) {
+  const request = requestOverride ?? await longitudinalRequest(taskId);
+  const stored: HttpScientificStoredLongitudinalInputV2 = {
+    version: SCIENTIFIC_STORED_LONGITUDINAL_INPUT_VERSION,
+    kind: SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2,
+    owner: { ...computeOwner(taskId), contractVersion: ANALYSIS_CONTRACT_VERSION_V1 },
+    deadlineAtMs,
+    request,
+  };
+  const bytes = new TextEncoder().encode(JSON.stringify(stored));
+  const input = (
+    await store.putImmutable(`scientific-inputs/${taskId}.json`, bytes)
+  ).descriptor;
+  return { input, request, stored };
+}
+
 function createRequest(
   taskId: string,
   input: ComputeTaskRequestV1["input"],
   deadlineAtMs: number,
+  taskKind = "ena-model",
 ): ComputeTaskRequestV1 {
   return {
     version: COMPUTE_TASK_REQUEST_VERSION,
     owner: computeOwner(taskId),
-    taskKind: "ena-model",
+    taskKind,
     input,
     deadlineAtMs,
     expiresAtMs: deadlineAtMs + 10_000,
@@ -410,6 +715,33 @@ async function startCoreExecution(
   return { input, lease, running };
 }
 
+async function startCoreLongitudinalExecution(
+  harness: CoreHarness,
+  taskId: string,
+  deadlineAtMs: number,
+) {
+  const { input, request } = await createStoredLongitudinalInput(
+    harness.store,
+    taskId,
+    deadlineAtMs,
+  );
+  await harness.service.createTask(
+    createRequest(
+      taskId,
+      input,
+      deadlineAtMs,
+      SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2,
+    ),
+  );
+  const lease = await harness.service.claimTask(taskId, {
+    leaseId: `lease-${taskId}`,
+    holderId: "scientific-worker-test",
+    durationMs: Math.max(1, Math.min(25_000, deadlineAtMs - Date.now())),
+  });
+  const running = await harness.service.executeTask(taskId, lease);
+  return { input, lease, request, running };
+}
+
 async function cleanHarness(harness: CoreHarness, taskId: string): Promise<void> {
   try {
     const record = await harness.service.getTask(taskId);
@@ -427,6 +759,376 @@ async function cleanHarness(harness: CoreHarness, taskId: string): Promise<void>
 }
 
 describe.sequential("scientific child-process candidate", () => {
+  it("strictly validates durable longitudinal V2 input, bindings, and deadline", async () => {
+    const objectStore = new InMemoryComputeObjectStore();
+    const provider = new JsonObjectStoreScientificInputProvider({
+      version: SCIENTIFIC_JSON_INPUT_PROVIDER_OPTIONS_VERSION,
+      objectStore,
+    });
+    const taskId = "longitudinal-input-v2";
+    const deadlineAtMs = Date.now() + 60_000;
+    const { input, request, stored } = await createStoredLongitudinalInput(
+      objectStore,
+      taskId,
+      deadlineAtMs,
+    );
+    const contextFor = (
+      descriptor: ComputeTaskRequestV1["input"],
+      deadline = deadlineAtMs,
+    ): ProcessLaunchContextV1 => ({
+      owner: computeOwner(taskId),
+      taskRef: `task-ref-${taskId}`,
+      request: createRequest(
+        taskId,
+        descriptor,
+        deadline,
+        SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2,
+      ),
+      lease: {
+        version: COMPUTE_LEASE_VERSION,
+        leaseId: `lease-${taskId}`,
+        holderId: "scientific-worker-test",
+        epoch: 1,
+        issuedAtMs: Date.now(),
+        expiresAtMs: deadline + 10_000,
+      },
+      executionId: `execution-${taskId}`,
+      resultObjectKey: `compute-results/${taskId}/result.json`,
+    });
+
+    const validatedInput = await provider.load(
+      contextFor(input),
+      new AbortController().signal,
+    );
+    expect(validatedInput).toMatchObject({
+        version: SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION,
+        kind: SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2,
+        deadlineAtMs,
+        requestHash: await hashLongitudinalExecutionRequestV2(request),
+        request: {
+          execution: { target: "persistent-compute-service" },
+          pathTask: { runId: `run-${taskId}` },
+        },
+      });
+    if (validatedInput.version !== SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION) {
+      throw new Error("Expected the longitudinal execution input discriminant.");
+    }
+    const directArtifact = await executeScientificLongitudinalInputV2(validatedInput);
+    expect(directArtifact).toMatchObject({
+      requestHash: validatedInput.requestHash,
+      bundle: {
+        identity: { requestHash: validatedInput.requestHash },
+        execution: { target: "persistent-compute-service" },
+      },
+    });
+    await expect(verifyLongitudinalAnalysisBundleV2(directArtifact.bundle)).resolves.toBeUndefined();
+    expect(SCIENTIFIC_STORED_LONGITUDINAL_INPUT_VERSION)
+      .toBe(LONGITUDINAL_COMPUTE_STORED_INPUT_VERSION_V2);
+    expect(SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2)
+      .toBe(LONGITUDINAL_COMPUTE_TASK_KIND_V2);
+
+    const invalidAnalysisOwners = [
+      ["contractVersion", COMPUTE_TASK_OWNER_CONTRACT_VERSION],
+      ["datasetHash", "d".repeat(64)],
+      ["specHash", "e".repeat(64)],
+      ["runId", "wrong-http-run"],
+      ["taskId", "wrong-http-task"],
+    ] as const;
+    for (const [field, value] of invalidAnalysisOwners) {
+      const invalidOwnerBytes = new TextEncoder().encode(JSON.stringify({
+        ...stored,
+        owner: { ...stored.owner, [field]: value },
+      }));
+      const invalidOwnerInput = (await objectStore.putImmutable(
+        `scientific-inputs/${taskId}-owner-${field}.json`,
+        invalidOwnerBytes,
+      )).descriptor;
+      await expect(
+        provider.load(contextFor(invalidOwnerInput), new AbortController().signal),
+        field,
+      ).rejects.toMatchObject({ code: "INVALID_EXECUTION_INPUT" });
+    }
+
+    const wrongKindBytes = new TextEncoder().encode(JSON.stringify({
+      ...stored,
+      kind: "longitudinal-v2",
+    }));
+    const wrongKindInput = (await objectStore.putImmutable(
+      `scientific-inputs/${taskId}-wrong-kind.json`,
+      wrongKindBytes,
+    )).descriptor;
+    await expect(
+      provider.load(contextFor(wrongKindInput), new AbortController().signal),
+    ).rejects.toMatchObject({ code: "INVALID_EXECUTION_INPUT" });
+
+    const mismatchedBuildBytes = new TextEncoder().encode(JSON.stringify({
+      ...stored,
+      request: {
+        ...request,
+        execution: { ...request.execution, buildId: "caller-selected-build" },
+      },
+    }));
+    const mismatchedBuildInput = (await objectStore.putImmutable(
+      `scientific-inputs/${taskId}-mismatched-build.json`,
+      mismatchedBuildBytes,
+    )).descriptor;
+    await expect(
+      provider.load(contextFor(mismatchedBuildInput), new AbortController().signal),
+    ).rejects.toMatchObject({ code: "INVALID_EXECUTION_INPUT" });
+
+    const unknownBytes = new TextEncoder().encode(JSON.stringify({
+      ...stored,
+      unknown: true,
+    }));
+    const unknownInput = (await objectStore.putImmutable(
+      `scientific-inputs/${taskId}-unknown.json`,
+      unknownBytes,
+    )).descriptor;
+    await expect(
+      provider.load(contextFor(unknownInput), new AbortController().signal),
+    ).rejects.toMatchObject({ code: "INVALID_EXECUTION_INPUT" });
+
+    const mismatchedRequest: LongitudinalExecutionRequestV2 = {
+      ...request,
+      pathTask: { ...request.pathTask, runId: "wrong-run-binding" },
+    };
+    const mismatchedBytes = new TextEncoder().encode(JSON.stringify({
+      ...stored,
+      request: mismatchedRequest,
+    }));
+    const mismatchedInput = (await objectStore.putImmutable(
+      `scientific-inputs/${taskId}-mismatched.json`,
+      mismatchedBytes,
+    )).descriptor;
+    await expect(
+      provider.load(contextFor(mismatchedInput), new AbortController().signal),
+    ).rejects.toMatchObject({ code: "INVALID_EXECUTION_INPUT" });
+
+    await expect(
+      provider.load(
+        contextFor(input, deadlineAtMs + 1),
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_EXECUTION_INPUT" });
+  });
+
+  it("executes the exact immutable wrapper emitted by the real HTTP V2 route", async () => {
+    const now = Date.now();
+    const { submission, approvedBuild } = await httpLongitudinalSubmission(
+      "http-router-node-worker",
+    );
+    const objectStore = new InMemoryComputeObjectStore();
+    const core = new ComputeServiceCore({
+      repository: new InMemoryComputeTaskRepository(),
+      objectStore,
+      processSupervisor: new InMemoryComputeProcessSupervisor(),
+      auditSink: new InMemoryComputeAuditSink(),
+      clock: new ManualComputeClock(now),
+      idFactory: new SequenceComputeIdFactory(),
+      maxConcurrency: 1,
+      maxLeaseDurationMs: 60_000,
+    });
+    const httpRepository = new InMemoryComputeHttpJobRepository();
+    const router = new ComputeV1HttpRouter({
+      core,
+      infrastructure: {
+        repository: httpRepository,
+        objectStore,
+        clock: new ManualComputeClock(now),
+        idFactory: new SequenceComputeHttpIdFactory(),
+        capabilityCodec: new HmacComputeHttpCapabilityCodec(
+          "test-only-capability-secret-with-at-least-32-bytes",
+        ),
+        objectUrls: new InMemoryComputeHttpObjectUrlIssuer(
+          "https://objects.example/private/",
+        ),
+        events: new InMemoryComputeHttpEventBroker(),
+        readiness: new StaticComputeHttpReadinessProbe(true),
+        rateLimiter: {
+          async consume() {
+            return { allowed: true, retryAfterSeconds: 1 };
+          },
+        },
+      },
+      allowedOrigins: [HTTP_ORIGIN],
+      buildIdentity: {
+        approvalManifestSha256: "9".repeat(64),
+        releaseId: "release-node-http-integration",
+        gitCommit: "8".repeat(40),
+        flyImageDigest: `sha256:${"7".repeat(64)}`,
+        flyBuildId: "compute-http-node-integration",
+        contractVersions: [ANALYSIS_CONTRACT_VERSION_V1],
+      },
+      approvedLongitudinalBuild: approvedBuild,
+      longitudinalServiceTokenSha256: createHash("sha256")
+        .update(new TextEncoder().encode(HTTP_SERVICE_TOKEN))
+        .digest("hex"),
+      jobTtlMs: 60 * 60_000,
+      maxTaskRuntimeMs: 60_000,
+    });
+    const response = await router.handle(new Request(
+      "https://compute.example/v2/longitudinal-jobs",
+      {
+        method: "POST",
+        headers: {
+          origin: HTTP_ORIGIN,
+          "content-type": "application/json",
+          "idempotency-key": "http-to-node-worker-0001",
+          "x-3dena-service-token": HTTP_SERVICE_TOKEN,
+          "x-3dena-contract-version": ANALYSIS_CONTRACT_VERSION_V1,
+        },
+        body: JSON.stringify(submission),
+      },
+    ));
+    expect(response.status).toBe(201);
+    const capability = (await response.json()) as LongitudinalComputeCapabilityV2;
+    const httpRecord = await httpRepository.get(capability.jobId);
+    const coreRecord = await core.getTask(capability.jobId);
+    if (httpRecord === null || coreRecord === null) {
+      throw new Error("Expected the HTTP route to create one durable core task.");
+    }
+    const storedBytes = await objectStore.get(httpRecord.inputObjectKey);
+    if (storedBytes === null) throw new Error("Expected HTTP-owned immutable input bytes.");
+    const stored = JSON.parse(
+      new TextDecoder().decode(storedBytes),
+    ) as HttpScientificStoredLongitudinalInputV2;
+    expect(stored).toMatchObject({
+      version: LONGITUDINAL_COMPUTE_STORED_INPUT_VERSION_V2,
+      kind: LONGITUDINAL_COMPUTE_TASK_KIND_V2,
+      owner: httpRecord.owner,
+      deadlineAtMs: coreRecord.request.deadlineAtMs,
+      request: { execution: { target: "persistent-compute-service", ...approvedBuild } },
+    });
+    expect(storedBytes.byteLength).toBe(coreRecord.request.input.byteLength);
+    expect(createHash("sha256").update(storedBytes).digest("hex"))
+      .toBe(coreRecord.request.input.sha256);
+
+    const context: ProcessLaunchContextV1 = {
+      owner: coreRecord.request.owner,
+      taskRef: `task-ref-${capability.jobId}`,
+      request: coreRecord.request,
+      lease: {
+        version: COMPUTE_LEASE_VERSION,
+        leaseId: `lease-${capability.jobId}`,
+        holderId: "scientific-worker-test",
+        epoch: 1,
+        issuedAtMs: now,
+        expiresAtMs: coreRecord.request.deadlineAtMs,
+      },
+      executionId: `execution-${capability.jobId}`,
+      resultObjectKey: `compute-results/${capability.jobId}/result.json`,
+    };
+    vi.resetModules();
+    vi.stubGlobal("__THREEDENA_JENA_VERSION__", approvedBuild.jenaVersion);
+    vi.stubGlobal("__THREEDENA_JENA_COMMIT__", approvedBuild.jenaCommit);
+    vi.stubGlobal(
+      "__THREEDENA_JENA_TARBALL_INTEGRITY__",
+      approvedBuild.jenaTarballIntegrity,
+    );
+    vi.stubGlobal("__THREEDENA_SDK_VERSION__", approvedBuild.sdkVersion);
+    vi.stubGlobal("__THREEDENA_BUILD_ID__", approvedBuild.buildId);
+    try {
+      // Reload the node runtime after installing the same build identity that
+      // the real HTTP route injected. This exercises the production binding
+      // without weakening the unbound-source fail-closed contract.
+      const boundRuntime = await import("../index");
+      const provider = new boundRuntime.JsonObjectStoreScientificInputProvider({
+        version: SCIENTIFIC_JSON_INPUT_PROVIDER_OPTIONS_VERSION,
+        objectStore,
+      });
+      const loaded = await provider.load(context, new AbortController().signal);
+      expect(loaded).toMatchObject({
+        version: SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION,
+        kind: LONGITUDINAL_COMPUTE_TASK_KIND_V2,
+        source: coreRecord.request.input,
+        owner: coreRecord.request.owner,
+        deadlineAtMs: coreRecord.request.deadlineAtMs,
+        request: { execution: { target: "persistent-compute-service", ...approvedBuild } },
+      });
+
+      const invalidContextCases: Array<{
+        readonly label: string;
+        readonly context: ProcessLaunchContextV1;
+      }> = [
+        ...(["contractVersion", "datasetHash", "specHash", "runId", "taskId"] as const).map((field) => ({
+          label: `context owner ${field}`,
+          context: {
+            ...context,
+            owner: {
+              ...context.owner,
+              [field]: field === "contractVersion"
+                ? ANALYSIS_CONTRACT_VERSION_V1
+                : field.endsWith("Hash")
+                  ? "f".repeat(64)
+                  : `wrong-${field}`,
+            },
+          } as ProcessLaunchContextV1,
+        })),
+        {
+          label: "deadline",
+          context: {
+            ...context,
+            request: { ...context.request, deadlineAtMs: context.request.deadlineAtMs + 1 },
+          },
+        },
+        {
+          label: "task kind",
+          context: {
+            ...context,
+            request: { ...context.request, taskKind: "ena-model" },
+          },
+        },
+        {
+          label: "source descriptor",
+          context: {
+            ...context,
+            request: {
+              ...context.request,
+              input: { ...context.request.input, sha256: "0".repeat(64) },
+            },
+          },
+        },
+      ];
+      for (const candidate of invalidContextCases) {
+        await expect(
+          provider.load(candidate.context, new AbortController().signal),
+          candidate.label,
+        ).rejects.toMatchObject({ code: "INVALID_EXECUTION_INPUT" });
+      }
+      if (loaded.version !== SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION) {
+        throw new Error("Expected a bound longitudinal worker input.");
+      }
+      const artifact = await boundRuntime.executeScientificLongitudinalInputV2(loaded);
+      expect(artifact).toMatchObject({
+        version: SCIENTIFIC_LONGITUDINAL_RESULT_ARTIFACT_VERSION,
+        owner: coreRecord.request.owner,
+        taskKind: LONGITUDINAL_COMPUTE_TASK_KIND_V2,
+        requestHash: loaded.requestHash,
+        bundle: {
+          identity: { requestHash: loaded.requestHash },
+          execution: { target: "persistent-compute-service", ...approvedBuild },
+        },
+      });
+      expect(artifact.bundle.codeGeometry.nodes.length).toBeGreaterThan(0);
+      expect(artifact.bundle.networkOverlays).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.resetModules();
+    }
+  });
+
+  it("fails closed in production when the scientific bundle lacks an injected build identity", async () => {
+    const request = await longitudinalRequest("production-unbound-build");
+    expect(getAnalysisBuildIdentityV2().bound).toBe(false);
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      expect(() => bindPersistentLongitudinalRequestV2(request))
+        .toThrowError(expect.objectContaining({ code: "INVALID_EXECUTION_INPUT" }));
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("loads and validates all seven discriminated task variants from immutable worker input", async () => {
     const objectStore = new InMemoryComputeObjectStore();
     const provider = new JsonObjectStoreScientificInputProvider({
@@ -653,6 +1355,10 @@ describe.sequential("scientific child-process candidate", () => {
         "compute-results/scientific-artifact-owner-task-ref/result.bin",
     };
     const resultStore = new InMemoryComputeObjectStore();
+    const validEnvelope = await executeAnalysisTask(
+      dataset(),
+      analysisTask(taskId, deadlineAtMs),
+    );
     let publicationCount = 0;
     const adapter = new ScientificWorkerSessionAdapter({
       version: SCIENTIFIC_SESSION_ADAPTER_OPTIONS_VERSION,
@@ -688,15 +1394,7 @@ describe.sequential("scientific child-process candidate", () => {
         version: SCIENTIFIC_RESULT_ARTIFACT_VERSION,
         owner: wrongOwner,
         taskKind: "ena-model",
-        envelope: {
-          schemaVersion: "3dena.analysis-result-envelope.v1",
-          owner: wrongOwner,
-          taskKind: "ena-model",
-          result: { privateParticipant: PRIVATE_PARTICIPANT_ID },
-          diagnostics: [],
-          evidence: {},
-          provenance: {},
-        },
+        envelope: { ...validEnvelope, owner: wrongOwner },
       }),
     );
     const descriptor = {
@@ -735,6 +1433,150 @@ describe.sequential("scientific child-process candidate", () => {
     expect(publicationCount).toBe(0);
     expect(String(rejected)).not.toContain(PRIVATE_PARTICIPANT_ID);
     expect(JSON.stringify(rejected)).not.toContain(PRIVATE_PARTICIPANT_ID);
+
+    const malformedEnvelope = structuredClone(validEnvelope);
+    (malformedEnvelope.provenance as unknown as Record<string, unknown>).unknown = true;
+    const malformedBytes = new TextEncoder().encode(JSON.stringify({
+      version: SCIENTIFIC_RESULT_ARTIFACT_VERSION,
+      owner: validEnvelope.owner,
+      taskKind: validEnvelope.taskKind,
+      envelope: malformedEnvelope,
+    }));
+    const malformedDescriptor = {
+      key: context.resultObjectKey,
+      sha256: createHash("sha256").update(malformedBytes).digest("hex"),
+      byteLength: malformedBytes.byteLength,
+    };
+    const malformed = await adapter.handleMessage(session, {
+      version: SCIENTIFIC_ARTIFACT_PUT_REQUEST_VERSION,
+      protocolVersion: SCIENTIFIC_WORKER_PROTOCOL_VERSION,
+      type: "artifact-put-request",
+      executionId: context.executionId,
+      owner,
+      lease,
+      object: malformedDescriptor,
+      bytes: malformedBytes,
+    }).catch((error: unknown) => error);
+    expect(malformed).toMatchObject({ code: "ARTIFACT_BINDING_MISMATCH" });
+    expect(await resultStore.head(malformedDescriptor.key)).toBeNull();
+    expect(publicationCount).toBe(0);
+  });
+
+  it("rejects a rehashed longitudinal artifact that is not bound to the prepared canonical request", async () => {
+    const taskId = "scientific-longitudinal-artifact-binding";
+    const deadlineAtMs = Date.now() + 20_000;
+    const objectStore = new InMemoryComputeObjectStore();
+    const { input } = await createStoredLongitudinalInput(
+      objectStore,
+      taskId,
+      deadlineAtMs,
+    );
+    const context: ProcessLaunchContextV1 = {
+      owner: computeOwner(taskId),
+      taskRef: `task-ref-${taskId}`,
+      request: createRequest(
+        taskId,
+        input,
+        deadlineAtMs,
+        SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2,
+      ),
+      lease: {
+        version: COMPUTE_LEASE_VERSION,
+        leaseId: `lease-${taskId}`,
+        holderId: "scientific-worker-test",
+        epoch: 1,
+        issuedAtMs: Date.now(),
+        expiresAtMs: deadlineAtMs,
+      },
+      executionId: `execution-${taskId}`,
+      resultObjectKey: `compute-results/${taskId}/result.json`,
+    };
+    const resultStore = new InMemoryComputeObjectStore();
+    let publicationCount = 0;
+    const adapter = new ScientificWorkerSessionAdapter({
+      version: SCIENTIFIC_SESSION_ADAPTER_OPTIONS_VERSION,
+      inputProvider: new JsonObjectStoreScientificInputProvider({
+        version: SCIENTIFIC_JSON_INPUT_PROVIDER_OPTIONS_VERSION,
+        objectStore,
+      }),
+      resultStore,
+      publisher: {
+        version: SCIENTIFIC_RESULT_PUBLISHER_VERSION,
+        async publish() {
+          publicationCount += 1;
+          throw new Error(PRIVATE_PARTICIPANT_ID);
+        },
+      },
+    });
+    const controller = new AbortController();
+    const launch = await adapter.prepareLaunchPayload(context, {
+      version: COMPUTE_PROCESS_LAUNCH_CONTROL_VERSION,
+      deadlineAtMs,
+      signal: controller.signal,
+    });
+    if (launch.input.version !== SCIENTIFIC_LONGITUDINAL_EXECUTION_INPUT_VERSION) {
+      throw new Error("Expected the longitudinal worker execution input.");
+    }
+    const bundle = await executeLongitudinalAnalysisV2(launch.input.request);
+    const session: NodeWorkerSessionV1 = {
+      version: NODE_WORKER_SESSION_VERSION,
+      childId: `child-${taskId}`,
+      executionId: context.executionId,
+      context,
+      signal: controller.signal,
+      async send() {
+        throw new Error(PRIVATE_PARTICIPANT_ID);
+      },
+      async requestTermination() {
+        controller.abort();
+      },
+    };
+
+    const artifacts: ScientificLongitudinalResultArtifactV2[] = [
+      {
+        version: SCIENTIFIC_LONGITUDINAL_RESULT_ARTIFACT_VERSION,
+        owner: computeOwner(taskId),
+        taskKind: SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2,
+        requestHash: "d".repeat(64),
+        bundle,
+      },
+      {
+        version: SCIENTIFIC_LONGITUDINAL_RESULT_ARTIFACT_VERSION,
+        owner: computeOwner(taskId),
+        taskKind: SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2,
+        requestHash: launch.input.requestHash,
+        bundle: {
+          ...structuredClone(bundle),
+          identity: {
+            ...bundle.identity,
+            // The scientific result hash deliberately excludes this
+            // publication fence, so the session must bind it independently.
+            requestHash: "e".repeat(64),
+          },
+        },
+      },
+    ];
+    for (const artifact of artifacts) {
+      const bytes = new TextEncoder().encode(JSON.stringify(artifact));
+      const descriptor = {
+        key: context.resultObjectKey,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+        byteLength: bytes.byteLength,
+      };
+      const rejected = await adapter.handleMessage(session, {
+        version: SCIENTIFIC_ARTIFACT_PUT_REQUEST_VERSION,
+        protocolVersion: SCIENTIFIC_WORKER_PROTOCOL_VERSION,
+        type: "artifact-put-request",
+        executionId: context.executionId,
+        owner: context.owner,
+        lease: context.lease,
+        object: descriptor,
+        bytes,
+      }).catch((error: unknown) => error);
+      expect(rejected).toMatchObject({ code: "ARTIFACT_BINDING_MISMATCH" });
+      expect(await resultStore.head(descriptor.key)).toBeNull();
+    }
+    expect(publicationCount).toBe(0);
   });
 
   it("stores a checksummed immutable artifact and exits zero only after the parent publishes and acknowledges it", async () => {
@@ -794,6 +1636,76 @@ describe.sequential("scientific child-process candidate", () => {
       await cleanHarness(harness, taskId);
     }
   });
+
+  it("executes a durable longitudinal V2 request and publishes a lease-fenced bundle with a server-owned target", async () => {
+    const taskId = "scientific-longitudinal-v2";
+    const harness = await createCoreHarness();
+    try {
+      const deadlineAtMs = Date.now() + 20_000;
+      const { request, running } = await startCoreLongitudinalExecution(
+        harness,
+        taskId,
+        deadlineAtMs,
+      );
+      expect(request.execution.target).toBe("browser-worker");
+      const publication = await withTimeout(harness.publishStarted.promise).catch(async (error: unknown) => {
+        const task = await harness.service.getTask(taskId);
+        throw new Error(`Longitudinal publication did not start: ${JSON.stringify({ task, adapter: harness.adapter.snapshot() })}`, { cause: error });
+      });
+      const artifactBytes = await harness.store.get(publication.object.key);
+      expect(artifactBytes).not.toBeNull();
+      expect(createHash("sha256").update(artifactBytes!).digest("hex"))
+        .toBe(publication.object.sha256);
+      expect(artifactBytes!.byteLength).toBe(publication.object.byteLength);
+      const artifact = JSON.parse(
+        new TextDecoder().decode(artifactBytes!),
+      ) as ScientificLongitudinalResultArtifactV2;
+      const expectedRequestHash = await hashLongitudinalExecutionRequestV2(request);
+      const build = getAnalysisBuildIdentityV2();
+      expect(artifact).toMatchObject({
+        version: SCIENTIFIC_LONGITUDINAL_RESULT_ARTIFACT_VERSION,
+        owner: computeOwner(taskId),
+        taskKind: SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2,
+        requestHash: expectedRequestHash,
+        bundle: {
+          schemaVersion: "3dena.longitudinal-analysis-bundle.v2",
+          identity: {
+            datasetHash: DATASET_HASH,
+            specHash: SPEC_HASH,
+            runId: `run-${taskId}`,
+            requestHash: expectedRequestHash,
+            jenaBuildId: `jena-js@${build.jenaVersion}+${build.jenaCommit}:${build.buildId}`,
+          },
+          execution: {
+            target: "persistent-compute-service",
+            jenaVersion: build.jenaVersion,
+            jenaCommit: build.jenaCommit,
+            jenaTarballIntegrity: build.jenaTarballIntegrity,
+            sdkVersion: build.sdkVersion,
+            buildId: build.buildId,
+          },
+        },
+      });
+      expect(artifact.bundle.paths.length).toBeGreaterThan(0);
+      expect(artifact.bundle.codeGeometry.nodes.length).toBeGreaterThan(0);
+      expect(artifact.bundle.networkOverlays).toEqual([]);
+      expect((await harness.service.getTask(taskId))?.result).toBeUndefined();
+      expect(harness.supervisor.snapshot().activeChildren).toBe(1);
+
+      harness.allowPublication();
+      await withTimeout(harness.service.settleBackground());
+      expect(await harness.service.getTask(taskId)).toMatchObject({
+        state: "succeeded",
+        result: { object: publication.object },
+      });
+      expect(running.execution?.resultObjectKey).toBe(publication.object.key);
+      expect(harness.publicationCount()).toBe(1);
+      expect(harness.adapter.snapshot().activeBindings).toBe(0);
+    } finally {
+      harness.allowPublication();
+      await cleanHarness(harness, taskId);
+    }
+  }, 15_000);
 
   it("cancels while publication is withheld, waits for close, deletes the unpublished artifact, and exposes no row identity", async () => {
     const taskId = "scientific-cancel";

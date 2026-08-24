@@ -295,6 +295,42 @@ describe("versioned public contracts", () => {
     expect(() => assertDisplaySpecV1({ ...spec, camera: { ...spec.camera, secret: true } })).toThrow(/unknown field/);
   });
 
+  it("accepts Plotly camera projection in the trajectory display V2 schema", () => {
+    const spec = {
+      schemaVersion: "3dena.trajectory-display-spec.v2",
+      projection: "3d",
+      displayedGroups: ["group-a"],
+      traces: {
+        participants: true,
+        individualPaths: false,
+        centroids: true,
+        paths: true,
+        directionArrows: true,
+        uncertainty: false,
+        networkOverlay: false,
+        codeNodes: true,
+        labels: true,
+      },
+      axisFlips: [false, false, false],
+      camera: {
+        eye: { x: 0, y: 0, z: 2.5 },
+        center: { x: 0, y: 0, z: 0 },
+        up: { x: 0, y: 1, z: 0 },
+        projection: { type: "orthographic" },
+      },
+      style: {
+        participantSize: 5,
+        participantOpacity: 0.5,
+        centroidSize: 7,
+        pathWidth: 5,
+      },
+    };
+    const ajv = new Ajv({ strict: false, strictNumbers: true, allErrors: true, validateFormats: false });
+    const validate = ajv.compile(CONTRACT_SCHEMAS_V1.trajectoryDisplaySpecV2);
+
+    expect(validate(spec), JSON.stringify(validate.errors)).toBe(true);
+  });
+
   it("distinguishes raw execution from prepared compatibility in provenance", () => {
     const raw = {
       schemaVersion: "3dena.provenance-manifest.v1",

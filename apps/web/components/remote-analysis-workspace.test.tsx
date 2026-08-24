@@ -6,7 +6,7 @@ import {
   within,
 } from "@testing-library/react";
 import type {
-  AnalysisClientV1,
+  AnalysisClientV2,
   AnalysisResultEnvelopeV1,
   DatasetReceiptV1,
 } from "@3dena/analysis";
@@ -61,20 +61,28 @@ vi.mock("@/lib/remote-analysis-runtime", async () => {
     })),
     runRemoteAnalysis: vi.fn(),
     deleteRemoteJobData: vi.fn(async () => ({
-      schemaVersion: "3dena.job-deletion-receipt.v1",
+      schemaVersion: "3dena.job-deletion-receipt.v2",
       jobId: "job-1",
       cancelled: false,
       inputDeleted: true,
       resultDeleted: true,
       deletedAt: new Date().toISOString(),
+      intentAccepted: true,
+      termination: "not_required",
+      capacity: "not_reserved",
+      objects: "deleted",
     })),
     cancelRemoteAnalysis: vi.fn(async () => ({
-      schemaVersion: "3dena.job-deletion-receipt.v1",
+      schemaVersion: "3dena.job-deletion-receipt.v2",
       jobId: "job-1",
       cancelled: true,
       inputDeleted: true,
       resultDeleted: true,
       deletedAt: new Date().toISOString(),
+      intentAccepted: true,
+      termination: "observed",
+      capacity: "released",
+      objects: "deleted",
     })),
   };
 });
@@ -174,7 +182,7 @@ const preview: RemoteDatasetPreview = {
   activatable: true,
 };
 
-const client = {} as AnalysisClientV1;
+const client = {} as AnalysisClientV2;
 
 const preparedCandidate: RemotePreparedDataset = {
   workflowId: "prepared-workflow-1",
@@ -595,12 +603,16 @@ describe("RemoteAnalysisWorkspace", () => {
     vi.mocked(cancelRemoteAnalysis).mockImplementationOnce(async () => {
       await new Promise<void>((resolve) => { resolveDelete = resolve; });
       return {
-        schemaVersion: "3dena.job-deletion-receipt.v1",
+        schemaVersion: "3dena.job-deletion-receipt.v2",
         jobId: "job-1",
         cancelled: true,
         inputDeleted: true,
         resultDeleted: true,
         deletedAt: new Date().toISOString(),
+        intentAccepted: true,
+        termination: "observed",
+        capacity: "released",
+        objects: "deleted",
       };
     });
 

@@ -12,9 +12,11 @@ export {
 } from "./fitted-jena-adapter-v2";
 export {
   assertLongitudinalAnalysisBundleV2,
+  assertLongitudinalExecutionRequestV2,
   assertTrajectoryRunSpecV2,
   compileTrajectoryPlotlySpec,
   executeLongitudinalAnalysisV2,
+  hashLongitudinalExecutionRequestV2,
   verifyLongitudinalAnalysisBundleV2,
 } from "./longitudinal-v2";
 export { assertAnalysisResultEnvelopeV1 } from "./contracts";

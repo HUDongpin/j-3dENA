@@ -14,6 +14,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { build } from "vite";
 import { inspectJenaSuccessor } from "../../../scripts/verify-jena-successor.mjs";
+import {
+  PUBLIC_PACKAGE_RELEASE_VERSION,
+  PUBLIC_PACKAGE_SOURCE_VERSION,
+} from "./public-package-release-contract.mjs";
 import { verifyPublicPackage } from "./verify-public-package.mjs";
 
 const require = createRequire(import.meta.url);
@@ -139,12 +143,18 @@ const sourceIdentity = Object.freeze({
   dirtyWorktree: readGit(["status", "--porcelain=v1", "--untracked-files=all"], "").length > 0,
   generatedAt: generatedAt(),
 });
+if (sourceIdentity.dirtyWorktree) {
+  fail("refusing to build a release package from a dirty worktree");
+}
 
 assertSafeDistributionPath();
 await rm(distributionDirectory, { recursive: true, force: true });
 await mkdir(packageDirectory, { recursive: true });
 
 const sourceManifest = JSON.parse(await readFile(resolve(analysisDirectory, "package.json"), "utf8"));
+if (sourceManifest.version !== PUBLIC_PACKAGE_SOURCE_VERSION) {
+  fail("workspace version does not match the source-controlled public release contract");
+}
 const jenaSuccessor = inspectJenaSuccessor({ root: repositoryRoot, requireInstalledTree: true });
 if (!jenaSuccessor.ok) {
   fail(`reviewed public jENA successor contract failed: ${jenaSuccessor.findings.map(({ rule }) => rule).join(", ")}`);
@@ -190,7 +200,7 @@ await build({
     __THREEDENA_JENA_VERSION__: JSON.stringify(jenaReceipt.version),
     __THREEDENA_JENA_COMMIT__: JSON.stringify(jenaReceipt.officialCommit),
     __THREEDENA_JENA_TARBALL_INTEGRITY__: JSON.stringify(jenaReceipt.tarballIntegrity),
-    __THREEDENA_SDK_VERSION__: JSON.stringify(sourceManifest.version),
+    __THREEDENA_SDK_VERSION__: JSON.stringify(PUBLIC_PACKAGE_RELEASE_VERSION),
     __THREEDENA_BUILD_ID__: JSON.stringify(packageBuildId)
   },
   build: {
@@ -272,8 +282,10 @@ await writeFile(
   extractGzipTarEntry(sheetArchive, "package/LICENSE")
 );
 
-const publicVersion = process.env.THREEDENA_PUBLIC_VERSION ?? `${sourceManifest.version}-implemented-unverified.0`;
-if (!/^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/u.test(publicVersion)) fail("public package build requires a prerelease SemVer");
+const publicVersion = process.env.THREEDENA_PUBLIC_VERSION ?? PUBLIC_PACKAGE_RELEASE_VERSION;
+if (publicVersion !== PUBLIC_PACKAGE_RELEASE_VERSION) {
+  fail("public package version does not match the source-controlled release contract");
+}
 const publicManifest = {
   name: "j-3dena",
   version: publicVersion,

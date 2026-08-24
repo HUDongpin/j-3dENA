@@ -52,6 +52,8 @@ jobs:
           npm run pack:check --workspace @3dena/analysis
 
       - name: Smoke public tarball in Node, TypeScript, Vite, and Next.js
+        env:
+          THREEDENA_PUBLIC_PACKAGE_EVIDENCE_DIR: output/public-package-evidence
         run: npm run test:public-package --workspace @3dena/analysis
 
       - name: Golden parity tests
@@ -111,6 +113,7 @@ jobs:
           name: package-and-sbom-evidence
           path: |
             packages/analysis/dist/package
+            output/public-package-evidence
             output/sbom.cdx.json
           if-no-files-found: error
           retention-days: 14

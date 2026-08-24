@@ -37,14 +37,16 @@ function candidate(): BuildApprovalCandidateV1 {
     flyImageDigest: `sha256:${hex("b")}`,
     flyBuildId: "fly-build-approved",
     analysisTarballSha256: hex("c"),
-    jenaVersion: "0.6.3",
+    jenaVersion: "0.7.0-ona.0",
     jenaCommit: hex("d", 40),
     jenaTarballSha256: hex("e"),
+    jenaTarballIntegrity: "sha512-ZXhhY3QtamVuYS10YXJiYWxs",
+    sdkVersion: "0.2.0-implemented-unverified.1",
+    buildId: "approved-longitudinal-build-1",
     lockfileSha256: hex("f"),
     sbomSha256: hex("1"),
     schemaBundleSha256: hex("2"),
-    migrationVersion: "0001-persistent-compute",
-    migrationSha256: hex("3"),
+    migrationManifestSha256: hex("3"),
     contractVersions: ["3dena.compute-http.v1", "3dena.contract.v1"],
     implementationActorIds: ["compute-implementer-1", "release-implementer-1"],
   };
@@ -173,9 +175,13 @@ describe("BuildApprovalV1", () => {
       flyImageDigest: `sha256:${hex("b")}`,
       flyBuildId: "fly-build-approved",
       approvalManifestSha256: hex("c"),
-      migrationVersion: "0001-persistent-compute",
-      migrationSha256: hex("3"),
+      migrationManifestSha256: hex("3"),
       contractVersions: ["3dena.compute-http.v1", "3dena.contract.v1"],
+      jenaVersion: "0.7.0-ona.0",
+      jenaCommit: hex("d", 40),
+      jenaTarballIntegrity: "sha512-ZXhhY3QtamVuYS10YXJiYWxs",
+      sdkVersion: "0.2.0-implemented-unverified.1",
+      buildId: "approved-longitudinal-build-1",
     };
     let active = false;
     const registry: BuildApprovalRegistry = {
@@ -220,9 +226,13 @@ describe("BuildApprovalV1", () => {
       flyImageDigest: manifest.flyImageDigest,
       flyBuildId: manifest.flyBuildId,
       approvalManifestSha256: digest,
-      migrationVersion: manifest.migrationVersion,
-      migrationSha256: manifest.migrationSha256,
+      migrationManifestSha256: manifest.migrationManifestSha256,
       contractVersions: manifest.contractVersions,
+      jenaVersion: manifest.jenaVersion,
+      jenaCommit: manifest.jenaCommit,
+      jenaTarballIntegrity: manifest.jenaTarballIntegrity,
+      sdkVersion: manifest.sdkVersion,
+      buildId: manifest.buildId,
     };
     const pool = new ApprovalPool();
     const registry = new PostgresBuildApprovalRegistry(
@@ -234,8 +244,17 @@ describe("BuildApprovalV1", () => {
     await expect(registry.isActive(expected)).resolves.toBe(true);
     await expect(registry.isActive({ ...expected, flyBuildId: "mixed-build" }))
       .resolves.toBe(false);
-    await expect(registry.isActive({ ...expected, migrationSha256: hex("9") }))
+    await expect(registry.isActive({ ...expected, migrationManifestSha256: hex("9") }))
       .resolves.toBe(false);
+    for (const changed of [
+      { ...expected, jenaVersion: "0.7.0-drift" },
+      { ...expected, jenaCommit: hex("9", 40) },
+      { ...expected, jenaTarballIntegrity: "sha512-ZHJpZnQ=" },
+      { ...expected, sdkVersion: "0.2.0-drift" },
+      { ...expected, buildId: "unsigned-build-drift" },
+    ]) {
+      await expect(registry.isActive(changed)).resolves.toBe(false);
+    }
     await registry.revoke(digest, "2026-08-21T12:30:00.000Z", "release-operator-2");
     await expect(registry.isActive(expected)).resolves.toBe(false);
     expect(pool.statements.join("\n")).not.toMatch(/UPDATE\s+compute_build/iu);

@@ -5,7 +5,19 @@ import {
   ANALYSIS_TASK_VERSION_V1,
   DATASET_RECEIPT_VERSION_V1,
 } from "./contracts";
-import { AnalysisClientError, createAnalysisClient } from "./analysis-client";
+import {
+  AnalysisClientError,
+  createAnalysisClient,
+  type AnalysisClientV1,
+  type AnalysisClientV2,
+} from "./analysis-client";
+
+type AssertNever<T extends never> = T;
+type AssertTrue<T extends true> = T;
+type _V1DurableDeletionSurfaceMustRemainAbsent = AssertNever<
+  Extract<keyof AnalysisClientV1, "deleteJobV2" | "deleteJobUntilComplete">
+>;
+type _V2MustRemainAdditive = AssertTrue<AnalysisClientV2 extends AnalysisClientV1 ? true : false>;
 
 const DATASET_HASH = "a".repeat(64);
 const SPEC_HASH = "b".repeat(64);
@@ -109,6 +121,79 @@ function enaTask() {
 }
 
 describe("createAnalysisClient", () => {
+  it("negotiates deletion V2 and polls with one stable operation key until every lifecycle fact is final", async () => {
+    const responses = [
+      {
+        schemaVersion: "3dena.job-deletion-receipt.v2",
+        jobId: "job-1",
+        cancelled: false,
+        inputDeleted: false,
+        resultDeleted: false,
+        deletedAt: null,
+        intentAccepted: true,
+        termination: "pending",
+        capacity: "held",
+        objects: "pending",
+      },
+      {
+        schemaVersion: "3dena.job-deletion-receipt.v2",
+        jobId: "job-1",
+        cancelled: true,
+        inputDeleted: true,
+        resultDeleted: true,
+        deletedAt: "2026-08-20T12:00:01.000Z",
+        intentAccepted: true,
+        termination: "observed",
+        capacity: "released",
+        objects: "deleted",
+      },
+    ];
+    const fetchMock = vi.fn(async () => json(responses.shift()));
+    const client = createAnalysisClient({
+      baseUrl: "https://compute.example",
+      fetch: fetchMock as unknown as typeof fetch,
+      deletionPollIntervalMilliseconds: 1,
+    });
+
+    await expect(client.deleteJobUntilComplete(
+      reference(),
+      "stable-delete-operation-1",
+    )).resolves.toMatchObject({
+      schemaVersion: "3dena.job-deletion-receipt.v2",
+      termination: "observed",
+      capacity: "released",
+      objects: "deleted",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const calls = fetchMock.mock.calls as unknown as Array<[
+      RequestInfo | URL,
+      RequestInit | undefined,
+    ]>;
+    for (const [, init] of calls) {
+      expect((init?.headers as Headers).get("idempotency-key"))
+        .toBe("stable-delete-operation-1");
+      expect((init?.headers as Headers).get("accept"))
+        .toBe("application/vnd.3dena.job-deletion-receipt.v2+json");
+    }
+  });
+
+  it("keeps the original deletion V1 parser exact for legacy negotiation", async () => {
+    const legacy = {
+      schemaVersion: "3dena.job-deletion-receipt.v1",
+      jobId: "job-1",
+      cancelled: false,
+      inputDeleted: true,
+      resultDeleted: true,
+      deletedAt: "2026-08-20T12:00:01.000Z",
+    };
+    const client = createAnalysisClient({
+      baseUrl: "https://compute.example",
+      fetch: vi.fn(async () => json(legacy)) as unknown as typeof fetch,
+    });
+    await expect(client.deleteJob(reference(), "legacy-delete-operation-1"))
+      .resolves.toEqual(legacy);
+  });
+
   it("accepts only an exact approved compute build identity", async () => {
     const validBuildInfo = {
       schemaVersion: "3dena.compute-build-info.v1",

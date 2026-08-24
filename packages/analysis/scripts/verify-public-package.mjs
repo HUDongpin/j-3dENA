@@ -3,6 +3,8 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { PUBLIC_PACKAGE_RELEASE_VERSION } from "./public-package-release-contract.mjs";
+
 const expectedFiles = new Set([
   "LICENSE",
   "PROVENANCE.json",
@@ -52,6 +54,9 @@ export async function verifyPublicPackage(packageDirectory) {
 
   const manifest = JSON.parse(await readFile(resolve(directory, "package.json"), "utf8"));
   if (manifest.name !== "j-3dena") fail("unexpected package name");
+  if (manifest.version !== PUBLIC_PACKAGE_RELEASE_VERSION) {
+    fail("package version does not match the source-controlled release contract");
+  }
   if (manifest.private !== undefined) fail("staged public manifest must not contain private");
   if (manifest.type !== "module") fail("package must be ESM-only");
   if (manifest.license !== "GPL-3.0-only") fail("license must be GPL-3.0-only");
@@ -142,6 +147,13 @@ export async function verifyPublicPackage(packageDirectory) {
   if (provenance.schemaVersion !== "3dena.public-package-provenance.v1") fail("unexpected provenance schema");
   if (provenance.productStatus !== "IMPLEMENTED_UNVERIFIED") fail("candidate status was inflated");
   if (
+    provenance.source?.dirtyWorktree !== false ||
+    typeof provenance.package?.buildId !== "string" ||
+    provenance.package.buildId.endsWith("-dirty")
+  ) {
+    fail("release package provenance must bind a clean source worktree");
+  }
+  if (
     provenance.package?.name !== manifest.name ||
     provenance.package?.version !== manifest.version
   ) {
@@ -182,6 +194,10 @@ export async function verifyPublicPackage(packageDirectory) {
   }
   for (const publicName of publicNames) {
     if (typeof loaded[publicName] !== "function") fail(`runtime root export ${publicName} is not a function`);
+  }
+  const scientificBuild = loaded.getAnalysisBuildIdentityV2();
+  if (scientificBuild.sdkVersion !== manifest.version || scientificBuild.bound !== true) {
+    fail("public runtime scientific SDK identity is not the exact package version");
   }
 
   return Object.freeze({ directory, files: Object.freeze(files), indexJsSha256: digest });

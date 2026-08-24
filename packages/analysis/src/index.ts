@@ -54,8 +54,10 @@ export type { TrajectorySeriesAdapterOptions } from "./trajectory-series-adapter
 export type {
   AnalysisClientConfig,
   AnalysisClientV1,
+  AnalysisClientV2,
   AnalysisComputeBuildInfoV1,
   AnalysisDeletionReceiptV1,
+  AnalysisDeletionReceiptV2,
   AnalysisJobCapabilityV1,
   AnalysisJobEventV1,
   AnalysisJobReferenceV1,

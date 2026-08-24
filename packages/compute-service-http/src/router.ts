@@ -19,6 +19,7 @@ import {
   type AnalysisSpecV1,
   type DatasetColumnRoleV1,
   type AnalysisDeletionReceiptV1,
+  type AnalysisDeletionReceiptV2,
   type AnalysisJobCapabilityV1,
   type AnalysisJobEventV1,
   type AnalysisJobResultReferenceV1,
@@ -40,6 +41,7 @@ import {
   type ImmutableObjectDescriptor,
 } from "@3dena/compute-service-core";
 import { Buffer } from "node:buffer";
+import { timingSafeEqual } from "node:crypto";
 
 import {
   COMPUTE_HTTP_CONTRACT_VERSION,
@@ -73,6 +75,19 @@ import {
 import type { ComputeHttpRouterInfrastructure } from "./interfaces";
 import type { ComputeHttpRateLimitClassV1 } from "./interfaces";
 import {
+  LONGITUDINAL_COMPUTE_CAPABILITY_VERSION_V2,
+  LONGITUDINAL_COMPUTE_STATUS_URLS_VERSION_V2,
+  LONGITUDINAL_COMPUTE_STORED_INPUT_VERSION_V2,
+  LONGITUDINAL_COMPUTE_TASK_KIND_V2,
+  MAX_LONGITUDINAL_STORED_INPUT_BYTES_V2,
+  LongitudinalComputeSubmissionErrorV2,
+  assertApprovedLongitudinalExecutionBuildV2,
+  materializeLongitudinalComputeSubmissionV2,
+  type ApprovedLongitudinalExecutionBuildV2,
+  type LongitudinalComputeCapabilityV2,
+  type ScientificStoredLongitudinalInputV2,
+} from "./longitudinal-contracts";
+import {
   LOWER_SHA256,
   OPAQUE_ID,
   assertExactFields,
@@ -91,6 +106,9 @@ const MAX_PREPARED_DATASET_BYTES = 2 * 1024 * 1024;
 const MAX_JOB_TTL_MS = 24 * 60 * 60 * 1_000;
 const DEFAULT_TASK_RUNTIME_MS = 60 * 60 * 1_000;
 const DEFAULT_JSON_BYTES = 5 * 1024 * 1024;
+const DEFAULT_LONGITUDINAL_JSON_BYTES = 32 * 1024 * 1024;
+const MAX_LONGITUDINAL_JSON_BYTES = 32 * 1024 * 1024;
+const LONGITUDINAL_HARD_DEADLINE_MS = 60_000;
 const JSON_CONTENT_TYPE = /^application\/json(?:\s*;\s*charset=utf-8)?$/iu;
 const IDEMPOTENCY_KEY = /^[^\u0000-\u0020\u007f]{8,200}$/u;
 const GIT_COMMIT = /^[a-f0-9]{40}$/u;
@@ -116,6 +134,7 @@ const CORS_ALLOWED_HEADERS = new Set([
   "idempotency-key",
   "last-event-id",
   "x-3dena-contract-version",
+  "x-3dena-service-token",
 ]);
 const SUPPORTED_TASK_KINDS = new Set<AnalysisTaskV1["kind"]>([
   "ena-model",
@@ -133,9 +152,13 @@ export interface ComputeV1HttpRouterOptions {
   readonly infrastructure: ComputeHttpRouterInfrastructure;
   readonly allowedOrigins: readonly string[];
   readonly buildIdentity: ComputeHttpBuildIdentityV1;
+  readonly approvedLongitudinalBuild?: ApprovedLongitudinalExecutionBuildV2;
+  readonly longitudinalServiceTokenSha256?: string;
   readonly jobTtlMs?: number;
   readonly maxTaskRuntimeMs?: number;
   readonly maxJsonBodyBytes?: number;
+  readonly maxLongitudinalJsonBodyBytes?: number;
+  readonly maxLongitudinalStoredInputBytes?: number;
 }
 
 interface RequestContext {
@@ -381,7 +404,7 @@ function sameTaskOwner(left: AnalysisTaskV1["owner"], right: AnalysisTaskV1["own
 
 function rateLimitClass(pathname: string, method: string): ComputeHttpRateLimitClassV1 | null {
   if (pathname === "/v1/datasets") return "dataset-mutation";
-  if (pathname === "/v1/jobs") return "job-create";
+  if (pathname === "/v1/jobs" || pathname === "/v2/longitudinal-jobs") return "job-create";
   if (/^\/v1\/datasets\/[^/]+\/content$/u.test(pathname)) return "dataset-upload";
   if (pathname.startsWith("/v1/datasets/")) return "dataset-mutation";
   if (/^\/v1\/jobs\/[^/]+\/execute$/u.test(pathname)) return "job-execute";
@@ -486,9 +509,13 @@ export class ComputeV1HttpRouter {
   readonly #infrastructure: ComputeHttpRouterInfrastructure;
   readonly #allowedOrigins: ReadonlySet<string>;
   readonly #buildIdentity: ComputeHttpBuildIdentityV1;
+  readonly #approvedLongitudinalBuild: ApprovedLongitudinalExecutionBuildV2 | undefined;
+  readonly #longitudinalServiceTokenSha256: string | undefined;
   readonly #jobTtlMs: number;
   readonly #maxTaskRuntimeMs: number;
   readonly #maxJsonBodyBytes: number;
+  readonly #maxLongitudinalJsonBodyBytes: number;
+  readonly #maxLongitudinalStoredInputBytes: number;
 
   constructor(options: ComputeV1HttpRouterOptions) {
     if (!(options.core instanceof ComputeServiceCore)) {
@@ -523,6 +550,28 @@ export class ComputeV1HttpRouter {
     this.#infrastructure = options.infrastructure;
     this.#allowedOrigins = new Set(origins);
     this.#buildIdentity = cloneFrozen(options.buildIdentity);
+    if (options.approvedLongitudinalBuild !== undefined) {
+      try {
+        assertApprovedLongitudinalExecutionBuildV2(options.approvedLongitudinalBuild);
+      } catch {
+        throw new TypeError(
+          "approvedLongitudinalBuild must be one exact approved scientific runtime identity.",
+        );
+      }
+    }
+    this.#approvedLongitudinalBuild = options.approvedLongitudinalBuild === undefined
+      ? undefined
+      : cloneFrozen(options.approvedLongitudinalBuild);
+    if ((options.approvedLongitudinalBuild === undefined) !==
+        (options.longitudinalServiceTokenSha256 === undefined) ||
+        (options.longitudinalServiceTokenSha256 !== undefined &&
+          !LOWER_SHA256.test(options.longitudinalServiceTokenSha256))) {
+      throw new TypeError(
+        "The dedicated longitudinal build and protected service-token hash must be configured together.",
+      );
+    }
+    this.#longitudinalServiceTokenSha256 =
+      options.longitudinalServiceTokenSha256;
     this.#jobTtlMs = validatePositiveInteger(
       options.jobTtlMs ?? MAX_JOB_TTL_MS,
       "jobTtlMs",
@@ -537,6 +586,16 @@ export class ComputeV1HttpRouter {
       options.maxJsonBodyBytes ?? DEFAULT_JSON_BYTES,
       "maxJsonBodyBytes",
       MAX_DATASET_BYTES,
+    );
+    this.#maxLongitudinalJsonBodyBytes = validatePositiveInteger(
+      options.maxLongitudinalJsonBodyBytes ?? DEFAULT_LONGITUDINAL_JSON_BYTES,
+      "maxLongitudinalJsonBodyBytes",
+      MAX_LONGITUDINAL_JSON_BYTES,
+    );
+    this.#maxLongitudinalStoredInputBytes = validatePositiveInteger(
+      options.maxLongitudinalStoredInputBytes ?? MAX_LONGITUDINAL_STORED_INPUT_BYTES_V2,
+      "maxLongitudinalStoredInputBytes",
+      MAX_LONGITUDINAL_STORED_INPUT_BYTES_V2,
     );
   }
 
@@ -556,11 +615,16 @@ export class ComputeV1HttpRouter {
         httpError("NOT_FOUND", 404, "Compute routes do not accept query strings.");
       }
       const method = request.method.toUpperCase();
+      const longitudinalServicePrincipal =
+        url.pathname === "/v2/longitudinal-jobs" && method === "POST"
+          ? this.#assertLongitudinalServiceToken(request)
+          : null;
       const limitClass = rateLimitClass(url.pathname, method);
       if (limitClass !== null) {
-        const authorization = request.headers.get("authorization") ?? "anonymous";
+        const principal = longitudinalServicePrincipal ??
+          await this.#rateLimitPrincipal(request, url.pathname, origin, limitClass);
         const keyHash = this.#infrastructure.capabilityCodec.hashSecret(
-          `rate\0${origin ?? "no-origin"}\0${authorization}`,
+          `rate\0${limitClass}\0${principal}`,
         );
         const limit = await this.#infrastructure.rateLimiter.consume({
           keyHash,
@@ -613,6 +677,7 @@ export class ComputeV1HttpRouter {
       // candidate approval; `/readyz` is the explicit readiness probe above.
       if (
         url.pathname === "/v1/jobs" || url.pathname.startsWith("/v1/jobs/") ||
+        url.pathname === "/v2/longitudinal-jobs" ||
         url.pathname === "/v1/datasets" || url.pathname.startsWith("/v1/datasets/")
       ) {
         const ready = await this.#infrastructure.readiness.check();
@@ -721,6 +786,10 @@ export class ComputeV1HttpRouter {
         this.#assertMethod(method, ["POST"]);
         return await this.#createJob(request, context);
       }
+      if (url.pathname === "/v2/longitudinal-jobs") {
+        this.#assertMethod(method, ["POST"]);
+        return await this.#createLongitudinalJob(request, url, context);
+      }
 
       const match = /^\/v1\/jobs\/([^/]+)(?:\/(content|execute|events|result|artifact))?$/u.exec(
         url.pathname,
@@ -744,11 +813,17 @@ export class ComputeV1HttpRouter {
       if (action === "content") {
         this.#assertMethod(method, ["PUT"]);
         const job = await this.#authorize(request, jobId, origin, false);
+        if (job.taskKind === LONGITUDINAL_COMPUTE_TASK_KIND_V2) {
+          httpError("METHOD_NOT_ALLOWED", 405, "Dedicated longitudinal jobs have immutable service-owned input.");
+        }
         return await this.#putJobContent(request, job, context);
       }
       if (action === "execute") {
         this.#assertMethod(method, ["POST"]);
         const job = await this.#authorize(request, jobId, origin, false);
+        if (job.taskKind === LONGITUDINAL_COMPUTE_TASK_KIND_V2) {
+          httpError("METHOD_NOT_ALLOWED", 405, "Dedicated longitudinal jobs are queued during creation.");
+        }
         return await this.#executeJob(request, job, context);
       }
       if (action === "events") {
@@ -815,6 +890,148 @@ export class ComputeV1HttpRouter {
     const snapshot = await this.#statusSnapshot(job);
     await this.#publishStatus(snapshot.status);
     return snapshot.status;
+  }
+
+  /**
+   * Completes a previously persisted DELETE intent without requiring the
+   * capability or plaintext idempotency key. This hook is intentionally
+   * unavailable until the durable intent exists and never starts a deletion.
+   * It is used by the singleton database temporal sweeper after the owning
+   * worker has released any fenced capacity slot.
+   */
+  async reconcileDurableDeletion(jobId: string): Promise<boolean> {
+    if (!OPAQUE_ID.test(jobId)) {
+      httpError("INVALID_REQUEST", 400, "jobId is invalid for deletion reconciliation.");
+    }
+    let job = await this.#infrastructure.repository.get(jobId);
+    if (job === null) {
+      return false;
+    }
+    if (job.deleteRequestedAtMs === undefined ||
+        job.deleteIdempotencyHash === undefined) {
+      const deadlineAtMs = job.createdAtMs + LONGITUDINAL_HARD_DEADLINE_MS;
+      const orphanedLongitudinalInput =
+        job.taskKind === LONGITUDINAL_COMPUTE_TASK_KIND_V2 &&
+        job.inputDeletedAtMs === undefined &&
+        Number.isSafeInteger(deadlineAtMs) &&
+        this.#infrastructure.clock.now() >= deadlineAtMs &&
+        job.coreTaskId !== undefined &&
+        await this.#core.getTask(job.coreTaskId) === null;
+      if (!orphanedLongitudinalInput) return false;
+      const requestedAtMs = this.#infrastructure.clock.now();
+      job = await this.#patchJob(job.jobId, (current) => ({
+        ...current,
+        revision: current.revision + 1,
+        updatedAtMs: requestedAtMs,
+        deleteIdempotencyHash: current.deleteIdempotencyHash ??
+          this.#infrastructure.capabilityCodec.hashSecret(
+            `longitudinal-deadline-cleanup\0${jobId}`,
+          ),
+        deleteRequestedAtMs: current.deleteRequestedAtMs ?? requestedAtMs,
+        deleteCancelled: current.deleteCancelled ?? true,
+        deleteTerminationRequired:
+          current.deleteTerminationRequired === true,
+        deleteCapacityReserved: current.deleteCapacityReserved === true,
+      }));
+    }
+    if (job.inputDeletedAtMs !== undefined) return true;
+
+    let coreRecord = job.coreTaskId === undefined
+      ? null
+      : await this.#core.getTask(job.coreTaskId);
+    let capacityReleased = job.coreTaskId === undefined;
+    if (job.coreTaskId !== undefined) {
+      capacityReleased = this.#infrastructure.deletionLifecycle !== undefined
+        ? await this.#infrastructure.deletionLifecycle.capacityReleased(job.coreTaskId)
+        : !this.#core.capacitySnapshot().slots.some(
+          (slot) => slot.taskRef === coreRecord?.taskRef,
+        );
+    }
+    if (job.coreTaskId !== undefined && coreRecord !== null &&
+        coreRecord.state !== "deleted") {
+      if (!capacityReleased && coreRecord.execution === undefined &&
+          !["succeeded", "failed", "cancelled", "timed_out", "expired", "deleting", "deleted"]
+            .includes(coreRecord.state)) {
+        // A durable slot can move leased -> running after the API snapshot.
+        // cancelTask is CAS-safe and will request termination if that race won,
+        // while avoiding final core deletion before the slot is reconciled.
+        coreRecord = await this.#core.cancelTask(job.coreTaskId);
+      } else {
+        const deletion = await this.#core.deleteTask(job.coreTaskId);
+        coreRecord = deletion.record;
+      }
+      capacityReleased = this.#infrastructure.deletionLifecycle !== undefined
+        ? await this.#infrastructure.deletionLifecycle.capacityReleased(job.coreTaskId)
+        : !this.#core.capacitySnapshot().slots.some(
+          (slot) => slot.taskRef === coreRecord?.taskRef,
+        );
+    }
+    const terminationRequiredNow = job.coreTaskId !== undefined &&
+      (!capacityReleased || coreRecord?.execution !== undefined ||
+        (coreRecord !== null && ["starting", "running", "cancelling"]
+          .includes(coreRecord.state)));
+    if ((terminationRequiredNow && job.deleteTerminationRequired !== true) ||
+        (!capacityReleased && job.deleteCapacityReserved !== true)) {
+      job = await this.#patchJob(job.jobId, (current) => ({
+        ...current,
+        revision: current.revision + 1,
+        updatedAtMs: this.#infrastructure.clock.now(),
+        deleteTerminationRequired:
+          current.deleteTerminationRequired === true || terminationRequiredNow,
+        deleteCapacityReserved:
+          current.deleteCapacityReserved === true || !capacityReleased,
+      }));
+    }
+    if (!capacityReleased) return false;
+    const terminationObserved = job.deleteTerminationRequired !== true ||
+      (job.coreTaskId !== undefined &&
+        (this.#infrastructure.deletionLifecycle !== undefined
+          ? await this.#infrastructure.deletionLifecycle.terminationObserved(job.coreTaskId)
+          : coreRecord?.execution === undefined && coreRecord !== null &&
+            ["succeeded", "failed", "cancelled", "timed_out", "expired", "deleting", "deleted"]
+              .includes(coreRecord.state)));
+    if (!terminationObserved) return false;
+
+    let resultKeys = coreRecord?.ownedResultObjectKeys ?? [];
+    if (job.coreTaskId !== undefined && coreRecord !== null && coreRecord.state !== "deleted") {
+      const deletion = await this.#core.deleteTask(job.coreTaskId);
+      if (deletion.status !== "deleted") return false;
+      coreRecord = deletion.record;
+      resultKeys = deletion.record.ownedResultObjectKeys;
+    }
+    if (job.inputObjectOwnedByJob === false &&
+        job.activatedDatasetId !== undefined &&
+        job.activationReceiptSha256 !== undefined) {
+      await this.#requireDatasetService().deleteActivated(
+        job.activatedDatasetId,
+        job.activationReceiptSha256,
+      );
+    }
+    const inputKeys = [
+      job.inputObjectOwnedByJob === false ? undefined : job.inputObjectKey,
+      job.executionObjectKey,
+    ].filter((key): key is string => key !== undefined);
+    for (const key of [...inputKeys, ...resultKeys]) {
+      await this.#infrastructure.objectStore.delete(key);
+    }
+    for (const key of [...inputKeys, ...resultKeys]) {
+      const [head, bytes] = await Promise.all([
+        this.#infrastructure.objectStore.head(key),
+        this.#infrastructure.objectStore.get(key),
+      ]);
+      if (head !== null || bytes !== null) {
+        httpError("INTERNAL_ERROR", 500, "Deletion was not observed in object storage.");
+      }
+    }
+    const completedAtMs = this.#infrastructure.clock.now();
+    const completed = await this.#patchJob(job.jobId, (current) => ({
+      ...current,
+      revision: current.revision + 1,
+      updatedAtMs: completedAtMs,
+      inputDeletedAtMs: current.inputDeletedAtMs ?? completedAtMs,
+    }));
+    await this.#publishStatus((await this.#statusSnapshot(completed)).status);
+    return true;
   }
 
   /** Worker-facing progress hook; only aggregate progress fields are accepted. */
@@ -922,6 +1139,326 @@ export class ComputeV1HttpRouter {
       expiresAt: isoTimestamp(session.expiresAtMs),
     };
     return this.#json(201, response, context);
+  }
+
+  async #createLongitudinalJob(
+    request: Request,
+    requestUrl: URL,
+    context: RequestContext,
+  ): Promise<Response> {
+    const approvedBuild = this.#approvedLongitudinalBuild;
+    if (approvedBuild === undefined ||
+        this.#jobTtlMs < LONGITUDINAL_HARD_DEADLINE_MS ||
+        this.#maxTaskRuntimeMs < LONGITUDINAL_HARD_DEADLINE_MS) {
+      httpError(
+        "NOT_READY",
+        503,
+        "The approved dedicated longitudinal runtime is unavailable.",
+      );
+    }
+    const idempotencyKey = this.#requireIdempotencyKey(request);
+    const parsed = await this.#parseJson(
+      request,
+      this.#maxLongitudinalJsonBodyBytes,
+    );
+    let materialized: Awaited<ReturnType<typeof materializeLongitudinalComputeSubmissionV2>>;
+    try {
+      materialized = await materializeLongitudinalComputeSubmissionV2(
+        parsed,
+        approvedBuild,
+      );
+    } catch (error) {
+      if (error instanceof LongitudinalComputeSubmissionErrorV2) {
+        httpError(
+          "INVALID_REQUEST",
+          400,
+          `Dedicated longitudinal submission was rejected with ${error.code}.`,
+        );
+      }
+      throw error;
+    }
+
+    const createIdempotencyHash = this.#infrastructure.capabilityCodec.hashSecret(
+      `longitudinal-create\0${context.origin ?? "server"}\0${idempotencyKey}`,
+    );
+    const createRequestFingerprint = sha256Text(canonicalStringify({
+      schemaVersion: "3dena.longitudinal-http-create-binding.v2",
+      origin: context.origin,
+      requestSha256: materialized.requestSha256,
+    }));
+    const replay = await this.#infrastructure.repository.findByCreateIdempotencyHash(
+      createIdempotencyHash,
+    );
+    if (replay !== null) {
+      if (replay.createRequestFingerprint !== createRequestFingerprint ||
+          replay.taskKind !== LONGITUDINAL_COMPUTE_TASK_KIND_V2) {
+        httpError(
+          "IDEMPOTENCY_CONFLICT",
+          409,
+          "Longitudinal create idempotency key is bound to another request.",
+        );
+      }
+      if (replay.deleteRequestedAtMs !== undefined) {
+        httpError(
+          "IDEMPOTENCY_CONFLICT",
+          409,
+          "Deleted longitudinal operation is retired; Retry requires a new execution-attempt key.",
+        );
+      }
+      await this.#ensureLongitudinalCoreTask(replay, materialized.canonicalRequest);
+      const snapshot = await this.#statusSnapshot(replay);
+      await this.#publishStatus(snapshot.status);
+      return this.#longitudinalCapabilityResponse(
+        replay,
+        requestUrl,
+        false,
+        context,
+      );
+    }
+
+    const now = this.#infrastructure.clock.now();
+    const deadlineAtMs = now + LONGITUDINAL_HARD_DEADLINE_MS;
+    const expiresAtMs = now + this.#jobTtlMs;
+    if (!Number.isSafeInteger(deadlineAtMs) ||
+        !Number.isSafeInteger(expiresAtMs) ||
+        expiresAtMs < deadlineAtMs) {
+      httpError("INTERNAL_ERROR", 500, "Longitudinal deadline exceeds the safe service TTL.");
+    }
+    const jobId = `longitudinal-${createIdempotencyHash.slice(0, 40)}`;
+    if (!OPAQUE_ID.test(jobId)) {
+      httpError("INTERNAL_ERROR", 500, "Longitudinal job identity is unsafe.");
+    }
+    const capability = this.#infrastructure.capabilityCodec.issue(jobId);
+    const owner = cloneFrozen({
+      contractVersion: ANALYSIS_CONTRACT_VERSION_V1,
+      datasetHash: materialized.canonicalRequest.pathTask.datasetHash,
+      specHash: materialized.canonicalRequest.pathTask.specHash,
+      runId: materialized.canonicalRequest.pathTask.runId,
+      taskId: jobId,
+    } as const);
+    const inputObjectKey = `compute-inputs/${jobId}/longitudinal-v2.json`;
+    const storedInput: ScientificStoredLongitudinalInputV2 = cloneFrozen({
+      version: LONGITUDINAL_COMPUTE_STORED_INPUT_VERSION_V2,
+      kind: LONGITUDINAL_COMPUTE_TASK_KIND_V2,
+      owner,
+      deadlineAtMs,
+      request: materialized.canonicalRequest,
+    });
+    const storedInputBytes = new TextEncoder().encode(canonicalStringify(storedInput));
+    if (storedInputBytes.byteLength > this.#maxLongitudinalStoredInputBytes) {
+      httpError(
+        "PAYLOAD_TOO_LARGE",
+        413,
+        "Trusted longitudinal worker input exceeds the scientific provider limit.",
+      );
+    }
+    const storedInputSha256 = sha256Bytes(storedInputBytes);
+    const sourceResult = materialized.canonicalRequest.dataset.sourceResult;
+    if (sourceResult === undefined) {
+      httpError("INTERNAL_ERROR", 500, "Validated longitudinal source result disappeared.");
+    }
+    const receipt = materialized.canonicalRequest.dataset.receipt;
+    const dataset: ReservedDatasetV1 = cloneFrozen({
+      sha256: receipt.sha256,
+      byteLength: receipt.byteLength,
+      format: receipt.format,
+    });
+    const record: ComputeHttpJobRecordV1 = cloneFrozen({
+      version: COMPUTE_HTTP_JOB_VERSION,
+      jobId,
+      revision: 0,
+      capabilityHash: this.#infrastructure.capabilityCodec.hashSecret(capability),
+      boundOrigin: context.origin,
+      createIdempotencyHash,
+      createRequestFingerprint,
+      dataset,
+      inputObjectKey,
+      inputObjectOwnedByJob: true,
+      sourceResultHash: sourceResult.hash,
+      longitudinalInputSha256: storedInputSha256,
+      longitudinalInputByteLength: storedInputBytes.byteLength,
+      createdAtMs: now,
+      updatedAtMs: now,
+      expiresAtMs,
+      owner,
+      taskKind: LONGITUDINAL_COMPUTE_TASK_KIND_V2,
+      coreTaskId: jobId,
+    });
+    const created = await this.#infrastructure.repository.createIfAbsent(record);
+    if (!created.created &&
+        (created.record.createIdempotencyHash !== createIdempotencyHash ||
+          created.record.createRequestFingerprint !== createRequestFingerprint ||
+          created.record.taskKind !== LONGITUDINAL_COMPUTE_TASK_KIND_V2)) {
+      httpError(
+        "IDEMPOTENCY_CONFLICT",
+        409,
+        "Concurrent longitudinal create bound another immutable request.",
+      );
+    }
+    await this.#ensureLongitudinalCoreTask(
+      created.record,
+      materialized.canonicalRequest,
+    );
+    const snapshot = await this.#statusSnapshot(created.record);
+    await this.#publishStatus(snapshot.status);
+    return this.#longitudinalCapabilityResponse(
+      created.record,
+      requestUrl,
+      created.created,
+      context,
+    );
+  }
+
+  async #ensureLongitudinalCoreTask(
+    job: ComputeHttpJobRecordV1,
+    canonicalRequest?: Awaited<ReturnType<typeof materializeLongitudinalComputeSubmissionV2>>["canonicalRequest"],
+  ): Promise<ComputeJobRecordV1> {
+    const owner = job.owner;
+    const sha256 = job.longitudinalInputSha256;
+    const byteLength = job.longitudinalInputByteLength;
+    if (job.taskKind !== LONGITUDINAL_COMPUTE_TASK_KIND_V2 ||
+        job.coreTaskId !== job.jobId ||
+        owner === undefined ||
+        sha256 === undefined || !LOWER_SHA256.test(sha256) ||
+        byteLength === undefined || !Number.isSafeInteger(byteLength) || byteLength < 1) {
+      httpError("INTERNAL_ERROR", 500, "Longitudinal HTTP job binding is incomplete.");
+    }
+    const deadlineAtMs = job.createdAtMs + LONGITUDINAL_HARD_DEADLINE_MS;
+    if (!Number.isSafeInteger(deadlineAtMs) || deadlineAtMs > job.expiresAtMs) {
+      httpError("INTERNAL_ERROR", 500, "Longitudinal hard deadline binding is invalid.");
+    }
+    const expectedInput: ImmutableObjectDescriptor = {
+      key: job.inputObjectKey,
+      sha256,
+      byteLength,
+    };
+    const coreRequest = {
+      version: COMPUTE_TASK_REQUEST_VERSION,
+      owner: {
+        contractVersion: COMPUTE_TASK_OWNER_CONTRACT_VERSION,
+        datasetHash: owner.datasetHash,
+        specHash: owner.specHash,
+        runId: owner.runId,
+        taskId: owner.taskId,
+      },
+      taskKind: LONGITUDINAL_COMPUTE_TASK_KIND_V2,
+      input: expectedInput,
+      deadlineAtMs,
+      expiresAtMs: job.expiresAtMs,
+    } as const;
+    const existing = await this.#core.getTask(job.coreTaskId);
+    if (existing !== null &&
+        canonicalStringify(existing.request) !== canonicalStringify(coreRequest)) {
+      httpError("INTERNAL_ERROR", 500, "Core longitudinal task binding diverged.");
+    }
+    // Terminal status and DELETE deliberately remove the privacy-sensitive
+    // input. An idempotent create replay must never resurrect those bytes.
+    if (job.inputDeletedAtMs !== undefined) {
+      if (existing === null) {
+        httpError("INTERNAL_ERROR", 500, "Deleted longitudinal input has no bound core task.");
+      }
+      return existing;
+    }
+    const reconciliationNow = this.#infrastructure.clock.now();
+    if (existing === null && reconciliationNow >= deadlineAtMs) {
+      await this.#patchJob(job.jobId, (current) => ({
+        ...current,
+        revision: current.revision + 1,
+        updatedAtMs: reconciliationNow,
+        deleteIdempotencyHash: current.deleteIdempotencyHash ??
+          this.#infrastructure.capabilityCodec.hashSecret(
+            `longitudinal-deadline-cleanup\0${job.jobId}`,
+          ),
+        deleteRequestedAtMs: current.deleteRequestedAtMs ?? reconciliationNow,
+        deleteCancelled: current.deleteCancelled ?? true,
+        deleteTerminationRequired:
+          current.deleteTerminationRequired === true,
+        deleteCapacityReserved: current.deleteCapacityReserved === true,
+      }));
+      httpError(
+        "DEADLINE_EXCEEDED",
+        409,
+        "Longitudinal core creation missed its hard deadline.",
+      );
+    }
+    if (canonicalRequest !== undefined) {
+      const storedInput: ScientificStoredLongitudinalInputV2 = cloneFrozen({
+        version: LONGITUDINAL_COMPUTE_STORED_INPUT_VERSION_V2,
+        kind: LONGITUDINAL_COMPUTE_TASK_KIND_V2,
+        owner,
+        deadlineAtMs,
+        request: canonicalRequest,
+      });
+      const bytes = new TextEncoder().encode(canonicalStringify(storedInput));
+      if (bytes.byteLength !== byteLength || sha256Bytes(bytes) !== sha256) {
+        httpError(
+          "IDEMPOTENCY_CONFLICT",
+          409,
+          "Longitudinal replay does not match the immutable stored input receipt.",
+        );
+      }
+      const stored = await this.#infrastructure.objectStore.putImmutable(
+        job.inputObjectKey,
+        bytes,
+      );
+      if (!descriptorsEqual(stored.descriptor, expectedInput)) {
+        httpError("INTERNAL_ERROR", 500, "Stored longitudinal input receipt diverged.");
+      }
+    } else {
+      const stored = await this.#infrastructure.objectStore.head(job.inputObjectKey);
+      if (stored === null) {
+        httpError("NOT_READY", 503, "Longitudinal immutable input awaits idempotent create replay.");
+      }
+      if (!descriptorsEqual(stored, expectedInput)) {
+        httpError("INTERNAL_ERROR", 500, "Stored longitudinal input failed its immutable receipt.");
+      }
+    }
+
+    if (existing !== null) {
+      return existing;
+    }
+    try {
+      return (await this.#core.createTask(coreRequest)).record;
+    } catch (error) {
+      if (error instanceof ComputeServiceCoreError) throw mapCoreError(error);
+      throw error;
+    }
+  }
+
+  #longitudinalCapabilityResponse(
+    job: ComputeHttpJobRecordV1,
+    requestUrl: URL,
+    created: boolean,
+    context: RequestContext,
+  ): Response {
+    if (job.taskKind !== LONGITUDINAL_COMPUTE_TASK_KIND_V2) {
+      httpError("INTERNAL_ERROR", 500, "Longitudinal capability job binding is unavailable.");
+    }
+    const capabilityToken = this.#infrastructure.capabilityCodec.issue(job.jobId);
+    if (!this.#infrastructure.capabilityCodec.verify(capabilityToken, job.capabilityHash)) {
+      httpError("INTERNAL_ERROR", 500, "Stored longitudinal capability is inconsistent.");
+    }
+    const jobPath = `/v1/jobs/${encodeURIComponent(job.jobId)}`;
+    const urlFor = (suffix: string): string => assertSafeAbsoluteUrl(
+      new URL(`${jobPath}${suffix}`, requestUrl.origin).toString(),
+      "longitudinal capability URL",
+    );
+    const response: LongitudinalComputeCapabilityV2 = {
+      schemaVersion: LONGITUDINAL_COMPUTE_CAPABILITY_VERSION_V2,
+      jobId: job.jobId,
+      capabilityToken,
+      urls: {
+        schemaVersion: LONGITUDINAL_COMPUTE_STATUS_URLS_VERSION_V2,
+        statusUrl: urlFor(""),
+        eventsUrl: urlFor("/events"),
+        resultUrl: urlFor("/result"),
+        artifactUrl: urlFor("/artifact"),
+        cancelUrl: urlFor(""),
+        deleteUrl: urlFor(""),
+      },
+      expiresAt: isoTimestamp(job.expiresAtMs),
+    };
+    return this.#json(created ? 201 : 200, response, context);
   }
 
   async #createJob(
@@ -2166,26 +2703,154 @@ export class ComputeV1HttpRouter {
     job: ComputeHttpJobRecordV1,
     context: RequestContext,
   ): Promise<Response> {
+    const wantsV2 = (request.headers.get("accept") ?? "")
+      .toLocaleLowerCase("en-US")
+      .split(",")
+      .some((value) => value.trim().startsWith(
+        "application/vnd.3dena.job-deletion-receipt.v2+json",
+      ));
     const idempotencyKey = this.#requireIdempotencyKey(request);
     const idempotencyHash = this.#infrastructure.capabilityCodec.hashSecret(
       `delete\0${job.jobId}\0${idempotencyKey}`,
     );
+    if (job.deleteIdempotencyHash !== undefined &&
+        job.deleteIdempotencyHash !== idempotencyHash) {
+      httpError("IDEMPOTENCY_CONFLICT", 409, "Deletion operation key conflicts with the durable intent.");
+    }
     const before = await this.#statusSnapshot(job);
+    const now = this.#infrastructure.clock.now();
+    const coreBefore = job.coreTaskId === undefined
+      ? null
+      : await this.#core.getTask(job.coreTaskId);
+    const capacityReleasedFor = async (
+      taskId: string | undefined,
+      record: ComputeJobRecordV1 | null,
+    ): Promise<boolean> => {
+      if (taskId === undefined) return true;
+      if (this.#infrastructure.deletionLifecycle !== undefined) {
+        return this.#infrastructure.deletionLifecycle.capacityReleased(taskId);
+      }
+      return !this.#core.capacitySnapshot().slots.some(
+        (slot) => slot.taskRef === record?.taskRef,
+      );
+    };
+    const capacityInitiallyReleased = await capacityReleasedFor(
+      job.coreTaskId,
+      coreBefore,
+    );
+    const terminationRequired = !capacityInitiallyReleased ||
+      (coreBefore?.execution !== undefined &&
+        ["starting", "running", "cancelling"].includes(coreBefore.state));
+    let intent = await this.#patchJob(job.jobId, (current) => ({
+      ...current,
+      revision: current.revision + 1,
+      updatedAtMs: now,
+      deleteIdempotencyHash: current.deleteIdempotencyHash ?? idempotencyHash,
+      deleteRequestedAtMs: current.deleteRequestedAtMs ?? now,
+      deleteCancelled:
+        current.deleteCancelled ??
+        (before.status.state !== "SUCCEEDED" && before.status.state !== "FAILED"),
+      deleteTerminationRequired:
+        current.deleteTerminationRequired === true || terminationRequired,
+      deleteCapacityReserved:
+        current.deleteCapacityReserved === true || !capacityInitiallyReleased,
+    }));
+    await this.#publishStatus((await this.#statusSnapshot(intent)).status);
+
+    let deletionRecord = coreBefore;
     let pendingTermination = false;
-    let resultKeys: readonly string[] = [];
-    if (job.coreTaskId !== undefined) {
-      const currentCore = await this.#core.getTask(job.coreTaskId);
-      resultKeys = currentCore?.ownedResultObjectKeys ?? [];
-      const deletion = await this.#core.deleteTask(job.coreTaskId);
-      pendingTermination = deletion.status === "pending_termination";
-      resultKeys = deletion.record.ownedResultObjectKeys;
+    let capacityReleased = capacityInitiallyReleased;
+    if (job.coreTaskId !== undefined && deletionRecord !== null) {
+      if (!capacityReleased && deletionRecord.execution === undefined) {
+        if (!["succeeded", "failed", "cancelled", "timed_out", "expired", "deleted", "deleting"]
+          .includes(deletionRecord.state)) {
+          deletionRecord = await this.#core.cancelTask(job.coreTaskId);
+        }
+      } else {
+        const deletion = await this.#core.deleteTask(job.coreTaskId);
+        pendingTermination = deletion.status === "pending_termination";
+        deletionRecord = deletion.record;
+      }
+      capacityReleased = await capacityReleasedFor(job.coreTaskId, deletionRecord);
     }
 
-    if (
-      job.inputObjectOwnedByJob === false &&
-      job.activatedDatasetId !== undefined &&
-      job.activationReceiptSha256 !== undefined
-    ) {
+    const terminationRequiredAfterControl = job.coreTaskId !== undefined &&
+      (!capacityReleased || deletionRecord?.execution !== undefined ||
+        (deletionRecord !== null && ["starting", "running", "cancelling"]
+          .includes(deletionRecord.state)));
+    if ((terminationRequiredAfterControl && intent.deleteTerminationRequired !== true) ||
+        (!capacityReleased && intent.deleteCapacityReserved !== true)) {
+      intent = await this.#patchJob(job.jobId, (current) => ({
+        ...current,
+        revision: current.revision + 1,
+        updatedAtMs: this.#infrastructure.clock.now(),
+        deleteTerminationRequired:
+          current.deleteTerminationRequired === true || terminationRequiredAfterControl,
+        deleteCapacityReserved:
+          current.deleteCapacityReserved === true || !capacityReleased,
+      }));
+    }
+
+    const terminationObserved = intent.deleteTerminationRequired !== true ||
+      (job.coreTaskId !== undefined &&
+        (this.#infrastructure.deletionLifecycle !== undefined
+          ? await this.#infrastructure.deletionLifecycle.terminationObserved(job.coreTaskId)
+          : deletionRecord?.execution === undefined && deletionRecord !== null &&
+            ["succeeded", "failed", "cancelled", "timed_out", "expired", "deleting", "deleted"]
+              .includes(deletionRecord.state)));
+    if (intent.deleteTerminationRequired === true && capacityReleased && !terminationObserved) {
+      httpError(
+        "INTERNAL_ERROR",
+        500,
+        "Distributed capacity was released without an observed-termination receipt.",
+      );
+    }
+    const pending = pendingTermination || !terminationObserved || !capacityReleased ||
+      deletionRecord?.state === "cancelling";
+    if (pending) {
+      if (wantsV2) {
+        const receipt: AnalysisDeletionReceiptV2 = {
+          schemaVersion: "3dena.job-deletion-receipt.v2",
+          jobId: job.jobId,
+          cancelled: false,
+          inputDeleted: false,
+          resultDeleted: false,
+          deletedAt: null,
+          intentAccepted: true,
+          termination: intent.deleteTerminationRequired === true
+            ? (terminationObserved ? "observed" : "pending")
+            : "not_required",
+          capacity: intent.deleteCapacityReserved === true
+            ? (capacityReleased ? "released" : "held")
+            : "not_reserved",
+          objects: "pending",
+        };
+        return this.#json(202, receipt, context);
+      }
+      const legacy: AnalysisDeletionReceiptV1 = {
+        schemaVersion: "3dena.job-deletion-receipt.v1",
+        jobId: job.jobId,
+        cancelled: false,
+        inputDeleted: false,
+        resultDeleted: false,
+        deletedAt: isoTimestamp(intent.deleteRequestedAtMs ?? now),
+      };
+      return this.#json(202, legacy, context);
+    }
+
+    let resultKeys = deletionRecord?.ownedResultObjectKeys ?? [];
+    if (job.coreTaskId !== undefined && deletionRecord !== null &&
+        deletionRecord.state !== "deleted") {
+      const deletion = await this.#core.deleteTask(job.coreTaskId);
+      if (deletion.status !== "deleted") {
+        httpError("INTERNAL_ERROR", 500, "Deletion became non-terminal after capacity release.");
+      }
+      deletionRecord = deletion.record;
+      resultKeys = deletion.record.ownedResultObjectKeys;
+    }
+    if (job.inputObjectOwnedByJob === false &&
+        job.activatedDatasetId !== undefined &&
+        job.activationReceiptSha256 !== undefined) {
       await this.#requireDatasetService().deleteActivated(
         job.activatedDatasetId,
         job.activationReceiptSha256,
@@ -2194,40 +2859,55 @@ export class ComputeV1HttpRouter {
     const inputKeys = [
       job.inputObjectOwnedByJob === false ? undefined : job.inputObjectKey,
       job.executionObjectKey,
-    ].filter(
-      (key): key is string => key !== undefined,
-    );
+    ].filter((key): key is string => key !== undefined);
     for (const key of [...inputKeys, ...resultKeys]) {
       await this.#infrastructure.objectStore.delete(key);
     }
     for (const key of [...inputKeys, ...resultKeys]) {
-      if ((await this.#infrastructure.objectStore.head(key)) !== null) {
+      const [head, bytes] = await Promise.all([
+        this.#infrastructure.objectStore.head(key),
+        this.#infrastructure.objectStore.get(key),
+      ]);
+      if (head !== null || bytes !== null) {
         httpError("INTERNAL_ERROR", 500, "Deletion was not observed in object storage.");
       }
     }
-    const now = this.#infrastructure.clock.now();
-    const updated = await this.#patchJob(job.jobId, (current) => ({
+    const completedAtMs = this.#infrastructure.clock.now();
+    const completed = await this.#patchJob(job.jobId, (current) => ({
       ...current,
       revision: current.revision + 1,
-      updatedAtMs: now,
-      inputDeletedAtMs: current.inputDeletedAtMs ?? now,
-      deleteIdempotencyHash: current.deleteIdempotencyHash ?? idempotencyHash,
-      deleteRequestedAtMs: current.deleteRequestedAtMs ?? now,
-      deleteCancelled:
-        current.deleteCancelled ??
-        (before.status.state !== "SUCCEEDED" && before.status.state !== "FAILED"),
+      updatedAtMs: completedAtMs,
+      inputDeletedAtMs: current.inputDeletedAtMs ?? completedAtMs,
     }));
-    const after = await this.#statusSnapshot(updated);
-    await this.#publishStatus(after.status);
-    const receipt: AnalysisDeletionReceiptV1 = {
+    await this.#publishStatus((await this.#statusSnapshot(completed)).status);
+    if (wantsV2) {
+      const receipt: AnalysisDeletionReceiptV2 = {
+        schemaVersion: "3dena.job-deletion-receipt.v2",
+        jobId: job.jobId,
+        cancelled: completed.deleteCancelled ?? false,
+        inputDeleted: true,
+        resultDeleted: true,
+        deletedAt: isoTimestamp(completed.inputDeletedAtMs ?? completedAtMs),
+        intentAccepted: true,
+        termination: completed.deleteTerminationRequired === true
+          ? "observed"
+          : "not_required",
+        capacity: completed.deleteCapacityReserved === true
+          ? "released"
+          : "not_reserved",
+        objects: "deleted",
+      };
+      return this.#json(200, receipt, context);
+    }
+    const legacy: AnalysisDeletionReceiptV1 = {
       schemaVersion: "3dena.job-deletion-receipt.v1",
       jobId: job.jobId,
-      cancelled: updated.deleteCancelled ?? false,
+      cancelled: completed.deleteCancelled ?? false,
       inputDeleted: true,
       resultDeleted: true,
-      deletedAt: isoTimestamp(updated.deleteRequestedAtMs ?? now),
+      deletedAt: isoTimestamp(completed.inputDeletedAtMs ?? completedAtMs),
     };
-    return this.#json(pendingTermination ? 202 : 200, receipt, context);
+    return this.#json(200, legacy, context);
   }
 
   async #events(
@@ -2304,7 +2984,12 @@ export class ComputeV1HttpRouter {
       job.coreTaskId === undefined
         ? null
         : await this.#core.getTask(job.coreTaskId);
-    if (job.coreTaskId !== undefined && core === null) {
+    if (core === null && job.taskKind === LONGITUDINAL_COMPUTE_TASK_KIND_V2 &&
+        job.deleteRequestedAtMs === undefined && job.inputDeletedAtMs === undefined) {
+      core = await this.#ensureLongitudinalCoreTask(job);
+    }
+    if (job.coreTaskId !== undefined && core === null &&
+        job.deleteRequestedAtMs === undefined) {
       httpError("INTERNAL_ERROR", 500, "Bound core task is missing.");
     }
     const now = this.#infrastructure.clock.now();
@@ -2331,7 +3016,8 @@ export class ComputeV1HttpRouter {
     const state = publicState(job, core, uploaded, now);
     if (
       job.inputDeletedAtMs === undefined &&
-      (TERMINAL_REMOTE_STATES.has(state) || state === "CANCEL_REQUESTED")
+      job.deleteRequestedAtMs === undefined &&
+      TERMINAL_REMOTE_STATES.has(state)
     ) {
       job = await this.#deleteOwnedInputs(job);
       core =
@@ -2579,7 +3265,60 @@ export class ComputeV1HttpRouter {
     }
   }
 
-  async #parseJson(request: Request): Promise<unknown> {
+  #assertLongitudinalServiceToken(request: Request): string | null {
+    const expected = this.#longitudinalServiceTokenSha256;
+    // A runtime with no approved scientific build is diagnostically NOT_READY;
+    // it has no usable V2 route to authenticate.
+    if (expected === undefined) return null;
+    const supplied = request.headers.get("x-3dena-service-token");
+    const suppliedHash = sha256Text(supplied ?? "");
+    const exact = expected !== undefined && supplied !== null &&
+      /^[^\u0000-\u0020\u007f]{32,512}$/u.test(supplied) &&
+      timingSafeEqual(Buffer.from(suppliedHash, "hex"), Buffer.from(expected, "hex"));
+    if (!exact) {
+      httpError("UNAUTHORIZED", 401, "Longitudinal service authentication failed.");
+    }
+    return `longitudinal-service:${expected}`;
+  }
+
+  async #rateLimitPrincipal(
+    request: Request,
+    pathname: string,
+    origin: string | null,
+    routeClass: ComputeHttpRateLimitClassV1,
+  ): Promise<string> {
+    const jobMatch = /^\/v1\/jobs\/([^/]+)(?:\/|$)/u.exec(pathname);
+    if (jobMatch === null) {
+      return `origin:${origin ?? "no-origin"}`;
+    }
+    let jobId: string | null = null;
+    try {
+      const decoded = decodeURIComponent(jobMatch[1] ?? "");
+      if (OPAQUE_ID.test(decoded)) jobId = decoded;
+    } catch {
+      jobId = null;
+    }
+    const authorization = request.headers.get("authorization");
+    const bearer = authorization === null
+      ? null
+      : /^Bearer ([A-Za-z0-9_-]{16,512})$/u.exec(authorization)?.[1] ?? null;
+    const job = jobId === null
+      ? null
+      : await this.#infrastructure.repository.get(jobId);
+    if (job !== null && bearer !== null && job.boundOrigin === origin &&
+        this.#infrastructure.capabilityCodec.verify(bearer, job.capabilityHash)) {
+      return `job:${job.jobId}`;
+    }
+    // Invalid bearer text never enters a valid job principal's quota and is
+    // itself excluded from the abuse-bucket key, so token rotation cannot
+    // evade that bucket.
+    return `invalid-job:${routeClass}:${origin ?? "no-origin"}`;
+  }
+
+  async #parseJson(
+    request: Request,
+    maximumBytes = this.#maxJsonBodyBytes,
+  ): Promise<unknown> {
     const contentType = request.headers.get("content-type") ?? "";
     if (!JSON_CONTENT_TYPE.test(contentType)) {
       httpError("UNSUPPORTED_MEDIA_TYPE", 415, "Request body must be JSON UTF-8.");
@@ -2591,16 +3330,45 @@ export class ComputeV1HttpRouter {
         httpError("INVALID_REQUEST", 400, "Content-Length is malformed.");
       }
       const declared = Number(contentLength);
-      if (!Number.isSafeInteger(declared) || declared > this.#maxJsonBodyBytes) {
+      if (!Number.isSafeInteger(declared) || declared > maximumBytes) {
         httpError("PAYLOAD_TOO_LARGE", 413, "JSON body exceeds configured limit.");
       }
       declaredLength = declared;
     }
-    const bytes = new Uint8Array(await request.arrayBuffer());
-    if (bytes.byteLength > this.#maxJsonBodyBytes) {
-      httpError("PAYLOAD_TOO_LARGE", 413, "JSON body exceeds configured limit.");
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    const reader = request.body?.getReader();
+    if (reader !== undefined) {
+      try {
+        while (true) {
+          const next = await reader.read();
+          if (next.done) break;
+          const chunk = next.value;
+          if (total + chunk.byteLength > maximumBytes) {
+            try {
+              await reader.cancel("JSON body exceeds configured limit.");
+            } catch {
+              // The 413 remains authoritative even if transport cancellation
+              // itself races a peer close.
+            }
+            httpError("PAYLOAD_TOO_LARGE", 413, "JSON body exceeds configured limit.");
+          }
+          const copy = new Uint8Array(chunk.byteLength);
+          copy.set(chunk);
+          chunks.push(copy);
+          total += copy.byteLength;
+        }
+      } finally {
+        reader.releaseLock();
+      }
     }
-    if (declaredLength !== null && declaredLength !== bytes.byteLength) {
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    if (declaredLength !== null && declaredLength !== total) {
       httpError("INVALID_REQUEST", 400, "Content-Length does not match the JSON body.");
     }
     let text: string;

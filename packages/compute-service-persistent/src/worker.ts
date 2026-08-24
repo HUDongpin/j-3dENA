@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 
 import {
   type ComputeJobRecordV1,
+  type ComputeProcessSupervisor,
   ComputeServiceCore,
+  type ProcessLaunchContextV1,
+  type ProcessLaunchControlV1,
+  type ProcessTerminationReason,
+  type SupervisedChildProcess,
 } from "@3dena/compute-service-core";
 
 import type {
@@ -15,6 +20,32 @@ const FINAL_STATES = new Set([
   "succeeded", "failed", "cancelled", "timed_out", "expired", "deleted",
 ]);
 
+/**
+ * API/control-plane adapter: the core CAS is the durable stop intent. The API
+ * process never claims that it signalled a child owned by another runtime; the
+ * owning worker observes the persisted `cancelling` record and dispatches the
+ * real termination request through its local supervisor.
+ */
+export class DurableControlPlaneProcessSupervisor
+  implements ComputeProcessSupervisor
+{
+  async spawn(
+    _context: ProcessLaunchContextV1,
+    _control: ProcessLaunchControlV1,
+  ): Promise<SupervisedChildProcess> {
+    throw new TypeError("The durable control plane cannot launch scientific children.");
+  }
+
+  async requestTermination(
+    _childId: string,
+    _reason: ProcessTerminationReason,
+  ): Promise<void> {
+    // Intentionally empty: accepting this call means only that the preceding
+    // repository CAS durably recorded the intent. It is not an observation of
+    // process termination or distributed-capacity release.
+  }
+}
+
 export interface PersistentComputeWorkerOptionsV1 {
   readonly holderId: string;
   readonly core: ComputeServiceCore;
@@ -25,6 +56,10 @@ export interface PersistentComputeWorkerOptionsV1 {
   readonly nextLeaseId?: () => string;
   /** Synchronizes server time and verifies exact-build readiness before work. */
   readonly beforeCycle?: () => Promise<boolean>;
+  /** Fixed, non-sensitive signal; the caught error is deliberately not exposed. */
+  readonly onCycleFailure?: (
+    stage: "recovery" | "claim" | "heartbeat" | "task" | "cycle",
+  ) => void;
 }
 
 function abortableDelay(milliseconds: number, signal: AbortSignal): Promise<void> {
@@ -50,6 +85,9 @@ export class PersistentComputeWorker {
   readonly #pollIntervalMs: number;
   readonly #nextLeaseId: () => string;
   readonly #beforeCycle: () => Promise<boolean>;
+  readonly #onCycleFailure: (
+    stage: "recovery" | "claim" | "heartbeat" | "task" | "cycle",
+  ) => void;
 
   constructor(options: PersistentComputeWorkerOptionsV1) {
     if (!/^[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$/u.test(options.holderId) ||
@@ -66,6 +104,7 @@ export class PersistentComputeWorker {
     this.#pollIntervalMs = options.pollIntervalMs ?? 250;
     this.#nextLeaseId = options.nextLeaseId ?? (() => `lease-${randomUUID()}`);
     this.#beforeCycle = options.beforeCycle ?? (async () => true);
+    this.#onCycleFailure = options.onCycleFailure ?? (() => undefined);
   }
 
   async run(signal: AbortSignal): Promise<void> {
@@ -73,9 +112,13 @@ export class PersistentComputeWorker {
       await abortableDelay(this.#pollIntervalMs, signal);
     }
     if (signal.aborted) return;
-    await this.#coordinator.recoverExpiredClaims();
     while (!signal.aborted) {
-      const didWork = await this.tick(signal);
+      let didWork = false;
+      try {
+        didWork = await this.tick(signal);
+      } catch {
+        this.#onCycleFailure("cycle");
+      }
       if (!didWork) await abortableDelay(this.#pollIntervalMs, signal);
     }
   }
@@ -83,20 +126,37 @@ export class PersistentComputeWorker {
   async tick(signal: AbortSignal): Promise<boolean> {
     if (signal.aborted) return false;
     if (!(await this.#ready())) return false;
-    let claim = await this.#coordinator.claimNext({
-      holderId: this.#holderId,
-      leaseId: this.#nextLeaseId(),
-      durationMs: this.#leaseDurationMs,
-    });
+    try {
+      await this.#coordinator.recoverExpiredClaims();
+    } catch {
+      this.#onCycleFailure("recovery");
+      return false;
+    }
+    let claim: PersistentLeaseClaimV1 | null;
+    try {
+      claim = await this.#coordinator.claimNext({
+        holderId: this.#holderId,
+        leaseId: this.#nextLeaseId(),
+        durationMs: this.#leaseDurationMs,
+      });
+    } catch {
+      this.#onCycleFailure("claim");
+      return false;
+    }
     if (claim === null) return false;
+    let capacityReleased = false;
     try {
       await this.#core.executeTask(claim.taskId, claim.lease);
-      claim = await this.#watch(claim, signal);
+      const watched = await this.#watch(claim, signal);
+      claim = watched.claim;
+      capacityReleased = watched.capacityReleased;
       return true;
     } finally {
       const record = await this.#core.getTask(claim.taskId);
-      if (record !== null && FINAL_STATES.has(record.state)) {
-        await this.#coordinator.release(claim);
+      if (!capacityReleased && record !== null && FINAL_STATES.has(record.state)) {
+        if (!(await this.#releaseObserved(claim))) {
+          persistentError("RECOVERY_CONFLICT");
+        }
       }
       // A non-terminal record deliberately retains the durable slot until its
       // lease expires and restart recovery observes the fencing boundary.
@@ -106,13 +166,38 @@ export class PersistentComputeWorker {
   async #watch(
     initial: PersistentLeaseClaimV1,
     signal: AbortSignal,
-  ): Promise<PersistentLeaseClaimV1> {
+  ): Promise<Readonly<{
+    claim: PersistentLeaseClaimV1;
+    capacityReleased: boolean;
+  }>> {
     let claim = initial;
     let cancellationRequested = false;
     while (true) {
-      const record = await this.#core.getTask(claim.taskId);
-      if (record === null) persistentError("RECOVERY_CONFLICT");
-      if (FINAL_STATES.has(record.state)) return claim;
+      let record: ComputeJobRecordV1;
+      try {
+        record = await this.#core.sweepTask(claim.taskId);
+      } catch {
+        this.#onCycleFailure("task");
+        await abortableDelay(this.#pollIntervalMs, signal);
+        continue;
+      }
+      if (FINAL_STATES.has(record.state)) {
+        return { claim, capacityReleased: false };
+      }
+      if (record.state === "deleting") {
+        if (!(await this.#releaseObserved(claim))) {
+          persistentError("RECOVERY_CONFLICT");
+        }
+        await this.#core.deleteTask(claim.taskId);
+        return { claim, capacityReleased: true };
+      }
+      if (
+        record.state === "cancelling" &&
+        (record.pendingStopOutcome === "cancelled" ||
+          record.pendingStopOutcome === "deleted")
+      ) {
+        await this.#core.cancelTask(claim.taskId);
+      }
       if (signal.aborted) {
         if (!cancellationRequested) {
           cancellationRequested = true;
@@ -121,17 +206,52 @@ export class PersistentComputeWorker {
         }
       }
       await abortableDelay(this.#heartbeatIntervalMs, signal);
-      const afterDelay = await this.#core.getTask(claim.taskId);
-      if (afterDelay === null) persistentError("RECOVERY_CONFLICT");
-      if (FINAL_STATES.has(afterDelay.state)) return claim;
+      let afterDelay: ComputeJobRecordV1;
+      try {
+        afterDelay = await this.#core.sweepTask(claim.taskId);
+      } catch {
+        this.#onCycleFailure("task");
+        await abortableDelay(this.#pollIntervalMs, signal);
+        continue;
+      }
+      if (FINAL_STATES.has(afterDelay.state)) {
+        return { claim, capacityReleased: false };
+      }
+      if (afterDelay.state === "deleting") {
+        if (!(await this.#releaseObserved(claim))) {
+          persistentError("RECOVERY_CONFLICT");
+        }
+        await this.#core.deleteTask(claim.taskId);
+        return { claim, capacityReleased: true };
+      }
+      if (afterDelay.state === "cancelling") {
+        if (
+          afterDelay.pendingStopOutcome === "cancelled" ||
+          afterDelay.pendingStopOutcome === "deleted"
+        ) {
+          await this.#core.cancelTask(claim.taskId);
+        }
+        continue;
+      }
       if (signal.aborted) continue;
       if (!(await this.#ready())) {
         await this.#core.cancelTask(claim.taskId);
         cancellationRequested = true;
         continue;
       }
-      claim = await this.#coordinator.heartbeat(claim, this.#leaseDurationMs);
+      try {
+        claim = await this.#coordinator.heartbeat(claim, this.#leaseDurationMs);
+      } catch {
+        this.#onCycleFailure("heartbeat");
+        await abortableDelay(this.#pollIntervalMs, signal);
+      }
     }
+  }
+
+  async #releaseObserved(claim: PersistentLeaseClaimV1): Promise<boolean> {
+    return this.#coordinator.reconcileObservedTermination === undefined
+      ? this.#coordinator.release(claim)
+      : this.#coordinator.reconcileObservedTermination(claim);
   }
 
   async #ready(): Promise<boolean> {
