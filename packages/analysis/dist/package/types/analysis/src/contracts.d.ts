@@ -1338,19 +1338,13 @@ export declare const CONTRACT_SCHEMAS_V1: Readonly<{
                     additionalProperties: boolean;
                     required: string[];
                     properties: {
-                        [k: string]: {
+                        projection: {
                             type: string;
                             additionalProperties: boolean;
                             required: string[];
                             properties: {
-                                x: {
-                                    type: string;
-                                };
-                                y: {
-                                    type: string;
-                                };
-                                z: {
-                                    type: string;
+                                type: {
+                                    enum: string[];
                                 };
                             };
                         };
@@ -1406,6 +1400,10 @@ export declare const CONTRACT_SCHEMAS_V1: Readonly<{
                         readonly pattern: "^[a-f0-9]{64}$";
                     };
                     sourceResultHash: {
+                        readonly type: "string";
+                        readonly pattern: "^[a-f0-9]{64}$";
+                    };
+                    requestHash: {
                         readonly type: "string";
                         readonly pattern: "^[a-f0-9]{64}$";
                     };
@@ -1509,7 +1507,841 @@ export declare const CONTRACT_SCHEMAS_V1: Readonly<{
                         rows: {
                             type: string;
                             items: {
-                                type: string;
+                                readonly oneOf: readonly [{
+                                    readonly type: "object";
+                                    readonly additionalProperties: false;
+                                    readonly required: readonly ["memberId", "sideAEntities", "sideBEntities", "overlappingEntities", "pairedCompleteEntities", "sideAOnly", "sideBOnly", "excludedIncompleteOverlap", "samePhysicalEntityConfirmed"];
+                                    readonly properties: {
+                                        readonly memberId: {
+                                            readonly const: "identity-overlap-audit";
+                                        };
+                                        readonly sideAEntities: {
+                                            readonly type: "integer";
+                                            readonly minimum: 0;
+                                            readonly maximum: number;
+                                        };
+                                        readonly sideBEntities: {
+                                            readonly type: "integer";
+                                            readonly minimum: 0;
+                                            readonly maximum: number;
+                                        };
+                                        readonly overlappingEntities: {
+                                            readonly type: "integer";
+                                            readonly minimum: 0;
+                                            readonly maximum: number;
+                                        };
+                                        readonly pairedCompleteEntities: {
+                                            readonly type: "integer";
+                                            readonly minimum: 0;
+                                            readonly maximum: number;
+                                        };
+                                        readonly sideAOnly: {
+                                            readonly type: "integer";
+                                            readonly minimum: 0;
+                                            readonly maximum: number;
+                                        };
+                                        readonly sideBOnly: {
+                                            readonly type: "integer";
+                                            readonly minimum: 0;
+                                            readonly maximum: number;
+                                        };
+                                        readonly excludedIncompleteOverlap: {
+                                            readonly type: "integer";
+                                            readonly minimum: 0;
+                                            readonly maximum: number;
+                                        };
+                                        readonly samePhysicalEntityConfirmed: {
+                                            readonly const: true;
+                                        };
+                                    };
+                                }, {
+                                    readonly type: "object";
+                                    readonly additionalProperties: false;
+                                    readonly required: readonly ["memberId", "test", "design", "estimand", "axis", "axisIndex", "status", "reason", "effect", "statistic", "pRaw", "method", "ties", "zeros", "exactTail", "familyId", "familySize", "pHolm", "holmRank", "holmMultiplier", "periodCanonical", "nPrimary", "nSecondary"];
+                                    readonly properties: {
+                                        readonly test: {
+                                            readonly const: "mann-whitney";
+                                        };
+                                        readonly design: {
+                                            readonly const: "independent";
+                                        };
+                                        readonly periodCanonical: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly nPrimary: {
+                                            readonly type: "integer";
+                                            readonly minimum: 0;
+                                            readonly maximum: number;
+                                        };
+                                        readonly nSecondary: {
+                                            readonly type: "integer";
+                                            readonly minimum: 0;
+                                            readonly maximum: number;
+                                        };
+                                        readonly memberId: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly estimand: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly axis: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly axisIndex: {
+                                            readonly type: "integer";
+                                            readonly minimum: 0;
+                                            readonly maximum: number;
+                                        };
+                                        readonly status: {
+                                            readonly enum: readonly ["available", "not-estimable"];
+                                        };
+                                        readonly reason: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "string";
+                                                readonly minLength: 1;
+                                            }];
+                                        };
+                                        readonly effect: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "number";
+                                            }];
+                                        };
+                                        readonly statistic: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "number";
+                                            }];
+                                        };
+                                        readonly pRaw: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "number";
+                                                readonly minimum: 0;
+                                                readonly maximum: 1;
+                                            }];
+                                        };
+                                        readonly method: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "string";
+                                                readonly minLength: 1;
+                                            }];
+                                        };
+                                        readonly ties: {
+                                            readonly type: "object";
+                                            readonly additionalProperties: false;
+                                            readonly required: readonly ["groups", "observations", "correctionSum"];
+                                            readonly properties: {
+                                                readonly groups: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly observations: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly correctionSum: {
+                                                    readonly type: "number";
+                                                    readonly minimum: 0;
+                                                };
+                                            };
+                                        };
+                                        readonly zeros: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "integer";
+                                                readonly minimum: 0;
+                                                readonly maximum: number;
+                                            }];
+                                        };
+                                        readonly exactTail: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "object";
+                                                readonly additionalProperties: false;
+                                                readonly required: readonly ["extremeAssignmentCount", "totalAssignmentCount", "inclusive", "midP"];
+                                                readonly properties: {
+                                                    readonly extremeAssignmentCount: {
+                                                        readonly type: "string";
+                                                        readonly pattern: "^(?:0|[1-9][0-9]*)$";
+                                                    };
+                                                    readonly totalAssignmentCount: {
+                                                        readonly type: "string";
+                                                        readonly pattern: "^(?:0|[1-9][0-9]*)$";
+                                                    };
+                                                    readonly inclusive: {
+                                                        readonly const: true;
+                                                    };
+                                                    readonly midP: {
+                                                        readonly const: false;
+                                                    };
+                                                };
+                                            }];
+                                        };
+                                        readonly familyId: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly familySize: {
+                                            readonly type: "integer";
+                                            readonly minimum: 1;
+                                            readonly maximum: number;
+                                        };
+                                        readonly pHolm: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "number";
+                                                readonly minimum: 0;
+                                                readonly maximum: 1;
+                                            }];
+                                        };
+                                        readonly holmRank: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "integer";
+                                                readonly minimum: 1;
+                                                readonly maximum: number;
+                                            }];
+                                        };
+                                        readonly holmMultiplier: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "integer";
+                                                readonly minimum: 1;
+                                                readonly maximum: number;
+                                            }];
+                                        };
+                                    };
+                                }, {
+                                    readonly type: "object";
+                                    readonly additionalProperties: false;
+                                    readonly required: readonly ["memberId", "test", "design", "estimand", "axis", "axisIndex", "status", "reason", "effect", "statistic", "pRaw", "method", "ties", "zeros", "exactTail", "familyId", "familySize", "pHolm", "holmRank", "holmMultiplier", "earlierPeriodCanonical", "laterPeriodCanonical", "n", "identityOverlapAudit"];
+                                    readonly properties: {
+                                        readonly test: {
+                                            readonly const: "wilcoxon-signed-rank";
+                                        };
+                                        readonly design: {
+                                            readonly const: "paired";
+                                        };
+                                        readonly earlierPeriodCanonical: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly laterPeriodCanonical: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly n: {
+                                            readonly type: "integer";
+                                            readonly minimum: 0;
+                                            readonly maximum: number;
+                                        };
+                                        readonly identityOverlapAudit: {
+                                            readonly type: "object";
+                                            readonly additionalProperties: false;
+                                            readonly required: readonly ["earlier", "later", "overlap", "earlierOnly", "laterOnly", "samePhysicalEntityConfirmed"];
+                                            readonly properties: {
+                                                readonly earlier: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly later: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly overlap: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly earlierOnly: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly laterOnly: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly samePhysicalEntityConfirmed: {
+                                                    readonly const: true;
+                                                };
+                                            };
+                                        };
+                                        readonly memberId: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly estimand: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly axis: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly axisIndex: {
+                                            readonly type: "integer";
+                                            readonly minimum: 0;
+                                            readonly maximum: number;
+                                        };
+                                        readonly status: {
+                                            readonly enum: readonly ["available", "not-estimable"];
+                                        };
+                                        readonly reason: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "string";
+                                                readonly minLength: 1;
+                                            }];
+                                        };
+                                        readonly effect: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "number";
+                                            }];
+                                        };
+                                        readonly statistic: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "number";
+                                            }];
+                                        };
+                                        readonly pRaw: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "number";
+                                                readonly minimum: 0;
+                                                readonly maximum: 1;
+                                            }];
+                                        };
+                                        readonly method: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "string";
+                                                readonly minLength: 1;
+                                            }];
+                                        };
+                                        readonly ties: {
+                                            readonly type: "object";
+                                            readonly additionalProperties: false;
+                                            readonly required: readonly ["groups", "observations", "correctionSum"];
+                                            readonly properties: {
+                                                readonly groups: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly observations: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly correctionSum: {
+                                                    readonly type: "number";
+                                                    readonly minimum: 0;
+                                                };
+                                            };
+                                        };
+                                        readonly zeros: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "integer";
+                                                readonly minimum: 0;
+                                                readonly maximum: number;
+                                            }];
+                                        };
+                                        readonly exactTail: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "object";
+                                                readonly additionalProperties: false;
+                                                readonly required: readonly ["extremeAssignmentCount", "totalAssignmentCount", "inclusive", "midP"];
+                                                readonly properties: {
+                                                    readonly extremeAssignmentCount: {
+                                                        readonly type: "string";
+                                                        readonly pattern: "^(?:0|[1-9][0-9]*)$";
+                                                    };
+                                                    readonly totalAssignmentCount: {
+                                                        readonly type: "string";
+                                                        readonly pattern: "^(?:0|[1-9][0-9]*)$";
+                                                    };
+                                                    readonly inclusive: {
+                                                        readonly const: true;
+                                                    };
+                                                    readonly midP: {
+                                                        readonly const: false;
+                                                    };
+                                                };
+                                            }];
+                                        };
+                                        readonly familyId: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly familySize: {
+                                            readonly type: "integer";
+                                            readonly minimum: 1;
+                                            readonly maximum: number;
+                                        };
+                                        readonly pHolm: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "number";
+                                                readonly minimum: 0;
+                                                readonly maximum: 1;
+                                            }];
+                                        };
+                                        readonly holmRank: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "integer";
+                                                readonly minimum: 1;
+                                                readonly maximum: number;
+                                            }];
+                                        };
+                                        readonly holmMultiplier: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "integer";
+                                                readonly minimum: 1;
+                                                readonly maximum: number;
+                                            }];
+                                        };
+                                    };
+                                }, {
+                                    readonly type: "object";
+                                    readonly additionalProperties: false;
+                                    readonly required: readonly ["memberId", "test", "design", "estimand", "axis", "axisIndex", "status", "reason", "effect", "statistic", "pRaw", "method", "ties", "zeros", "exactTail", "familyId", "familySize", "pHolm", "holmRank", "holmMultiplier", "selectedPeriodCanonicals", "n", "identityOverlapAudit"];
+                                    readonly properties: {
+                                        readonly test: {
+                                            readonly const: "friedman";
+                                        };
+                                        readonly design: {
+                                            readonly const: "repeated";
+                                        };
+                                        readonly selectedPeriodCanonicals: {
+                                            readonly type: "array";
+                                            readonly minItems: 3;
+                                            readonly uniqueItems: true;
+                                            readonly items: {
+                                                readonly type: "string";
+                                                readonly minLength: 1;
+                                            };
+                                        };
+                                        readonly n: {
+                                            readonly type: "integer";
+                                            readonly minimum: 0;
+                                            readonly maximum: number;
+                                        };
+                                        readonly identityOverlapAudit: {
+                                            readonly type: "object";
+                                            readonly additionalProperties: false;
+                                            readonly required: readonly ["totalEntities", "completeBlocks", "excludedIncomplete", "samePhysicalEntityConfirmed"];
+                                            readonly properties: {
+                                                readonly totalEntities: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly completeBlocks: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly excludedIncomplete: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly samePhysicalEntityConfirmed: {
+                                                    readonly const: true;
+                                                };
+                                            };
+                                        };
+                                        readonly memberId: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly estimand: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly axis: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly axisIndex: {
+                                            readonly type: "integer";
+                                            readonly minimum: 0;
+                                            readonly maximum: number;
+                                        };
+                                        readonly status: {
+                                            readonly enum: readonly ["available", "not-estimable"];
+                                        };
+                                        readonly reason: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "string";
+                                                readonly minLength: 1;
+                                            }];
+                                        };
+                                        readonly effect: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "number";
+                                            }];
+                                        };
+                                        readonly statistic: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "number";
+                                            }];
+                                        };
+                                        readonly pRaw: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "number";
+                                                readonly minimum: 0;
+                                                readonly maximum: 1;
+                                            }];
+                                        };
+                                        readonly method: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "string";
+                                                readonly minLength: 1;
+                                            }];
+                                        };
+                                        readonly ties: {
+                                            readonly type: "object";
+                                            readonly additionalProperties: false;
+                                            readonly required: readonly ["groups", "observations", "correctionSum"];
+                                            readonly properties: {
+                                                readonly groups: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly observations: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly correctionSum: {
+                                                    readonly type: "number";
+                                                    readonly minimum: 0;
+                                                };
+                                            };
+                                        };
+                                        readonly zeros: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "integer";
+                                                readonly minimum: 0;
+                                                readonly maximum: number;
+                                            }];
+                                        };
+                                        readonly exactTail: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "object";
+                                                readonly additionalProperties: false;
+                                                readonly required: readonly ["extremeAssignmentCount", "totalAssignmentCount", "inclusive", "midP"];
+                                                readonly properties: {
+                                                    readonly extremeAssignmentCount: {
+                                                        readonly type: "string";
+                                                        readonly pattern: "^(?:0|[1-9][0-9]*)$";
+                                                    };
+                                                    readonly totalAssignmentCount: {
+                                                        readonly type: "string";
+                                                        readonly pattern: "^(?:0|[1-9][0-9]*)$";
+                                                    };
+                                                    readonly inclusive: {
+                                                        readonly const: true;
+                                                    };
+                                                    readonly midP: {
+                                                        readonly const: false;
+                                                    };
+                                                };
+                                            }];
+                                        };
+                                        readonly familyId: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly familySize: {
+                                            readonly type: "integer";
+                                            readonly minimum: 1;
+                                            readonly maximum: number;
+                                        };
+                                        readonly pHolm: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "number";
+                                                readonly minimum: 0;
+                                                readonly maximum: 1;
+                                            }];
+                                        };
+                                        readonly holmRank: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "integer";
+                                                readonly minimum: 1;
+                                                readonly maximum: number;
+                                            }];
+                                        };
+                                        readonly holmMultiplier: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "integer";
+                                                readonly minimum: 1;
+                                                readonly maximum: number;
+                                            }];
+                                        };
+                                    };
+                                }, {
+                                    readonly type: "object";
+                                    readonly additionalProperties: false;
+                                    readonly required: readonly ["memberId", "test", "design", "estimand", "axis", "axisIndex", "status", "reason", "effect", "statistic", "pRaw", "method", "ties", "zeros", "exactTail", "familyId", "familySize", "pHolm", "holmRank", "holmMultiplier", "earlierPeriodCanonical", "laterPeriodCanonical", "n", "identityOverlapAudit"];
+                                    readonly properties: {
+                                        readonly test: {
+                                            readonly const: "wilcoxon-signed-rank";
+                                        };
+                                        readonly design: {
+                                            readonly const: "repeated-posthoc";
+                                        };
+                                        readonly earlierPeriodCanonical: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly laterPeriodCanonical: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly n: {
+                                            readonly type: "integer";
+                                            readonly minimum: 0;
+                                            readonly maximum: number;
+                                        };
+                                        readonly identityOverlapAudit: {
+                                            readonly type: "object";
+                                            readonly additionalProperties: false;
+                                            readonly required: readonly ["totalEntities", "completeBlocks", "excludedIncomplete", "samePhysicalEntityConfirmed"];
+                                            readonly properties: {
+                                                readonly totalEntities: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly completeBlocks: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly excludedIncomplete: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly samePhysicalEntityConfirmed: {
+                                                    readonly const: true;
+                                                };
+                                            };
+                                        };
+                                        readonly memberId: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly estimand: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly axis: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly axisIndex: {
+                                            readonly type: "integer";
+                                            readonly minimum: 0;
+                                            readonly maximum: number;
+                                        };
+                                        readonly status: {
+                                            readonly enum: readonly ["available", "not-estimable"];
+                                        };
+                                        readonly reason: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "string";
+                                                readonly minLength: 1;
+                                            }];
+                                        };
+                                        readonly effect: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "number";
+                                            }];
+                                        };
+                                        readonly statistic: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "number";
+                                            }];
+                                        };
+                                        readonly pRaw: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "number";
+                                                readonly minimum: 0;
+                                                readonly maximum: 1;
+                                            }];
+                                        };
+                                        readonly method: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "string";
+                                                readonly minLength: 1;
+                                            }];
+                                        };
+                                        readonly ties: {
+                                            readonly type: "object";
+                                            readonly additionalProperties: false;
+                                            readonly required: readonly ["groups", "observations", "correctionSum"];
+                                            readonly properties: {
+                                                readonly groups: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly observations: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly correctionSum: {
+                                                    readonly type: "number";
+                                                    readonly minimum: 0;
+                                                };
+                                            };
+                                        };
+                                        readonly zeros: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "integer";
+                                                readonly minimum: 0;
+                                                readonly maximum: number;
+                                            }];
+                                        };
+                                        readonly exactTail: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "object";
+                                                readonly additionalProperties: false;
+                                                readonly required: readonly ["extremeAssignmentCount", "totalAssignmentCount", "inclusive", "midP"];
+                                                readonly properties: {
+                                                    readonly extremeAssignmentCount: {
+                                                        readonly type: "string";
+                                                        readonly pattern: "^(?:0|[1-9][0-9]*)$";
+                                                    };
+                                                    readonly totalAssignmentCount: {
+                                                        readonly type: "string";
+                                                        readonly pattern: "^(?:0|[1-9][0-9]*)$";
+                                                    };
+                                                    readonly inclusive: {
+                                                        readonly const: true;
+                                                    };
+                                                    readonly midP: {
+                                                        readonly const: false;
+                                                    };
+                                                };
+                                            }];
+                                        };
+                                        readonly familyId: {
+                                            readonly type: "string";
+                                            readonly minLength: 1;
+                                        };
+                                        readonly familySize: {
+                                            readonly type: "integer";
+                                            readonly minimum: 1;
+                                            readonly maximum: number;
+                                        };
+                                        readonly pHolm: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "number";
+                                                readonly minimum: 0;
+                                                readonly maximum: 1;
+                                            }];
+                                        };
+                                        readonly holmRank: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "integer";
+                                                readonly minimum: 1;
+                                                readonly maximum: number;
+                                            }];
+                                        };
+                                        readonly holmMultiplier: {
+                                            readonly oneOf: readonly [{
+                                                readonly type: "null";
+                                            }, {
+                                                readonly type: "integer";
+                                                readonly minimum: 1;
+                                                readonly maximum: number;
+                                            }];
+                                        };
+                                    };
+                                }];
                             };
                         };
                         reason: {
@@ -1688,14 +2520,74 @@ export declare const CONTRACT_SCHEMAS_V1: Readonly<{
                                         readonly minLength: 1;
                                     };
                                     selected: {
-                                        oneOf: {
+                                        oneOf: ({
+                                            readonly type: "object";
+                                            readonly additionalProperties: false;
+                                            readonly required: readonly ["estimate", "lower", "upper", "finiteReplicates", "requiredFiniteReplicates", "totalReplicates"];
+                                            readonly properties: {
+                                                readonly estimate: {
+                                                    readonly type: "number";
+                                                };
+                                                readonly lower: {
+                                                    readonly type: "number";
+                                                };
+                                                readonly upper: {
+                                                    readonly type: "number";
+                                                };
+                                                readonly finiteReplicates: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly requiredFiniteReplicates: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 1;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly totalReplicates: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 1;
+                                                    readonly maximum: number;
+                                                };
+                                            };
+                                        } | {
                                             type: string;
-                                        }[];
+                                        })[];
                                     };
                                     full: {
-                                        oneOf: {
+                                        oneOf: ({
+                                            readonly type: "object";
+                                            readonly additionalProperties: false;
+                                            readonly required: readonly ["estimate", "lower", "upper", "finiteReplicates", "requiredFiniteReplicates", "totalReplicates"];
+                                            readonly properties: {
+                                                readonly estimate: {
+                                                    readonly type: "number";
+                                                };
+                                                readonly lower: {
+                                                    readonly type: "number";
+                                                };
+                                                readonly upper: {
+                                                    readonly type: "number";
+                                                };
+                                                readonly finiteReplicates: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 0;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly requiredFiniteReplicates: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 1;
+                                                    readonly maximum: number;
+                                                };
+                                                readonly totalReplicates: {
+                                                    readonly type: "integer";
+                                                    readonly minimum: 1;
+                                                    readonly maximum: number;
+                                                };
+                                            };
+                                        } | {
                                             type: string;
-                                        }[];
+                                        })[];
                                     };
                                 };
                             };
@@ -1703,6 +2595,54 @@ export declare const CONTRACT_SCHEMAS_V1: Readonly<{
                         result: {
                             [x: string]: unknown;
                         } | undefined;
+                    };
+                };
+            };
+            codeGeometry: {
+                type: string;
+                additionalProperties: boolean;
+                required: string[];
+                properties: {
+                    schemaVersion: {
+                        const: string;
+                    };
+                    dimensions: {
+                        type: string;
+                        minItems: number;
+                        maxItems: number;
+                        uniqueItems: boolean;
+                        items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                        };
+                    };
+                    nodes: {
+                        type: string;
+                        minItems: number;
+                        items: {
+                            type: string;
+                            additionalProperties: boolean;
+                            required: string[];
+                            properties: {
+                                index: {
+                                    readonly type: "integer";
+                                    readonly minimum: 0;
+                                    readonly maximum: number;
+                                };
+                                code: {
+                                    readonly type: "string";
+                                    readonly minLength: 1;
+                                };
+                                coordinates: {
+                                    type: string;
+                                    minItems: number;
+                                    maxItems: number;
+                                    items: {
+                                        type: string;
+                                    };
+                                };
+                            };
+                        };
                     };
                 };
             };
@@ -1767,32 +2707,6 @@ export declare const CONTRACT_SCHEMAS_V1: Readonly<{
                                 type: string;
                                 exclusiveMinimum: number;
                             })[];
-                        };
-                        nodes: {
-                            type: string;
-                            items: {
-                                type: string;
-                                additionalProperties: boolean;
-                                required: string[];
-                                properties: {
-                                    code: {
-                                        readonly type: "string";
-                                        readonly minLength: 1;
-                                    };
-                                    coordinates: {
-                                        type: string;
-                                        minItems: number;
-                                        maxItems: number;
-                                        items: {
-                                            type: string;
-                                        };
-                                    };
-                                    weight: {
-                                        type: string;
-                                        minimum: number;
-                                    };
-                                };
-                            };
                         };
                         edges: {
                             type: string;
@@ -1884,7 +2798,6 @@ export declare const CONTRACT_SCHEMAS_V1: Readonly<{
                     };
                     permutationPlanHashes: {
                         type: string;
-                        uniqueItems: boolean;
                         items: {
                             readonly type: "string";
                             readonly pattern: "^[a-f0-9]{64}$";
@@ -1892,7 +2805,6 @@ export declare const CONTRACT_SCHEMAS_V1: Readonly<{
                     };
                     resamplingPlanHashes: {
                         type: string;
-                        uniqueItems: boolean;
                         items: {
                             readonly type: "string";
                             readonly pattern: "^[a-f0-9]{64}$";

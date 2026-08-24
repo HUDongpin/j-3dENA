@@ -158,6 +158,21 @@
                   "type": "number"
                 }
               }
+            },
+            "projection": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "enum": [
+                    "perspective",
+                    "orthographic"
+                  ]
+                }
+              }
             }
           }
         }

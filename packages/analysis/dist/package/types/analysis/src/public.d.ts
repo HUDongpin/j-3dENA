@@ -7,7 +7,7 @@ export { inspectDataset } from "./dataset-inspection.js";
 export { createExportBundle } from "./export-bundle.js";
 export { compilePlotlySpec } from "./plotly-spec.js";
 export { adaptFittedJenaTrajectoryResultV2, getAnalysisBuildIdentityV2, } from "./fitted-jena-adapter-v2.js";
-export { assertLongitudinalAnalysisBundleV2, assertTrajectoryRunSpecV2, compileTrajectoryPlotlySpec, executeLongitudinalAnalysisV2, verifyLongitudinalAnalysisBundleV2, } from "./longitudinal-v2.js";
+export { assertLongitudinalAnalysisBundleV2, assertLongitudinalExecutionRequestV2, assertTrajectoryRunSpecV2, compileTrajectoryPlotlySpec, executeLongitudinalAnalysisV2, hashLongitudinalExecutionRequestV2, verifyLongitudinalAnalysisBundleV2, } from "./longitudinal-v2.js";
 export { assertAnalysisResultEnvelopeV1 } from "./contracts.js";
 export { assertAnalysisExecutionDatasetV2, executeAnalysisTask, hashAnalysisValueV1 } from "./task-executor.js";
 export type * from "./analysis-client.js";
