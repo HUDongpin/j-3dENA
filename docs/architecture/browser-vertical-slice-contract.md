@@ -109,8 +109,8 @@ transport receipt.
 - `e2e/analysis.spec.ts`: small CSV to Worker to Plotly, ownership,
   invalidation, cancellation, late-result, and no-analysis-transport gates;
 - the prepared E2E suite: fully synthetic exact-byte receipt, transactional
-  import, ownership/cancellation, Plotly, generic centroids, and real browser
-  downloads;
+  import, ownership/cancellation, ENA-only Plotly boundaries, scientific
+  centroid tables, and real browser downloads;
 - `e2e/accessibility.a11y.spec.ts`: all routes at all three widths; and
 - `playwright.config.ts`: Chromium and a11y projects with failure artifacts in
   `output/playwright/`.

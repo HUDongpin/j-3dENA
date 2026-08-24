@@ -15,7 +15,7 @@ const scientificBuild = Object.freeze({
   jenaVersion: "0.7.0-ona.0",
   jenaCommit: "a".repeat(40),
   jenaTarballIntegrity: "sha512-ZXhhY3QtamVuYS10YXJiYWxs",
-  sdkVersion: "0.2.0-implemented-unverified.2",
+  sdkVersion: "0.2.0-implemented-unverified.3",
   buildId: "approved-runtime-scientific-build-1",
 });
 

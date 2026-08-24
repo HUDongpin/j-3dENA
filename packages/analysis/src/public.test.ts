@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { analyzeTrajectoryDynamicsV1, type TrajectoryIdentityV1 } from "@3dena/trajectory";
 
 import * as publicFacade from "./public";
-import type { LongitudinalAnalysisBundleV2, TrajectoryDisplaySpecV2 } from "./public";
+import type { DisplaySpecV1, LongitudinalAnalysisBundleV2, TrajectoryDisplaySpecV2 } from "./public";
+import {
+  createSyntheticPreparedFixture,
+  SYNTHETIC_PREPARED_PERIODS,
+} from "../test-support/synthetic-prepared-exchange";
 
 const identity = (name: string, value: string): TrajectoryIdentityV1 => ({
   components: [{ name, type: "string", value }],
@@ -120,6 +124,26 @@ const legacyOverlayDisplay: TrajectoryDisplaySpecV2 = {
   style: { participantSize: 5, participantOpacity: 0.5, centroidSize: 10, pathWidth: 4 },
 };
 
+const genericDisplay: DisplaySpecV1 = {
+  schemaVersion: "3dena.display-spec.v1",
+  dimensions: ["SVD1", "SVD2", "SVD3"],
+  plotDimension: 3,
+  showGrid: true,
+  showZeroLines: true,
+  showAxes: true,
+  traces: { points: true, nodes: true, network: true, centroids: true, trajectory: true, uncertainty: false },
+  style: {
+    pointSize: 7,
+    pointOpacity: 0.75,
+    nodeSize: 11,
+    nodeOpacity: 1,
+    edgeThreshold: 0,
+    edgeWidthScale: 8,
+    trajectoryWidth: 4,
+  },
+  camera: null,
+};
+
 describe("public npm facade", () => {
   it("exposes the reviewed runtime functions plus strict dataset and result validators", () => {
     expect(Object.keys(publicFacade).sort()).toEqual([
@@ -142,6 +166,48 @@ describe("public npm facade", () => {
       "verifyLongitudinalAnalysisBundleV2",
     ]);
     for (const value of Object.values(publicFacade)) expect(typeof value).toBe("function");
+  });
+
+  it("keeps the public generic facade free of prepared trajectory time points", async () => {
+    const { result } = await createSyntheticPreparedFixture();
+    const before = structuredClone(result);
+    const spec = publicFacade.compilePlotlySpec(result, genericDisplay);
+    const roles = spec.data.map((trace) => trace.meta.role);
+    const serialized = JSON.stringify(spec);
+
+    expect(roles).toEqual(expect.arrayContaining([
+      "axis-shaft", "axis-arrowhead", "network-edge", "participant", "node",
+    ]));
+    expect(roles).not.toContain("centroid");
+    expect(roles).not.toContain("trajectory");
+    expect(serialized).not.toContain("direction-arrow");
+    expect(spec.data.filter((trace) => trace.meta.role === "participant").every((trace) => !("customdata" in trace))).toBe(true);
+    for (const period of SYNTHETIC_PREPARED_PERIODS) expect(serialized).not.toContain(period);
+    expect(result).toEqual(before);
+  });
+
+  it("retains the dedicated trajectory facade's codes, time points, centroids, paths, and arrows", () => {
+    const bundle = legacyOverlayBundle();
+    const before = structuredClone(bundle);
+    for (const projection of ["3d", "xy"] as const) {
+      const dedicatedDisplay = structuredClone(legacyOverlayDisplay);
+      dedicatedDisplay.projection = projection;
+      dedicatedDisplay.traces.participants = true;
+      dedicatedDisplay.traces.individualPaths = true;
+      dedicatedDisplay.traces.codeNodes = true;
+      const spec = publicFacade.compileTrajectoryPlotlySpec(bundle, dedicatedDisplay);
+      const roles = spec.data.map((trace) => trace.meta.role);
+      const centroid = spec.data.find((trace) => trace.meta.role === "centroid");
+      const participant = spec.data.find((trace) => trace.meta.role === "participant");
+
+      expect(roles).toEqual(expect.arrayContaining([
+        "network-node", "participant", "individual-path", "centroid", "trajectory-path", "direction-arrow",
+      ]));
+      expect(roles).not.toContain("network-edge");
+      expect(centroid?.text).toEqual(["T1", "T2"]);
+      expect(participant?.customdata).toEqual([["T1"], ["T2"]]);
+    }
+    expect(bundle).toEqual(before);
   });
 
   it("fails closed on legacy trajectory network overlays while preserving fitted code references", () => {

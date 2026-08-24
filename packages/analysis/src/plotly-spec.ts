@@ -1,6 +1,4 @@
 import { assertDisplaySpecV1, type DisplaySpecV1 } from "./contracts";
-import { selectAnalysisDisplay } from "./display";
-import { selectPreparedSpaceDisplay } from "./prepared-space";
 import type { PreparedSpaceResult } from "./prepared-types";
 import type { AnalysisDiagnostic, AnalysisResult, Coordinates3D } from "./types";
 
@@ -8,6 +6,7 @@ export type PlotlyTraceRoleV1 =
   | "participant"
   | "node"
   | "network-edge"
+  /** @deprecated Historical V1 readback only; compilePlotlySpec no longer emits this role. */
   | "centroid"
   /** @deprecated Historical V1 readback only; compilePlotlySpec no longer emits this role. */
   | "trajectory"
@@ -52,7 +51,6 @@ interface NormalizedPoint {
   label: string;
   groupCanonical: string;
   groupDisplay: string;
-  timeDisplay: string | null;
   coordinates: Coordinates3D;
 }
 
@@ -69,21 +67,12 @@ interface NormalizedEdge {
   meanWeight: number;
 }
 
-interface NormalizedCentroid {
-  groupCanonical: string;
-  groupDisplay: string;
-  timeDisplay: string;
-  participantCount: number;
-  coordinates: Coordinates3D;
-}
-
 interface NormalizedDisplay {
   source: "raw-jena" | "prepared-exchange";
   dimensions: [string, string, string];
   points: NormalizedPoint[];
   nodes: NormalizedNode[];
   edges: NormalizedEdge[];
-  centroids: NormalizedCentroid[];
 }
 
 const COLORS = ["#2563eb", "#a16207", "#7c3aed", "#0f766e", "#be123c", "#475569"] as const;
@@ -103,12 +92,52 @@ function groupColor(canonical: string): string {
   return COLORS[hashString(canonical) % COLORS.length] ?? COLORS[0];
 }
 
-function rawDisplay(result: AnalysisResult, displaySpec: DisplaySpecV1): NormalizedDisplay {
-  const selection = selectAnalysisDisplay(result, {
-    dimensions: [...displaySpec.dimensions],
-    ...(displaySpec.groups ? { groups: [...displaySpec.groups] } : {}),
+function dimensionIndexes(
+  available: readonly string[],
+  requested: DisplaySpecV1["dimensions"],
+  code: "UNKNOWN_DISPLAY_DIMENSION" | "UNKNOWN_PREPARED_DISPLAY_DIMENSION",
+): [number, number, number] {
+  const indexes = requested.map((dimension, index) => {
+    const selected = available.indexOf(dimension);
+    if (selected < 0) reject(code, `displaySpec.dimensions[${index}]`, `${JSON.stringify(dimension)} is not present in the fitted coordinate space`);
+    return selected;
   });
-  const selectedIndexes = new Set(selection.points.map((point) => point.pointIndex));
+  return indexes as [number, number, number];
+}
+
+function projectCoordinates(
+  coordinates: readonly number[],
+  indexes: readonly [number, number, number],
+  path: string,
+): Coordinates3D {
+  const selected = indexes.map((index) => coordinates[index]) as Coordinates3D;
+  if (selected.some((coordinate) => typeof coordinate !== "number" || !Number.isFinite(coordinate))) {
+    reject("INVALID_DISPLAY_COORDINATE", path, "selected fitted coordinates must be finite numbers");
+  }
+  return selected;
+}
+
+function selectedGroups(
+  available: readonly string[],
+  requested: readonly string[] | undefined,
+  code: "UNKNOWN_DISPLAY_GROUP" | "UNKNOWN_PREPARED_DISPLAY_GROUP",
+): Set<string> | null {
+  if (requested === undefined) return null;
+  const known = new Set(available);
+  const unknown = requested.find((group) => !known.has(group));
+  if (unknown !== undefined) reject(code, "displaySpec.groups", `unknown canonical group key ${JSON.stringify(unknown)}`);
+  return new Set(requested);
+}
+
+function rawDisplay(result: AnalysisResult, displaySpec: DisplaySpecV1): NormalizedDisplay {
+  const indexes = dimensionIndexes(result.dimensions, displaySpec.dimensions, "UNKNOWN_DISPLAY_DIMENSION");
+  const groups = selectedGroups(
+    result.points.flatMap((point) => point.group ? [point.group.canonical] : []),
+    displaySpec.groups,
+    "UNKNOWN_DISPLAY_GROUP",
+  );
+  const points = result.points.filter((point) => groups === null || (point.group !== undefined && groups.has(point.group.canonical)));
+  const selectedIndexes = new Set(points.map((point) => point.index));
   const edges = result.edges.map((edge) => {
     const weights = result.points.filter((point) => selectedIndexes.has(point.index)).map((point) => point.lineWeights[edge.index]!);
     const meanWeight = weights.length === 0 ? edge.meanWeight : weights.reduce((sum, value) => sum + value, 0) / weights.length;
@@ -116,32 +145,31 @@ function rawDisplay(result: AnalysisResult, displaySpec: DisplaySpecV1): Normali
   });
   return {
     source: "raw-jena",
-    dimensions: [...selection.dimensions],
-    points: selection.points.map((point) => ({
-      label: point.id.display,
+    dimensions: [...displaySpec.dimensions],
+    points: points.map((point) => ({
+      label: point.participantLabel.display,
       groupCanonical: point.group?.canonical ?? "@3dena/ungrouped",
       groupDisplay: point.group?.display ?? "All participants",
-      timeDisplay: point.time?.display ?? null,
-      coordinates: [...point.coordinates],
+      coordinates: projectCoordinates(point.fullCoordinates, indexes, `result.points[${point.index}].fullCoordinates`),
     })),
-    nodes: selection.nodes.map((node) => ({ index: node.nodeIndex, code: node.code, coordinates: [...node.coordinates] })),
+    nodes: result.nodes.map((node) => ({
+      index: node.index,
+      code: node.code,
+      coordinates: projectCoordinates(node.fullCoordinates, indexes, `result.nodes[${node.index}].fullCoordinates`),
+    })),
     edges,
-    centroids: selection.trajectory?.centroids.map((centroid) => ({
-      groupCanonical: centroid.group.canonical,
-      groupDisplay: centroid.group.display,
-      timeDisplay: centroid.time.display,
-      participantCount: centroid.participantCount,
-      coordinates: [...centroid.coordinates],
-    })) ?? [],
   };
 }
 
 function preparedDisplay(result: PreparedSpaceResult, displaySpec: DisplaySpecV1): NormalizedDisplay {
-  const selection = selectPreparedSpaceDisplay(result, {
-    dimensions: [...displaySpec.dimensions],
-    ...(displaySpec.groups ? { groups: [...displaySpec.groups] } : {}),
-  });
-  const selectedIndexes = new Set(selection.points.map((point) => point.pointIndex));
+  const indexes = dimensionIndexes(result.fullSpace.dimensions, displaySpec.dimensions, "UNKNOWN_PREPARED_DISPLAY_DIMENSION");
+  const groups = selectedGroups(
+    result.fullSpace.points.map((point) => point.group.canonical),
+    displaySpec.groups,
+    "UNKNOWN_PREPARED_DISPLAY_GROUP",
+  );
+  const points = result.fullSpace.points.filter((point) => groups === null || groups.has(point.group.canonical));
+  const selectedIndexes = new Set(points.map((point) => point.index));
   const edges = result.fullSpace.edges.map((edge) => {
     const weights = result.fullSpace.lineWeights.values
       .filter((_, index) => selectedIndexes.has(index))
@@ -151,23 +179,19 @@ function preparedDisplay(result: PreparedSpaceResult, displaySpec: DisplaySpecV1
   });
   return {
     source: "prepared-exchange",
-    dimensions: [...selection.dimensions],
-    points: selection.points.map((point) => ({
-      label: point.id.display,
+    dimensions: [...displaySpec.dimensions],
+    points: points.map((point) => ({
+      label: point.participantLabel.display,
       groupCanonical: point.group.canonical,
       groupDisplay: point.group.display,
-      timeDisplay: point.time.display,
-      coordinates: [...point.coordinates],
+      coordinates: projectCoordinates(point.coordinates, indexes, `result.fullSpace.points[${point.index}].coordinates`),
     })),
-    nodes: selection.nodes.map((node) => ({ index: node.nodeIndex, code: node.code, coordinates: [...node.coordinates] })),
+    nodes: result.fullSpace.nodes.map((node) => ({
+      index: node.index,
+      code: node.code,
+      coordinates: projectCoordinates(node.coordinates, indexes, `result.fullSpace.nodes[${node.index}].coordinates`),
+    })),
     edges,
-    centroids: selection.centroids.map((centroid) => ({
-      groupCanonical: centroid.group.canonical,
-      groupDisplay: centroid.group.display,
-      timeDisplay: centroid.time.display,
-      participantCount: centroid.participantCount,
-      coordinates: [...centroid.coordinates],
-    })),
   };
 }
 
@@ -205,8 +229,7 @@ function pointTraces(display: NormalizedDisplay, spec: DisplaySpecV1): PlotlyTra
     name: points[0]!.groupDisplay,
     ...coordinateFields(points.map((point) => point.coordinates), spec.plotDimension),
     text: points.map((point) => point.label),
-    customdata: points.map((point) => [point.timeDisplay]),
-    hovertemplate: "%{text}<br>%{customdata[0]}<extra></extra>",
+    hovertemplate: "%{text}<extra></extra>",
     marker: { color: groupColor(canonical), size: spec.style.pointSize, opacity: spec.style.pointOpacity },
   }, { role: "participant", groupCanonical: canonical }));
 }
@@ -246,25 +269,10 @@ function edgeTraces(display: NormalizedDisplay, spec: DisplaySpecV1): PlotlyTrac
     });
 }
 
-function centroidTraces(display: NormalizedDisplay, spec: DisplaySpecV1): PlotlyTraceV1[] {
-  const groups = new Map<string, NormalizedCentroid[]>();
-  for (const centroid of display.centroids) groups.set(centroid.groupCanonical, [...(groups.get(centroid.groupCanonical) ?? []), centroid]);
-  return [...groups.entries()].map(([canonical, centroids]) => trace(spec.plotDimension, {
-    mode: "markers+text",
-    name: `${centroids[0]!.groupDisplay} centroids`,
-    ...coordinateFields(centroids.map((centroid) => centroid.coordinates), spec.plotDimension),
-    text: centroids.map((centroid) => centroid.timeDisplay),
-    customdata: centroids.map((centroid) => [centroid.participantCount]),
-    hovertemplate: "%{text}<br>n=%{customdata[0]}<extra></extra>",
-    marker: { symbol: "square", color: groupColor(canonical), size: spec.style.pointSize + 4, line: { color: "#ffffff", width: 1.5 } },
-  }, { role: "centroid", groupCanonical: canonical }));
-}
-
 function axisTraces(display: NormalizedDisplay, spec: DisplaySpecV1): PlotlyTraceV1[] {
   const coordinates = [
     ...display.points.map((point) => point.coordinates),
     ...display.nodes.map((node) => node.coordinates),
-    ...display.centroids.map((centroid) => centroid.coordinates),
   ];
   const extent = Math.max(1, ...coordinates.flatMap((point) => point.map(Math.abs))) * 1.08;
   const output: PlotlyTraceV1[] = [];
@@ -324,11 +332,11 @@ export function compilePlotlySpec(
   if (displaySpec.traces.network) data.push(...edgeTraces(display, displaySpec));
   if (displaySpec.traces.points) data.push(...pointTraces(display, displaySpec));
   if (displaySpec.traces.nodes) data.push(nodeTrace(display, displaySpec));
-  // `traces.trajectory` remains accepted so saved V1 DisplaySpecs stay
-  // readable, but the generic ENA presenter deliberately ignores it. A
-  // trajectory must be compiled through `compileTrajectoryPlotlySpec`, which
-  // enforces the mutually exclusive trajectory visual grammar.
-  if (displaySpec.traces.centroids) data.push(...centroidTraces(display, displaySpec));
+  // `traces.trajectory` and `traces.centroids` remain accepted so saved V1
+  // DisplaySpecs stay readable, but the generic ENA presenter deliberately
+  // ignores both. V1 has no independent ordinary group-mean artifact, and its
+  // available centroids are trajectory group-period time points. Trajectory
+  // marks must be compiled through `compileTrajectoryPlotlySpec`.
   const axis = (title: string) => ({ title, showgrid: displaySpec.showGrid, zeroline: displaySpec.showZeroLines });
   const layout: Record<string, unknown> = {
     autosize: true,

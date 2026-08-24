@@ -6,7 +6,10 @@ import { analyzeRows } from "./analyze";
 import type { DisplaySpecV1 } from "./contracts";
 import { compilePlotlySpec } from "./plotly-spec";
 import type { AnalyzeRowsInput, RawRow } from "./types";
-import { createSyntheticPreparedFixture } from "../test-support/synthetic-prepared-exchange";
+import {
+  createSyntheticPreparedFixture,
+  SYNTHETIC_PREPARED_PERIODS,
+} from "../test-support/synthetic-prepared-exchange";
 
 function rawInput(): AnalyzeRowsInput {
   const text = readFileSync(new URL("../../parity-contracts/fixtures/small-raw.csv", import.meta.url), "utf8").trim();
@@ -57,13 +60,33 @@ function display(overrides: Partial<DisplaySpecV1> = {}): DisplaySpecV1 {
 }
 
 describe("compilePlotlySpec", () => {
-  it("ignores legacy trajectory display flags while preserving the ordinary ENA plot", () => {
+  it("fails closed on raw trajectory-derived centroids and time-point labels", () => {
+    const result = analyzeRows(rawInput());
+    const before = structuredClone(result);
+    const periodLabels = result.trajectory?.timeOrder.map((period) => period.display) ?? [];
+    const spec = compilePlotlySpec(result, display({
+      traces: { ...display().traces, centroids: true, trajectory: true },
+    }));
+    const roles = spec.data.map((trace) => trace.meta.role);
+    const serialized = JSON.stringify(spec);
+
+    expect(roles).toEqual(expect.arrayContaining([
+      "axis-shaft", "axis-arrowhead", "network-edge", "participant", "node",
+    ]));
+    expect(roles).not.toContain("centroid");
+    expect(roles).not.toContain("trajectory");
+    for (const label of periodLabels) expect(serialized).not.toContain(label);
+    expect(result).toEqual(before);
+  });
+
+  it("ignores legacy trajectory and centroid display flags while preserving the ordinary ENA plot", () => {
     const result = analyzeRows(rawInput());
     const legacyEnabled = display({
       traces: { ...display().traces, network: true, trajectory: true },
     });
     const legacyDisabled = structuredClone(legacyEnabled);
     legacyDisabled.traces.trajectory = false;
+    legacyDisabled.traces.centroids = false;
     const spec = compilePlotlySpec(result, legacyEnabled);
     const withoutLegacyTrajectory = compilePlotlySpec(result, legacyDisabled);
 
@@ -71,7 +94,7 @@ describe("compilePlotlySpec", () => {
     expect(spec.data.some((trace) => trace.meta.role === "network-edge")).toBe(true);
     expect(spec.data.some((trace) => trace.meta.role === "participant")).toBe(true);
     expect(spec.data.some((trace) => trace.meta.role === "node")).toBe(true);
-    expect(spec.data.some((trace) => trace.meta.role === "centroid")).toBe(true);
+    expect(spec.data.some((trace) => trace.meta.role === "centroid")).toBe(false);
     expect(spec.data.filter((trace) => trace.meta.role.startsWith("trajectory"))).toHaveLength(0);
   });
 
@@ -83,8 +106,9 @@ describe("compilePlotlySpec", () => {
 
     expect(spec.schemaVersion).toBe("3dena.plotly-spec.v1");
     expect(roles).toEqual(expect.arrayContaining([
-      "axis-shaft", "axis-arrowhead", "network-edge", "participant", "node", "centroid",
+      "axis-shaft", "axis-arrowhead", "network-edge", "participant", "node",
     ]));
+    expect(roles).not.toContain("centroid");
     expect(roles).not.toContain("trajectory");
     expect(spec.data.filter((trace) => trace.meta.role === "axis-shaft").map((trace) => trace.meta.axis)).toEqual(["SVD4", "SVD5", "SVD6"]);
     expect(spec.data.filter((trace) => trace.meta.role === "axis-arrowhead")).toHaveLength(3);
@@ -101,6 +125,51 @@ describe("compilePlotlySpec", () => {
     expect(result).toEqual(before);
     expect(Object.isFrozen(spec)).toBe(true);
     expect(Object.isFrozen(spec.data)).toBe(true);
+  });
+
+  it.each([
+    { source: "raw", plotDimension: 2 },
+    { source: "raw", plotDimension: 3 },
+    { source: "prepared", plotDimension: 2 },
+    { source: "prepared", plotDimension: 3 },
+  ] as const)("keeps $source $plotDimension-D generic plots free of trajectory time points", async ({ source, plotDimension }) => {
+    const result = source === "raw"
+      ? analyzeRows(rawInput())
+      : (await createSyntheticPreparedFixture()).result;
+    const before = structuredClone(result);
+    const periodLabels = result.schemaVersion === "3dena.analysis-result.v1"
+      ? result.trajectory?.timeOrder.map((period) => period.display) ?? []
+      : SYNTHETIC_PREPARED_PERIODS;
+    const spec = compilePlotlySpec(result, display({
+      plotDimension,
+      camera: plotDimension === 2 ? null : display().camera,
+      traces: { ...display().traces, centroids: true, trajectory: true },
+    }));
+    const legacyDisabled = display({
+      plotDimension,
+      camera: plotDimension === 2 ? null : display().camera,
+      traces: { ...display().traces, centroids: false, trajectory: false },
+    });
+    const withoutLegacyTimePoints = compilePlotlySpec(result, legacyDisabled);
+    const roles = spec.data.map((trace) => trace.meta.role);
+    const serialized = JSON.stringify(spec);
+
+    expect(spec).toEqual(withoutLegacyTimePoints);
+    expect(roles).toEqual(expect.arrayContaining(["axis-shaft", "network-edge", "participant", "node"]));
+    expect(roles).not.toContain("centroid");
+    expect(roles).not.toContain("trajectory");
+    expect(serialized).not.toContain("direction-arrow");
+    expect(spec.data.filter((trace) => trace.meta.role === "participant").every((trace) => !("customdata" in trace))).toBe(true);
+    expect(spec.data.filter((trace) => trace.meta.role === "axis-shaft")).toHaveLength(plotDimension);
+    expect(spec.data.filter((trace) => trace.meta.role === "axis-arrowhead")).toHaveLength(plotDimension === 3 ? 3 : 0);
+    if (source === "prepared") {
+      expect(spec.diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: "PRECOMPUTED_COORDINATE_SPACE" }),
+      ]));
+    }
+    for (const label of periodLabels) expect(serialized).not.toContain(label);
+    if (plotDimension === 2) expect(spec.data.every((trace) => trace.type === "scatter" && !("z" in trace))).toBe(true);
+    expect(result).toEqual(before);
   });
 
   it("applies display-only group and edge filters while leaving formal rows untouched", () => {

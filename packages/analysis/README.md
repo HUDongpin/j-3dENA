@@ -277,11 +277,13 @@ the separate static 3D ENA group-comparison grammar; they are not trajectory
 marks.
 
 The two public Plotly compilers also enforce a strict presenter boundary.
-`compilePlotlySpec()` renders ordinary ENA points, code nodes, centroids, and
-network edges, but never trajectory paths or direction marks; the legacy V1
-`traces.trajectory` field remains readable and is ignored. The exact V1 schema
-still requires `style.trajectoryWidth` for legacy readback, but that value is
-also a presenter no-op. Conversely,
+`compilePlotlySpec()` renders ordinary fitted participant points, code nodes,
+network edges, and axes, but never group-period centroid squares, time-point
+labels, trajectory paths, or direction marks. V1 has no independent ordinary
+group-mean input, so the legacy `traces.centroids` and `traces.trajectory`
+fields remain readable and are ignored. The exact V1 schema still requires
+`style.trajectoryWidth` for legacy readback, but that value is also a presenter
+no-op. Conversely,
 `compileTrajectoryPlotlySpec()` renders fitted code reference nodes,
 participant-period points, centroid squares, paths, and direction arrows, but
 never ENA mean-network edges; the legacy V2 `traces.networkOverlay` field
