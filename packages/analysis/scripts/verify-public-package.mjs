@@ -60,6 +60,22 @@ async function listFiles(directory, prefix = "") {
   return result.sort();
 }
 
+export async function verifyPublicPackageArtifactDigests(packageDirectory, provenance) {
+  const directory = resolve(packageDirectory);
+  const [indexBytes, sourceMapBytes, schemaIndexBytes] = await Promise.all([
+    readFile(resolve(directory, "index.js")),
+    readFile(resolve(directory, "index.js.map")),
+    readFile(resolve(directory, "schemas/index.json")),
+  ]);
+  const indexJsSha256 = createHash("sha256").update(indexBytes).digest("hex");
+  const indexJsMapSha256 = createHash("sha256").update(sourceMapBytes).digest("hex");
+  const schemaIndexSha256 = createHash("sha256").update(schemaIndexBytes).digest("hex");
+  if (provenance.artifacts?.indexJsSha256 !== indexJsSha256) fail("bundle digest does not match provenance");
+  if (provenance.artifacts?.indexJsMapSha256 !== indexJsMapSha256) fail("source-map digest does not match provenance");
+  if (provenance.artifacts?.schemaIndexSha256 !== schemaIndexSha256) fail("schema index digest does not match provenance");
+  return Object.freeze({ indexJsSha256, indexJsMapSha256, schemaIndexSha256 });
+}
+
 export async function verifyPublicPackage(packageDirectory) {
   const directory = resolve(packageDirectory);
   if (!(await stat(directory)).isDirectory()) fail("staging path is not a directory");
@@ -186,10 +202,7 @@ export async function verifyPublicPackage(packageDirectory) {
     fail("SheetJS custody hash drifted");
   }
 
-  const digest = createHash("sha256").update(await readFile(resolve(directory, "index.js"))).digest("hex");
-  if (provenance.artifacts?.indexJsSha256 !== digest) fail("bundle digest does not match provenance");
-  const schemaIndexDigest = createHash("sha256").update(await readFile(resolve(directory, "schemas/index.json"))).digest("hex");
-  if (provenance.artifacts?.schemaIndexSha256 !== schemaIndexDigest) fail("schema index digest does not match provenance");
+  const { indexJsSha256: digest } = await verifyPublicPackageArtifactDigests(directory, provenance);
 
   const loaded = await import(`${pathToFileURL(resolve(directory, "index.js")).href}?verify=${digest}`);
   if (JSON.stringify(Object.keys(loaded).sort()) !== JSON.stringify(PUBLIC_PACKAGE_RUNTIME_EXPORT_NAMES)) {
