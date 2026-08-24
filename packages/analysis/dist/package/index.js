@@ -37101,8 +37101,8 @@ var init_build_identity = __esmMin((() => {
 		jenaVersion: injected("0.7.0-ona.0", "development-unbound"),
 		jenaCommit: injected("90790856f00bdef63dbd27fc3a5b502e8cffe65f", "development-unbound"),
 		jenaTarballIntegrity: injected("sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==", "development-unbound"),
-		sdkVersion: injected("0.2.0-implemented-unverified.1", "development-unbound"),
-		buildId: injected("3321fa815341039967a2911c7b6a321d6527306f", "development-unbound"),
+		sdkVersion: injected("0.2.0-implemented-unverified.2", "development-unbound"),
+		buildId: injected("833c340ef0b66ee9e0fefc66cad26798df1504d5", "development-unbound"),
 		bound: true
 	});
 }));
@@ -44649,7 +44649,6 @@ function rawDisplay(result, displaySpec) {
 		dimensions: [...displaySpec.dimensions],
 		...displaySpec.groups ? { groups: [...displaySpec.groups] } : {}
 	});
-	new Map(result.points.map((point) => [point.index, point]));
 	const selectedIndexes = new Set(selection.points.map((point) => point.pointIndex));
 	const edges = result.edges.map((edge) => {
 		const weights = result.points.filter((point) => selectedIndexes.has(point.index)).map((point) => point.lineWeights[edge.index]);
@@ -44665,7 +44664,6 @@ function rawDisplay(result, displaySpec) {
 		source: "raw-jena",
 		dimensions: [...selection.dimensions],
 		points: selection.points.map((point) => ({
-			index: point.pointIndex,
 			label: point.id.display,
 			groupCanonical: point.group?.canonical ?? "@3dena/ungrouped",
 			groupDisplay: point.group?.display ?? "All participants",
@@ -44679,17 +44677,11 @@ function rawDisplay(result, displaySpec) {
 		})),
 		edges,
 		centroids: selection.trajectory?.centroids.map((centroid) => ({
-			index: centroid.centroidIndex,
 			groupCanonical: centroid.group.canonical,
 			groupDisplay: centroid.group.display,
 			timeDisplay: centroid.time.display,
 			participantCount: centroid.participantCount,
 			coordinates: [...centroid.coordinates]
-		})) ?? [],
-		paths: selection.trajectory?.paths.map((path) => ({
-			groupCanonical: path.group.canonical,
-			groupDisplay: path.group.display,
-			centroidIndexes: path.steps.map((step) => step.centroidIndex)
 		})) ?? []
 	};
 }
@@ -44713,7 +44705,6 @@ function preparedDisplay(result, displaySpec) {
 		source: "prepared-exchange",
 		dimensions: [...selection.dimensions],
 		points: selection.points.map((point) => ({
-			index: point.pointIndex,
 			label: point.id.display,
 			groupCanonical: point.group.canonical,
 			groupDisplay: point.group.display,
@@ -44727,17 +44718,11 @@ function preparedDisplay(result, displaySpec) {
 		})),
 		edges,
 		centroids: selection.centroids.map((centroid) => ({
-			index: centroid.index,
 			groupCanonical: centroid.group.canonical,
 			groupDisplay: centroid.group.display,
 			timeDisplay: centroid.time.display,
 			participantCount: centroid.participantCount,
 			coordinates: [...centroid.coordinates]
-		})),
-		paths: selection.paths.map((path) => ({
-			groupCanonical: path.group.canonical,
-			groupDisplay: path.group.display,
-			centroidIndexes: path.steps.map((step) => step.centroidIndex)
 		}))
 	};
 }
