@@ -2,13 +2,16 @@
 # A reviewed immutable image digest is mandatory, for example:
 #   --build-arg NODE_BASE_IMAGE=registry.example/node-tini@sha256:<64 hex>
 #   --build-arg SOURCE_COMMIT=<40 lowercase hex Git SHA>
+#   --build-arg RUNTIME_BUNDLE_DIR=output/compute-service-candidate-<release-id>
+#   --build-arg EXPECTED_SDK_VERSION=<reviewed @3dena/analysis version>
 # The selected image must contain Node >=20.9 and /sbin/tini. There is no
-# mutable tag default: omission deliberately fails the build.
+# mutable image or runtime-bundle default: omission deliberately fails the build.
 ARG NODE_BASE_IMAGE
 FROM ${NODE_BASE_IMAGE} AS runtime
 
 ARG SOURCE_COMMIT
-ARG RUNTIME_BUNDLE_DIR=output/compute-service
+ARG RUNTIME_BUNDLE_DIR
+ARG EXPECTED_SDK_VERSION
 
 LABEL org.opencontainers.image.revision="${SOURCE_COMMIT}" \
       org.opencontainers.image.source="https://github.com/HUDongpin/j-3dENA"
@@ -31,6 +34,7 @@ COPY --chown=10001:10001 ${RUNTIME_BUNDLE_DIR}/compute-runtime.mjs /app/compute-
 COPY --chown=10001:10001 ${RUNTIME_BUNDLE_DIR}/scientific-worker-entry.mjs /app/scientific-worker-entry.mjs
 COPY --chown=10001:10001 ${RUNTIME_BUNDLE_DIR}/build-manifest.json /app/build-manifest.json
 COPY --chmod=0555 packages/compute-service-persistent/deploy/entrypoint.sh /usr/local/bin/compute-entrypoint
+COPY --chmod=0555 packages/compute-service-persistent/deploy/verify-runtime-bundle.mjs /usr/local/bin/verify-runtime-bundle
 
 # Refuse an image without a real init and refuse accidentally bundled oracle/R
 # source by filename. The release boundary scanner remains an independent gate.
@@ -39,6 +43,7 @@ RUN test -x /sbin/tini \
     && test -s /app/compute-runtime.mjs \
     && test -s /app/scientific-worker-entry.mjs \
     && test -s /app/build-manifest.json \
+    && node /usr/local/bin/verify-runtime-bundle /app "$EXPECTED_SDK_VERSION" \
     && ! find /app -type f \( -name '*.R' -o -name '*.rds' -o -name '*.rda' -o -name '*.RData' \) -print -quit | grep -q . \
     && chmod -R a-w /app
 

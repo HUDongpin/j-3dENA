@@ -9,6 +9,6 @@ import { PUBLIC_PACKAGE_RELEASE_VERSION, PUBLIC_PACKAGE_SOURCE_VERSION } from ".
 describe("public package release contract", () => {
   it("assigns the changed public surface a new prerelease identity", () => {
     expect(PUBLIC_PACKAGE_SOURCE_VERSION).toBe("0.2.0");
-    expect(PUBLIC_PACKAGE_RELEASE_VERSION).toBe("0.2.0-implemented-unverified.4");
+    expect(PUBLIC_PACKAGE_RELEASE_VERSION).toBe("0.2.0-implemented-unverified.5");
   });
 });

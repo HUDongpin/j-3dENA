@@ -41,7 +41,7 @@ function candidate(): BuildApprovalCandidateV1 {
     jenaCommit: hex("d", 40),
     jenaTarballSha256: hex("e"),
     jenaTarballIntegrity: "sha512-ZXhhY3QtamVuYS10YXJiYWxs",
-    sdkVersion: "0.2.0-implemented-unverified.4",
+    sdkVersion: "0.2.0-implemented-unverified.5",
     buildId: "approved-longitudinal-build-1",
     lockfileSha256: hex("f"),
     sbomSha256: hex("1"),
@@ -180,7 +180,7 @@ describe("BuildApprovalV1", () => {
       jenaVersion: "0.7.0-ona.0",
       jenaCommit: hex("d", 40),
       jenaTarballIntegrity: "sha512-ZXhhY3QtamVuYS10YXJiYWxs",
-      sdkVersion: "0.2.0-implemented-unverified.4",
+      sdkVersion: "0.2.0-implemented-unverified.5",
       buildId: "approved-longitudinal-build-1",
     };
     let active = false;

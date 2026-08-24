@@ -3,11 +3,14 @@
 This directory is a fail-closed deployment candidate, not a production receipt.
 
 The Docker build requires a reviewed immutable `NODE_BASE_IMAGE` digest that
-already contains `/sbin/tini` and a full lowercase `SOURCE_COMMIT` build
-argument. The latter is written to the standard OCI revision label alongside
-the fixed `https://github.com/HUDongpin/j-3dENA` source label; a missing or
-malformed source commit fails the build. The image consumes only three prebuilt
-files from `output/compute-service`; it never copies the repository, oracle
+already contains `/sbin/tini`, a full lowercase `SOURCE_COMMIT`, an explicit
+new `output/compute-service-candidate-*` `RUNTIME_BUNDLE_DIR`, and the reviewed
+`EXPECTED_SDK_VERSION`. The source commit is written to the standard OCI
+revision label alongside the fixed `https://github.com/HUDongpin/j-3dENA`
+source label; a missing or malformed source commit fails the build. There is no
+default runtime bundle that can silently select a tracked historical artifact.
+The image consumes only the three prebuilt files from the named candidate; it
+never copies the repository, oracle
 directories, tests, package manager cache, or R material into the runtime
 image. The application directory is made non-writable and the runtime user is
 numeric UID/GID `10001`. Fly provides the writable ephemeral `/tmp`; no
@@ -45,6 +48,22 @@ Before deployment, integration must:
 7. run the image as read-only or equivalently prove non-root write denial,
    `/tmp` bounds, pids, files, memory, and CPU limits;
 8. run two-machine lease/restart/deletion probes and container scanning.
+
+For example, after generating a new reviewed candidate directory:
+
+```sh
+docker build \
+  --build-arg NODE_BASE_IMAGE=registry.example/node-tini@sha256:REPLACE_WITH_64_HEX \
+  --build-arg SOURCE_COMMIT=REPLACE_WITH_40_LOWERCASE_HEX \
+  --build-arg RUNTIME_BUNDLE_DIR=output/compute-service-candidate-20260825T010000Z \
+  --build-arg EXPECTED_SDK_VERSION=0.2.0-implemented-unverified.5 \
+  -f packages/compute-service-persistent/deploy/Dockerfile .
+```
+
+The verifier runs before the OCI label can be treated as meaningful and checks
+the v3 manifest, all six contracts, all three migrations, dependency pins,
+jENA/SDK identity, and both bundle digests. The date-like suffix above is an
+example release identifier, not a shared mutable directory.
 
 The manual `Exact compute image scan` workflow accepts only an immutable Fly
 registry digest and the exact source commit used to build it. It checks out that

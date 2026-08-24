@@ -73,7 +73,11 @@ export interface ExportBundleV1 {
 }
 
 export interface CreateLongitudinalExportBundleOptionsV2 {
-  /** Exact presenter spec shown to the researcher; it remains separate from the scientific envelope. */
+  /**
+   * Presenter spec shown to the researcher. Aggregate exports omit its
+   * participant and individual-path traces unless participant export is
+   * explicitly enabled.
+   */
   plotlySpec: TrajectoryPlotlySpecV2;
   /** Participant identifiers and histories are omitted unless the researcher explicitly opts in. */
   includeParticipantLevel?: boolean;
@@ -649,6 +653,14 @@ function longitudinalParticipantEntry(bundle: LongitudinalAnalysisBundleV2): Pen
   });
 }
 
+function aggregateTrajectoryPlotlySpec(plotlySpec: TrajectoryPlotlySpecV2): TrajectoryPlotlySpecV2 {
+  const aggregate = structuredClone(plotlySpec);
+  aggregate.data = aggregate.data.filter(({ meta }) => (
+    meta.role !== "participant" && meta.role !== "individual-path"
+  ));
+  return aggregate;
+}
+
 async function createLongitudinalExportBundleV2(
   bundle: LongitudinalAnalysisBundleV2,
   options: CreateLongitudinalExportBundleOptionsV2,
@@ -659,13 +671,16 @@ async function createLongitudinalExportBundleV2(
   if (options.plotlySpec.resultHash !== bundle.identity.resultHash) reject("PLOTLY_RESULT_BINDING_MISMATCH", "options.plotlySpec.resultHash", "does not match the exported longitudinal result");
   if (options.includeParticipantLevel !== undefined && typeof options.includeParticipantLevel !== "boolean") reject("INVALID_PARTICIPANT_EXPORT_OPTION", "options.includeParticipantLevel", "must be boolean");
   const participantLevelIncluded = options.includeParticipantLevel === true;
+  const exportedPlotlySpec = participantLevelIncluded
+    ? options.plotlySpec
+    : aggregateTrajectoryPlotlySpec(options.plotlySpec);
   const pending: PendingEntry[] = [
     json("analysis.json", aggregateTrajectoryEnvelope(bundle)),
     longitudinalPathEntry(bundle),
     longitudinalMetadataEntry(bundle),
     longitudinalInferenceEntry(bundle),
     ...(bundle.bootstrap.length > 0 ? [longitudinalBootstrapEntry(bundle)] : []),
-    json("plotly-spec.json", options.plotlySpec),
+    json("plotly-spec.json", exportedPlotlySpec),
   ];
   if (participantLevelIncluded) pending.push(longitudinalParticipantEntry(bundle));
   const sorted = [...pending].sort((left, right) => left.path.localeCompare(right.path, "en"));

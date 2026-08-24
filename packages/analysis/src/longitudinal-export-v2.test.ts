@@ -172,7 +172,59 @@ const display: TrajectoryDisplaySpecV2 = {
   style: { participantSize: 5, participantOpacity: 0.5, centroidSize: 10, pathWidth: 4 },
 };
 
+const participantLevelDisplay: TrajectoryDisplaySpecV2 = {
+  ...display,
+  traces: {
+    ...display.traces,
+    participants: true,
+    individualPaths: true,
+  },
+};
+
 describe("longitudinal V2 export bundle", () => {
+  it("removes participant traces, identities, and coordinates from the default aggregate Plotly export", async () => {
+    const bundle = await scientificBundle();
+    const participantPlotlySpec = compileTrajectoryPlotlySpec(bundle, participantLevelDisplay);
+    const inputPlotlyJson = JSON.stringify(participantPlotlySpec);
+
+    expect(participantPlotlySpec.data.map((trace) => trace.meta.role)).toEqual(expect.arrayContaining([
+      "participant",
+      "individual-path",
+    ]));
+    expect(inputPlotlyJson).toContain("private-P1");
+    expect(inputPlotlyJson).toContain('"x":[0,3,2,5]');
+
+    const exported = await createExportBundle(bundle, { plotlySpec: participantPlotlySpec });
+    const entries = zipEntries(exported.bytes);
+    const plotlyJson = DECODER.decode(entries.get("plotly-spec.json")!);
+    const exportedPlotly = JSON.parse(plotlyJson) as {
+      data: Array<{ meta: { role: string; participantCanonical?: string } }>;
+    };
+
+    expect([...entries.keys()]).not.toContain("trajectory-participants.csv");
+    expect(exportedPlotly.data.map((trace) => trace.meta.role)).not.toContain("participant");
+    expect(exportedPlotly.data.map((trace) => trace.meta.role)).not.toContain("individual-path");
+    expect(exportedPlotly.data.every((trace) => trace.meta.participantCanonical === undefined)).toBe(true);
+    expect(plotlyJson).not.toContain("private-P1");
+    expect(plotlyJson).not.toContain("private-P2");
+    expect(plotlyJson).not.toContain('"x":[0,3,2,5]');
+
+    for (const [path, bytes] of entries) {
+      const text = DECODER.decode(bytes);
+      expect(text, `${path} leaked a participant identity`).not.toContain("private-P1");
+      expect(text, `${path} leaked a participant identity`).not.toContain("private-P2");
+      expect(text, `${path} leaked a participant trace role`).not.toContain('"role":"participant"');
+      expect(text, `${path} leaked an individual-path trace role`).not.toContain('"role":"individual-path"');
+      expect(text, `${path} leaked a participant canonical field`).not.toContain("participantCanonical");
+    }
+
+    const analysis = JSON.parse(DECODER.decode(entries.get("analysis.json")!));
+    expect(analysis.privacy.participantLevelIncluded).toBe(false);
+    const manifest = JSON.parse(DECODER.decode(entries.get("provenance-manifest.json")!));
+    expect(manifest.participantLevelIncluded).toBe(false);
+    expect(manifest.privacyWarning).toBeNull();
+  });
+
   it("preserves non-empty network overlays while the trajectory presenter fails closed", async () => {
     const bundle = await scientificBundle();
     const before = structuredClone(bundle);
@@ -243,12 +295,18 @@ describe("longitudinal V2 export bundle", () => {
 
   it("exports participant histories only after explicit opt-in and rejects a plot from another result", async () => {
     const bundle = await scientificBundle();
-    const plotlySpec = compileTrajectoryPlotlySpec(bundle, display);
+    const plotlySpec = compileTrajectoryPlotlySpec(bundle, participantLevelDisplay);
     const optedIn = await createExportBundle(bundle, { plotlySpec, includeParticipantLevel: true });
     const entries = zipEntries(optedIn.bytes);
 
     expect([...entries.keys()]).toContain("trajectory-participants.csv");
     expect(DECODER.decode(entries.get("trajectory-participants.csv")!)).toContain("private-P1");
+    const exportedPlotly = JSON.parse(DECODER.decode(entries.get("plotly-spec.json")!));
+    expect(exportedPlotly.data.map((trace: { meta: { role: string } }) => trace.meta.role)).toEqual(expect.arrayContaining([
+      "participant",
+      "individual-path",
+    ]));
+    expect(JSON.stringify(exportedPlotly)).toContain("private-P1");
     const manifest = JSON.parse(DECODER.decode(entries.get("provenance-manifest.json")!));
     expect(manifest.participantLevelIncluded).toBe(true);
     expect(manifest.privacyWarning).toMatch(/re-identification|privacy/i);
