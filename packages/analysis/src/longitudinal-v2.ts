@@ -322,6 +322,8 @@ export interface TrajectoryDisplaySpecV2 {
     directionArrows: boolean;
     uncertainty: boolean;
     networkOverlay: boolean;
+    /** Show fitted ENA code reference nodes without requiring mean-network edges. */
+    codeNodes?: boolean;
     labels: boolean;
   };
   axisFlips: [boolean, boolean, boolean];
@@ -652,9 +654,12 @@ function assertDisplaySpec(value: TrajectoryDisplaySpecV2): void {
   if (!Array.isArray(spec.displayedGroups) || spec.displayedGroups.some((group) => typeof group !== "string")) contractError("displaySpec.displayedGroups", "must be a string array");
   if (!Array.isArray(spec.axisFlips) || spec.axisFlips.length !== 3 || spec.axisFlips.some((entry) => typeof entry !== "boolean")) contractError("displaySpec.axisFlips", "must contain three booleans");
   const traces = objectAt(spec.traces, "displaySpec.traces");
-  const traceFields = ["participants", "individualPaths", "centroids", "paths", "directionArrows", "uncertainty", "networkOverlay", "labels"] as const;
-  exactFields(traces, traceFields, traceFields, "displaySpec.traces");
-  if (traceFields.some((field) => typeof traces[field] !== "boolean")) contractError("displaySpec.traces", "all trace controls must be boolean");
+  const requiredTraceFields = ["participants", "individualPaths", "centroids", "paths", "directionArrows", "uncertainty", "networkOverlay", "labels"] as const;
+  const traceFields = [...requiredTraceFields, "codeNodes"] as const;
+  exactFields(traces, traceFields, requiredTraceFields, "displaySpec.traces");
+  if (requiredTraceFields.some((field) => typeof traces[field] !== "boolean") || ("codeNodes" in traces && typeof traces.codeNodes !== "boolean")) {
+    contractError("displaySpec.traces", "all trace controls must be boolean");
+  }
   const style = objectAt(spec.style, "displaySpec.style");
   exactFields(style, ["participantSize", "participantOpacity", "centroidSize", "pathWidth"], ["participantSize", "participantOpacity", "centroidSize", "pathWidth"], "displaySpec.style");
   if (typeof style.participantSize !== "number" || style.participantSize <= 0) contractError("displaySpec.style.participantSize", "must be positive");
@@ -920,7 +925,7 @@ export function compileTrajectoryPlotlySpec(
     }
   }
 
-  if (displaySpec.traces.networkOverlay) {
+  if (displaySpec.traces.codeNodes || displaySpec.traces.networkOverlay) {
     const overlays = bundle.networkOverlays.filter((overlay) => (
       overlay.status === "available"
       && (overlay.groupCanonical === null || selectedGroups.size === 0 || selectedGroups.has(overlay.groupCanonical))
@@ -929,11 +934,13 @@ export function compileTrajectoryPlotlySpec(
       const nodes = overlay.nodes;
       data.push(trace(dimension, resultHash, "network-node", {
         mode: "markers+text",
-        name: "Mean network nodes",
+        name: "ENA codes",
         ...projectedFields(nodes.map((node) => node.coordinates), displaySpec.projection, displaySpec.axisFlips),
         text: nodes.map((node) => node.code),
+        textposition: "top center",
         marker: { size: nodes.map((node) => 8 + Math.sqrt(Math.max(0, node.weight)) * 4), color: "#f8fafc", line: { color: "#0f172a", width: 2 } },
       }, { ...(overlay.groupCanonical ? { groupCanonical: overlay.groupCanonical } : {}) }));
+      if (!displaySpec.traces.networkOverlay) continue;
       for (const edge of overlay.edges) {
         const source = nodes[edge.sourceIndex];
         const target = nodes[edge.targetIndex];

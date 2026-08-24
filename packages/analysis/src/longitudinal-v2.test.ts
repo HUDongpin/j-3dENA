@@ -206,6 +206,47 @@ describe("dedicated trajectory Plotly compiler", () => {
     });
   });
 
+  it("shows fitted ENA code nodes independently from optional mean-network edges", () => {
+    const scientific = bundle();
+    scientific.networkOverlays = [{
+      status: "available",
+      reason: null,
+      groupCanonical: null,
+      periodCanonical: "T1",
+      dimensions: ["SVD1", "SVD2", "SVD3"],
+      estimand: "equal-participant",
+      sourceRows: 2,
+      participantPeriods: 2,
+      effectiveParticipantN: 2,
+      nodes: [
+        { code: "RE", coordinates: [-0.5, 0.1, 0.2], weight: 0.5 },
+        { code: "IN", coordinates: [0.4, -0.2, 0.3], weight: 0.5 },
+      ],
+      edges: [{ id: "RE-IN", sourceIndex: 0, targetIndex: 1, weight: 0.5 }],
+    }];
+    const codesOnly = displaySpec("3d");
+    codesOnly.traces.codeNodes = true;
+    codesOnly.traces.networkOverlay = false;
+
+    const three = compileTrajectoryPlotlySpec(scientific, codesOnly);
+    const threeCodeNodes = three.data.filter((trace) => trace.meta.role === "network-node");
+    expect(threeCodeNodes).toHaveLength(1);
+    expect(threeCodeNodes[0]!.text).toEqual(["RE", "IN"]);
+    expect(three.data.filter((trace) => trace.meta.role === "network-edge")).toHaveLength(0);
+
+    const twoCodesOnly = structuredClone(codesOnly);
+    twoCodesOnly.projection = "xy";
+    const two = compileTrajectoryPlotlySpec(scientific, twoCodesOnly);
+    expect(two.data.find((trace) => trace.meta.role === "network-node")?.text).toEqual(["RE", "IN"]);
+    expect(two.data.filter((trace) => trace.meta.role === "network-edge")).toHaveLength(0);
+
+    const withEdges = structuredClone(codesOnly);
+    withEdges.traces.networkOverlay = true;
+    const edgePlot = compileTrajectoryPlotlySpec(scientific, withEdges);
+    expect(edgePlot.data.filter((trace) => trace.meta.role === "network-node")).toHaveLength(1);
+    expect(edgePlot.data.filter((trace) => trace.meta.role === "network-edge")).toHaveLength(1);
+  });
+
   it("keeps bootstrap intervals numerical while trajectory plots render no CI in 3D or projected 2D", async () => {
     const completePath = analyzeTrajectoryDynamicsV1({
       schemaVersion: "3dena.trajectory-dynamics-input.v1",
