@@ -665,6 +665,7 @@ function assertDisplaySpec(value: TrajectoryDisplaySpecV2): void {
 
 const GROUP_COLORS = ["#2563eb", "#b45309", "#7c3aed", "#0f766e", "#be123c", "#475569"] as const;
 const AXIS_COLORS = ["#dc2626", "#2563eb", "#16a34a"] as const;
+const TRAJECTORY_LINE_COLOR = "#000000";
 
 function hashString(value: string): number {
   let hash = 0;
@@ -820,7 +821,7 @@ export function compileTrajectoryPlotlySpec(
           ...projectedFields(coordinates, displaySpec.projection, displaySpec.axisFlips),
           connectgaps: false,
           showlegend: false,
-          line: { color, width: Math.max(1, displaySpec.style.pathWidth * 0.35) },
+          line: { color: TRAJECTORY_LINE_COLOR, width: Math.max(1, displaySpec.style.pathWidth * 0.35) },
           marker: { color, size: Math.max(3, displaySpec.style.participantSize - 1) },
         }, { groupCanonical: group.canonical, participantCanonical }));
       }
@@ -832,8 +833,8 @@ export function compileTrajectoryPlotlySpec(
         name: `${group.display} trajectory`,
         ...projectedFields(centroidCoordinates, displaySpec.projection, displaySpec.axisFlips),
         connectgaps: false,
-        line: { color, width: displaySpec.style.pathWidth },
-        marker: { color, size: displaySpec.style.centroidSize },
+        line: { color: TRAJECTORY_LINE_COLOR, width: displaySpec.style.pathWidth },
+        marker: { color, size: displaySpec.style.centroidSize, symbol: "square" },
         text: dynamics.periods.map((period) => period.time.display),
         hovertemplate: "%{text}<extra></extra>",
       }, { groupCanonical: group.canonical }));
@@ -909,7 +910,7 @@ export function compileTrajectoryPlotlySpec(
             anchor: "tip",
             sizemode: "absolute",
             sizeref: Math.max(0.06, extent * 0.06),
-            colorscale: [[0, color], [1, color]],
+            colorscale: [[0, TRAJECTORY_LINE_COLOR], [1, TRAJECTORY_LINE_COLOR]],
             showscale: false,
             showlegend: false,
             hoverinfo: "skip",
@@ -925,9 +926,9 @@ export function compileTrajectoryPlotlySpec(
             mode: "lines+markers",
             name: `${group.display} direction`,
             ...projected,
-            line: { color, width: Math.max(1, displaySpec.style.pathWidth * 0.45) },
+            line: { color: TRAJECTORY_LINE_COLOR, width: Math.max(1, displaySpec.style.pathWidth * 0.45) },
             marker: {
-              color,
+              color: TRAJECTORY_LINE_COLOR,
               size: [0, Math.max(9, displaySpec.style.centroidSize * 0.85)],
               symbol: ["circle", "arrow-up"],
               angle: [0, angle],

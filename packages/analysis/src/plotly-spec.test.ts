@@ -69,6 +69,14 @@ describe("compilePlotlySpec", () => {
     ]));
     expect(spec.data.filter((trace) => trace.meta.role === "axis-shaft").map((trace) => trace.meta.axis)).toEqual(["SVD4", "SVD5", "SVD6"]);
     expect(spec.data.filter((trace) => trace.meta.role === "axis-arrowhead")).toHaveLength(3);
+    expect(spec.data.filter((trace) => trace.meta.role === "trajectory")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          line: { color: "#000000", width: 4 },
+          marker: expect.not.objectContaining({ color: "#000000" }),
+        }),
+      ]),
+    );
     expect(spec.layout).toMatchObject({
       uirevision: "3dena-camera-v1",
       scene: {

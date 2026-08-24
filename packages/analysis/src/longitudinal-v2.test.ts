@@ -174,8 +174,18 @@ describe("dedicated trajectory Plotly compiler", () => {
     expect(plot.data.some((trace) => trace.meta.role === "trajectory-path")).toBe(true);
     expect(plot.data.some((trace) => trace.meta.role === "direction-arrow")).toBe(false);
     const trajectory = plot.data.find((trace) => trace.meta.role === "trajectory-path")!;
+    const individualPath = plot.data.find((trace) => trace.meta.role === "individual-path")!;
+    const participant = plot.data.find((trace) => trace.meta.role === "participant")!;
+    const centroid = plot.data.find((trace) => trace.meta.role === "centroid")!;
     expect(trajectory.x).toEqual([1, null, 4]);
     expect(trajectory.connectgaps).toBe(false);
+    expect(trajectory).toMatchObject({ line: { color: "#000000" } });
+    expect(individualPath).toMatchObject({ line: { color: "#000000" } });
+    expect(trajectory).toMatchObject({ marker: { symbol: "square" } });
+    expect(trajectory).not.toMatchObject({ marker: { color: "#000000" } });
+    expect(individualPath).not.toMatchObject({ marker: { color: "#000000" } });
+    expect(participant).not.toMatchObject({ marker: { color: "#000000" } });
+    expect(centroid).not.toMatchObject({ marker: { color: "#000000" } });
     expect(scientific).toEqual(before);
     expect(Object.isFrozen(plot)).toBe(true);
   });
@@ -249,11 +259,25 @@ describe("dedicated trajectory Plotly compiler", () => {
     const three = compileTrajectoryPlotlySpec(scientific, displaySpec("3d"));
     const threeUncertainty = three.data.find((trace) => trace.meta.role === "uncertainty")!;
     expect(three.data.filter((trace) => trace.meta.role === "direction-arrow")).toHaveLength(2);
+    expect(three.data.filter((trace) => trace.meta.role === "direction-arrow")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ colorscale: [[0, "#000000"], [1, "#000000"]] }),
+      ]),
+    );
     expect(threeUncertainty).toMatchObject({ type: "scatter3d", error_x: { type: "data", symmetric: false }, error_y: { type: "data", symmetric: false }, error_z: { type: "data", symmetric: false } });
+    expect(threeUncertainty).not.toMatchObject({ marker: { color: "#000000" } });
     expect(three.data.some((trace) => String(trace.meta.role).includes("tube"))).toBe(false);
 
     const two = compileTrajectoryPlotlySpec(scientific, displaySpec("xy"));
     expect(two.data.filter((trace) => trace.meta.role === "direction-arrow")).toHaveLength(2);
+    expect(two.data.filter((trace) => trace.meta.role === "direction-arrow")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          line: expect.objectContaining({ color: "#000000" }),
+          marker: expect.objectContaining({ color: "#000000" }),
+        }),
+      ]),
+    );
     expect(two.data.find((trace) => trace.meta.role === "uncertainty")).toMatchObject({ type: "scatter", error_x: { type: "data", symmetric: false }, error_y: { type: "data", symmetric: false } });
   });
 });
