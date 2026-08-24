@@ -36753,7 +36753,7 @@ var init_build_identity = __esmMin((() => {
 		jenaCommit: injected("90790856f00bdef63dbd27fc3a5b502e8cffe65f", "development-unbound"),
 		jenaTarballIntegrity: injected("sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==", "development-unbound"),
 		sdkVersion: injected("0.2.0", "development-unbound"),
-		buildId: injected("44a82082bfce96716fc228802c7462e3ad012827", "development-unbound"),
+		buildId: injected("04aa1685a2732d1325b14376d97bce7be926ec9c", "development-unbound"),
 		bound: true
 	});
 }));
@@ -40543,20 +40543,6 @@ var AXIS_COLORS$1 = [
 var TRAJECTORY_LINE_COLOR$1 = "#000000";
 var DIRECTION_ARROW_TIP_PROGRESS = .5;
 var DIRECTION_ARROW_TAIL_PROGRESS = .35;
-var INTERVAL_BOX_EDGES = [
-	[0, 1],
-	[0, 2],
-	[0, 4],
-	[1, 3],
-	[1, 5],
-	[2, 3],
-	[2, 6],
-	[3, 7],
-	[4, 5],
-	[4, 6],
-	[5, 7],
-	[6, 7]
-];
 function hashString$1(value) {
 	let hash = 0;
 	for (let index = 0; index < value.length; index += 1) hash = Math.imul(hash, 31) + value.charCodeAt(index) >>> 0;
@@ -40767,120 +40753,6 @@ function compileTrajectoryPlotlySpec(bundle, displaySpec) {
 				},
 				hovertemplate: "%{text}<br>n=%{customdata[0]}<extra></extra>"
 			}, { groupCanonical: group.canonical }));
-		}
-		if (displaySpec.traces.uncertainty) {
-			const bootstrap = bundle.bootstrap.find((entry) => entry.groupCanonical === group.canonical);
-			if (bootstrap) {
-				const projectedIndexes = projectionIndexes(displaySpec.projection) ?? [
-					0,
-					1,
-					2
-				];
-				const available = bootstrap.result.periods.filter((period) => projectedIndexes.every((axisIndex) => period.selectedCentroid[axisIndex] !== null));
-				if (available.length > 0) {
-					const error = (axisIndex) => {
-						const intervals = available.map((period) => period.selectedCentroid[axisIndex]);
-						const positive = intervals.map((interval) => interval.upper - interval.estimate);
-						const negative = intervals.map((interval) => interval.estimate - interval.lower);
-						return {
-							type: "data",
-							symmetric: false,
-							visible: true,
-							color,
-							thickness: 2,
-							width: 4,
-							array: displaySpec.axisFlips[axisIndex] ? negative : positive,
-							arrayminus: displaySpec.axisFlips[axisIndex] ? positive : negative
-						};
-					};
-					if (dimension === 3) {
-						const boxCoordinates = [];
-						for (const period of available) {
-							const intervals = [
-								0,
-								1,
-								2
-							].map((axisIndex) => period.selectedCentroid[axisIndex]);
-							const corners = [
-								[
-									intervals[0].lower,
-									intervals[1].lower,
-									intervals[2].lower
-								],
-								[
-									intervals[0].upper,
-									intervals[1].lower,
-									intervals[2].lower
-								],
-								[
-									intervals[0].lower,
-									intervals[1].upper,
-									intervals[2].lower
-								],
-								[
-									intervals[0].upper,
-									intervals[1].upper,
-									intervals[2].lower
-								],
-								[
-									intervals[0].lower,
-									intervals[1].lower,
-									intervals[2].upper
-								],
-								[
-									intervals[0].upper,
-									intervals[1].lower,
-									intervals[2].upper
-								],
-								[
-									intervals[0].lower,
-									intervals[1].upper,
-									intervals[2].upper
-								],
-								[
-									intervals[0].upper,
-									intervals[1].upper,
-									intervals[2].upper
-								]
-							];
-							for (const [sourceIndex, targetIndex] of INTERVAL_BOX_EDGES) boxCoordinates.push(corners[sourceIndex], corners[targetIndex], null);
-						}
-						data.push(trace$1(3, resultHash, "uncertainty", {
-							mode: "lines",
-							name: `${group.display} pointwise ${Math.round(bootstrap.result.confidenceLevel * 100)}% intervals`,
-							...projectedFields(boxCoordinates, "3d", displaySpec.axisFlips),
-							connectgaps: false,
-							line: {
-								color,
-								width: Math.max(1.5, displaySpec.style.pathWidth * .35),
-								dash: "dash"
-							},
-							opacity: .42,
-							hoverinfo: "skip"
-						}, { groupCanonical: group.canonical }));
-					} else {
-						const projected = projectedFields(available.map((period) => [
-							0,
-							1,
-							2
-						].map((axisIndex) => period.selectedCentroid[axisIndex]?.estimate ?? 0)), displaySpec.projection, displaySpec.axisFlips);
-						data.push(trace$1(2, resultHash, "uncertainty", {
-							mode: "markers",
-							name: `${group.display} pointwise ${Math.round(bootstrap.result.confidenceLevel * 100)}% intervals`,
-							...projected,
-							marker: {
-								color,
-								size: Math.max(3, displaySpec.style.centroidSize * .45),
-								opacity: .32
-							},
-							error_x: error(projectedIndexes[0]),
-							error_y: error(projectedIndexes[1]),
-							text: available.map((period) => period.time.display),
-							hovertemplate: "%{text}<br>pointwise centroid interval<extra></extra>"
-						}, { groupCanonical: group.canonical }));
-					}
-				}
-			}
 		}
 		if (displaySpec.traces.directionArrows) for (let index = 1; index < dynamics.periods.length; index += 1) {
 			const previous = dynamics.periods[index - 1].selectedCentroid;
