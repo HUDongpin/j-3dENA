@@ -423,3 +423,13 @@ test("raw npm SBOM regression: every omitted reachable package remains a release
   assert.ok(omitted.some(({ detail }) => detail.includes('"react@19.2.4"')));
   assert.ok(omitted.some(({ detail }) => detail.includes('"react-dom@19.2.4"')));
 });
+
+test("the active production rollout contract pins the reviewed jENA 0.7 engine", () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const runbook = readFileSync(
+    join(root, "docs", "release", "production-rollout-runbook.md"),
+    "utf8",
+  );
+  assert.match(runbook, /jena-js@0\.7\.0-ona\.0/u);
+  assert.doesNotMatch(runbook, /jENA 0\.6\.3/u);
+});

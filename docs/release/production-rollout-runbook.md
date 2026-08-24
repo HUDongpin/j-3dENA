@@ -10,8 +10,9 @@ Stop before any external mutation unless all of the following are true:
 
 1. The authorized Git remote matches package provenance and the release commit
    exists in a clean checkout rebuilt with the frozen npm version and `npm ci`.
-2. `npm run check`, the protected scientific/strict-ledger gates, the jENA 0.6.3
-   registry-successor gate, and all release security jobs pass for that commit.
+2. `npm run check`, the protected scientific/strict-ledger gates, the reviewed
+   exact single-instance `jena-js@0.7.0-ona.0` custody gate, and all release
+   security jobs pass for that commit.
 3. The public analysis tarball, complete lock-graph SBOM, schema bundle, exact
    migration, Vercel build, and Fly OCI digest are hashed into one candidate
    `BuildApprovalV1`; an independent release reviewer has signed it.
