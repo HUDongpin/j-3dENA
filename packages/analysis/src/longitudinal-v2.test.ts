@@ -206,7 +206,7 @@ describe("dedicated trajectory Plotly compiler", () => {
     });
   });
 
-  it("renders pointwise centroid uncertainty and direction arrows in both 3D and projected 2D without a confidence tube", async () => {
+  it("keeps bootstrap intervals numerical while trajectory plots render no CI in 3D or projected 2D", async () => {
     const completePath = analyzeTrajectoryDynamicsV1({
       schemaVersion: "3dena.trajectory-dynamics-input.v1",
       namespace: "group-a-complete",
@@ -257,7 +257,7 @@ describe("dedicated trajectory Plotly compiler", () => {
     }];
 
     const three = compileTrajectoryPlotlySpec(scientific, displaySpec("3d"));
-    const threeUncertainty = three.data.find((trace) => trace.meta.role === "uncertainty")!;
+    const threeUncertainty = three.data.find((trace) => trace.meta.role === "uncertainty");
     const threeArrows = three.data.filter((trace) => trace.meta.role === "direction-arrow");
     expect(threeArrows).toHaveLength(2);
     expect(threeArrows).toEqual(
@@ -269,18 +269,9 @@ describe("dedicated trajectory Plotly compiler", () => {
       [[1.75], [2.75], [3.75]],
       [[3.25], [4.25], [5.25]],
     ]);
-    expect(threeUncertainty).toMatchObject({
-      type: "scatter3d",
-      mode: "lines",
-      connectgaps: false,
-      line: { dash: "dash" },
-      opacity: 0.42,
-    });
-    expect(threeUncertainty.error_x).toBeUndefined();
-    expect(threeUncertainty.error_y).toBeUndefined();
-    expect(threeUncertainty.error_z).toBeUndefined();
-    expect(threeUncertainty.marker).toBeUndefined();
-    expect((threeUncertainty.x as Array<number | null>).filter((value) => value === null)).toHaveLength(36);
+    expect(threeUncertainty).toBeUndefined();
+    expect(scientific.bootstrap[0]!.result.periods).toHaveLength(3);
+    expect(scientific.bootstrap[0]!.result.periods[0]!.selectedCentroid[0]).not.toBeNull();
     expect(three.data.some((trace) => String(trace.meta.role).includes("tube"))).toBe(false);
 
     const two = compileTrajectoryPlotlySpec(scientific, displaySpec("xy"));
@@ -298,6 +289,6 @@ describe("dedicated trajectory Plotly compiler", () => {
       [[1.525, 1.75], [2.525, 2.75]],
       [[3.025, 3.25], [4.025, 4.25]],
     ]);
-    expect(two.data.find((trace) => trace.meta.role === "uncertainty")).toMatchObject({ type: "scatter", error_x: { type: "data", symmetric: false }, error_y: { type: "data", symmetric: false } });
+    expect(two.data.find((trace) => trace.meta.role === "uncertainty")).toBeUndefined();
   });
 });
