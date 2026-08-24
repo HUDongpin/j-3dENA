@@ -47,6 +47,7 @@ import {
   cancelRemoteAnalysis,
   deleteRemoteJobData,
   runRemoteAnalysis,
+  shouldRetainRemoteJob,
   type VerifiedRemoteAnalysisResult,
 } from "@/lib/remote-analysis-runtime";
 import {
@@ -399,6 +400,13 @@ export function RemoteAnalysisWorkspace({
       setMessage("Prepared source activated. The service re-read the immutable upload, verified its exact bytes, executed the strict exchange parser and frozen mapping, and published a checksum-verified prepared-space result. jENA was not executed.");
     } catch (runError) {
       if (generation !== generationRef.current) return;
+      if (shouldRetainRemoteJob(runError)) {
+        setCleanupPending(true);
+        setStatus("error");
+        setMessage("Remote observation stopped after bounded recovery. The persistent job remains capability-bound in this page session; delete it explicitly when ready.");
+        setError(runError instanceof Error ? runError.message : "Prepared activation observation was interrupted.");
+        return;
+      }
       const cleanup = activeJobRef.current;
       if (cleanup) {
         try {
@@ -599,6 +607,13 @@ export function RemoteAnalysisWorkspace({
       setMessage("Remote ENA completed. Exact result bytes passed SHA-256, schema, variant, build, and ownership validation. Raw activation bytes are deleted at terminal publication; the service-owned ENA result remains capability-bound only for this derived-analysis session.");
     } catch (runError) {
       if (generation !== generationRef.current) return;
+      if (shouldRetainRemoteJob(runError)) {
+        setCleanupPending(true);
+        setStatus("error");
+        setMessage("Remote observation stopped after bounded recovery. The persistent job remains capability-bound in this page session; delete it explicitly when ready.");
+        setError(runError instanceof Error ? runError.message : "Remote analysis observation was interrupted.");
+        return;
+      }
       const cleanup = activeJobRef.current;
       if (cleanup) {
         try {
@@ -621,7 +636,8 @@ export function RemoteAnalysisWorkspace({
 
   async function runDerivedAnalysis(task: ActivatedAnalysisTaskSpecV1): Promise<void> {
     if (!client || !enaSource || !enaSourceResult || task.kind === "ena-model"
-        || task.kind !== selectedTaskKind || status === "blocked") return;
+        || task.kind !== selectedTaskKind || status === "blocked" || cleanupPending
+        || status === "running" || status === "cancelling") return;
     abortRequests();
     const generation = generationRef.current;
     const controller = new AbortController();
@@ -662,6 +678,13 @@ export function RemoteAnalysisWorkspace({
       setMessage("Derived analysis completed. Exact result bytes and ownership passed verification; its derived job objects are attested deleted. The scientific source remains capability-bound for another reviewed derived task.");
     } catch (runError) {
       if (generation !== generationRef.current) return;
+      if (shouldRetainRemoteJob(runError)) {
+        setCleanupPending(true);
+        setStatus("error");
+        setMessage("Remote observation stopped after bounded recovery. The persistent job remains capability-bound in this page session; delete it explicitly when ready.");
+        setError(runError instanceof Error ? runError.message : "Remote derived analysis observation was interrupted.");
+        return;
+      }
       const cleanup = activeJobRef.current;
       if (cleanup) {
         try {
@@ -1100,7 +1123,7 @@ export function RemoteAnalysisWorkspace({
                 onClick={() => void cancelAnalysis()}
                 disabled={status !== "running" && !cleanupPending}
                 data-testid="remote-analysis-cancel"
-              ><Square size={17} aria-hidden="true" /> {status === "running" ? "Cancel and delete" : "Retry remote deletion"}</button>
+              ><Square size={17} aria-hidden="true" /> {status === "running" ? "Cancel and delete" : "Delete retained remote job"}</button>
             </div>
             {result && (
               <button
@@ -1130,6 +1153,7 @@ export function RemoteAnalysisWorkspace({
           kind={selectedTaskKind}
           source={enaSourceResult}
           running={status === "running"}
+          disabled={cleanupPending || sourceDeleting || status === "cancelling"}
           onRun={(task) => void runDerivedAnalysis(task)}
         />
       )}

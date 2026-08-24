@@ -25,6 +25,7 @@ import {
   assertApprovedComputeBuild,
   cancelRemoteAnalysis,
   deleteRemoteJobData,
+  RemoteAnalysisRuntimeError,
   runRemoteAnalysis,
   type RemoteExecutionBinding,
 } from "@/lib/remote-analysis-runtime";
@@ -426,6 +427,24 @@ describe("RemoteAnalysisWorkspace", () => {
     expect(target.activate).toHaveBeenCalledOnce();
   });
 
+  it("does not delete a persistent job retained after observation recovery is exhausted", async () => {
+    const target = workflow();
+    await reachActivation(target);
+    vi.mocked(runRemoteAnalysis).mockRejectedValueOnce(new RemoteAnalysisRuntimeError(
+      "OBSERVATION_RETRY_EXHAUSTED",
+      "Remote observation remains interrupted. The persistent job was retained.",
+      true,
+    ));
+
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+
+    expect(await screen.findByTestId("remote-analysis-error")).toHaveTextContent(
+      "persistent job was retained",
+    );
+    expect(deleteRemoteJobData).not.toHaveBeenCalled();
+    expect(screen.getByTestId("remote-analysis-cancel")).toBeEnabled();
+  });
+
   it("lists all seven remote task discriminators and fails closed without reviewed derived controls", async () => {
     const target = workflow();
     await reachActivation(target);
@@ -467,6 +486,34 @@ describe("RemoteAnalysisWorkspace", () => {
       }),
       expect.any(AbortSignal),
     );
+  });
+
+  it("blocks another derived run until a retained derived job is explicitly deleted", async () => {
+    const target = workflow();
+    await reachActivation(target);
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+    await waitFor(() => expect(runRemoteAnalysis).toHaveBeenCalledOnce());
+    fireEvent.change(screen.getByTestId("remote-task-kind"), {
+      target: { value: "network-comparison" },
+    });
+    const derivedRun = await screen.findByTestId("remote-derived-run");
+    vi.mocked(runRemoteAnalysis).mockRejectedValueOnce(new RemoteAnalysisRuntimeError(
+      "OBSERVATION_RETRY_EXHAUSTED",
+      "Remote derived observation remains interrupted. The persistent job was retained.",
+      true,
+    ));
+
+    fireEvent.click(derivedRun);
+    expect(await screen.findByTestId("remote-analysis-error")).toHaveTextContent(
+      "persistent job was retained",
+    );
+    expect(target.bindDerivedExecution).toHaveBeenCalledOnce();
+    expect(deleteRemoteJobData).not.toHaveBeenCalled();
+    expect(derivedRun).toBeDisabled();
+    expect(derivedRun).toHaveTextContent("Delete retained job before running");
+
+    fireEvent.submit(derivedRun.closest("form")!);
+    expect(target.bindDerivedExecution).toHaveBeenCalledOnce();
   });
 
   it("reviews and explicitly activates a prepared exchange, then exposes service-only derived controls", async () => {

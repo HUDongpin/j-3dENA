@@ -329,6 +329,19 @@ as the Web product's default execution path or backed by production
 persistence. The browser module Worker therefore remains both the current Web
 executor and the development calibration/bundler-compatibility executor.
 
+Remote recovery is deliberately bounded to one page session. A single
+`createAnalysisClient()` instance retains the highest observed SSE sequence in
+memory, reconnects with `Last-Event-ID`, and ignores replayed sequences. Its
+transient HTTP retries use bounded exponential backoff, honor `Retry-After`,
+and reuse the caller-supplied idempotency key and exact request body. Neither
+the capability token nor the event cursor is written to `localStorage` or any
+other reload-persistent browser store. Page-reload recovery therefore remains
+outside this contract and requires a separately reviewed capability-handoff
+design. Status, result-reference, and exact-artifact observation share a
+bounded reconnect budget; exhausting that budget retains the persistent job
+for explicit same-session handling instead of treating transport loss as a
+scientific failure.
+
 All synchronous execution roles need hard process/Worker termination. The
 numerical model stage cannot guarantee cooperative interruption, so cancel and
 timeout must terminate the execution realm, observe its exit, discard the

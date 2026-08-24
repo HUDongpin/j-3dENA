@@ -3459,7 +3459,7 @@ export class ComputeV1HttpRouter {
       headers.set("access-control-allow-origin", context.origin);
       headers.set(
         "access-control-expose-headers",
-        "x-request-id, x-3dena-contract-version, x-3dena-result-sha256",
+        "retry-after, x-request-id, x-3dena-contract-version, x-3dena-result-sha256",
       );
     }
     return headers;

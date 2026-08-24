@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ANALYSIS_CONTRACT_VERSION_V1,
+  AnalysisClientError,
   analyzeRows,
   type AnalysisClientV2,
   type AnalysisResultEnvelopeV1,
@@ -309,6 +310,231 @@ describe("remote analysis runtime", () => {
       currentWebBuildId: approvedRemoteBuild.webBuildId,
       fetch: vi.fn(async () => new Response(tampered, { status: 200 })),
     })).rejects.toMatchObject({ code: "RESULT_RECEIPT_MISMATCH" });
+  });
+
+  it("reconciles status and reconnects after a transient observation failure without deleting the job", async () => {
+    const bytes = artifactBytes();
+    const client = clientFor(bytes);
+    const statuses = [
+      { state: "QUEUED" as const, phase: "queued", completed: 0, resultAvailable: false },
+      { state: "RUNNING" as const, phase: "modeling", completed: 1, resultAvailable: false },
+      { state: "SUCCEEDED" as const, phase: "complete", completed: 2, resultAvailable: true },
+    ];
+    let statusReads = 0;
+    vi.mocked(client.getJob).mockImplementation(async () => {
+      statusReads += 1;
+      if (statusReads === 2) {
+        throw new AnalysisClientError(
+          "NETWORK_FAILURE",
+          "The authoritative status read was temporarily unavailable.",
+        );
+      }
+      const next = statuses.shift() ?? {
+        state: "SUCCEEDED" as const,
+        phase: "complete",
+        completed: 2,
+        resultAvailable: true,
+      };
+      return {
+        schemaVersion: "3dena.job-status.v1" as const,
+        jobId: binding.reference.jobId,
+        state: next.state,
+        owner,
+        progress: { phase: next.phase, completed: next.completed, total: 2 },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        resultAvailable: next.resultAvailable,
+        errorCode: null,
+      };
+    });
+    let subscription = 0;
+    client.events = vi.fn(async function* () {
+      subscription += 1;
+      if (subscription === 1) {
+        yield {
+          schemaVersion: "3dena.job-event.v1" as const,
+          sequence: 1,
+          state: "RUNNING" as const,
+          phase: "modeling",
+          completed: 1,
+          total: 2,
+          emittedAt: new Date().toISOString(),
+        };
+        throw new AnalysisClientError(
+          "SSE_CONNECTION_INTERRUPTED",
+          "The event stream disconnected before a terminal state.",
+        );
+      }
+      yield {
+        schemaVersion: "3dena.job-event.v1" as const,
+        sequence: 2,
+        state: "SUCCEEDED" as const,
+        phase: "complete",
+        completed: 2,
+        total: 2,
+        emittedAt: new Date().toISOString(),
+      };
+    });
+
+    await expect(runRemoteAnalysis({
+      client,
+      binding,
+      approvedRemoteBuild,
+      currentWebBuildId: approvedRemoteBuild.webBuildId,
+      fetch: vi.fn(async () => new Response(bytes, { status: 200 })),
+      pollIntervalMilliseconds: 1,
+    })).resolves.toMatchObject({ envelope: { owner } });
+
+    expect(client.events).toHaveBeenCalledTimes(2);
+    expect(client.getJob).toHaveBeenCalledTimes(4);
+    expect(client.deleteJobUntilComplete).not.toHaveBeenCalled();
+  });
+
+  it("retains the persistent job when bounded observation recovery is exhausted", async () => {
+    const bytes = artifactBytes();
+    const client = clientFor(bytes);
+    vi.mocked(client.getJob).mockResolvedValue({
+      schemaVersion: "3dena.job-status.v1",
+      jobId: binding.reference.jobId,
+      state: "RUNNING",
+      owner,
+      progress: { phase: "modeling", completed: 1, total: 2 },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      resultAvailable: false,
+      errorCode: null,
+    });
+    client.events = vi.fn(async function* () {
+      throw new AnalysisClientError(
+        "SSE_CONNECTION_INTERRUPTED",
+        "The event stream disconnected before a terminal state.",
+      );
+    });
+
+    await expect(runRemoteAnalysis({
+      client,
+      binding,
+      approvedRemoteBuild,
+      currentWebBuildId: approvedRemoteBuild.webBuildId,
+      fetch: vi.fn(async () => new Response(bytes, { status: 200 })),
+      pollIntervalMilliseconds: 1,
+      observationReconnectAttempts: 1,
+      observationReconnectMaximumDelayMilliseconds: 1,
+    })).rejects.toMatchObject({
+      code: "OBSERVATION_RETRY_EXHAUSTED",
+      retainJob: true,
+    });
+
+    expect(client.events).toHaveBeenCalledTimes(2);
+    expect(client.deleteJobUntilComplete).not.toHaveBeenCalled();
+  });
+
+  it("retries a transient result-reference observation without deleting a succeeded job", async () => {
+    const bytes = artifactBytes();
+    const client = clientFor(bytes);
+    const successfulGetResult = vi.mocked(client.getResult).getMockImplementation()!;
+    vi.mocked(client.getResult)
+      .mockRejectedValueOnce(new AnalysisClientError(
+        "NETWORK_FAILURE",
+        "The result reference response was lost.",
+      ))
+      .mockImplementation(successfulGetResult);
+
+    await expect(runRemoteAnalysis({
+      client,
+      binding,
+      approvedRemoteBuild,
+      currentWebBuildId: approvedRemoteBuild.webBuildId,
+      fetch: vi.fn(async () => new Response(bytes, { status: 200 })),
+      pollIntervalMilliseconds: 1,
+      observationReconnectMaximumDelayMilliseconds: 1,
+    })).resolves.toMatchObject({ envelope: { owner } });
+
+    expect(client.getResult).toHaveBeenCalledTimes(2);
+    expect(client.deleteJobUntilComplete).not.toHaveBeenCalled();
+  });
+
+  it("retries a timed-out result body inside the bounded observation lifecycle", async () => {
+    const bytes = artifactBytes();
+    const client = clientFor(bytes);
+    const hangingBody = new ReadableStream<Uint8Array>({
+      start() {
+        // The per-attempt result deadline must cancel this body.
+      },
+    });
+    const fetchResult = vi.fn()
+      .mockResolvedValueOnce(new Response(hangingBody, { status: 200 }))
+      .mockResolvedValueOnce(new Response(bytes, { status: 200 }));
+
+    await expect(runRemoteAnalysis({
+      client,
+      binding,
+      approvedRemoteBuild,
+      currentWebBuildId: approvedRemoteBuild.webBuildId,
+      fetch: fetchResult as unknown as typeof fetch,
+      pollIntervalMilliseconds: 1,
+      observationReconnectMaximumDelayMilliseconds: 1,
+      observationReconnectTotalDelayMilliseconds: 100,
+      resultRequestTimeoutMilliseconds: 5,
+    })).resolves.toMatchObject({ envelope: { owner } });
+
+    expect(fetchResult).toHaveBeenCalledTimes(2);
+    expect(client.deleteJobUntilComplete).not.toHaveBeenCalled();
+  });
+
+  it("retains a succeeded job when result observation retries are exhausted", async () => {
+    const bytes = artifactBytes();
+    const client = clientFor(bytes);
+    vi.mocked(client.getResult).mockRejectedValue(new AnalysisClientError(
+      "NETWORK_FAILURE",
+      "The result reference remains unavailable.",
+    ));
+
+    await expect(runRemoteAnalysis({
+      client,
+      binding,
+      approvedRemoteBuild,
+      currentWebBuildId: approvedRemoteBuild.webBuildId,
+      fetch: vi.fn(),
+      pollIntervalMilliseconds: 1,
+      observationReconnectAttempts: 1,
+      observationReconnectMaximumDelayMilliseconds: 1,
+    })).rejects.toMatchObject({
+      code: "OBSERVATION_RETRY_EXHAUSTED",
+      retainJob: true,
+    });
+
+    expect(client.getResult).toHaveBeenCalledTimes(2);
+    expect(client.deleteJobUntilComplete).not.toHaveBeenCalled();
+  });
+
+  it("does not retry before Retry-After when it exceeds the remaining recovery-delay budget", async () => {
+    const client = clientFor(artifactBytes());
+    vi.mocked(client.getJob).mockRejectedValue(new AnalysisClientError(
+      "RATE_LIMITED",
+      "Status observation is rate limited.",
+      429,
+      null,
+      1_000,
+    ));
+
+    await expect(runRemoteAnalysis({
+      client,
+      binding,
+      approvedRemoteBuild,
+      currentWebBuildId: approvedRemoteBuild.webBuildId,
+      fetch: vi.fn(),
+      pollIntervalMilliseconds: 1,
+      observationReconnectTotalDelayMilliseconds: 25,
+    })).rejects.toMatchObject({
+      code: "OBSERVATION_RETRY_EXHAUSTED",
+      retainJob: true,
+    });
+
+    expect(client.getJob).toHaveBeenCalledOnce();
+    expect(client.deleteJobUntilComplete).not.toHaveBeenCalled();
   });
 
   it("does not claim cancellation when durable deletion polling cannot reach final facts", async () => {

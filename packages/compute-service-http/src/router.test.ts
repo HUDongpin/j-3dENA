@@ -692,6 +692,68 @@ describe("ComputeV1HttpRouter dedicated longitudinal V2 jobs", () => {
     expect(await target.objectStore.head(record.inputObjectKey)).toBeNull();
   });
 
+  it("resumes a dedicated V2 job event stream from the public client's in-memory Last-Event-ID cursor", async () => {
+    const target = harness();
+    const response = await target.router.handle(longitudinalCreateRequest(
+      await longitudinalSubmission(),
+      "longitudinal-client-resume",
+    ));
+    expect(response.status).toBe(201);
+    const capability = (await response.json()) as LongitudinalComputeCapabilityV2;
+    const eventRequestHeaders: Headers[] = [];
+    const browserFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const requestHeaders = new Headers(init?.headers);
+      requestHeaders.set("origin", ORIGIN);
+      if (new URL(String(input)).pathname.endsWith("/events")) {
+        eventRequestHeaders.push(new Headers(requestHeaders));
+      }
+      return target.router.handle(new Request(input, { ...init, headers: requestHeaders }));
+    }) as typeof fetch;
+    const client = createAnalysisClient({
+      baseUrl: "https://compute.example",
+      fetch: browserFetch,
+    });
+    const reference: AnalysisJobReferenceV1 = {
+      jobId: capability.jobId,
+      capabilityToken: capability.capabilityToken,
+    };
+
+    const firstSequences: number[] = [];
+    for await (const event of client.events(reference)) {
+      firstSequences.push(event.sequence);
+      break;
+    }
+    expect(firstSequences).toEqual([1]);
+
+    const lease = await target.core.claimTask(capability.jobId, {
+      leaseId: "lease-longitudinal-client-resume",
+      holderId: "worker-longitudinal-client-resume",
+      durationMs: 30_000,
+    });
+    const running = await target.core.executeTask(capability.jobId, lease);
+    await expect(client.getJob(reference)).resolves.toMatchObject({ state: "RUNNING" });
+
+    const resumedSequences: number[] = [];
+    for await (const event of client.events(reference)) {
+      resumedSequences.push(event.sequence);
+      break;
+    }
+    expect(resumedSequences).toEqual([2]);
+    expect(eventRequestHeaders).toHaveLength(2);
+    expect(eventRequestHeaders[0]?.has("last-event-id")).toBe(false);
+    expect(eventRequestHeaders[1]?.get("last-event-id")).toBe("1");
+
+    const childId = running.execution?.childId;
+    if (childId === undefined) throw new Error("Expected a running longitudinal child.");
+    target.supervisor.observeTermination(childId, {
+      kind: "crashed",
+      observedAtMs: target.clock.now(),
+      exitCode: 1,
+      signal: null,
+    });
+    await target.core.settleBackground();
+  });
+
   it("rejects unknown/build/privacy input and preserves create idempotency", async () => {
     const target = harness();
     const valid = await longitudinalSubmission();
@@ -825,6 +887,8 @@ describe("ComputeV1HttpRouter dedicated longitudinal V2 jobs", () => {
     ));
     expect(limited.status).toBe(429);
     expect(limited.headers.get("retry-after")).toBe("9");
+    expect(limited.headers.get("access-control-expose-headers"))
+      .toContain("retry-after");
 
     const bodyLimited = harness(undefined, undefined, {
       maxLongitudinalJsonBodyBytes: 128,
