@@ -4,6 +4,7 @@
 #   --build-arg SOURCE_COMMIT=<40 lowercase hex Git SHA>
 #   --build-arg RUNTIME_BUNDLE_DIR=output/compute-service-candidate-<release-id>
 #   --build-arg EXPECTED_SDK_VERSION=<reviewed @3dena/analysis version>
+#   --build-arg EXPECTED_BUILD_ID=<reviewed public package build ID>
 # The selected image must contain Node >=20.9 and /sbin/tini. There is no
 # mutable image or runtime-bundle default: omission deliberately fails the build.
 ARG NODE_BASE_IMAGE
@@ -12,6 +13,7 @@ FROM ${NODE_BASE_IMAGE} AS runtime
 ARG SOURCE_COMMIT
 ARG RUNTIME_BUNDLE_DIR
 ARG EXPECTED_SDK_VERSION
+ARG EXPECTED_BUILD_ID
 
 LABEL org.opencontainers.image.revision="${SOURCE_COMMIT}" \
       org.opencontainers.image.source="https://github.com/HUDongpin/j-3dENA"
@@ -43,7 +45,7 @@ RUN test -x /sbin/tini \
     && test -s /app/compute-runtime.mjs \
     && test -s /app/scientific-worker-entry.mjs \
     && test -s /app/build-manifest.json \
-    && node /usr/local/bin/verify-runtime-bundle /app "$EXPECTED_SDK_VERSION" \
+    && node /usr/local/bin/verify-runtime-bundle /app "$EXPECTED_SDK_VERSION" "$EXPECTED_BUILD_ID" "$SOURCE_COMMIT" \
     && ! find /app -type f \( -name '*.R' -o -name '*.rds' -o -name '*.rda' -o -name '*.RData' \) -print -quit | grep -q . \
     && chmod -R a-w /app
 

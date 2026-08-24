@@ -194,7 +194,7 @@ describe("longitudinal V2 export bundle", () => {
     expect(inputPlotlyJson).toContain("private-P1");
     expect(inputPlotlyJson).toContain('"x":[0,3,2,5]');
 
-    const exported = await createExportBundle(bundle, { plotlySpec: participantPlotlySpec });
+    const exported = await createExportBundle(bundle, { displaySpec: participantLevelDisplay });
     const entries = zipEntries(exported.bytes);
     const plotlyJson = DECODER.decode(entries.get("plotly-spec.json")!);
     const exportedPlotly = JSON.parse(plotlyJson) as {
@@ -234,8 +234,8 @@ describe("longitudinal V2 export bundle", () => {
     const plotlySpec = compileTrajectoryPlotlySpec(bundle, display);
     expect(plotlySpec.data.map((trace) => trace.meta.role)).not.toContain("network-edge");
     expect(bundle).toEqual(before);
-    const first = await createExportBundle(bundle, { plotlySpec, fileName: "trajectory-analysis.zip" });
-    const second = await createExportBundle(bundle, { plotlySpec, fileName: "trajectory-analysis.zip" });
+    const first = await createExportBundle(bundle, { displaySpec: display, fileName: "trajectory-analysis.zip" });
+    const second = await createExportBundle(bundle, { displaySpec: display, fileName: "trajectory-analysis.zip" });
     const entries = zipEntries(first.bytes);
 
     expect(first.schemaVersion).toBe("3dena.longitudinal-export-bundle.v2");
@@ -278,8 +278,7 @@ describe("longitudinal V2 export bundle", () => {
 
   it("returns the exact package-generated members for standalone presenter downloads", async () => {
     const bundle = await scientificBundle();
-    const plotlySpec = compileTrajectoryPlotlySpec(bundle, display);
-    const exported = await createExportBundle(bundle, { plotlySpec });
+    const exported = await createExportBundle(bundle, { displaySpec: display });
     const files = (exported as unknown as {
       files?: ReadonlyArray<{ path: string; mediaType: string; bytes: Uint8Array }>;
     }).files;
@@ -293,10 +292,12 @@ describe("longitudinal V2 export bundle", () => {
     }
   });
 
-  it("exports participant histories only after explicit opt-in and rejects a plot from another result", async () => {
+  it("exports participant histories only after explicit opt-in and rejects caller-supplied Plotly payloads", async () => {
     const bundle = await scientificBundle();
-    const plotlySpec = compileTrajectoryPlotlySpec(bundle, participantLevelDisplay);
-    const optedIn = await createExportBundle(bundle, { plotlySpec, includeParticipantLevel: true });
+    const optedIn = await createExportBundle(bundle, {
+      displaySpec: participantLevelDisplay,
+      includeParticipantLevel: true,
+    });
     const entries = zipEntries(optedIn.bytes);
 
     expect([...entries.keys()]).toContain("trajectory-participants.csv");
@@ -311,8 +312,17 @@ describe("longitudinal V2 export bundle", () => {
     expect(manifest.participantLevelIncluded).toBe(true);
     expect(manifest.privacyWarning).toMatch(/re-identification|privacy/i);
 
-    await expect(createExportBundle(bundle, {
-      plotlySpec: { ...plotlySpec, resultHash: "f".repeat(64) },
-    })).rejects.toThrowError(expect.objectContaining({ code: "PLOTLY_RESULT_BINDING_MISMATCH" }));
+    const forgedPlotlyPayload = {
+      displaySpec: participantLevelDisplay,
+      plotlySpec: {
+        schemaVersion: "3dena.trajectory-plotly-spec.v2",
+        resultHash: bundle.identity.resultHash,
+        data: [{ type: "scatter3d", meta: { role: "centroid", resultHash: bundle.identity.resultHash }, text: ["private-P1"] }],
+        layout: { secret: "private-P2" },
+      },
+    };
+    await expect(createExportBundle(bundle, forgedPlotlyPayload as never)).rejects.toThrowError(
+      expect.objectContaining({ code: "INVALID_LONGITUDINAL_EXPORT_OPTIONS" }),
+    );
   });
 });

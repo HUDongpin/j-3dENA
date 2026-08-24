@@ -5,7 +5,7 @@ This directory is a fail-closed deployment candidate, not a production receipt.
 The Docker build requires a reviewed immutable `NODE_BASE_IMAGE` digest that
 already contains `/sbin/tini`, a full lowercase `SOURCE_COMMIT`, an explicit
 new `output/compute-service-candidate-*` `RUNTIME_BUNDLE_DIR`, and the reviewed
-`EXPECTED_SDK_VERSION`. The source commit is written to the standard OCI
+`EXPECTED_SDK_VERSION` plus `EXPECTED_BUILD_ID`. The source commit is written to the standard OCI
 revision label alongside the fixed `https://github.com/HUDongpin/j-3dENA`
 source label; a missing or malformed source commit fails the build. There is no
 default runtime bundle that can silently select a tracked historical artifact.
@@ -56,13 +56,16 @@ docker build \
   --build-arg NODE_BASE_IMAGE=registry.example/node-tini@sha256:REPLACE_WITH_64_HEX \
   --build-arg SOURCE_COMMIT=REPLACE_WITH_40_LOWERCASE_HEX \
   --build-arg RUNTIME_BUNDLE_DIR=output/compute-service-candidate-20260825T010000Z \
-  --build-arg EXPECTED_SDK_VERSION=0.2.0-implemented-unverified.5 \
+  --build-arg EXPECTED_SDK_VERSION=0.2.0-implemented-unverified.6 \
+  --build-arg EXPECTED_BUILD_ID=REPLACE_WITH_REVIEWED_PUBLIC_BUILD_ID \
   -f packages/compute-service-persistent/deploy/Dockerfile .
 ```
 
 The verifier runs before the OCI label can be treated as meaningful and checks
-the v3 manifest, all six contracts, all three migrations, dependency pins,
-jENA/SDK identity, and both bundle digests. The date-like suffix above is an
+the v4 manifest's clean source commit against `SOURCE_COMMIT`, all six
+contracts, all three migrations, dependency pins, exact jENA/SDK/build
+identity (including the source-controlled reviewed jENA commit and tarball
+integrity), and both bundle digests. The date-like suffix above is an
 example release identifier, not a shared mutable directory.
 
 The manual `Exact compute image scan` workflow accepts only an immutable Fly

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
@@ -25,6 +26,9 @@ const REQUIRED_CONTRACT_VERSIONS = Object.freeze([
   "3dena.contract.v1",
   "3dena.longitudinal-compute-submission.v2",
 ]);
+const REQUIRED_JENA_VERSION = "0.7.0-ona.0";
+const REQUIRED_JENA_COMMIT = "90790856f00bdef63dbd27fc3a5b502e8cffe65f";
+const REQUIRED_JENA_TARBALL_INTEGRITY = "sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==";
 const NODE_BUILTINS = new Set([
   ...builtinModules,
   ...builtinModules.map((name) => `node:${name}`),
@@ -33,6 +37,29 @@ const outputDirectory = resolve(requestedOutputDirectory);
 if (outputDirectory === repositoryRoot || !outputDirectory.startsWith(`${repositoryRoot}/output/`)) {
   throw new Error("RUNTIME_BUILD_FAILED: output must be a new directory under repository output/");
 }
+
+function git(args) {
+  try {
+    return execFileSync("git", args, { cwd: repositoryRoot, encoding: "utf8" }).trim();
+  } catch {
+    throw new Error("RUNTIME_BUILD_FAILED: exact Git source identity is unavailable");
+  }
+}
+
+const sourceCommit = git(["rev-parse", "HEAD"]);
+if (!/^[a-f0-9]{40}$/u.test(sourceCommit)) {
+  throw new Error("RUNTIME_BUILD_FAILED: source commit must be a full lowercase Git SHA");
+}
+
+function assertExactCleanSource(expectedCommit) {
+  if (git(["rev-parse", "HEAD"]) !== expectedCommit) {
+    throw new Error("RUNTIME_BUILD_FAILED: source commit changed during runtime bundling");
+  }
+  if (git(["status", "--porcelain=v1", "--untracked-files=all"]) !== "") {
+    throw new Error("RUNTIME_BUILD_FAILED: refusing to build a runtime bundle from a dirty worktree");
+  }
+}
+assertExactCleanSource(sourceCommit);
 
 function exact(value, keys, path) {
   if (!value || typeof value !== "object" || Array.isArray(value) ||
@@ -60,7 +87,7 @@ exact(input, ["schemaVersion", "migrations", "contractVersions", "approvedLongit
 exact(input.approvedLongitudinalBuild, [
   "jenaVersion", "jenaCommit", "jenaTarballIntegrity", "sdkVersion", "buildId",
 ], "input.approvedLongitudinalBuild");
-if (input.schemaVersion !== "3dena.compute-runtime-build-input.v3" ||
+if (input.schemaVersion !== "3dena.compute-runtime-build-input.v4" ||
     !Array.isArray(input.migrations) || input.migrations.length < 1 ||
     !Array.isArray(input.contractVersions) || input.contractVersions.length < 1 ||
     input.contractVersions.some((value) => typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u.test(value)) ||
@@ -68,12 +95,9 @@ if (input.schemaVersion !== "3dena.compute-runtime-build-input.v3" ||
     [...input.contractVersions].sort().some((value, index) => value !== input.contractVersions[index]) ||
     input.contractVersions.length !== REQUIRED_CONTRACT_VERSIONS.length ||
     input.contractVersions.some((value, index) => value !== REQUIRED_CONTRACT_VERSIONS[index]) ||
-    typeof input.approvedLongitudinalBuild.jenaVersion !== "string" ||
-      !/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u.test(input.approvedLongitudinalBuild.jenaVersion) ||
-    typeof input.approvedLongitudinalBuild.jenaCommit !== "string" ||
-      !/^[a-f0-9]{40}$/u.test(input.approvedLongitudinalBuild.jenaCommit) ||
-    typeof input.approvedLongitudinalBuild.jenaTarballIntegrity !== "string" ||
-      !/^sha512-[A-Za-z0-9+/]+={0,2}$/u.test(input.approvedLongitudinalBuild.jenaTarballIntegrity) ||
+    input.approvedLongitudinalBuild.jenaVersion !== REQUIRED_JENA_VERSION ||
+    input.approvedLongitudinalBuild.jenaCommit !== REQUIRED_JENA_COMMIT ||
+    input.approvedLongitudinalBuild.jenaTarballIntegrity !== REQUIRED_JENA_TARBALL_INTEGRITY ||
     typeof input.approvedLongitudinalBuild.sdkVersion !== "string" ||
       !/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u.test(input.approvedLongitudinalBuild.sdkVersion) ||
     typeof input.approvedLongitudinalBuild.buildId !== "string" ||
@@ -182,8 +206,10 @@ try {
   if (runtimeBytes.byteLength < 1 || workerBytes.byteLength < 1) {
     throw new Error("runtime bundle is empty");
   }
+  assertExactCleanSource(sourceCommit);
   const manifest = {
-    schemaVersion: "3dena.compute-runtime-build-manifest.v3",
+    schemaVersion: "3dena.compute-runtime-build-manifest.v4",
+    sourceCommit,
     migrationManifest,
     migrationManifestSha256: sha256(Buffer.from(canonical(migrationManifest), "utf8")),
     contractVersions: input.contractVersions,

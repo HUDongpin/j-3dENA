@@ -75,7 +75,8 @@ node packages/compute-service-persistent/scripts/build-runtime.mjs \
 The destination must be a new `output/compute-service-candidate-*` directory.
 Docker has no fallback bundle: the image build must explicitly pass that exact
 directory and the reviewed SDK version as `RUNTIME_BUNDLE_DIR` and
-`EXPECTED_SDK_VERSION`. The image build rechecks the v3 manifest, all six
+`EXPECTED_SDK_VERSION`, plus the public artifact `EXPECTED_BUILD_ID`. The image
+build rechecks the v4 manifest source commit against the OCI revision, all six
 contracts, all three migrations, dependency pins, scientific identity, and
 both artifact digests before it can receive the current Git revision label.
 
