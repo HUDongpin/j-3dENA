@@ -666,6 +666,8 @@ function assertDisplaySpec(value: TrajectoryDisplaySpecV2): void {
 const GROUP_COLORS = ["#2563eb", "#b45309", "#7c3aed", "#0f766e", "#be123c", "#475569"] as const;
 const AXIS_COLORS = ["#dc2626", "#2563eb", "#16a34a"] as const;
 const TRAJECTORY_LINE_COLOR = "#000000";
+const DIRECTION_ARROW_TIP_PROGRESS = 0.5;
+const DIRECTION_ARROW_TAIL_PROGRESS = 0.35;
 
 function hashString(value: string): number {
   let hash = 0;
@@ -894,16 +896,19 @@ export function compileTrajectoryPlotlySpec(
         const current = dynamics.periods[index]!.selectedCentroid;
         if (previous === null || current === null || dynamics.periods[index]!.selected3d.stepDistance === null) continue;
         if (dimension === 3) {
-          const currentProjected = projectedFields([current], "3d", displaySpec.axisFlips);
+          const midpoint = current.map((value, axisIndex) => (
+            previous[axisIndex]! + (value - previous[axisIndex]!) * DIRECTION_ARROW_TIP_PROGRESS
+          )) as [number, number, number];
+          const midpointProjected = projectedFields([midpoint], "3d", displaySpec.axisFlips);
           const delta = current.map((value, axisIndex) => {
             const raw = value - previous[axisIndex]!;
             return displaySpec.axisFlips[axisIndex] ? -raw : raw;
           });
           data.push({
             type: "cone",
-            x: currentProjected.x,
-            y: currentProjected.y,
-            z: currentProjected.z,
+            x: midpointProjected.x,
+            y: midpointProjected.y,
+            z: midpointProjected.z,
             u: [delta[0]],
             v: [delta[1]],
             w: [delta[2]],
@@ -918,7 +923,13 @@ export function compileTrajectoryPlotlySpec(
           });
         } else {
           const indexes = projectionIndexes(displaySpec.projection)!;
-          const projected = projectedFields([previous, current], displaySpec.projection, displaySpec.axisFlips);
+          const arrowPoint = (progress: number) => current.map((value, axisIndex) => (
+            previous[axisIndex]! + (value - previous[axisIndex]!) * progress
+          )) as [number, number, number];
+          const projected = projectedFields([
+            arrowPoint(DIRECTION_ARROW_TAIL_PROGRESS),
+            arrowPoint(DIRECTION_ARROW_TIP_PROGRESS),
+          ], displaySpec.projection, displaySpec.axisFlips);
           const dx = (current[indexes[0]]! - previous[indexes[0]]!) * (displaySpec.axisFlips[indexes[0]] ? -1 : 1);
           const dy = (current[indexes[1]]! - previous[indexes[1]]!) * (displaySpec.axisFlips[indexes[1]] ? -1 : 1);
           const angle = 90 - Math.atan2(dy, dx) * 180 / Math.PI;

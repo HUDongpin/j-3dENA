@@ -258,19 +258,25 @@ describe("dedicated trajectory Plotly compiler", () => {
 
     const three = compileTrajectoryPlotlySpec(scientific, displaySpec("3d"));
     const threeUncertainty = three.data.find((trace) => trace.meta.role === "uncertainty")!;
-    expect(three.data.filter((trace) => trace.meta.role === "direction-arrow")).toHaveLength(2);
-    expect(three.data.filter((trace) => trace.meta.role === "direction-arrow")).toEqual(
+    const threeArrows = three.data.filter((trace) => trace.meta.role === "direction-arrow");
+    expect(threeArrows).toHaveLength(2);
+    expect(threeArrows).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ colorscale: [[0, "#000000"], [1, "#000000"]] }),
       ]),
     );
+    expect(threeArrows.map((trace) => [trace.x, trace.y, trace.z])).toEqual([
+      [[1.75], [2.75], [3.75]],
+      [[3.25], [4.25], [5.25]],
+    ]);
     expect(threeUncertainty).toMatchObject({ type: "scatter3d", error_x: { type: "data", symmetric: false }, error_y: { type: "data", symmetric: false }, error_z: { type: "data", symmetric: false } });
     expect(threeUncertainty).not.toMatchObject({ marker: { color: "#000000" } });
     expect(three.data.some((trace) => String(trace.meta.role).includes("tube"))).toBe(false);
 
     const two = compileTrajectoryPlotlySpec(scientific, displaySpec("xy"));
-    expect(two.data.filter((trace) => trace.meta.role === "direction-arrow")).toHaveLength(2);
-    expect(two.data.filter((trace) => trace.meta.role === "direction-arrow")).toEqual(
+    const twoArrows = two.data.filter((trace) => trace.meta.role === "direction-arrow");
+    expect(twoArrows).toHaveLength(2);
+    expect(twoArrows).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           line: expect.objectContaining({ color: "#000000" }),
@@ -278,6 +284,10 @@ describe("dedicated trajectory Plotly compiler", () => {
         }),
       ]),
     );
+    expect(twoArrows.map((trace) => [trace.x, trace.y])).toEqual([
+      [[1.525, 1.75], [2.525, 2.75]],
+      [[3.025, 3.25], [4.025, 4.25]],
+    ]);
     expect(two.data.find((trace) => trace.meta.role === "uncertainty")).toMatchObject({ type: "scatter", error_x: { type: "data", symmetric: false }, error_y: { type: "data", symmetric: false } });
   });
 });
