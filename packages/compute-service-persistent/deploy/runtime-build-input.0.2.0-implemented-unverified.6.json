@@ -1,11 +1,11 @@
 {
-  "schemaVersion": "3dena.compute-runtime-build-input.v3",
+  "schemaVersion": "3dena.compute-runtime-build-input.v4",
   "approvedLongitudinalBuild": {
     "jenaVersion": "0.7.0-ona.0",
     "jenaCommit": "90790856f00bdef63dbd27fc3a5b502e8cffe65f",
     "jenaTarballIntegrity": "sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==",
-    "sdkVersion": "0.2.0-implemented-unverified.5",
-    "buildId": "ee697967df9b7abab020c519d8ae7437edb4f97e"
+    "sdkVersion": "0.2.0-implemented-unverified.6",
+    "buildId": "a2ef75a6fd715c4e935a6f93978c3520b98504a4"
   },
   "migrations": [
     {
