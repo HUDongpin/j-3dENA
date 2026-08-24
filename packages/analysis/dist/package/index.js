@@ -4847,6 +4847,7 @@ Object.freeze({
 					"directionArrows",
 					"uncertainty",
 					"networkOverlay",
+					"codeNodes",
 					"labels"
 				].map((field) => [field, { type: "boolean" }]))
 			},
@@ -36753,7 +36754,7 @@ var init_build_identity = __esmMin((() => {
 		jenaCommit: injected("90790856f00bdef63dbd27fc3a5b502e8cffe65f", "development-unbound"),
 		jenaTarballIntegrity: injected("sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==", "development-unbound"),
 		sdkVersion: injected("0.2.0", "development-unbound"),
-		buildId: injected("04aa1685a2732d1325b14376d97bce7be926ec9c", "development-unbound"),
+		buildId: injected("758ca0633f1d1616ad28cd6e4eb3e1fcd7cddbfc", "development-unbound"),
 		bound: true
 	});
 }));
@@ -40498,7 +40499,7 @@ function assertDisplaySpec(value) {
 	if (!Array.isArray(spec.displayedGroups) || spec.displayedGroups.some((group) => typeof group !== "string")) contractError("displaySpec.displayedGroups", "must be a string array");
 	if (!Array.isArray(spec.axisFlips) || spec.axisFlips.length !== 3 || spec.axisFlips.some((entry) => typeof entry !== "boolean")) contractError("displaySpec.axisFlips", "must contain three booleans");
 	const traces = objectAt(spec.traces, "displaySpec.traces");
-	const traceFields = [
+	const requiredTraceFields = [
 		"participants",
 		"individualPaths",
 		"centroids",
@@ -40508,8 +40509,8 @@ function assertDisplaySpec(value) {
 		"networkOverlay",
 		"labels"
 	];
-	exactFields(traces, traceFields, traceFields, "displaySpec.traces");
-	if (traceFields.some((field) => typeof traces[field] !== "boolean")) contractError("displaySpec.traces", "all trace controls must be boolean");
+	exactFields(traces, [...requiredTraceFields, "codeNodes"], requiredTraceFields, "displaySpec.traces");
+	if (requiredTraceFields.some((field) => typeof traces[field] !== "boolean") || "codeNodes" in traces && typeof traces.codeNodes !== "boolean") contractError("displaySpec.traces", "all trace controls must be boolean");
 	const style = objectAt(spec.style, "displaySpec.style");
 	exactFields(style, [
 		"participantSize",
@@ -40812,15 +40813,16 @@ function compileTrajectoryPlotlySpec(bundle, displaySpec) {
 			}
 		}
 	}
-	if (displaySpec.traces.networkOverlay) {
+	if (displaySpec.traces.codeNodes || displaySpec.traces.networkOverlay) {
 		const overlays = bundle.networkOverlays.filter((overlay) => overlay.status === "available" && (overlay.groupCanonical === null || selectedGroups.size === 0 || selectedGroups.has(overlay.groupCanonical)));
 		for (const overlay of overlays) {
 			const nodes = overlay.nodes;
 			data.push(trace$1(dimension, resultHash, "network-node", {
 				mode: "markers+text",
-				name: "Mean network nodes",
+				name: "ENA codes",
 				...projectedFields(nodes.map((node) => node.coordinates), displaySpec.projection, displaySpec.axisFlips),
 				text: nodes.map((node) => node.code),
+				textposition: "top center",
 				marker: {
 					size: nodes.map((node) => 8 + Math.sqrt(Math.max(0, node.weight)) * 4),
 					color: "#f8fafc",
@@ -40830,6 +40832,7 @@ function compileTrajectoryPlotlySpec(bundle, displaySpec) {
 					}
 				}
 			}, { ...overlay.groupCanonical ? { groupCanonical: overlay.groupCanonical } : {} }));
+			if (!displaySpec.traces.networkOverlay) continue;
 			for (const edge of overlay.edges) {
 				const source = nodes[edge.sourceIndex];
 				const target = nodes[edge.targetIndex];

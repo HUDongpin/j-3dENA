@@ -252,6 +252,8 @@ export interface TrajectoryDisplaySpecV2 {
         directionArrows: boolean;
         uncertainty: boolean;
         networkOverlay: boolean;
+        /** Show fitted ENA code reference nodes without requiring mean-network edges. */
+        codeNodes?: boolean;
         labels: boolean;
     };
     axisFlips: [boolean, boolean, boolean];
