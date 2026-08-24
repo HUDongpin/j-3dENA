@@ -301,7 +301,7 @@ describe("dedicated trajectory Plotly compiler", () => {
     });
   });
 
-  it("shows fitted ENA code nodes independently from optional mean-network edges", () => {
+  it("shows fitted ENA code references while legacy mean-network display flags fail closed", () => {
     const scientific = bundle();
     scientific.networkOverlays = [{
       status: "available",
@@ -327,19 +327,32 @@ describe("dedicated trajectory Plotly compiler", () => {
       textfont: { color: "#0f172a", size: 13 },
       marker: { size: 7, symbol: "circle-open", color: "#ffffff" },
     });
-    expect(three.data.filter((trace) => trace.meta.role === "network-edge")).toHaveLength(0);
+    expect(three.data.map((trace) => trace.meta.role)).not.toContain("network-edge");
 
     const twoCodesOnly = structuredClone(codesOnly);
     twoCodesOnly.projection = "xy";
     const two = compileTrajectoryPlotlySpec(scientific, twoCodesOnly);
     expect(two.data.find((trace) => trace.meta.role === "network-node")?.text).toEqual(["RE", "IN"]);
-    expect(two.data.filter((trace) => trace.meta.role === "network-edge")).toHaveLength(0);
+    expect(two.data.map((trace) => trace.meta.role)).not.toContain("network-edge");
 
     const withEdges = structuredClone(codesOnly);
     withEdges.traces.networkOverlay = true;
     const edgePlot = compileTrajectoryPlotlySpec(scientific, withEdges);
     expect(edgePlot.data.filter((trace) => trace.meta.role === "network-node")).toHaveLength(1);
-    expect(edgePlot.data.filter((trace) => trace.meta.role === "network-edge")).toHaveLength(1);
+    expect(edgePlot.data.map((trace) => trace.meta.role)).not.toContain("network-edge");
+
+    const withoutCodesOrEdges = structuredClone(codesOnly);
+    withoutCodesOrEdges.traces.codeNodes = false;
+    const hiddenWithoutLegacyOverlay = compileTrajectoryPlotlySpec(scientific, withoutCodesOrEdges);
+    const hiddenWithLegacyOverlayDisplay = structuredClone(withoutCodesOrEdges);
+    hiddenWithLegacyOverlayDisplay.traces.networkOverlay = true;
+    const hiddenWithLegacyOverlay = compileTrajectoryPlotlySpec(scientific, hiddenWithLegacyOverlayDisplay);
+    expect(hiddenWithLegacyOverlay).toEqual(hiddenWithoutLegacyOverlay);
+    for (const plot of [hiddenWithoutLegacyOverlay, hiddenWithLegacyOverlay]) {
+      const roles = plot.data.map((trace) => trace.meta.role);
+      expect(roles).not.toContain("network-node");
+      expect(roles).not.toContain("network-edge");
+    }
   });
 
   it("shows fitted ENA codes by default for legacy V2 display specs without codeNodes", () => {
@@ -382,7 +395,7 @@ describe("dedicated trajectory Plotly compiler", () => {
       const plot = compileTrajectoryPlotlySpec(scientific, current);
       expect(plot.data.filter((trace) => trace.meta.role === "network-node")).toHaveLength(1);
       expect(plot.data.find((trace) => trace.meta.role === "network-node")?.text).toEqual(["RE", "IN"]);
-      expect(plot.data.filter((trace) => trace.meta.role === "network-edge")).toHaveLength(0);
+      expect(plot.data.map((trace) => trace.meta.role)).not.toContain("network-edge");
     }
   });
 

@@ -69,8 +69,16 @@ input without signing or activating anything:
 ```sh
 node packages/compute-service-persistent/scripts/build-runtime.mjs \
   packages/compute-service-persistent/deploy/runtime-build-input.example.json \
-  output/compute-service
+  output/compute-service-candidate-20260825T010000Z
 ```
+
+The destination must be a new `output/compute-service-candidate-*` directory.
+Docker has no fallback bundle: the image build must explicitly pass that exact
+directory and the reviewed SDK version as `RUNTIME_BUNDLE_DIR` and
+`EXPECTED_SDK_VERSION`, plus the public artifact `EXPECTED_BUILD_ID`. The image
+build rechecks the v4 manifest source commit against the OCI revision, all six
+contracts, all three migrations, dependency pins, scientific identity, and
+both artifact digests before it can receive the current Git revision label.
 
 The separate migration CLI has explicit `apply` and `verify` modes. Runtime
 startup only verifies; it never applies or repairs schema implicitly.

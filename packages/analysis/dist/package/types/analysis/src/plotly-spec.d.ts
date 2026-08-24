@@ -1,7 +1,11 @@
 import { type DisplaySpecV1 } from "./contracts.js";
 import type { PreparedSpaceResult } from "./prepared-types.js";
 import type { AnalysisDiagnostic, AnalysisResult } from "./types.js";
-export type PlotlyTraceRoleV1 = "participant" | "node" | "network-edge" | "centroid" | "trajectory" | "axis-shaft" | "axis-arrowhead";
+export type PlotlyTraceRoleV1 = "participant" | "node" | "network-edge"
+/** @deprecated Historical V1 readback only; compilePlotlySpec no longer emits this role. */
+ | "centroid"
+/** @deprecated Historical V1 readback only; compilePlotlySpec no longer emits this role. */
+ | "trajectory" | "axis-shaft" | "axis-arrowhead";
 export interface PlotlyTraceV1 extends Record<string, unknown> {
     type: "scatter" | "scatter3d" | "cone";
     meta: {

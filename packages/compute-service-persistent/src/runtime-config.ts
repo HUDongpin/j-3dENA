@@ -19,8 +19,25 @@ import {
 const GIT_COMMIT = /^[a-f0-9]{40}$/u;
 const IMAGE_DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const VERSION = /^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u;
+const REQUIRED_JENA_VERSION = "0.7.0-ona.0";
+const REQUIRED_JENA_COMMIT = "90790856f00bdef63dbd27fc3a5b502e8cffe65f";
+const REQUIRED_JENA_TARBALL_INTEGRITY = "sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==";
+const REQUIRED_CONTRACT_VERSIONS = [
+  "3dena.compute-dataset-http.v1",
+  "3dena.compute-http.v1",
+  "3dena.compute-prepared-import-http.v1",
+  "3dena.compute-source-result-job-http.v1",
+  "3dena.contract.v1",
+  "3dena.longitudinal-compute-submission.v2",
+] as const;
+const REQUIRED_MIGRATION_VERSIONS = [
+  "0001-persistent-compute",
+  "0002-persistent-control-plane",
+  "0003-build-approval-v3",
+] as const;
 const RUNTIME_MANIFEST_FIELDS = [
   "schemaVersion",
+  "sourceCommit",
   "migrationManifest",
   "migrationManifestSha256",
   "contractVersions",
@@ -31,7 +48,8 @@ const RUNTIME_MANIFEST_FIELDS = [
 ] as const;
 
 export interface ComputeRuntimeBuildManifestV1 {
-  readonly schemaVersion: "3dena.compute-runtime-build-manifest.v3";
+  readonly schemaVersion: "3dena.compute-runtime-build-manifest.v4";
+  readonly sourceCommit: string;
   readonly migrationManifest: readonly Readonly<{
     readonly sha256: string;
     readonly version: string;
@@ -127,7 +145,8 @@ export function assertComputeRuntimeBuildManifestV1(
   value: unknown,
 ): asserts value is ComputeRuntimeBuildManifestV1 {
   if (!isRecord(value) || !hasExactKeys(value, RUNTIME_MANIFEST_FIELDS) ||
-      value.schemaVersion !== "3dena.compute-runtime-build-manifest.v3" ||
+      value.schemaVersion !== "3dena.compute-runtime-build-manifest.v4" ||
+      typeof value.sourceCommit !== "string" || !GIT_COMMIT.test(value.sourceCommit) ||
       !isMigrationManifest(value.migrationManifest) ||
       typeof value.migrationManifestSha256 !== "string" ||
         !LOWER_SHA256.test(value.migrationManifestSha256) ||
@@ -143,12 +162,9 @@ export function assertComputeRuntimeBuildManifestV1(
       !hasExactKeys(value.approvedLongitudinalBuild, [
         "jenaVersion", "jenaCommit", "jenaTarballIntegrity", "sdkVersion", "buildId",
       ]) ||
-      typeof value.approvedLongitudinalBuild.jenaVersion !== "string" ||
-        !VERSION.test(value.approvedLongitudinalBuild.jenaVersion) ||
-      typeof value.approvedLongitudinalBuild.jenaCommit !== "string" ||
-        !GIT_COMMIT.test(value.approvedLongitudinalBuild.jenaCommit) ||
-      typeof value.approvedLongitudinalBuild.jenaTarballIntegrity !== "string" ||
-        !/^sha512-[A-Za-z0-9+/]+={0,2}$/u.test(value.approvedLongitudinalBuild.jenaTarballIntegrity) ||
+      value.approvedLongitudinalBuild.jenaVersion !== REQUIRED_JENA_VERSION ||
+      value.approvedLongitudinalBuild.jenaCommit !== REQUIRED_JENA_COMMIT ||
+      value.approvedLongitudinalBuild.jenaTarballIntegrity !== REQUIRED_JENA_TARBALL_INTEGRITY ||
       typeof value.approvedLongitudinalBuild.sdkVersion !== "string" ||
         !VERSION.test(value.approvedLongitudinalBuild.sdkVersion) ||
       typeof value.approvedLongitudinalBuild.buildId !== "string" ||
@@ -156,6 +172,12 @@ export function assertComputeRuntimeBuildManifestV1(
     throw new TypeError("Runtime build manifest is invalid.");
   }
   assertVersions(value.contractVersions, "manifest.contractVersions");
+  if (value.contractVersions.length !== REQUIRED_CONTRACT_VERSIONS.length ||
+      value.contractVersions.some((entry, index) => entry !== REQUIRED_CONTRACT_VERSIONS[index]) ||
+      value.migrationManifest.length !== REQUIRED_MIGRATION_VERSIONS.length ||
+      value.migrationManifest.some((entry, index) => entry.version !== REQUIRED_MIGRATION_VERSIONS[index])) {
+    throw new TypeError("Runtime build manifest contract or migration set is not current.");
+  }
 }
 
 export async function loadComputeRuntimeConfiguration(
@@ -190,6 +212,9 @@ export async function loadComputeRuntimeConfiguration(
   );
   const releaseId = exactEnvironment(environment, "RELEASE_ID", OPAQUE_ID);
   const gitCommit = exactEnvironment(environment, "GIT_COMMIT", GIT_COMMIT);
+  if (gitCommit !== manifest.sourceCommit) {
+    throw new TypeError("Runtime source commit does not match GIT_COMMIT.");
+  }
   const flyImageDigest = exactEnvironment(environment, "FLY_IMAGE_DIGEST", IMAGE_DIGEST);
   const flyBuildId = exactEnvironment(environment, "FLY_BUILD_ID", OPAQUE_ID);
   const expectedBuild: ExpectedRuntimeBuildV1 = Object.freeze({

@@ -277,7 +277,7 @@ describe("versioned public contracts", () => {
     expect(ajv.validate(CONTRACT_SCHEMAS_V1.resultEnvelope.$id, missingProvenanceEntry)).toBe(false);
   });
 
-  it("validates display-only trace, style, and camera state as one strict contract", () => {
+  it("keeps legacy generic trajectory flags readable within the strict display contract", () => {
     const spec = {
       schemaVersion: "3dena.display-spec.v1",
       dimensions: ["SVD1", "SVD2", "SVD3"],
@@ -295,7 +295,7 @@ describe("versioned public contracts", () => {
     expect(() => assertDisplaySpecV1({ ...spec, camera: { ...spec.camera, secret: true } })).toThrow(/unknown field/);
   });
 
-  it("accepts Plotly camera projection in the trajectory display V2 schema", () => {
+  it("keeps legacy trajectory network-overlay flags readable with Plotly camera projection", () => {
     const spec = {
       schemaVersion: "3dena.trajectory-display-spec.v2",
       projection: "3d",
@@ -307,8 +307,7 @@ describe("versioned public contracts", () => {
         paths: true,
         directionArrows: true,
         uncertainty: false,
-        networkOverlay: false,
-        codeNodes: true,
+        networkOverlay: true,
         labels: true,
       },
       axisFlips: [false, false, false],

@@ -21,9 +21,10 @@ import type {
 } from "./trajectory-statistics";
 import type { AnalysisDiagnostic, AnalysisResult, RawScalar } from "./types";
 import {
+  compileTrajectoryPlotlySpec,
   verifyLongitudinalAnalysisBundleV2,
   type LongitudinalAnalysisBundleV2,
-  type TrajectoryPlotlySpecV2,
+  type TrajectoryDisplaySpecV2,
 } from "./longitudinal-v2";
 
 export interface AnalysisExportPortfolioV1 {
@@ -73,8 +74,11 @@ export interface ExportBundleV1 {
 }
 
 export interface CreateLongitudinalExportBundleOptionsV2 {
-  /** Exact presenter spec shown to the researcher; it remains separate from the scientific envelope. */
-  plotlySpec: TrajectoryPlotlySpecV2;
+  /**
+   * Display-only inputs used by the package to compile the exported presenter
+   * spec. Caller-supplied Plotly payloads are never accepted into the bundle.
+   */
+  displaySpec: TrajectoryDisplaySpecV2;
   /** Participant identifiers and histories are omitted unless the researcher explicitly opts in. */
   includeParticipantLevel?: boolean;
   fileName?: string;
@@ -653,19 +657,30 @@ async function createLongitudinalExportBundleV2(
   bundle: LongitudinalAnalysisBundleV2,
   options: CreateLongitudinalExportBundleOptionsV2,
 ): Promise<LongitudinalExportBundleV2> {
-  if (!options || typeof options !== "object" || Array.isArray(options)) reject("INVALID_EXPORT_OPTIONS", "options", "must be an object");
+  if (!options || typeof options !== "object" || Array.isArray(options)) reject("INVALID_LONGITUDINAL_EXPORT_OPTIONS", "options", "must be an object");
+  const unknownOption = Object.keys(options).find((field) => ![
+    "displaySpec", "includeParticipantLevel", "fileName", "zipLimits",
+  ].includes(field));
+  if (unknownOption) reject("INVALID_LONGITUDINAL_EXPORT_OPTIONS", "options", `contains unknown field ${JSON.stringify(unknownOption)}`);
   await verifyLongitudinalAnalysisBundleV2(bundle);
-  if (!options.plotlySpec || options.plotlySpec.schemaVersion !== "3dena.trajectory-plotly-spec.v2") reject("INVALID_TRAJECTORY_PLOTLY_SPEC", "options.plotlySpec", "must be a compiled V2 trajectory Plotly spec");
-  if (options.plotlySpec.resultHash !== bundle.identity.resultHash) reject("PLOTLY_RESULT_BINDING_MISMATCH", "options.plotlySpec.resultHash", "does not match the exported longitudinal result");
   if (options.includeParticipantLevel !== undefined && typeof options.includeParticipantLevel !== "boolean") reject("INVALID_PARTICIPANT_EXPORT_OPTION", "options.includeParticipantLevel", "must be boolean");
   const participantLevelIncluded = options.includeParticipantLevel === true;
+  const exactPresenterSpec = compileTrajectoryPlotlySpec(bundle, options.displaySpec);
+  const exportDisplaySpec = structuredClone(options.displaySpec);
+  if (!participantLevelIncluded) {
+    exportDisplaySpec.traces.participants = false;
+    exportDisplaySpec.traces.individualPaths = false;
+  }
+  const exportedPlotlySpec = participantLevelIncluded
+    ? exactPresenterSpec
+    : compileTrajectoryPlotlySpec(bundle, exportDisplaySpec);
   const pending: PendingEntry[] = [
     json("analysis.json", aggregateTrajectoryEnvelope(bundle)),
     longitudinalPathEntry(bundle),
     longitudinalMetadataEntry(bundle),
     longitudinalInferenceEntry(bundle),
     ...(bundle.bootstrap.length > 0 ? [longitudinalBootstrapEntry(bundle)] : []),
-    json("plotly-spec.json", options.plotlySpec),
+    json("plotly-spec.json", exportedPlotlySpec),
   ];
   if (participantLevelIncluded) pending.push(longitudinalParticipantEntry(bundle));
   const sorted = [...pending].sort((left, right) => left.path.localeCompare(right.path, "en"));

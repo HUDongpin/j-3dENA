@@ -21,7 +21,7 @@ local implementation candidates:
 - public model-row and source-row accumulation tables with typed identities;
 - stale-result suppression through dataset, specification, run, and Worker
   ownership;
-- Plotly 2D/3D network, point, and trajectory rendering;
+- mutually exclusive Plotly 2D/3D ENA-network and dedicated trajectory rendering;
 - strict, transactional `.ena3d.json` prepared-space import with same-realm
   byte custody and a browser-validated Class 1 trajectory path;
 - RFC 4180 CSV, provenance JSON, and deterministic ZIP result exports;

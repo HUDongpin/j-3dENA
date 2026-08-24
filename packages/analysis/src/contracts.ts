@@ -142,7 +142,9 @@ export interface DisplaySpecV1 {
     points: boolean;
     nodes: boolean;
     network: boolean;
+    /** Legacy saved-display field; accepted on read but ignored because V1 has no ordinary group-mean artifact. */
     centroids: boolean;
+    /** Legacy saved-display field; accepted on read but ignored by the generic ENA presenter. */
     trajectory: boolean;
     uncertainty: boolean;
   };
@@ -153,6 +155,7 @@ export interface DisplaySpecV1 {
     nodeOpacity: number;
     edgeThreshold: number;
     edgeWidthScale: number;
+    /** Legacy required V1 readback-only field; compilePlotlySpec treats it as a no-op. */
     trajectoryWidth: number;
   };
   camera: {

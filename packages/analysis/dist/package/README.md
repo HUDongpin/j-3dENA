@@ -46,6 +46,20 @@ The supported runtime root exports are exactly:
 - `executeLongitudinalAnalysisV2(input)`
 - `getAnalysisBuildIdentityV2()`
 - `hashAnalysisValueV1(value)`
+- `hashLongitudinalExecutionRequestV2(input)`
+
+The plotting APIs are mutually exclusive presenter boundaries:
+`compilePlotlySpec()` is ENA-only: it renders fitted participant points, code
+nodes, network edges, and axes, but no group-period centroids or time-point
+labels. V1 has no independent ordinary group-mean input, so its
+read-compatible legacy `traces.centroids` and `traces.trajectory` flags are
+display no-ops. The required legacy `style.trajectoryWidth` field is likewise
+readback-only. `compileTrajectoryPlotlySpec()` is trajectory-only and ignores
+the read-compatible legacy
+`traces.networkOverlay` flag. Fitted
+code reference nodes remain part of trajectory plots because they are
+coordinate references, not ENA network edges. Longitudinal scientific bundles
+and exports retain their immutable `networkOverlays` data.
 
 No `@3dena/*` internal subpath is a public compatibility promise. Versioned
 contract and result types remain type-only root exports. The runtime

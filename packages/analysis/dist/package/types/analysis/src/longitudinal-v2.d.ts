@@ -258,6 +258,7 @@ export interface TrajectoryDisplaySpecV2 {
         paths: boolean;
         directionArrows: boolean;
         uncertainty: boolean;
+        /** Legacy saved-display field; accepted on read but ignored by the trajectory presenter. */
         networkOverlay: boolean;
         /** Show fitted ENA code reference nodes without requiring mean-network edges. */
         codeNodes?: boolean;
@@ -291,7 +292,9 @@ export interface TrajectoryDisplaySpecV2 {
         pathWidth: number;
     };
 }
-export type TrajectoryPlotlyTraceRoleV2 = "participant" | "individual-path" | "centroid" | "trajectory-path" | "direction-arrow" | "uncertainty" | "network-node" | "network-edge" | "axis-shaft" | "axis-arrowhead";
+export type TrajectoryPlotlyTraceRoleV2 = "participant" | "individual-path" | "centroid" | "trajectory-path" | "direction-arrow" | "uncertainty" | "network-node"
+/** @deprecated Historical V2 readback only; compileTrajectoryPlotlySpec no longer emits this role. */
+ | "network-edge" | "axis-shaft" | "axis-arrowhead";
 export interface TrajectoryPlotlyTraceV2 extends Record<string, unknown> {
     type: "scatter" | "scatter3d" | "cone";
     meta: {

@@ -49,7 +49,7 @@ describe("build approval candidate CLI", () => {
         flyBuildId: "fly-cli-test",
         jenaVersion: "0.7.0-ona.0",
         jenaCommit: "c".repeat(40),
-        sdkVersion: "0.2.0-implemented-unverified.1",
+        sdkVersion: "0.2.0-implemented-unverified.6",
         buildId: "approved-cli-scientific-build-1",
         migrations,
         contractVersions: ["3dena.compute-http.v1", "3dena.contract.v1"],

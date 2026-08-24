@@ -6,11 +6,11 @@
 
 !output/
 output/**
-!output/compute-service/
-output/compute-service/**
-!output/compute-service/compute-runtime.mjs
-!output/compute-service/scientific-worker-entry.mjs
-!output/compute-service/build-manifest.json
+!output/compute-service-candidate-*/
+output/compute-service-candidate-*/**
+!output/compute-service-candidate-*/compute-runtime.mjs
+!output/compute-service-candidate-*/scientific-worker-entry.mjs
+!output/compute-service-candidate-*/build-manifest.json
 
 !packages/
 packages/**
@@ -20,3 +20,4 @@ packages/compute-service-persistent/**
 packages/compute-service-persistent/deploy/**
 !packages/compute-service-persistent/deploy/Dockerfile
 !packages/compute-service-persistent/deploy/entrypoint.sh
+!packages/compute-service-persistent/deploy/verify-runtime-bundle.mjs

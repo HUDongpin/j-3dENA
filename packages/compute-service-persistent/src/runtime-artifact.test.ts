@@ -17,15 +17,15 @@ describe("immutable compute runtime artifact", () => {
     const output = join(repositoryRoot, "output", `runtime-artifact-${randomUUID()}`);
     const approvedLongitudinalBuild = {
       jenaVersion: "0.7.0-ona.0",
-      jenaCommit: "a".repeat(40),
-      jenaTarballIntegrity: "sha512-ZXhhY3QtamVuYS10YXJiYWxs",
-      sdkVersion: "0.2.0-implemented-unverified.1",
+      jenaCommit: "90790856f00bdef63dbd27fc3a5b502e8cffe65f",
+      jenaTarballIntegrity: "sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==",
+      sdkVersion: "0.2.0-implemented-unverified.6",
       buildId: "signed-artifact-build-1",
     };
     try {
       const inputPath = join(temporary, "runtime-input.json");
       await writeFile(inputPath, JSON.stringify({
-        schemaVersion: "3dena.compute-runtime-build-input.v3",
+        schemaVersion: "3dena.compute-runtime-build-input.v4",
         approvedLongitudinalBuild,
         migrations: [
           {
@@ -75,10 +75,17 @@ describe("immutable compute runtime artifact", () => {
       const manifest = JSON.parse(
         await readFile(join(output, "build-manifest.json"), "utf8"),
       ) as {
+        schemaVersion: string;
+        sourceCommit: string;
         approvedLongitudinalBuild: unknown;
         runtimeBundleSha256: string;
         scientificWorkerBundleSha256: string;
       };
+      const sourceCommit = (await execute("git", ["rev-parse", "HEAD"], {
+        cwd: repositoryRoot,
+      })).stdout.trim();
+      expect(manifest.schemaVersion).toBe("3dena.compute-runtime-build-manifest.v4");
+      expect(manifest.sourceCommit).toBe(sourceCommit);
       expect(manifest.approvedLongitudinalBuild).toEqual(approvedLongitudinalBuild);
       expect(manifest.runtimeBundleSha256).toBe(
         createHash("sha256").update(runtime).digest("hex"),
