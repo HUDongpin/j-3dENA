@@ -463,6 +463,7 @@ function requestBody(request: IncomingMessage): ReadableStream<Uint8Array<ArrayB
 async function toWebRequest(
   request: IncomingMessage,
   publicBaseUrl: string,
+  signal: AbortSignal,
 ): Promise<Request> {
   const url = new URL(request.url ?? "/", publicBaseUrl);
   const headers = new Headers();
@@ -473,13 +474,14 @@ async function toWebRequest(
   }
   const method = request.method ?? "GET";
   if (method === "GET" || method === "HEAD") {
-    return new Request(url, { method, headers });
+    return new Request(url, { method, headers, signal });
   }
   const init: RequestInit & { duplex: "half" } = {
     method,
     headers,
     body: requestBody(request),
     duplex: "half",
+    signal,
   };
   return new Request(url, init);
 }
@@ -492,19 +494,90 @@ async function sendWebResponse(response: Response, target: ServerResponse): Prom
     return;
   }
   const reader = response.body.getReader();
+  let closedEarly = false;
+  let settleClosed!: () => void;
+  const targetClosed = new Promise<void>((resolve) => {
+    settleClosed = resolve;
+  });
+  let cancellation: Promise<void> | null = null;
+  const cancelForClosedTarget = (): void => {
+    if (target.writableEnded || closedEarly) return;
+    closedEarly = true;
+    settleClosed();
+    cancellation = reader.cancel(
+      new DOMException("The Node HTTP response was closed by the client.", "AbortError"),
+    ).catch(() => undefined);
+  };
+  target.once("close", cancelForClosedTarget);
+  if (target.destroyed && !target.writableEnded) cancelForClosedTarget();
   try {
-    while (true) {
-      const next = await reader.read();
-      if (next.done) break;
+    while (!closedEarly) {
+      const next = await Promise.race([
+        reader.read(),
+        targetClosed.then(() => ({ done: true as const, value: undefined })),
+      ]);
+      if (closedEarly || next.done) break;
       if (!target.write(next.value)) {
-        await new Promise<void>((resolve) => target.once("drain", resolve));
+        await new Promise<void>((resolve) => {
+          const settle = (): void => {
+            target.off("drain", settle);
+            target.off("close", settle);
+            resolve();
+          };
+          target.once("drain", settle);
+          target.once("close", settle);
+          if (target.destroyed) settle();
+        });
       }
     }
-    target.end();
-  } catch {
-    target.destroy();
+    if (!closedEarly) target.end();
+  } catch (error) {
+    if (!closedEarly) {
+      await reader.cancel(error).catch(() => undefined);
+      target.destroy(error instanceof Error ? error : undefined);
+    }
   } finally {
+    target.off("close", cancelForClosedTarget);
+    if (cancellation !== null) await cancellation;
     reader.releaseLock();
+  }
+}
+
+/**
+ * Bridges one real Node HTTP exchange into the Web Request/Response contract
+ * consumed by the compute router. The Web signal remains live for the full
+ * response lifetime so a client disappearing during an SSE stream is visible
+ * to both the router and the response body's cancellation hook.
+ */
+export async function bridgeNodeHttpRequest(
+  request: IncomingMessage,
+  response: ServerResponse,
+  publicBaseUrl: string,
+  handle: (request: Request) => Response | Promise<Response>,
+): Promise<void> {
+  const controller = new AbortController();
+  let completed = false;
+  const abortTransport = (): void => {
+    if (completed || controller.signal.aborted) return;
+    controller.abort(
+      new DOMException("The Node HTTP client disconnected.", "AbortError"),
+    );
+  };
+  const abortClosedResponse = (): void => {
+    if (!response.writableEnded) abortTransport();
+  };
+  request.once("aborted", abortTransport);
+  response.once("close", abortClosedResponse);
+  if (request.aborted || (response.destroyed && !response.writableEnded)) {
+    abortTransport();
+  }
+  try {
+    const webRequest = await toWebRequest(request, publicBaseUrl, controller.signal);
+    await sendWebResponse(await handle(webRequest), response);
+  } finally {
+    completed = true;
+    request.off("aborted", abortTransport);
+    response.off("close", abortClosedResponse);
   }
 }
 
@@ -521,12 +594,36 @@ function delay(milliseconds: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+export async function runPersistentRetentionCycle(input: Readonly<{
+  synchronize: () => Promise<unknown>;
+  sweepObjects: () => Promise<unknown>;
+  reconcileOrphans: () => Promise<unknown>;
+  purgeExpiredSourceResultMappings: () => Promise<unknown>;
+}>): Promise<void> {
+  await input.synchronize();
+  const results = await Promise.allSettled([
+    input.sweepObjects(),
+    input.reconcileOrphans(),
+    input.purgeExpiredSourceResultMappings(),
+  ]);
+  const failures = results
+    .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+    .map((result) => result.reason);
+  if (failures.length > 0) {
+    throw new AggregateError(failures, "Persistent retention sweep failed.");
+  }
+}
+
 async function retentionLoop(common: CommonRuntime, signal: AbortSignal): Promise<void> {
   while (!signal.aborted) {
     try {
-      await common.clock.synchronize();
-      await common.sweeper.sweep();
-      await common.orphanSweeper.sweep();
+      await runPersistentRetentionCycle({
+        synchronize: () => common.clock.synchronize(),
+        sweepObjects: () => common.sweeper.sweep(),
+        reconcileOrphans: () => common.orphanSweeper.sweep(),
+        purgeExpiredSourceResultMappings: () =>
+          common.sourceResults.purgeExpiredActiveMappings(),
+      });
     } catch {
       process.stderr.write("COMPUTE_RETENTION_SWEEP_FAILED\n");
     }
@@ -552,10 +649,11 @@ export async function runApiRuntime(
     deferProcessOwnedDeletionCompletion: true,
   });
   const capabilityCodec = new HmacComputeHttpCapabilityCodec(config.capabilityHmacSecret);
+  const httpRepository = new PostgresComputeHttpJobRepository(common.database);
   const router = new ComputeV1HttpRouter({
     core,
     infrastructure: {
-      repository: new PostgresComputeHttpJobRepository(common.database),
+      repository: httpRepository,
       objectStore: common.objectStore,
       clock: common.clock,
       idFactory: new RandomComputeHttpIdFactory(),
@@ -601,8 +699,12 @@ export async function runApiRuntime(
     }
     void (async () => {
       await common.clock.synchronize();
-      const webRequest = await toWebRequest(request, config.publicBaseUrl);
-      await sendWebResponse(await router.handle(webRequest), response);
+      await bridgeNodeHttpRequest(
+        request,
+        response,
+        config.publicBaseUrl,
+        (webRequest) => router.handle(webRequest),
+      );
     })().catch(() => {
       if (!response.headersSent) response.writeHead(500);
       response.end();
@@ -633,6 +735,7 @@ export async function runApiRuntime(
         await router.reconcileJob(jobId);
         return true;
       },
+      purgeHttpJob: (jobId) => httpRepository.purgeExpired(jobId),
       onTaskFailure: () => process.stderr.write("COMPUTE_TEMPORAL_TASK_SWEEP_FAILED\n"),
     }),
     signal,

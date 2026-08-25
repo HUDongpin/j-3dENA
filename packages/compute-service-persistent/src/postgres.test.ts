@@ -19,6 +19,8 @@ import { PERSISTENT_LEASE_CLAIM_VERSION } from "./contracts";
 import {
   PostgresDatabase,
   PostgresAuthoritativeClock,
+  PostgresComputeHttpEventBroker,
+  PostgresComputeHttpJobRepository,
   PostgresComputeTaskRepository,
   PostgresDistributedLeaseCoordinator,
   PostgresDeletionLifecycleProbe,
@@ -97,6 +99,203 @@ class HandlerPool implements PgCompatiblePool, PgCompatibleClient {
 }
 
 describe("persistent PostgreSQL contract", () => {
+  it("deduplicates an unchanged SSE snapshot under the durable per-job cursor lock", async () => {
+    let nextSequence = 8;
+    let latestEvent: Record<string, unknown> = {
+      schemaVersion: "3dena.job-event.v1",
+      sequence: 7,
+      state: "QUEUED",
+      phase: "queued",
+      completed: 0,
+      total: 1,
+      emittedAt: "2026-08-21T08:00:00.000Z",
+    };
+    let eventInserts = 0;
+    const pool = new HandlerPool((sql, values) => {
+      if (sql.includes("FROM compute_http_jobs") && sql.includes("FOR KEY SHARE")) {
+        return { rows: [{ job_id: values[0] }], rowCount: 1 };
+      }
+      if (sql.includes("INSERT INTO compute_event_cursors")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (sql.includes("SELECT next_sequence") && sql.includes("FOR UPDATE")) {
+        return { rows: [{ next_sequence: String(nextSequence) }], rowCount: 1 };
+      }
+      if (sql.includes("SELECT event FROM compute_events") && sql.includes("DESC")) {
+        return { rows: [{ event: latestEvent }], rowCount: 1 };
+      }
+      if (sql.includes("SELECT clock_timestamp() AS emitted_at")) {
+        return {
+          rows: [{ emitted_at: new Date("2026-08-21T08:00:01.000Z") }],
+          rowCount: 1,
+        };
+      }
+      if (sql.includes("UPDATE compute_event_cursors")) {
+        const sequence = nextSequence;
+        nextSequence += 1;
+        return { rows: [{ sequence: String(sequence) }], rowCount: 1 };
+      }
+      if (sql.includes("INSERT INTO compute_events")) {
+        eventInserts += 1;
+        latestEvent = JSON.parse(String(values[3])) as Record<string, unknown>;
+        return { rows: [], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    });
+    const broker = new PostgresComputeHttpEventBroker(new PostgresDatabase(pool));
+
+    await expect(broker.publish("job-http-1", {
+      state: "QUEUED",
+      phase: "queued",
+      completed: 0,
+      total: 1,
+      emittedAt: "2099-01-01T00:00:00.000Z",
+    })).resolves.toEqual(latestEvent);
+    await expect(broker.publish("job-http-1", {
+      state: "RUNNING",
+      phase: "analysis",
+      completed: 1,
+      total: 2,
+      emittedAt: "2099-01-01T00:00:00.000Z",
+    })).resolves.toMatchObject({
+      sequence: 8,
+      state: "RUNNING",
+      phase: "analysis",
+      completed: 1,
+      total: 2,
+      emittedAt: "2026-08-21T08:00:01.000Z",
+    });
+    expect(eventInserts).toBe(1);
+    expect(pool.statements.filter((sql) => sql.includes("UPDATE compute_event_cursors")))
+      .toHaveLength(1);
+  });
+
+  it("purges an expired, privacy-clean HTTP job with its events and cursor atomically", async () => {
+    const pool = new HandlerPool((sql, values) => {
+      if (sql.includes("SELECT job_id FROM compute_http_jobs") && sql.includes("FOR UPDATE")) {
+        expect(values).toEqual(["job-http-1"]);
+        return { rows: [{ job_id: "job-http-1" }], rowCount: 1 };
+      }
+      if (sql.includes("DELETE FROM compute_events")) {
+        return { rows: [], rowCount: 3 };
+      }
+      if (sql.includes("DELETE FROM compute_event_cursors")) {
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes("DELETE FROM compute_http_jobs")) {
+        return { rows: [], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    });
+    const repository = new PostgresComputeHttpJobRepository(new PostgresDatabase(pool));
+
+    await expect(repository.purgeExpired("job-http-1")).resolves.toBe(true);
+    const statements = pool.statements;
+    const eligibility = statements.find((sql) =>
+      sql.includes("SELECT job_id FROM compute_http_jobs"));
+    expect(eligibility).toContain("expires_at <= clock_timestamp()");
+    expect(eligibility).toContain("record ? 'deletionCompletedAtMs'");
+    expect(eligibility).toContain("core.state = 'deleted'");
+    expect(eligibility).toContain("ownedResultObjectsAbsent");
+    expect(eligibility).toContain("ownedResultObjectCount");
+    expect(eligibility).toContain("jsonb_array_length(core.record->'ownedResultObjectKeys')");
+    expect(eligibility).not.toContain("OR NOT EXISTS");
+    expect(statements.findIndex((sql) => sql.includes("DELETE FROM compute_events")))
+      .toBeLessThan(statements.findIndex((sql) => sql.includes("DELETE FROM compute_event_cursors")));
+    expect(statements.findIndex((sql) => sql.includes("DELETE FROM compute_event_cursors")))
+      .toBeLessThan(statements.findIndex((sql) => sql.includes("DELETE FROM compute_http_jobs")));
+    expect(statements.at(-1)).toBe("COMMIT");
+  });
+
+  it("retains HTTP replay rows until durable result deletion is proven", async () => {
+    const pool = new HandlerPool((sql) => {
+      if (sql.includes("SELECT job_id FROM compute_http_jobs") && sql.includes("FOR UPDATE")) {
+        return { rows: [], rowCount: 0 };
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    });
+    const repository = new PostgresComputeHttpJobRepository(new PostgresDatabase(pool));
+
+    await expect(repository.purgeExpired("job-http-1")).resolves.toBe(false);
+    const eligibility = pool.statements.find((sql) =>
+      sql.includes("SELECT job_id FROM compute_http_jobs"));
+    expect(eligibility).toContain("record ? 'deletionCompletedAtMs'");
+    expect(eligibility).toContain("ownedResultObjectsAbsent");
+    expect(pool.statements.some((sql) => sql.includes("DELETE FROM"))).toBe(false);
+    expect(pool.statements.at(-1)).toBe("COMMIT");
+  });
+
+  it("keeps events and cursor after result deletion failure, then purges after the core receipt", async () => {
+    let coreReceiptProven = false;
+    const retained = { events: 3, cursor: true, job: true };
+    const pool = new HandlerPool((sql) => {
+      if (sql.includes("SELECT job_id FROM compute_http_jobs") && sql.includes("FOR UPDATE")) {
+        return coreReceiptProven
+          ? { rows: [{ job_id: "job-http-retry" }], rowCount: 1 }
+          : { rows: [], rowCount: 0 };
+      }
+      if (sql.includes("DELETE FROM compute_events")) {
+        const rowCount = retained.events;
+        retained.events = 0;
+        return { rows: [], rowCount };
+      }
+      if (sql.includes("DELETE FROM compute_event_cursors")) {
+        const rowCount = retained.cursor ? 1 : 0;
+        retained.cursor = false;
+        return { rows: [], rowCount };
+      }
+      if (sql.includes("DELETE FROM compute_http_jobs")) {
+        const rowCount = retained.job ? 1 : 0;
+        retained.job = false;
+        return { rows: [], rowCount };
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    });
+    const repository = new PostgresComputeHttpJobRepository(new PostgresDatabase(pool));
+
+    await expect(repository.purgeExpired("job-http-retry")).resolves.toBe(false);
+    expect(retained).toEqual({ events: 3, cursor: true, job: true });
+
+    coreReceiptProven = true;
+    await expect(repository.purgeExpired("job-http-retry")).resolves.toBe(true);
+    expect(retained).toEqual({ events: 0, cursor: false, job: false });
+    for (const eligibility of pool.statements.filter((sql) =>
+      sql.includes("SELECT job_id FROM compute_http_jobs"))) {
+      expect(eligibility).toContain("record ? 'deletionCompletedAtMs'");
+      expect(eligibility).toContain("core.state = 'deleted'");
+      expect(eligibility).toContain("ownedResultObjectsAbsent");
+      expect(eligibility).toContain("ownedResultObjectCount");
+      expect(eligibility).toContain("jsonb_array_length(core.record->'ownedResultObjectKeys')");
+      expect(eligibility).not.toContain("OR NOT EXISTS");
+    }
+  });
+
+  it("ends an established SSE subscription after its expired HTTP owner is purged", async () => {
+    const pool = new HandlerPool((sql, values) => {
+      if (sql.includes("SELECT event FROM compute_events") &&
+          sql.includes("sequence >")) {
+        expect(values).toEqual(["job-http-purged", 4, 100]);
+        return { rows: [], rowCount: 0 };
+      }
+      if (sql === "SELECT job_id FROM compute_http_jobs WHERE job_id = $1") {
+        expect(values).toEqual(["job-http-purged"]);
+        return { rows: [], rowCount: 0 };
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    });
+    const broker = new PostgresComputeHttpEventBroker(
+      new PostgresDatabase(pool),
+      { pollIntervalMs: 10 },
+    );
+    const iterator = broker.subscribe("job-http-purged", 4)[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).resolves.toEqual({ value: undefined, done: true });
+    expect(pool.statements).toEqual([
+      expect.stringContaining("SELECT event FROM compute_events"),
+      "SELECT job_id FROM compute_http_jobs WHERE job_id = $1",
+    ]);
+  });
+
   it("fences every active job CAS against the exact distributed slot attempt", async () => {
     const current = queuedRecord();
     const next: ComputeJobRecordV1 = {
@@ -155,10 +354,13 @@ describe("persistent PostgreSQL contract", () => {
         return { rows: [{ task_id: "task-due-1" }], rowCount: 1 };
       }
       if (sql.includes("SELECT h.job_id") && sql.includes("FROM compute_http_jobs")) {
-        expect(values).toEqual([1]);
+        expect(values).toEqual([2]);
         return {
-          rows: [{ job_id: "job-delete-1", work_kind: "http-deletion" }],
-          rowCount: 1,
+          rows: [
+            { job_id: "job-delete-1", work_kind: "http-deletion" },
+            { job_id: "job-purge-1", work_kind: "http-purge" },
+          ],
+          rowCount: 2,
         };
       }
       throw new Error(`Unexpected SQL: ${sql}`);
@@ -166,11 +368,12 @@ describe("persistent PostgreSQL contract", () => {
     const source = new PostgresTemporalDueSource(new PostgresDatabase(pool), {
       holderId: "api-runtime-1",
       leaseDurationMs: 5_000,
-      batchSize: 3,
+      batchSize: 4,
     });
     await expect(source.claimDue()).resolves.toEqual([
       { kind: "task", id: "task-due-1" },
       { kind: "http-deletion", id: "job-delete-1" },
+      { kind: "http-purge", id: "job-purge-1" },
     ]);
     const statements = pool.statements.join("\n");
     expect(statements).toContain("clock_timestamp()");
@@ -187,6 +390,10 @@ describe("persistent PostgreSQL contract", () => {
     expect(deletionSelection).toContain("NOT EXISTS");
     expect(deletionSelection).toContain("compute_jobs AS core");
     expect(deletionSelection).toContain("work_kind");
+    expect(deletionSelection).toContain("expires_at <= clock_timestamp()");
+    expect(deletionSelection).toContain("inputDeletedAtMs");
+    expect(deletionSelection).toContain("deletionCompletedAtMs");
+    expect(deletionSelection).toContain("http-purge");
     expect(deletionSelection).toContain("succeeded");
     expect(deletionSelection).toContain("failed");
   });
@@ -512,6 +719,27 @@ describe("persistent PostgreSQL contract", () => {
     expect(sql).toContain("3dena.build-approval.v2");
     expect(sql).toContain("3dena.build-approval.v3");
     expect(sql).toContain("compute_build_approvals_approval_check");
+    expect(sql).not.toMatch(/ALTER\s+TABLE\s+compute_schema_migrations/iu);
+  });
+
+  it("ships a generational source-result migration without mutating legacy history", () => {
+    const sql = readFileSync(
+      new URL("../migrations/0004_scientific_result_generations.sql", import.meta.url),
+      "utf8",
+    );
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS compute_scientific_result_publications");
+    expect(sql).toContain("generation bigint NOT NULL");
+    expect(sql).toContain("UNIQUE (result_hash, generation)");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS compute_scientific_result_active");
+    expect(sql).toContain("compute_scientific_result_active_expiry_idx");
+    expect(sql).toMatch(/INSERT\s+INTO\s+compute_scientific_result_publications[\s\S]+FROM\s+compute_scientific_results/iu);
+    expect(sql).toMatch(/INSERT\s+INTO\s+compute_scientific_result_active[\s\S]+expires_at\s*>\s*clock_timestamp\(\)/iu);
+    expect(sql).toContain("compute_scientific_results_generation_bridge");
+    expect(sql).toMatch(/AFTER\s+INSERT\s+ON\s+compute_scientific_results/iu);
+    expect(sql.indexOf("CREATE TRIGGER compute_scientific_results_generation_bridge"))
+      .toBeLessThan(sql.indexOf("-- Backfill every 0001 row"));
+    expect(sql).toContain("compute_scientific_result_publications_immutable");
+    expect(sql).not.toMatch(/(?:UPDATE|DELETE\s+FROM|TRUNCATE)\s+compute_scientific_results/iu);
     expect(sql).not.toMatch(/ALTER\s+TABLE\s+compute_schema_migrations/iu);
   });
 

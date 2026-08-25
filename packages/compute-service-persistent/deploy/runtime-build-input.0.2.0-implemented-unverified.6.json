@@ -19,6 +19,10 @@
     {
       "path": "packages/compute-service-persistent/migrations/0003_build_approval_v3.sql",
       "version": "0003-build-approval-v3"
+    },
+    {
+      "path": "packages/compute-service-persistent/migrations/0004_scientific_result_generations.sql",
+      "version": "0004-scientific-result-generations"
     }
   ],
   "contractVersions": [

@@ -489,7 +489,6 @@ export async function cancelRemoteAnalysis(
 ): Promise<AnalysisDeletionReceiptV2> {
   const receipt = await deleteRemoteJobData(client, reference);
   if (
-    !receipt.cancelled ||
     !receipt.intentAccepted ||
     receipt.termination === "pending" ||
     receipt.capacity === "held" ||
@@ -497,7 +496,7 @@ export async function cancelRemoteAnalysis(
   ) {
     fail(
       "CANCELLATION_NOT_OBSERVED",
-      "The service deleted job data but did not attest cancellation.",
+      "The service did not attest a final cancellation-or-terminal deletion outcome.",
     );
   }
   return receipt;

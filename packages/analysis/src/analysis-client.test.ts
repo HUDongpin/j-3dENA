@@ -515,6 +515,132 @@ describe("createAnalysisClient", () => {
     );
   });
 
+  it("interrupts an established but idle SSE stream and cancels its reader", async () => {
+    const cancelled = vi.fn();
+    const stream = new ReadableStream<Uint8Array>({
+      start() {
+        // A proxy can keep the HTTP connection open while silently dropping
+        // every subsequent byte. The client must not observe this forever.
+      },
+      cancel(reason) {
+        cancelled(reason);
+      },
+    });
+    const fetchMock = vi.fn(async () => new Response(stream, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }));
+    const client = createAnalysisClient({
+      baseUrl: "https://compute.example",
+      fetch: fetchMock as unknown as typeof fetch,
+      eventIdleTimeoutMilliseconds: 10,
+    });
+    const outcome = (async () => {
+      for await (const _event of client.events(reference())) {
+        // The fixture deliberately never emits a byte or closes.
+      }
+    })();
+
+    await expect(outcome).rejects.toEqual(
+      expect.objectContaining<Partial<AnalysisClientError>>({
+        code: "SSE_CONNECTION_INTERRUPTED",
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(cancelled).toHaveBeenCalledOnce();
+  });
+
+  it("retains the last complete event cursor when an SSE stream becomes idle", async () => {
+    const encoder = new TextEncoder();
+    const eventPayload = (sequence: number, state: "RUNNING" | "SUCCEEDED") =>
+      JSON.stringify({
+        schemaVersion: "3dena.job-event.v1",
+        sequence,
+        state,
+        phase: state === "SUCCEEDED" ? "complete" : "jena",
+        completed: sequence,
+        total: 2,
+        emittedAt: `2026-08-20T12:00:0${sequence}.000Z`,
+      });
+    const firstStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(
+          `id: 1\nevent: progress\ndata: ${eventPayload(1, "RUNNING")}\n\n`,
+        ));
+        // The connection remains open but becomes silent after event 1.
+      },
+    });
+    const secondStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(
+          `id: 2\nevent: progress\ndata: ${eventPayload(2, "SUCCEEDED")}\n\n`,
+        ));
+        controller.close();
+      },
+    });
+    const responses = [firstStream, secondStream];
+    const fetchMock = vi.fn(async () => new Response(responses.shift(), {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }));
+    const client = createAnalysisClient({
+      baseUrl: "https://compute.example",
+      fetch: fetchMock as unknown as typeof fetch,
+      eventIdleTimeoutMilliseconds: 10,
+    });
+    const firstSequences: number[] = [];
+
+    await expect((async () => {
+      for await (const item of client.events(reference())) {
+        firstSequences.push(item.sequence);
+      }
+    })()).rejects.toEqual(expect.objectContaining<Partial<AnalysisClientError>>({
+      code: "SSE_CONNECTION_INTERRUPTED",
+    }));
+    const resumedSequences: number[] = [];
+    for await (const item of client.events(reference())) {
+      resumedSequences.push(item.sequence);
+    }
+
+    expect(firstSequences).toEqual([1]);
+    expect(resumedSequences).toEqual([2]);
+    const calls = fetchMock.mock.calls as unknown as Array<[
+      RequestInfo | URL,
+      RequestInit | undefined,
+    ]>;
+    expect((calls[0]?.[1]?.headers as Headers).has("last-event-id")).toBe(false);
+    expect((calls[1]?.[1]?.headers as Headers).get("last-event-id")).toBe("1");
+  });
+
+  it("does not let incomplete SSE byte drips postpone the idle deadline", async () => {
+    const encoder = new TextEncoder();
+    let dripTimer: ReturnType<typeof setInterval> | undefined;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        dripTimer = setInterval(() => controller.enqueue(encoder.encode("x")), 5);
+      },
+      cancel() {
+        if (dripTimer !== undefined) clearInterval(dripTimer);
+      },
+    });
+    const client = createAnalysisClient({
+      baseUrl: "https://compute.example",
+      fetch: vi.fn(async () => new Response(stream, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      })) as unknown as typeof fetch,
+      eventIdleTimeoutMilliseconds: 20,
+    });
+
+    await expect((async () => {
+      for await (const _event of client.events(reference())) {
+        // No complete event or heartbeat is ever emitted.
+      }
+    })()).rejects.toEqual(expect.objectContaining<Partial<AnalysisClientError>>({
+      code: "SSE_CONNECTION_INTERRUPTED",
+    }));
+  });
+
   it("keeps a successful JSON body inside the attempt timeout and retries an interrupted read", async () => {
     const hangingBody = new ReadableStream<Uint8Array>({
       start() {

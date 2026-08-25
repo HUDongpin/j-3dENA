@@ -58,10 +58,22 @@ import {
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const OPAQUE_ID = /^[A-Za-z0-9_-]{8,200}$/u;
+const RETRYABLE_HTTP_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const RETRYABLE_CLIENT_CODES = new Set(["NETWORK_FAILURE", "REQUEST_TIMEOUT"]);
 
 interface HttpAdapterOptions {
   readonly baseUrl: string;
   readonly fetch?: typeof fetch;
+  /** Per-attempt client deadline, including response-body consumption. */
+  readonly requestTimeoutMilliseconds?: number;
+  /** Maximum attempts for transient GETs and idempotency-keyed mutations. */
+  readonly retryMaxAttempts?: number;
+  /** Initial bounded exponential-backoff delay. */
+  readonly retryBaseDelayMilliseconds?: number;
+  /** Maximum client-selected backoff; Retry-After is never shortened. */
+  readonly retryMaximumDelayMilliseconds?: number;
+  /** Total wall-clock retry window, including Retry-After delays. */
+  readonly retryTotalTimeoutMilliseconds?: number;
 }
 
 interface DatasetSession {
@@ -81,11 +93,113 @@ interface PreparedSession {
 
 class RemoteDatasetHttpError extends Error {
   readonly code: string;
+  readonly status: number | null;
+  readonly requestId: string | null;
+  readonly retryAfterMilliseconds: number | null;
 
-  constructor(code: string, message: string) {
+  constructor(
+    code: string,
+    message: string,
+    status: number | null = null,
+    requestId: string | null = null,
+    retryAfterMilliseconds: number | null = null,
+  ) {
     super(message);
     this.name = "RemoteDatasetHttpError";
     this.code = code;
+    this.status = status;
+    this.requestId = requestId;
+    this.retryAfterMilliseconds = retryAfterMilliseconds;
+  }
+}
+
+function aborted(): RemoteDatasetHttpError {
+  return new RemoteDatasetHttpError(
+    "ABORTED",
+    "The remote dataset request was aborted by the caller.",
+  );
+}
+
+function retryAfterMilliseconds(response: Response, now = Date.now()): number | null {
+  const value = response.headers.get("retry-after")?.trim();
+  if (!value) return null;
+  if (/^(?:0|[1-9][0-9]{0,8})$/u.test(value)) {
+    const milliseconds = Number(value) * 1_000;
+    return Number.isSafeInteger(milliseconds) ? milliseconds : null;
+  }
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) return null;
+  return Math.max(0, timestamp - now);
+}
+
+function retryable(error: RemoteDatasetHttpError): boolean {
+  return RETRYABLE_CLIENT_CODES.has(error.code)
+    || (error.status !== null && RETRYABLE_HTTP_STATUSES.has(error.status));
+}
+
+function wait(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(aborted());
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(aborted());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+async function readResponseText(
+  response: Response,
+  signal: AbortSignal,
+): Promise<string> {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  const chunks: string[] = [];
+  const onAbort = () => {
+    void reader.cancel(signal.reason).catch(() => undefined);
+  };
+  signal.addEventListener("abort", onAbort, { once: true });
+  if (signal.aborted) onAbort();
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (signal.aborted) {
+        throw signal.reason ?? new DOMException("Request aborted", "AbortError");
+      }
+      if (done) break;
+      try {
+        chunks.push(decoder.decode(value, { stream: true }));
+      } catch {
+        throw new RemoteDatasetHttpError(
+          "INVALID_RESPONSE",
+          "Remote dataset response body is not valid UTF-8.",
+          response.status,
+          response.headers.get("x-request-id"),
+        );
+      }
+    }
+    try {
+      chunks.push(decoder.decode());
+    } catch {
+      throw new RemoteDatasetHttpError(
+        "INVALID_RESPONSE",
+        "Remote dataset response body is not valid UTF-8.",
+        response.status,
+        response.headers.get("x-request-id"),
+      );
+    }
+    return chunks.join("");
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+    await reader.cancel().catch(() => undefined);
   }
 }
 
@@ -577,6 +691,33 @@ export function createHttpRemoteDatasetWorkflowAdapter(
   if (typeof fetchImplementation !== "function") {
     fail("INVALID_CONFIGURATION", "Remote dataset workflow requires Fetch.");
   }
+  const requestTimeout = options.requestTimeoutMilliseconds ?? 30_000;
+  const retryMaxAttempts = options.retryMaxAttempts ?? 4;
+  const retryBaseDelay = options.retryBaseDelayMilliseconds ?? 250;
+  const retryMaximumDelay = options.retryMaximumDelayMilliseconds ?? 4_000;
+  const retryTotalTimeout = options.retryTotalTimeoutMilliseconds ?? 30_000;
+  if (!Number.isSafeInteger(requestTimeout)
+      || requestTimeout < 1
+      || requestTimeout > 300_000) {
+    fail(
+      "INVALID_CONFIGURATION",
+      "requestTimeoutMilliseconds must be in [1, 300000].",
+    );
+  }
+  if (!Number.isSafeInteger(retryMaxAttempts)
+      || retryMaxAttempts < 1
+      || retryMaxAttempts > 8
+      || !Number.isSafeInteger(retryBaseDelay)
+      || retryBaseDelay < 1
+      || retryBaseDelay > 30_000
+      || !Number.isSafeInteger(retryMaximumDelay)
+      || retryMaximumDelay < retryBaseDelay
+      || retryMaximumDelay > 60_000
+      || !Number.isSafeInteger(retryTotalTimeout)
+      || retryTotalTimeout < 1
+      || retryTotalTimeout > 300_000) {
+    fail("INVALID_CONFIGURATION", "Remote dataset retry configuration is invalid.");
+  }
   const basePath = baseUrl.pathname === "/" ? "" : baseUrl.pathname;
   const serviceUrl = (path: string): string =>
     new URL(`${basePath}${path}`, baseUrl.origin).toString();
@@ -649,52 +790,138 @@ export function createHttpRemoteDatasetWorkflowAdapter(
     return output;
   };
 
+  const responseError = async (
+    response: Response,
+    attemptSignal: AbortSignal,
+  ): Promise<RemoteDatasetHttpError> => {
+    let code = `HTTP_${response.status}`;
+    try {
+      const body = JSON.parse(await readResponseText(response, attemptSignal)) as {
+        code?: unknown;
+      };
+      if (typeof body.code === "string" && /^[A-Z0-9_]{1,80}$/u.test(body.code)) {
+        code = body.code;
+      }
+    } catch (error) {
+      if (attemptSignal.aborted) throw error;
+      // Service error text is intentionally not reflected into the product.
+    }
+    const requestId = response.headers.get("x-request-id");
+    return new RemoteDatasetHttpError(
+      code,
+      `Remote dataset request failed with HTTP ${response.status}${requestId ? ` (request ${requestId})` : ""}.`,
+      response.status,
+      requestId,
+      retryAfterMilliseconds(response),
+    );
+  };
+
   const invokeJson = async (
     url: string,
     init: RequestInit,
     signal?: AbortSignal,
   ): Promise<unknown> => {
-    let response: Response;
-    try {
-      response = await fetchImplementation(url, {
-        ...init,
-        ...(signal ? { signal } : {}),
-        credentials: "omit",
-        redirect: "error",
-        cache: "no-store",
-      });
-    } catch {
-      if (signal?.aborted) throw signal.reason;
-      throw new RemoteDatasetHttpError(
-        "NETWORK_FAILURE",
-        "The remote dataset service could not be reached.",
-      );
-    }
-    const requestId = response.headers.get("x-request-id");
-    if (!response.ok) {
-      let code = `HTTP_${response.status}`;
+    const startedAt = Date.now();
+    let lastError: RemoteDatasetHttpError | null = null;
+    for (let attempt = 1; attempt <= retryMaxAttempts; attempt += 1) {
+      if (signal?.aborted) throw aborted();
+      const remaining = retryTotalTimeout - (Date.now() - startedAt);
+      if (remaining <= 0 && lastError !== null) throw lastError;
+
+      const controller = new AbortController();
+      let requestTimedOut = false;
+      let observedRetryAfterMilliseconds: number | null = null;
+      const onAbort = () => controller.abort(signal?.reason);
+      signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal?.aborted) controller.abort(signal.reason);
+      const timer = setTimeout(() => {
+        requestTimedOut = true;
+        controller.abort(new DOMException("Request deadline exceeded", "TimeoutError"));
+      }, Math.min(requestTimeout, Math.max(1, remaining)));
       try {
-        const body = await response.json() as { code?: unknown };
-        if (typeof body.code === "string" && /^[A-Z0-9_]{1,80}$/u.test(body.code)) {
-          code = body.code;
+        const response = await fetchImplementation(url, {
+          ...init,
+          signal: controller.signal,
+          credentials: "omit",
+          redirect: "error",
+          cache: "no-store",
+        });
+        observedRetryAfterMilliseconds = retryAfterMilliseconds(response);
+        if (signal?.aborted) throw aborted();
+        if (!response.ok) {
+          lastError = await responseError(response, controller.signal);
+        } else {
+          const requestId = response.headers.get("x-request-id");
+          if (!(response.headers.get("content-type") ?? "")
+            .toLocaleLowerCase("en-US").startsWith("application/json")) {
+            throw new RemoteDatasetHttpError(
+              "INVALID_RESPONSE",
+              "Remote dataset response is not JSON.",
+              response.status,
+              requestId,
+            );
+          }
+          const body = await readResponseText(response, controller.signal);
+          if (signal?.aborted) throw aborted();
+          try {
+            return JSON.parse(body) as unknown;
+          } catch {
+            throw new RemoteDatasetHttpError(
+              "INVALID_RESPONSE",
+              "Remote dataset response is malformed JSON.",
+              response.status,
+              requestId,
+            );
+          }
         }
-      } catch {
-        // Service error text is intentionally not reflected into the product.
+      } catch (error) {
+        if (error instanceof RemoteDatasetHttpError) {
+          lastError = error;
+        } else if (signal?.aborted) {
+          throw aborted();
+        } else if (requestTimedOut) {
+          lastError = new RemoteDatasetHttpError(
+            "REQUEST_TIMEOUT",
+            "The remote dataset request exceeded the client deadline.",
+            null,
+            null,
+            observedRetryAfterMilliseconds,
+          );
+        } else {
+          lastError = new RemoteDatasetHttpError(
+            "NETWORK_FAILURE",
+            "The remote dataset service could not be reached.",
+            null,
+            null,
+            observedRetryAfterMilliseconds,
+          );
+        }
+      } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
       }
-      throw new RemoteDatasetHttpError(
-        code,
-        `Remote dataset request failed with HTTP ${response.status}${requestId ? ` (request ${requestId})` : ""}.`,
+
+      if (lastError === null || !retryable(lastError) || attempt === retryMaxAttempts) {
+        throw lastError ?? new RemoteDatasetHttpError(
+          "NETWORK_FAILURE",
+          "The remote dataset service could not be reached.",
+        );
+      }
+      const exponentialDelay = Math.min(
+        retryMaximumDelay,
+        retryBaseDelay * (2 ** (attempt - 1)),
       );
+      const retryDelay = Math.max(
+        exponentialDelay,
+        lastError.retryAfterMilliseconds ?? 0,
+      );
+      if (Date.now() - startedAt + retryDelay > retryTotalTimeout) throw lastError;
+      await wait(retryDelay, signal);
     }
-    if (!(response.headers.get("content-type") ?? "")
-      .toLocaleLowerCase("en-US").startsWith("application/json")) {
-      fail("INVALID_RESPONSE", "Remote dataset response is not JSON.");
-    }
-    try {
-      return await response.json();
-    } catch {
-      fail("INVALID_RESPONSE", "Remote dataset response is malformed JSON.");
-    }
+    throw lastError ?? new RemoteDatasetHttpError(
+      "NETWORK_FAILURE",
+      "The remote dataset service could not be reached.",
+    );
   };
 
   const sessionFor = (workflowId: string): DatasetSession => {
@@ -1158,6 +1385,8 @@ export function createHttpRemoteDatasetWorkflowAdapter(
         datasetReceipt: receipt,
         task,
       };
+      const executeBody = JSON.stringify(executeRequest);
+      const executeIdempotencyKey = randomIdempotencyKey("prepared-execute");
       return {
         reference: {
           jobId: capability.jobId,
@@ -1173,9 +1402,9 @@ export function createHttpRemoteDatasetWorkflowAdapter(
               method: "POST",
               headers: jobHeaders(
                 capability.capabilityToken,
-                randomIdempotencyKey("prepared-execute"),
+                executeIdempotencyKey,
               ),
-              body: JSON.stringify(executeRequest),
+              body: executeBody,
             },
             startSignal,
           );
@@ -1222,6 +1451,8 @@ export function createHttpRemoteDatasetWorkflowAdapter(
         schemaVersion: "3dena.execute-activated-job-request.v1",
         task,
       };
+      const executeBody = JSON.stringify(executeRequest);
+      const executeIdempotencyKey = randomIdempotencyKey("activated-execute");
       return {
         reference: {
           jobId: capability.jobId,
@@ -1231,19 +1462,15 @@ export function createHttpRemoteDatasetWorkflowAdapter(
         taskKind: task.kind,
         runId: task.runId,
         async start(startSignal?: AbortSignal) {
-          const jobHeaders = new Headers({
-            accept: "application/json",
-            "content-type": "application/json",
-            "x-3dena-contract-version": ANALYSIS_CONTRACT_VERSION_V1,
-            authorization: `Bearer ${capability.capabilityToken}`,
-            "idempotency-key": randomIdempotencyKey("activated-execute"),
-          });
           await invokeJson(
             serviceUrl(`/v1/jobs/${encodeURIComponent(capability.jobId)}/execute`),
             {
               method: "POST",
-              headers: jobHeaders,
-              body: JSON.stringify(executeRequest),
+              headers: jobHeaders(
+                capability.capabilityToken,
+                executeIdempotencyKey,
+              ),
+              body: executeBody,
             },
             startSignal,
           );
@@ -1290,6 +1517,8 @@ export function createHttpRemoteDatasetWorkflowAdapter(
         schemaVersion: "3dena.execute-activated-job-request.v1",
         task,
       };
+      const executeBody = JSON.stringify(executeRequest);
+      const executeIdempotencyKey = randomIdempotencyKey("source-result-execute");
       return {
         reference: {
           jobId: capability.jobId,
@@ -1306,9 +1535,9 @@ export function createHttpRemoteDatasetWorkflowAdapter(
               method: "POST",
               headers: jobHeaders(
                 capability.capabilityToken,
-                randomIdempotencyKey("source-result-execute"),
+                executeIdempotencyKey,
               ),
-              body: JSON.stringify(executeRequest),
+              body: executeBody,
             },
             startSignal,
           );

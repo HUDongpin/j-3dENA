@@ -34,7 +34,10 @@ const NOW = Date.parse("2026-08-21T12:00:00.000Z");
 
 class SourcePool implements PgCompatiblePool, PgCompatibleClient {
   readonly statements: string[] = [];
-  row: Record<string, unknown> | undefined;
+  readonly publications: Record<string, unknown>[] = [];
+  nowMs = NOW;
+  activePublicationId: number | undefined;
+  #nextPublicationId = 1;
   async connect(): Promise<PgCompatibleClient> { return this; }
   release(): void {}
   async query<Row extends Record<string, unknown>>(
@@ -43,21 +46,70 @@ class SourcePool implements PgCompatiblePool, PgCompatibleClient {
   ): Promise<SqlQueryResult<Row>> {
     this.statements.push(sql);
     if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [], rowCount: 0 };
-    if (sql.includes("INSERT INTO compute_scientific_results")) {
-      if (this.row !== undefined) return { rows: [], rowCount: 0 };
-      this.row = {
+    if (sql.includes("pg_advisory_xact_lock")) {
+      return { rows: [{}] as Row[], rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO compute_scientific_result_publications")) {
+      const publicationId = this.#nextPublicationId;
+      this.#nextPublicationId += 1;
+      const generation = this.publications
+        .filter((row) => row.result_hash === values[0])
+        .reduce((maximum, row) => Math.max(maximum, Number(row.generation)), 0) + 1;
+      this.publications.push({
+        publication_id: publicationId, generation,
         result_hash: values[0], dataset_hash: values[1], spec_hash: values[2],
         build_id: values[3], task_id: values[4], object_key: values[5],
         object_sha256: values[6], object_byte_length: values[7],
         published_at_ms: values[8], expires_at_ms: values[9],
         publication_receipt: JSON.parse(String(values[10])),
+      });
+      return {
+        rows: [{ publication_id: publicationId, generation }] as unknown as Row[],
+        rowCount: 1,
       };
+    }
+    if (sql.includes("INSERT INTO compute_scientific_result_active")) {
+      this.activePublicationId = Number(values[1]);
       return { rows: [], rowCount: 1 };
     }
-    if (sql.includes("FROM compute_scientific_results")) {
+    if (sql.includes("DELETE FROM compute_scientific_result_active") &&
+        sql.includes("result_hash = $1")) {
+      const active = this.publications.find(
+        (row) => row.publication_id === this.activePublicationId,
+      );
+      if (active === undefined || active.result_hash !== values[0] ||
+          Number(active.expires_at_ms) > this.nowMs) {
+        return { rows: [], rowCount: 0 };
+      }
+      this.activePublicationId = undefined;
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("DELETE FROM compute_scientific_result_active")) {
+      const active = this.publications.find(
+        (row) => row.publication_id === this.activePublicationId,
+      );
+      if (active === undefined || Number(active.expires_at_ms) > this.nowMs) {
+        return { rows: [], rowCount: 0 };
+      }
+      this.activePublicationId = undefined;
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("FROM compute_scientific_result_active") &&
+        sql.includes("compute_scientific_result_publications")) {
+      const active = this.publications.find(
+        (row) => row.publication_id === this.activePublicationId,
+      );
+      const requestedNow = sql.includes("to_timestamp($4")
+        ? Math.max(Number(values[3]), this.nowMs)
+        : this.nowMs;
+      const matches = active !== undefined &&
+        Number(active.expires_at_ms) > requestedNow &&
+        active.result_hash === values[0] &&
+        (!sql.includes("dataset_hash = $2") || active.dataset_hash === values[1]) &&
+        (!sql.includes("build_id = $3") || active.build_id === values[2]);
       return {
-        rows: (this.row === undefined ? [] : [this.row]) as Row[],
-        rowCount: this.row === undefined ? 0 : 1,
+        rows: (matches ? [structuredClone(active)] : []) as Row[],
+        rowCount: matches ? 1 : 0,
       };
     }
     throw new Error(`Unexpected SQL: ${sql}`);
@@ -199,6 +251,10 @@ describe("PostgresPublishedSourceResultRegistry", () => {
       owner: envelope.owner,
       buildId: "fly-build-1",
     });
+    const resolverStatement = pool.statements.find((sql) =>
+      sql.includes("to_timestamp($4") &&
+      sql.includes("FROM compute_scientific_result_active"));
+    expect(resolverStatement).toContain("clock_timestamp()");
     await expect(registry.resolve({
       sourceResultHash: envelope.provenance.resultHash,
       activatedDatasetSha256: DATASET_HASH,
@@ -217,7 +273,120 @@ describe("PostgresPublishedSourceResultRegistry", () => {
       requiredBuildId: "fly-build-1",
       nowMs: NOW + 60_000,
     })).resolves.toBeNull();
-    expect(pool.statements.join("\n")).not.toMatch(/UPDATE\s+compute_scientific_results/iu);
+    expect(pool.statements.join("\n"))
+      .not.toMatch(/UPDATE\s+compute_scientific_result_publications/iu);
+  });
+
+  it("rebinds an expired result hash to a new immutable publication generation", async () => {
+    const taskFor = (taskId: string, runId: string): AnalysisTaskV1 => ({
+      schemaVersion: ANALYSIS_TASK_VERSION_V1,
+      kind: "ena-model",
+      owner: {
+        contractVersion: ANALYSIS_CONTRACT_VERSION_V1,
+        datasetHash: DATASET_HASH,
+        specHash: SPEC_HASH,
+        runId,
+        taskId,
+      },
+      deadlineEpochMilliseconds: 4_000_000_000_000,
+      input: {
+        rows: rows(),
+        mapping: {
+          units: ["Group", "Name"],
+          conversation: ["Lesson"],
+          codes: ["EC", "ICT", "MCO", "ATT"],
+        },
+      },
+    });
+    const firstEnvelope = await executeAnalysisTask(
+      executionDataset(),
+      taskFor("source-task-generation-1", "source-run-generation-1"),
+    );
+    const secondEnvelope = await executeAnalysisTask(
+      executionDataset(),
+      taskFor("source-task-generation-2", "source-run-generation-2"),
+    );
+    expect(secondEnvelope.provenance.resultHash)
+      .toBe(firstEnvelope.provenance.resultHash);
+
+    const store = new InMemoryComputeObjectStore();
+    const firstObject = await store.putImmutable(
+      "compute-results/source-task-generation-1/result.json",
+      new TextEncoder().encode(JSON.stringify({
+        version: "3dena.compute-scientific-result-artifact.v1",
+        owner: firstEnvelope.owner,
+        taskKind: "ena-model",
+        envelope: firstEnvelope,
+      })),
+    );
+    const secondObject = await store.putImmutable(
+      "compute-results/source-task-generation-2/result.json",
+      new TextEncoder().encode(JSON.stringify({
+        version: "3dena.compute-scientific-result-artifact.v1",
+        owner: secondEnvelope.owner,
+        taskKind: "ena-model",
+        envelope: secondEnvelope,
+      })),
+    );
+    const pool = new SourcePool();
+    const registry = new PostgresPublishedSourceResultRegistry(
+      new PostgresDatabase(pool),
+      store,
+    );
+    const firstRecord = {
+      sourceResultHash: firstEnvelope.provenance.resultHash,
+      owner: firstEnvelope.owner,
+      buildId: "fly-build-1",
+      object: firstObject.descriptor,
+      publishedAtMs: NOW - 1_000,
+      expiresAtMs: NOW + 60_000,
+      publicationReceipt: { version: "test-publication-receipt.v1", generation: 1 },
+    } as const;
+    const secondRecord = {
+      sourceResultHash: secondEnvelope.provenance.resultHash,
+      owner: secondEnvelope.owner,
+      buildId: "fly-build-1",
+      object: secondObject.descriptor,
+      publishedAtMs: NOW + 60_000,
+      expiresAtMs: NOW + 120_000,
+      publicationReceipt: { version: "test-publication-receipt.v1", generation: 2 },
+    } as const;
+
+    await expect(registry.record(firstRecord)).resolves.toBeUndefined();
+    await expect(registry.record(secondRecord)).rejects.toMatchObject({
+      code: "DATABASE_CONFLICT",
+    });
+    expect(pool.publications).toHaveLength(1);
+
+    pool.nowMs = NOW + 60_000;
+    await expect(registry.record(secondRecord)).resolves.toBeUndefined();
+    expect(pool.publications).toHaveLength(2);
+    expect(pool.publications.map((row) => row.generation)).toEqual([1, 2]);
+    expect(pool.publications.map((row) => row.task_id)).toEqual([
+      "source-task-generation-1",
+      "source-task-generation-2",
+    ]);
+    await expect(registry.resolve({
+      sourceResultHash: secondEnvelope.provenance.resultHash,
+      activatedDatasetSha256: DATASET_HASH,
+      requiredBuildId: "fly-build-1",
+      nowMs: NOW + 60_001,
+    })).resolves.toMatchObject({ owner: secondEnvelope.owner });
+
+    pool.nowMs = NOW + 120_000;
+    await expect(registry.purgeExpiredActiveMappings()).resolves.toBe(1);
+    expect(pool.publications).toHaveLength(2);
+    expect(pool.activePublicationId).toBeUndefined();
+    await expect(registry.resolve({
+      sourceResultHash: secondEnvelope.provenance.resultHash,
+      activatedDatasetSha256: DATASET_HASH,
+      requiredBuildId: "fly-build-1",
+      nowMs: NOW + 120_000,
+    })).resolves.toBeNull();
+    const statements = pool.statements.join("\n");
+    expect(statements).toContain("pg_advisory_xact_lock");
+    expect(statements).not.toMatch(/DELETE\s+FROM\s+compute_scientific_result_publications/iu);
+    expect(statements).not.toMatch(/(?:UPDATE|DELETE)\s+compute_scientific_results/iu);
   });
 
   it("resolves a primary prepared import without recasting it as raw jENA", async () => {

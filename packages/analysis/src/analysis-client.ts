@@ -126,6 +126,8 @@ export interface AnalysisClientConfig {
   retryMaximumDelayMilliseconds?: number;
   /** Total wall-clock retry window, including Retry-After delays. */
   retryTotalTimeoutMilliseconds?: number;
+  /** Maximum silence after an SSE connection is established before recovery begins. */
+  eventIdleTimeoutMilliseconds?: number;
   /** Delay between stable-key V2 deletion reconciliation requests. */
   deletionPollIntervalMilliseconds?: number;
   /** Total time allowed for the durable deletion lifecycle to close. */
@@ -553,6 +555,14 @@ export function createAnalysisClient(config: AnalysisClientConfig): AnalysisClie
       !Number.isSafeInteger(retryTotalTimeout) || retryTotalTimeout < 1 || retryTotalTimeout > 300_000) {
     clientError("INVALID_CLIENT_CONFIG", "Retry configuration is invalid.");
   }
+  const eventIdleTimeout = config.eventIdleTimeoutMilliseconds ?? 30_000;
+  if (!Number.isSafeInteger(eventIdleTimeout) || eventIdleTimeout < 1 ||
+      eventIdleTimeout > 300_000) {
+    clientError(
+      "INVALID_CLIENT_CONFIG",
+      "eventIdleTimeoutMilliseconds must be in [1, 300000].",
+    );
+  }
   const deletionPollInterval = config.deletionPollIntervalMilliseconds ?? 250;
   const deletionCompletionTimeout =
     config.deletionCompletionTimeoutMilliseconds ?? 60_000;
@@ -823,9 +833,27 @@ export function createAnalysisClient(config: AnalysisClientConfig): AnalysisClie
       signal?.addEventListener("abort", onStreamAbort, { once: true });
       if (signal?.aborted) onStreamAbort();
       let buffer = "";
+      let activityDeadline = Date.now() + eventIdleTimeout;
       try {
         while (true) {
-          const { value, done } = await reader.read();
+          let idleTimer: ReturnType<typeof setTimeout> | undefined;
+          const idleFailure = new AnalysisClientError(
+            "SSE_CONNECTION_INTERRUPTED",
+            "Compute event stream was silent beyond the client idle deadline.",
+          );
+          const idleDeadline = new Promise<never>((_resolve, reject) => {
+            idleTimer = setTimeout(() => {
+              reject(idleFailure);
+              void reader.cancel(idleFailure).catch(() => undefined);
+            }, Math.max(1, activityDeadline - Date.now()));
+          });
+          let next: ReadableStreamReadResult<string>;
+          try {
+            next = await Promise.race([reader.read(), idleDeadline]);
+          } finally {
+            if (idleTimer !== undefined) clearTimeout(idleTimer);
+          }
+          const { value, done } = next;
           if (signal?.aborted) throw aborted();
           if (done) break;
           buffer += value;
@@ -843,6 +871,7 @@ export function createAnalysisClient(config: AnalysisClientConfig): AnalysisClie
             }
             const data = lines.filter((line) => line.startsWith("data:"))
               .map((line) => line.slice(5).trimStart()).join("\n");
+            const heartbeat = lines.some((line) => line.startsWith(":"));
             if (data !== "") {
               let parsed: unknown;
               try { parsed = JSON.parse(data); } catch { clientError("INVALID_RESPONSE", "SSE data is not valid JSON."); }
@@ -852,10 +881,14 @@ export function createAnalysisClient(config: AnalysisClientConfig): AnalysisClie
                 clientError("INVALID_RESPONSE", "SSE event id does not match its sequence.");
               }
               const currentCursor = eventCursors.get(reference.jobId) ?? 0;
+              activityDeadline = Date.now() + eventIdleTimeout;
               if (parsedEvent.sequence > currentCursor) {
                 eventCursors.set(reference.jobId, parsedEvent.sequence);
                 yield parsedEvent;
+                activityDeadline = Date.now() + eventIdleTimeout;
               }
+            } else if (heartbeat) {
+              activityDeadline = Date.now() + eventIdleTimeout;
             }
             boundary = buffer.indexOf("\n\n");
           }

@@ -63,7 +63,7 @@ docker build \
 
 The verifier runs before the OCI label can be treated as meaningful and checks
 the v4 manifest's clean source commit against `SOURCE_COMMIT`, all six
-contracts, all three migrations, dependency pins, exact jENA/SDK/build
+contracts, all four migrations, dependency pins, exact jENA/SDK/build
 identity (including the source-controlled reviewed jENA commit and tarball
 integrity), and both bundle digests. The date-like suffix above is an
 example release identifier, not a shared mutable directory.

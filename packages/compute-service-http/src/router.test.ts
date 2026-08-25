@@ -7,6 +7,7 @@ import {
   analyzeRows,
   createAnalysisClient,
   hashAnalysisValueV1,
+  type AnalysisJobEventV1,
   type AnalysisResult,
   type AnalysisJobReferenceV1,
   type AnalysisTaskV1,
@@ -44,6 +45,7 @@ import {
 } from "./longitudinal-contracts";
 import type {
   ComputeHttpDeletionLifecycleProbe,
+  ComputeHttpEventBroker,
   ComputeHttpRateLimiter,
 } from "./interfaces";
 
@@ -85,6 +87,8 @@ function harness(
     maxLongitudinalJsonBodyBytes?: number;
     maxLongitudinalStoredInputBytes?: number;
     maxTaskRuntimeMs?: number;
+    eventHeartbeatIntervalMs?: number;
+    eventBroker?: ComputeHttpEventBroker;
   }> = {},
 ): Harness {
   const objectStore = new InMemoryComputeObjectStore();
@@ -115,7 +119,7 @@ function harness(
       idFactory: new SequenceComputeHttpIdFactory(),
       capabilityCodec: new HmacComputeHttpCapabilityCodec(SECRET),
       objectUrls: urls,
-      events,
+      events: longitudinalOptions.eventBroker ?? events,
       readiness,
       rateLimiter,
       ...(deletionLifecycle === undefined ? {} : { deletionLifecycle }),
@@ -154,6 +158,12 @@ function harness(
       : {
           maxLongitudinalStoredInputBytes:
             longitudinalOptions.maxLongitudinalStoredInputBytes,
+        }),
+    ...(longitudinalOptions.eventHeartbeatIntervalMs === undefined
+      ? {}
+      : {
+          eventHeartbeatIntervalMs:
+            longitudinalOptions.eventHeartbeatIntervalMs,
         }),
   });
   return {
@@ -754,6 +764,207 @@ describe("ComputeV1HttpRouter dedicated longitudinal V2 jobs", () => {
     await target.core.settleBackground();
   });
 
+  it("emits SSE heartbeat comments while a non-terminal subscription is idle", async () => {
+    const target = harness(undefined, undefined, {
+      eventHeartbeatIntervalMs: 10,
+    });
+    const response = await target.router.handle(longitudinalCreateRequest(
+      await longitudinalSubmission(),
+      "longitudinal-heartbeat",
+    ));
+    const capability = (await response.json()) as LongitudinalComputeCapabilityV2;
+    const events = await target.router.handle(new Request(
+      capability.urls.eventsUrl,
+      {
+        headers: {
+          accept: "text/event-stream",
+          authorization: `Bearer ${capability.capabilityToken}`,
+          origin: ORIGIN,
+          "x-3dena-contract-version": ANALYSIS_CONTRACT_VERSION_V1,
+        },
+      },
+    ));
+    const reader = events.body?.getReader();
+    if (!reader) throw new Error("Expected an SSE response body.");
+    const decoder = new TextDecoder();
+
+    const initial = await reader.read();
+    expect(decoder.decode(initial.value)).toContain("event: progress");
+    const heartbeat = await reader.read();
+    expect(decoder.decode(heartbeat.value)).toBe(": heartbeat\n\n");
+    await reader.cancel();
+  });
+
+  it("observes one pending iterator promise across repeated heartbeats and cleans it once", async () => {
+    const backingEvents = new InMemoryComputeHttpEventBroker();
+    const pending: Array<{
+      readonly promise: Promise<IteratorResult<AnalysisJobEventV1>>;
+      readonly thenCalls: () => number;
+      readonly resolveEvent: (event: AnalysisJobEventV1) => void;
+      readonly resolveDone: () => void;
+      readonly settled: () => boolean;
+    }> = [];
+    let iteratorNextCalls = 0;
+    let iteratorReturnCalls = 0;
+    const eventBroker: ComputeHttpEventBroker = {
+      publish: (jobId, event) => backingEvents.publish(jobId, event),
+      subscribe(jobId, afterSequence) {
+        let cursor = afterSequence;
+        const iterator: AsyncIterator<AnalysisJobEventV1> = {
+          next() {
+            iteratorNextCalls += 1;
+            const available = backingEvents.events(jobId).find(
+              (event) => event.sequence > cursor,
+            );
+            if (available !== undefined) {
+              cursor = available.sequence;
+              return Promise.resolve({ done: false, value: available });
+            }
+            let settle!: (result: IteratorResult<AnalysisJobEventV1>) => void;
+            let observedThenCalls = 0;
+            let isSettled = false;
+            const source = new Promise<IteratorResult<AnalysisJobEventV1>>((resolve) => {
+              settle = resolve;
+            });
+            const tracked = {
+              then(onFulfilled: unknown, onRejected: unknown) {
+                observedThenCalls += 1;
+                return source.then(
+                  onFulfilled as Parameters<typeof source.then>[0],
+                  onRejected as Parameters<typeof source.then>[1],
+                );
+              },
+            } as unknown as Promise<IteratorResult<AnalysisJobEventV1>>;
+            pending.push({
+              promise: tracked,
+              thenCalls: () => observedThenCalls,
+              resolveEvent(event) {
+                if (isSettled) return;
+                isSettled = true;
+                cursor = event.sequence;
+                settle({ done: false, value: event });
+              },
+              resolveDone() {
+                if (isSettled) return;
+                isSettled = true;
+                settle({ done: true, value: undefined });
+              },
+              settled: () => isSettled,
+            });
+            return tracked;
+          },
+          return() {
+            iteratorReturnCalls += 1;
+            pending.forEach((entry) => entry.resolveDone());
+            return Promise.resolve({ done: true, value: undefined });
+          },
+        };
+        return {
+          [Symbol.asyncIterator]() {
+            return iterator;
+          },
+        };
+      },
+    };
+    const target = harness(undefined, undefined, {
+      eventHeartbeatIntervalMs: 5,
+      eventBroker,
+    });
+    const response = await target.router.handle(longitudinalCreateRequest(
+      await longitudinalSubmission(),
+      "longitudinal-heartbeat-pending-observation",
+    ));
+    const capability = (await response.json()) as LongitudinalComputeCapabilityV2;
+    const events = await target.router.handle(new Request(
+      capability.urls.eventsUrl,
+      {
+        headers: {
+          accept: "text/event-stream",
+          authorization: `Bearer ${capability.capabilityToken}`,
+          origin: ORIGIN,
+          "x-3dena-contract-version": ANALYSIS_CONTRACT_VERSION_V1,
+        },
+      },
+    ));
+    const reader = events.body?.getReader();
+    if (!reader) throw new Error("Expected an SSE response body.");
+    const decoder = new TextDecoder();
+
+    expect(decoder.decode((await reader.read()).value)).toContain("id: 1");
+    for (let heartbeat = 0; heartbeat < 3; heartbeat += 1) {
+      expect(decoder.decode((await reader.read()).value)).toBe(": heartbeat\n\n");
+    }
+    expect(iteratorNextCalls).toBe(2);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.thenCalls()).toBe(1);
+
+    const nextEvent = await backingEvents.publish(capability.jobId, {
+      state: "RUNNING",
+      phase: "jena",
+      completed: 1,
+      total: 2,
+      emittedAt: new Date(NOW + 1_000).toISOString(),
+    });
+    pending[0]?.resolveEvent(nextEvent);
+    const eventChunk = decoder.decode((await reader.read()).value);
+    expect(eventChunk).toContain("id: 2");
+    expect(eventChunk.match(/id: 2/gu)).toHaveLength(1);
+    expect(decoder.decode((await reader.read()).value)).toBe(": heartbeat\n\n");
+
+    await reader.cancel();
+    expect(iteratorReturnCalls).toBe(1);
+    expect(pending.every((entry) => entry.settled())).toBe(true);
+  });
+
+  it("closes the SSE iterator exactly once when event observation fails", async () => {
+    const backingEvents = new InMemoryComputeHttpEventBroker();
+    let iteratorReturnCalls = 0;
+    const eventBroker: ComputeHttpEventBroker = {
+      publish: (jobId, event) => backingEvents.publish(jobId, event),
+      subscribe() {
+        const iterator: AsyncIterator<AnalysisJobEventV1> = {
+          next: () => Promise.reject(new Error("database observation failed")),
+          return() {
+            iteratorReturnCalls += 1;
+            return Promise.resolve({ done: true, value: undefined });
+          },
+        };
+        return {
+          [Symbol.asyncIterator]() {
+            return iterator;
+          },
+        };
+      },
+    };
+    const target = harness(undefined, undefined, {
+      eventHeartbeatIntervalMs: 10,
+      eventBroker,
+    });
+    const response = await target.router.handle(longitudinalCreateRequest(
+      await longitudinalSubmission(),
+      "longitudinal-event-observation-failure",
+    ));
+    const capability = (await response.json()) as LongitudinalComputeCapabilityV2;
+    const events = await target.router.handle(new Request(
+      capability.urls.eventsUrl,
+      {
+        headers: {
+          accept: "text/event-stream",
+          authorization: `Bearer ${capability.capabilityToken}`,
+          origin: ORIGIN,
+          "x-3dena-contract-version": ANALYSIS_CONTRACT_VERSION_V1,
+        },
+      },
+    ));
+    const reader = events.body?.getReader();
+    if (!reader) throw new Error("Expected an SSE response body.");
+
+    await expect(reader.read()).rejects.toThrow("database observation failed");
+    expect(iteratorReturnCalls).toBe(1);
+    await expect(reader.cancel()).rejects.toThrow("database observation failed");
+    expect(iteratorReturnCalls).toBe(1);
+  });
+
   it("rejects unknown/build/privacy input and preserves create idempotency", async () => {
     const target = harness();
     const valid = await longitudinalSubmission();
@@ -1015,12 +1226,13 @@ describe("ComputeV1HttpRouter dedicated longitudinal V2 jobs", () => {
       deleteTerminationRequired: false,
       deleteCapacityReserved: false,
     });
-    await expect(target.router.reconcileDurableDeletion(jobId)).resolves.toBe(true);
-    expect((await target.httpRepository.get(jobId))?.inputDeletedAtMs)
-      .toBe(NOW + 60_001);
+    await expect(target.router.reconcileDurableDeletion(jobId)).resolves.toBe(false);
+    const retained = await target.httpRepository.get(jobId);
+    expect(retained?.inputDeletedAtMs).toBe(NOW + 60_001);
+    expect(retained).not.toHaveProperty("deletionCompletedAtMs");
   });
 
-  it("lets the durable sweeper clean an overdue post-put/pre-core crash without client replay", async () => {
+  it("cleans overdue input but retains a bound-core-missing replay handle", async () => {
     const target = harness();
     const valid = await longitudinalSubmission();
     const createTask = vi.spyOn(target.core, "createTask")
@@ -1040,11 +1252,13 @@ describe("ComputeV1HttpRouter dedicated longitudinal V2 jobs", () => {
     expect(await target.objectStore.head(before!.inputObjectKey)).not.toBeNull();
 
     target.clock.set(NOW + 60_001);
-    await expect(target.router.reconcileDurableDeletion(jobId)).resolves.toBe(true);
-    expect(await target.httpRepository.get(jobId)).toMatchObject({
+    await expect(target.router.reconcileDurableDeletion(jobId)).resolves.toBe(false);
+    const retained = await target.httpRepository.get(jobId);
+    expect(retained).toMatchObject({
       deleteRequestedAtMs: NOW + 60_001,
       inputDeletedAtMs: NOW + 60_001,
     });
+    expect(retained).not.toHaveProperty("deletionCompletedAtMs");
     expect(await target.objectStore.head(before!.inputObjectKey)).toBeNull();
   });
 
@@ -1086,6 +1300,122 @@ describe("ComputeV1HttpRouter dedicated longitudinal V2 jobs", () => {
 });
 
 describe("ComputeV1HttpRouter", () => {
+  it("allows only the internal sweeper to establish deletion intent after generic job TTL", async () => {
+    const target = harness();
+    const dataset = new TextEncoder().encode(
+      "participant,conversation,A,B\np1,c1,1,1\n",
+    );
+    const { capability } = await createAndUpload(target, dataset);
+    const inputObjectKey = target.urls.uploadObjectKey(capability.jobId);
+
+    await expect(target.router.reconcileDurableDeletion(capability.jobId))
+      .resolves.toBe(false);
+    const beforeExpiry = await target.httpRepository.get(capability.jobId);
+    expect(beforeExpiry?.deleteRequestedAtMs).toBeUndefined();
+    expect(beforeExpiry?.inputDeletedAtMs).toBeUndefined();
+    expect(await target.objectStore.head(inputObjectKey)).not.toBeNull();
+
+    target.clock.set(NOW + 60 * 60_000);
+    await expect(target.router.reconcileDurableDeletion(capability.jobId))
+      .resolves.toBe(true);
+    expect(await target.httpRepository.get(capability.jobId)).toMatchObject({
+      deleteRequestedAtMs: NOW + 60 * 60_000,
+      inputDeletedAtMs: NOW + 60 * 60_000,
+      deleteTerminationRequired: false,
+      deleteCapacityReserved: false,
+    });
+    expect((await target.httpRepository.get(capability.jobId))?.deleteIdempotencyHash)
+      .toBeUndefined();
+    expect(await target.objectStore.head(inputObjectKey)).toBeNull();
+  });
+
+  it("does not treat terminal input cleanup as durable result deletion", async () => {
+    const target = harness();
+    const dataset = new TextEncoder().encode(
+      "participant,conversation,A,B\np1,c1,1,1\n",
+    );
+    const receipt = datasetReceipt(dataset);
+    const { client, capability } = await createAndUpload(target, dataset);
+    await client.executeJob(
+      capability,
+      {
+        schemaVersion: "3dena.execute-job-request.v1",
+        datasetReceipt: receipt,
+        task: analysisTask(receipt, "task-terminal-result-cleanup"),
+      },
+      "execute-terminal-result-cleanup",
+    );
+    const lease = await target.core.claimTask(capability.jobId, {
+      leaseId: "lease-terminal-result-cleanup",
+      holderId: "worker-terminal-result-cleanup",
+      durationMs: 30_000,
+    });
+    const running = await target.core.executeTask(capability.jobId, lease);
+    const resultKey = running.execution?.resultObjectKey;
+    const childId = running.execution?.childId;
+    if (resultKey === undefined || childId === undefined) {
+      throw new Error("Expected an executing result object binding.");
+    }
+    const result = await target.objectStore.putImmutable(
+      resultKey,
+      new TextEncoder().encode('{"scientificResult":true}'),
+    );
+    await target.core.publishResult(capability.jobId, lease, result.descriptor);
+    target.supervisor.observeTermination(childId, {
+      kind: "completed",
+      observedAtMs: target.clock.now(),
+      exitCode: 0,
+      signal: null,
+    });
+    await target.core.settleBackground();
+
+    await expect(client.getJob(capability)).resolves.toMatchObject({
+      state: "SUCCEEDED",
+      resultAvailable: true,
+    });
+    const terminal = await target.httpRepository.get(capability.jobId);
+    expect(terminal?.inputDeletedAtMs).toBe(NOW);
+    expect(terminal).not.toHaveProperty("deletionCompletedAtMs");
+    expect(await target.objectStore.head(resultKey)).not.toBeNull();
+
+    target.clock.set(NOW + 60 * 60_000);
+    const deleteObject = target.objectStore.delete.bind(target.objectStore);
+    let rejectResultDelete = true;
+    const deleteSpy = vi.spyOn(target.objectStore, "delete")
+      .mockImplementation(async (key) => {
+        if (key === resultKey && rejectResultDelete) {
+          rejectResultDelete = false;
+          throw new Error("injected result deletion failure");
+        }
+        return deleteObject(key);
+      });
+
+    await expect(target.router.reconcileDurableDeletion(capability.jobId))
+      .rejects.toThrow("injected result deletion failure");
+    expect(await target.httpRepository.get(capability.jobId))
+      .not.toHaveProperty("deletionCompletedAtMs");
+    expect((await target.core.getTask(capability.jobId))?.state).toBe("deleting");
+    expect(await target.objectStore.head(resultKey)).not.toBeNull();
+
+    await expect(target.router.reconcileDurableDeletion(capability.jobId))
+      .resolves.toBe(true);
+    const completed = await target.httpRepository.get(capability.jobId);
+    expect(completed).toMatchObject({
+      inputDeletedAtMs: NOW,
+      deletionCompletedAtMs: NOW + 60 * 60_000,
+    });
+    expect(await target.core.getTask(capability.jobId)).toMatchObject({
+      state: "deleted",
+      deletionReceipt: {
+        requestObjectAbsent: true,
+        ownedResultObjectsAbsent: true,
+        ownedResultObjectCount: 1,
+      },
+    });
+    expect(await target.objectStore.head(resultKey)).toBeNull();
+    deleteSpy.mockRestore();
+  });
+
   it("does not let unverified Authorization values rotate the rate-limit key", async () => {
     const keys: string[] = [];
     const target = harness({
@@ -1431,6 +1761,20 @@ describe("ComputeV1HttpRouter", () => {
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get("access-control-allow-origin")).toBe(ORIGIN);
     expect(preflight.headers.get("access-control-allow-credentials")).toBeNull();
+    const resumePreflight = await target.router.handle(
+      new Request("https://compute.example/v1/jobs/job-1/events", {
+        method: "OPTIONS",
+        headers: {
+          origin: ORIGIN,
+          "access-control-request-method": "GET",
+          "access-control-request-headers":
+            "authorization, last-event-id, x-3dena-contract-version",
+        },
+      }),
+    );
+    expect(resumePreflight.status).toBe(204);
+    expect(resumePreflight.headers.get("access-control-allow-headers"))
+      .toContain("last-event-id");
 
     const denied = await target.router.handle(
       new Request("https://compute.example/healthz", {

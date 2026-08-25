@@ -371,7 +371,9 @@ function completedDerivedResult(): Awaited<ReturnType<typeof runRemoteAnalysis>>
 }
 
 async function reachActivation(target: RemoteDatasetWorkflowAdapter) {
-  render(<RemoteAnalysisWorkspace webBuildId="web-build" policy={policy} client={client} workflow={target} />);
+  const rendered = render(
+    <RemoteAnalysisWorkspace webBuildId="web-build" policy={policy} client={client} workflow={target} />,
+  );
   await waitFor(() => expect(screen.getByTestId("remote-runtime-status")).toHaveAttribute("data-state", "idle"));
   fireEvent.click(screen.getByTestId("remote-processing-consent"));
   fireEvent.change(screen.getByTestId("remote-file-input"), {
@@ -385,6 +387,7 @@ async function reachActivation(target: RemoteDatasetWorkflowAdapter) {
   await screen.findByTestId("remote-typed-preview");
   fireEvent.click(screen.getByTestId("remote-activate"));
   await screen.findByTestId("remote-activation-receipt");
+  return rendered;
 }
 
 describe("RemoteAnalysisWorkspace", () => {
@@ -443,6 +446,11 @@ describe("RemoteAnalysisWorkspace", () => {
     );
     expect(deleteRemoteJobData).not.toHaveBeenCalled();
     expect(screen.getByTestId("remote-analysis-cancel")).toBeEnabled();
+    expect(screen.getByTestId("remote-upload-inspect")).toBeDisabled();
+    expect(screen.getByTestId("remote-worksheet-select")).toBeDisabled();
+    expect(screen.getByTestId("remote-parse-sheet")).toBeDisabled();
+    expect(screen.getByTestId("remote-request-preview")).toBeDisabled();
+    expect(screen.getByTestId("remote-activate")).toBeDisabled();
   });
 
   it("lists all seven remote task discriminators and fails closed without reviewed derived controls", async () => {
@@ -669,6 +677,457 @@ describe("RemoteAnalysisWorkspace", () => {
     expect(screen.getByTestId("remote-runtime-status")).toHaveAttribute("data-state", "cancelling");
     resolveDelete();
     await waitFor(() => expect(screen.getByTestId("remote-runtime-status")).toHaveAttribute("data-state", "cancelled"));
+  });
+
+  it("reports successful deletion when the job completes before cancellation", async () => {
+    const target = workflow();
+    await reachActivation(target);
+    vi.mocked(runRemoteAnalysis).mockImplementationOnce(async () => await new Promise(() => undefined));
+    vi.mocked(cancelRemoteAnalysis).mockResolvedValueOnce({
+      schemaVersion: "3dena.job-deletion-receipt.v2",
+      jobId: "job-1",
+      cancelled: false,
+      inputDeleted: true,
+      resultDeleted: true,
+      deletedAt: new Date().toISOString(),
+      intentAccepted: true,
+      termination: "not_required",
+      capacity: "not_reserved",
+      objects: "deleted",
+    });
+
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+    await waitFor(() => expect(runRemoteAnalysis).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId("remote-analysis-cancel"));
+
+    await waitFor(() => expect(screen.getByTestId("remote-runtime-status"))
+      .toHaveAttribute("data-state", "cancelled"));
+    expect(screen.getByTestId("remote-runtime-status")).toHaveTextContent(
+      "reached a terminal state before cancellation",
+    );
+  });
+
+  it("locks every dataset mutation while a remote job capability is being bound", async () => {
+    const target = workflow();
+    await reachActivation(target);
+    vi.mocked(target.bindExecution).mockImplementationOnce(
+      async () => await new Promise<RemoteExecutionBinding>(() => undefined),
+    );
+
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+    await waitFor(() => expect(target.bindExecution).toHaveBeenCalledOnce());
+
+    expect(screen.getByTestId("remote-upload-inspect")).toBeDisabled();
+    expect(screen.getByTestId("remote-worksheet-select")).toBeDisabled();
+    expect(screen.getByTestId("remote-parse-sheet")).toBeDisabled();
+    expect(screen.getByTestId("remote-request-preview")).toBeDisabled();
+    expect(screen.getByTestId("remote-activate")).toBeDisabled();
+
+    fireEvent.click(screen.getByTestId("remote-upload-inspect"));
+    fireEvent.click(screen.getByTestId("remote-parse-sheet"));
+    fireEvent.click(screen.getByTestId("remote-request-preview"));
+    fireEvent.click(screen.getByTestId("remote-activate"));
+    expect(target.inspect).toHaveBeenCalledOnce();
+    expect(target.parseWorksheet).toHaveBeenCalledOnce();
+    expect(target.prepare).toHaveBeenCalledOnce();
+    expect(target.activate).toHaveBeenCalledOnce();
+  });
+
+  it("offers local cancellation while binding without claiming or requesting remote deletion", async () => {
+    const target = workflow();
+    await reachActivation(target);
+    let bindSignal: AbortSignal | null = null;
+    vi.mocked(target.bindExecution).mockImplementationOnce(
+      async (_active, _task, signal) => await new Promise<RemoteExecutionBinding>(
+        (_resolve, reject) => {
+          bindSignal = signal;
+          signal.addEventListener("abort", () => {
+            reject(new DOMException("Binding aborted", "AbortError"));
+          }, { once: true });
+        },
+      ),
+    );
+
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+    await waitFor(() => expect(target.bindExecution).toHaveBeenCalledOnce());
+    expect(screen.getByTestId("remote-analysis-cancel")).toBeEnabled();
+    expect(screen.getByTestId("remote-analysis-cancel")).toHaveTextContent("Cancel binding");
+
+    fireEvent.click(screen.getByTestId("remote-analysis-cancel"));
+    await waitFor(() => expect(screen.getByTestId("remote-runtime-status"))
+      .toHaveAttribute("data-state", "cancelled"));
+
+    expect(bindSignal).toMatchObject({ aborted: true });
+    expect(cancelRemoteAnalysis).not.toHaveBeenCalled();
+    expect(deleteRemoteJobData).not.toHaveBeenCalled();
+    expect(screen.getByTestId("remote-runtime-status")).toHaveTextContent(
+      "No remote deletion receipt is claimed",
+    );
+    expect(screen.getByTestId("remote-analysis-run")).toBeEnabled();
+  });
+
+  it("durably deletes a capability returned after local binding cancellation", async () => {
+    const target = workflow();
+    await reachActivation(target);
+    let resolveBinding!: (binding: RemoteExecutionBinding) => void;
+    vi.mocked(target.bindExecution).mockImplementationOnce(
+      async () => await new Promise<RemoteExecutionBinding>((resolve) => {
+        resolveBinding = resolve;
+      }),
+    );
+
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+    await waitFor(() => expect(target.bindExecution).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByTestId("remote-analysis-cancel"));
+    expect(deleteRemoteJobData).not.toHaveBeenCalled();
+
+    resolveBinding({
+      reference: { jobId: "late-bound-job", capabilityToken: "late-bound-capability" },
+      datasetReceipt: receipt,
+      taskKind: "ena-model",
+      runId: "late-bound-run",
+      start: vi.fn(async () => undefined),
+    });
+
+    await waitFor(() => expect(deleteRemoteJobData).toHaveBeenCalledWith(
+      client,
+      { jobId: "late-bound-job", capabilityToken: "late-bound-capability" },
+    ));
+    expect(cancelRemoteAnalysis).not.toHaveBeenCalled();
+    expect(runRemoteAnalysis).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByTestId("remote-runtime-status"))
+      .toHaveAttribute("data-state", "cancelled"));
+    expect(screen.getByTestId("remote-runtime-status")).toHaveTextContent(
+      "subsequently returned job capability was durably deleted",
+    );
+  });
+
+  it("retains a late-bound capability until a failed deletion can be retried", async () => {
+    const target = workflow();
+    await reachActivation(target);
+    let resolveBinding!: (binding: RemoteExecutionBinding) => void;
+    vi.mocked(target.bindExecution).mockImplementationOnce(
+      async () => await new Promise<RemoteExecutionBinding>((resolve) => {
+        resolveBinding = resolve;
+      }),
+    );
+    vi.mocked(deleteRemoteJobData).mockRejectedValueOnce(new Error("DELETE_UNOBSERVED"));
+
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+    await waitFor(() => expect(target.bindExecution).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByTestId("remote-analysis-cancel"));
+    resolveBinding({
+      reference: { jobId: "late-bound-job", capabilityToken: "late-bound-capability" },
+      datasetReceipt: receipt,
+      taskKind: "ena-model",
+      runId: "late-bound-run",
+      start: vi.fn(async () => undefined),
+    });
+
+    expect(await screen.findByTestId("remote-analysis-error")).toHaveTextContent(
+      "DELETE_UNOBSERVED",
+    );
+    expect(screen.getByTestId("remote-analysis-cancel")).toBeEnabled();
+    expect(screen.getByTestId("remote-analysis-cancel")).toHaveTextContent(
+      "Delete retained remote job",
+    );
+
+    fireEvent.click(screen.getByTestId("remote-analysis-cancel"));
+    await waitFor(() => expect(deleteRemoteJobData).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByTestId("remote-runtime-status"))
+      .toHaveAttribute("data-state", "cancelled"));
+  });
+
+  it("releases the binding lock when a bind request rejects", async () => {
+    const target = workflow();
+    await reachActivation(target);
+    vi.mocked(target.bindExecution).mockRejectedValueOnce(new Error("BIND_REQUEST_TIMEOUT"));
+
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+    expect(await screen.findByTestId("remote-analysis-error")).toHaveTextContent(
+      "BIND_REQUEST_TIMEOUT",
+    );
+
+    expect(deleteRemoteJobData).not.toHaveBeenCalled();
+    expect(cancelRemoteAnalysis).not.toHaveBeenCalled();
+    expect(screen.getByTestId("remote-analysis-run")).toBeEnabled();
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+    await waitFor(() => expect(target.bindExecution).toHaveBeenCalledTimes(2));
+  });
+
+  it("releases the stale binding lock when the workflow generation changes", async () => {
+    const first = workflow();
+    const rendered = await reachActivation(first);
+    vi.mocked(first.bindExecution).mockImplementationOnce(
+      async (_active, _task, signal) => await new Promise<RemoteExecutionBinding>(
+        (_resolve, reject) => {
+          signal.addEventListener("abort", () => {
+            reject(new DOMException("Stale workflow binding aborted", "AbortError"));
+          }, { once: true });
+        },
+      ),
+    );
+
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+    await waitFor(() => expect(first.bindExecution).toHaveBeenCalledOnce());
+
+    const replacement = workflow();
+    rendered.rerender(
+      <RemoteAnalysisWorkspace
+        webBuildId="web-build"
+        policy={policy}
+        client={client}
+        workflow={replacement}
+      />,
+    );
+    await waitFor(() => expect(replacement.capabilities).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.getByTestId("remote-runtime-status"))
+      .toHaveAttribute("data-state", "idle"));
+
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+    await waitFor(() => expect(replacement.bindExecution).toHaveBeenCalledOnce());
+  });
+
+  it("retains a stale late-bound capability when deletion after workflow replacement fails", async () => {
+    const first = workflow();
+    const rendered = await reachActivation(first);
+    let resolveBinding!: (binding: RemoteExecutionBinding) => void;
+    vi.mocked(first.bindExecution).mockImplementationOnce(
+      async () => await new Promise<RemoteExecutionBinding>((resolve) => {
+        resolveBinding = resolve;
+      }),
+    );
+
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+    await waitFor(() => expect(first.bindExecution).toHaveBeenCalledOnce());
+    const replacement = workflow();
+    rendered.rerender(
+      <RemoteAnalysisWorkspace
+        webBuildId="web-build"
+        policy={policy}
+        client={client}
+        workflow={replacement}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("remote-runtime-status"))
+      .toHaveAttribute("data-state", "idle"));
+    vi.mocked(deleteRemoteJobData).mockRejectedValueOnce(new Error("STALE_DELETE_UNOBSERVED"));
+
+    resolveBinding({
+      reference: { jobId: "stale-job", capabilityToken: "stale-capability" },
+      datasetReceipt: receipt,
+      taskKind: "ena-model",
+      runId: "stale-run",
+      start: vi.fn(async () => undefined),
+    });
+
+    expect(await screen.findByTestId("remote-analysis-error")).toHaveTextContent(
+      "STALE_DELETE_UNOBSERVED",
+    );
+    expect(runRemoteAnalysis).not.toHaveBeenCalled();
+    expect(screen.getByTestId("remote-analysis-cancel")).toBeEnabled();
+    expect(screen.getByTestId("remote-analysis-cancel")).toHaveTextContent(
+      "Delete retained remote job",
+    );
+
+    fireEvent.click(screen.getByTestId("remote-analysis-cancel"));
+    await waitFor(() => expect(deleteRemoteJobData).toHaveBeenCalledTimes(2));
+    expect(deleteRemoteJobData).toHaveBeenNthCalledWith(
+      2,
+      client,
+      { jobId: "stale-job", capabilityToken: "stale-capability" },
+    );
+    await waitFor(() => expect(screen.getByTestId("remote-runtime-status"))
+      .toHaveAttribute("data-state", "cancelled"));
+  });
+
+  it("promotes deferred stale cleanup after replacement cancels the active bound job", async () => {
+    const first = workflow();
+    const rendered = await reachActivation(first);
+    let resolveStaleBinding!: (binding: RemoteExecutionBinding) => void;
+    vi.mocked(first.bindExecution).mockImplementationOnce(
+      async () => await new Promise<RemoteExecutionBinding>((resolve) => {
+        resolveStaleBinding = resolve;
+      }),
+    );
+
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+    await waitFor(() => expect(first.bindExecution).toHaveBeenCalledOnce());
+    const second = workflow();
+    rendered.rerender(
+      <RemoteAnalysisWorkspace
+        webBuildId="web-build"
+        policy={policy}
+        client={client}
+        workflow={second}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("remote-runtime-status"))
+      .toHaveAttribute("data-state", "idle"));
+
+    vi.mocked(runRemoteAnalysis).mockImplementationOnce(
+      async () => await new Promise(() => undefined),
+    );
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+    await waitFor(() => expect(runRemoteAnalysis).toHaveBeenCalledOnce());
+    let resolveActiveCleanup!: () => void;
+    vi.mocked(cancelRemoteAnalysis).mockImplementationOnce(async () => {
+      await new Promise<void>((resolve) => { resolveActiveCleanup = resolve; });
+      return {
+        schemaVersion: "3dena.job-deletion-receipt.v2",
+        jobId: "job-1",
+        cancelled: true,
+        inputDeleted: true,
+        resultDeleted: true,
+        deletedAt: new Date().toISOString(),
+        intentAccepted: true,
+        termination: "observed",
+        capacity: "released",
+        objects: "deleted",
+      };
+    });
+
+    const third = workflow();
+    rendered.rerender(
+      <RemoteAnalysisWorkspace
+        webBuildId="web-build"
+        policy={policy}
+        client={client}
+        workflow={third}
+      />,
+    );
+    await waitFor(() => expect(cancelRemoteAnalysis).toHaveBeenCalledOnce());
+    vi.mocked(deleteRemoteJobData).mockRejectedValueOnce(new Error("DEFERRED_DELETE_UNOBSERVED"));
+    resolveStaleBinding({
+      reference: { jobId: "deferred-stale-job", capabilityToken: "deferred-stale-capability" },
+      datasetReceipt: receipt,
+      taskKind: "ena-model",
+      runId: "deferred-stale-run",
+      start: vi.fn(async () => undefined),
+    });
+    await waitFor(() => expect(deleteRemoteJobData).toHaveBeenCalledOnce());
+
+    resolveActiveCleanup();
+    await waitFor(() => expect(screen.getByTestId("remote-analysis-cancel")).toBeEnabled());
+    expect(screen.getByTestId("remote-analysis-cancel")).toHaveTextContent(
+      "Delete retained remote job",
+    );
+    expect(screen.getByTestId("remote-analysis-error")).toHaveTextContent(
+      "DEFERRED_DELETE_UNOBSERVED",
+    );
+    expect(runRemoteAnalysis).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByTestId("remote-analysis-cancel"));
+    await waitFor(() => expect(deleteRemoteJobData).toHaveBeenCalledTimes(2));
+    expect(deleteRemoteJobData).toHaveBeenNthCalledWith(
+      2,
+      client,
+      { jobId: "deferred-stale-job", capabilityToken: "deferred-stale-capability" },
+    );
+  });
+
+  it("retains promoted stale cleanup after the replacement execution fails normally", async () => {
+    const first = workflow();
+    const rendered = await reachActivation(first);
+    let resolveStaleBinding!: (binding: RemoteExecutionBinding) => void;
+    vi.mocked(first.bindExecution).mockImplementationOnce(
+      async () => await new Promise<RemoteExecutionBinding>((resolve) => {
+        resolveStaleBinding = resolve;
+      }),
+    );
+
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+    await waitFor(() => expect(first.bindExecution).toHaveBeenCalledOnce());
+
+    const second = workflow();
+    rendered.rerender(
+      <RemoteAnalysisWorkspace
+        webBuildId="web-build"
+        policy={policy}
+        client={client}
+        workflow={second}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("remote-runtime-status"))
+      .toHaveAttribute("data-state", "idle"));
+
+    let rejectReplacementExecution!: (reason: Error) => void;
+    vi.mocked(runRemoteAnalysis).mockImplementationOnce(
+      async () => await new Promise<never>((_resolve, reject) => {
+        rejectReplacementExecution = reject;
+      }),
+    );
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+    await waitFor(() => expect(runRemoteAnalysis).toHaveBeenCalledOnce());
+
+    vi.mocked(deleteRemoteJobData).mockRejectedValueOnce(
+      new Error("DEFERRED_STALE_DELETE_UNOBSERVED"),
+    );
+    resolveStaleBinding({
+      reference: { jobId: "deferred-stale-job", capabilityToken: "deferred-stale-capability" },
+      datasetReceipt: receipt,
+      taskKind: "ena-model",
+      runId: "deferred-stale-run",
+      start: vi.fn(async () => undefined),
+    });
+    await waitFor(() => expect(deleteRemoteJobData).toHaveBeenCalledTimes(1));
+
+    rejectReplacementExecution(new Error("REPLACEMENT_EXECUTION_FAILED"));
+    await waitFor(() => expect(deleteRemoteJobData).toHaveBeenCalledTimes(2));
+    expect(deleteRemoteJobData).toHaveBeenNthCalledWith(
+      2,
+      client,
+      { jobId: "job-1", capabilityToken: "capability-1" },
+    );
+
+    expect(screen.getByTestId("remote-analysis-error")).toHaveTextContent(
+      "DEFERRED_STALE_DELETE_UNOBSERVED",
+    );
+    expect(screen.getByTestId("remote-analysis-cancel")).toBeEnabled();
+    expect(screen.getByTestId("remote-analysis-cancel")).toHaveTextContent(
+      "Delete retained remote job",
+    );
+    expect(runRemoteAnalysis).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByTestId("remote-analysis-cancel"));
+    await waitFor(() => expect(deleteRemoteJobData).toHaveBeenCalledTimes(3));
+    expect(deleteRemoteJobData).toHaveBeenNthCalledWith(
+      3,
+      client,
+      { jobId: "deferred-stale-job", capabilityToken: "deferred-stale-capability" },
+    );
+    expect(runRemoteAnalysis).toHaveBeenCalledOnce();
+  });
+
+  it("deletes a stale late-bound capability after unmount without publishing state", async () => {
+    const target = workflow();
+    const rendered = await reachActivation(target);
+    let resolveBinding!: (binding: RemoteExecutionBinding) => void;
+    vi.mocked(target.bindExecution).mockImplementationOnce(
+      async () => await new Promise<RemoteExecutionBinding>((resolve) => {
+        resolveBinding = resolve;
+      }),
+    );
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    fireEvent.click(screen.getByTestId("remote-analysis-run"));
+    await waitFor(() => expect(target.bindExecution).toHaveBeenCalledOnce());
+    rendered.unmount();
+    resolveBinding({
+      reference: { jobId: "unmounted-stale-job", capabilityToken: "unmounted-stale-capability" },
+      datasetReceipt: receipt,
+      taskKind: "ena-model",
+      runId: "unmounted-stale-run",
+      start: vi.fn(async () => undefined),
+    });
+
+    await waitFor(() => expect(deleteRemoteJobData).toHaveBeenCalledWith(
+      client,
+      { jobId: "unmounted-stale-job", capabilityToken: "unmounted-stale-capability" },
+    ));
+    expect(runRemoteAnalysis).not.toHaveBeenCalled();
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 
   it("preserves the active dataset when a replacement inspection fails", async () => {

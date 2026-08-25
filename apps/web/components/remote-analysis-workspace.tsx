@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -48,6 +49,7 @@ import {
   deleteRemoteJobData,
   runRemoteAnalysis,
   shouldRetainRemoteJob,
+  type RemoteExecutionBinding,
   type VerifiedRemoteAnalysisResult,
 } from "@/lib/remote-analysis-runtime";
 import {
@@ -82,6 +84,21 @@ type RemoteStatus =
   | "error";
 
 type RemoteTaskKind = Exclude<AnalysisTaskV1["kind"], "prepared-import">;
+
+type RemoteJobStage = "idle" | "binding" | "bound";
+
+interface RemoteBindingAttempt {
+  readonly client: AnalysisClientV2;
+  readonly controller: AbortController;
+  readonly generation: number;
+  cancelRequested: boolean;
+}
+
+interface RetainedRemoteCleanup {
+  readonly client: AnalysisClientV2;
+  readonly reference: Parameters<typeof deleteRemoteJobData>[1];
+  readonly failure: string;
+}
 
 const REMOTE_TASK_OPTIONS = Object.freeze([
   { kind: "ena-model", label: "ENA model", readiness: "ready" },
@@ -179,6 +196,7 @@ export function RemoteAnalysisWorkspace({
   const [activeMapping, setActiveMapping] = useState<AnalysisMapping | null>(null);
   const [selectedTaskKind, setSelectedTaskKind] = useState<RemoteTaskKind>("ena-model");
   const [cleanupPending, setCleanupPending] = useState(false);
+  const [remoteJobStage, setRemoteJobStage] = useState<RemoteJobStage>("idle");
   const [downloadPending, setDownloadPending] = useState(false);
   const [sourceDeleting, setSourceDeleting] = useState(false);
   const [result, setResult] = useState<VerifiedRemoteAnalysisResult | null>(null);
@@ -187,6 +205,14 @@ export function RemoteAnalysisWorkspace({
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const generationRef = useRef(0);
+  // This mutex is acquired synchronously before any remote job binding starts.
+  // React state updates are not synchronous enough to prevent a second control
+  // from aborting the bind before its capability can be recorded.
+  const remoteJobLockRef = useRef(false);
+  const remoteJobStageRef = useRef<RemoteJobStage>("idle");
+  const bindingAttemptRef = useRef<RemoteBindingAttempt | null>(null);
+  const mountedRef = useRef(false);
+  const deferredCleanupRef = useRef<RetainedRemoteCleanup[]>([]);
   const requestAbortRef = useRef<AbortController | null>(null);
   const activeJobRef = useRef<{
     client: AnalysisClientV2;
@@ -198,6 +224,171 @@ export function RemoteAnalysisWorkspace({
   } | null>(null);
   const workflowIdRef = useRef<string | null>(null);
   const activeWorkflowIdRef = useRef<string | null>(null);
+
+  const transitionRemoteJobStage = useCallback((next: RemoteJobStage): void => {
+    remoteJobStageRef.current = next;
+    setRemoteJobStage(next);
+  }, []);
+
+  function beginRemoteBinding(
+    boundClient: AnalysisClientV2,
+    controller: AbortController,
+    generation: number,
+  ): RemoteBindingAttempt {
+    const attempt: RemoteBindingAttempt = {
+      client: boundClient,
+      controller,
+      generation,
+      cancelRequested: false,
+    };
+    bindingAttemptRef.current = attempt;
+    remoteJobLockRef.current = true;
+    transitionRemoteJobStage("binding");
+    return attempt;
+  }
+
+  const promoteDeferredCleanup = useCallback((): boolean => {
+    if (activeJobRef.current || bindingAttemptRef.current) return false;
+    const deferred = deferredCleanupRef.current.shift();
+    if (!deferred) return false;
+    activeJobRef.current = { client: deferred.client, reference: deferred.reference };
+    remoteJobLockRef.current = true;
+    setCleanupPending(true);
+    transitionRemoteJobStage("bound");
+    setStatus("error");
+    setMessage("A stale workflow binding returned a capability whose deletion was not observed. Delete the retained remote job before continuing.");
+    setError(deferred.failure);
+    return true;
+  }, [transitionRemoteJobStage]);
+
+  function releaseRemoteBinding(attempt: RemoteBindingAttempt): boolean {
+    if (bindingAttemptRef.current !== attempt) return false;
+    bindingAttemptRef.current = null;
+    if (requestAbortRef.current === attempt.controller) requestAbortRef.current = null;
+    if (promoteDeferredCleanup()) return true;
+    remoteJobLockRef.current = false;
+    transitionRemoteJobStage("idle");
+    return true;
+  }
+
+  function recordBoundRemoteJob(
+    attempt: RemoteBindingAttempt,
+    binding: RemoteExecutionBinding,
+  ): boolean {
+    if (bindingAttemptRef.current !== attempt) return false;
+    bindingAttemptRef.current = null;
+    activeJobRef.current = { client: attempt.client, reference: binding.reference };
+    setCleanupPending(true);
+    transitionRemoteJobStage("bound");
+    return true;
+  }
+
+  const releaseBoundRemoteJob = useCallback((): boolean => {
+    activeJobRef.current = null;
+    if (promoteDeferredCleanup()) return true;
+    setCleanupPending(false);
+    remoteJobLockRef.current = false;
+    transitionRemoteJobStage("idle");
+    return false;
+  }, [promoteDeferredCleanup, transitionRemoteJobStage]);
+
+  function retainStaleCleanup(
+    attempt: RemoteBindingAttempt,
+    binding: RemoteExecutionBinding,
+    cleanupError: unknown,
+  ): void {
+    if (!mountedRef.current) return;
+    const failure = `A stale workflow binding returned a job capability. Cleanup is still required: ${cleanupError instanceof Error ? cleanupError.message : "service deletion was not observed."}`;
+    const retained: RetainedRemoteCleanup = {
+      client: attempt.client,
+      reference: binding.reference,
+      failure,
+    };
+    if (activeJobRef.current || bindingAttemptRef.current) {
+      deferredCleanupRef.current.push(retained);
+      remoteJobLockRef.current = true;
+      setCleanupPending(true);
+      setError(failure);
+      return;
+    }
+    activeJobRef.current = { client: retained.client, reference: retained.reference };
+    remoteJobLockRef.current = true;
+    setCleanupPending(true);
+    transitionRemoteJobStage("bound");
+    setStatus("error");
+    setMessage("A stale workflow binding returned a capability whose deletion was not observed. Delete the retained remote job before continuing.");
+    setError(failure);
+  }
+
+  async function deleteReturnedBinding(
+    attempt: RemoteBindingAttempt,
+    binding: RemoteExecutionBinding,
+  ): Promise<void> {
+    // A workflow/generation replacement may have installed a newer binding.
+    // Delete the stale capability directly without overwriting that newer job.
+    if (bindingAttemptRef.current !== attempt) {
+      try {
+        await deleteRemoteJobData(attempt.client, binding.reference);
+      } catch (cleanupError) {
+        retainStaleCleanup(attempt, binding, cleanupError);
+      }
+      return;
+    }
+
+    recordBoundRemoteJob(attempt, binding);
+    const cleanup = activeJobRef.current;
+    if (!cleanup) return;
+    try {
+      await deleteRemoteJobData(cleanup.client, cleanup.reference);
+      if (activeJobRef.current !== cleanup) return;
+      const retainedCleanup = releaseBoundRemoteJob();
+      if (retainedCleanup) return;
+      if (attempt.generation !== generationRef.current) return;
+      setStatus("cancelled");
+      setProgress(0);
+      setMessage("The local binding request was cancelled, and its subsequently returned job capability was durably deleted.");
+    } catch (cleanupError) {
+      if (activeJobRef.current !== cleanup || attempt.generation !== generationRef.current) return;
+      setCleanupPending(true);
+      setStatus("error");
+      setError(`The cancelled binding returned a job capability. Cleanup is still required: ${cleanupError instanceof Error ? cleanupError.message : "service deletion was not observed."}`);
+    }
+  }
+
+  function handleBindingFailure(
+    attempt: RemoteBindingAttempt,
+    bindingError: unknown,
+    fallbackMessage: string,
+  ): boolean {
+    if (bindingAttemptRef.current !== attempt) return false;
+    const cancelledLocally = attempt.cancelRequested;
+    const sameGeneration = attempt.generation === generationRef.current;
+    releaseRemoteBinding(attempt);
+    if (!sameGeneration) return true;
+    if (remoteJobStageRef.current === "bound") return true;
+    if (cancelledLocally) {
+      setCleanupPending(false);
+      setStatus("cancelled");
+      setError(null);
+      setMessage("The binding request was cancelled locally before a job capability was returned. No remote deletion receipt is claimed.");
+      return true;
+    }
+    setStatus("error");
+    setError(bindingError instanceof Error ? bindingError.message : fallbackMessage);
+    return true;
+  }
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const deferredCleanupQueue = deferredCleanupRef.current;
+    return () => {
+      mountedRef.current = false;
+      const deferred = deferredCleanupQueue.splice(0);
+      for (const cleanup of deferred) {
+        void deleteRemoteJobData(cleanup.client, cleanup.reference).catch(() => undefined);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (policy.blocker || !client) return;
@@ -235,20 +426,52 @@ export function RemoteAnalysisWorkspace({
     return () => controller.abort();
   }, [client, policy.approvedRemoteBuild, policy.blocker, webBuildId, workflow]);
 
-  useEffect(() => () => {
-    generationRef.current += 1;
-    requestAbortRef.current?.abort();
-    const activeJob = activeJobRef.current;
-    if (activeJob) void cancelRemoteAnalysis(activeJob.client, activeJob.reference).catch(() => undefined);
-    const sourceJob = sourceJobRef.current;
-    if (sourceJob) void deleteRemoteJobData(sourceJob.client, sourceJob.reference).catch(() => undefined);
-    const workflowId = workflowIdRef.current;
-    if (workflowId) void workflow.discard(workflowId).catch(() => undefined);
-    const activeWorkflowId = activeWorkflowIdRef.current;
-    if (activeWorkflowId && activeWorkflowId !== workflowId) {
-      void workflow.discard(activeWorkflowId).catch(() => undefined);
-    }
-  }, [workflow]);
+  useEffect(() => {
+    // A dependency replacement reuses this component instance. Reflect the
+    // synchronous ref cleanup from the previous workflow in rendered controls.
+    setRemoteJobStage(remoteJobStageRef.current);
+    return () => {
+      generationRef.current += 1;
+      requestAbortRef.current?.abort();
+      requestAbortRef.current = null;
+
+      const bindingAttempt = bindingAttemptRef.current;
+      if (bindingAttempt) {
+        bindingAttemptRef.current = null;
+        if (!mountedRef.current || !promoteDeferredCleanup()) {
+          remoteJobLockRef.current = false;
+          remoteJobStageRef.current = "idle";
+        }
+      }
+
+      const activeJob = activeJobRef.current;
+      if (activeJob) {
+        void cancelRemoteAnalysis(activeJob.client, activeJob.reference)
+          .then(() => {
+            if (activeJobRef.current !== activeJob) return;
+            if (mountedRef.current) {
+              releaseBoundRemoteJob();
+              return;
+            }
+            activeJobRef.current = null;
+            remoteJobLockRef.current = false;
+            remoteJobStageRef.current = "idle";
+          })
+          // A failed cleanup remains capability-bound and locked so that a
+          // later explicit delete can retry it; failure is never treated as a
+          // deletion receipt.
+          .catch(() => undefined);
+      }
+      const sourceJob = sourceJobRef.current;
+      if (sourceJob) void deleteRemoteJobData(sourceJob.client, sourceJob.reference).catch(() => undefined);
+      const workflowId = workflowIdRef.current;
+      if (workflowId) void workflow.discard(workflowId).catch(() => undefined);
+      const activeWorkflowId = activeWorkflowIdRef.current;
+      if (activeWorkflowId && activeWorkflowId !== workflowId) {
+        void workflow.discard(activeWorkflowId).catch(() => undefined);
+      }
+    };
+  }, [promoteDeferredCleanup, releaseBoundRemoteJob, workflow]);
 
   function abortRequests(): void {
     generationRef.current += 1;
@@ -271,13 +494,14 @@ export function RemoteAnalysisWorkspace({
   function handleFile(event: ChangeEvent<HTMLInputElement>): void {
     const file = event.currentTarget.files?.[0] ?? null;
     event.currentTarget.value = "";
+    if (remoteJobLockRef.current) return;
     invalidateAfterSelection();
     setSelectedFile(file);
     if (file) setMessage(`${file.name} selected. Confirm server processing, then upload for authoritative inspection.`);
   }
 
   async function inspectSelected(): Promise<void> {
-    if (!selectedFile || !consent || status === "blocked") return;
+    if (!selectedFile || !consent || status === "blocked" || remoteJobLockRef.current) return;
     abortRequests();
     const generation = generationRef.current;
     const controller = new AbortController();
@@ -336,11 +560,12 @@ export function RemoteAnalysisWorkspace({
   }
 
   async function runPreparedAnalysis(): Promise<void> {
-    if (!prepared || !client || status === "blocked" || enaSource) return;
+    if (!prepared || !client || status === "blocked" || enaSource || remoteJobLockRef.current) return;
     abortRequests();
     const generation = generationRef.current;
     const controller = new AbortController();
     requestAbortRef.current = controller;
+    const bindingAttempt = beginRemoteBinding(client, controller, generation);
     const runId = uniqueId("prepared-run");
     setStatus("running");
     setResult(null);
@@ -354,9 +579,16 @@ export function RemoteAnalysisWorkspace({
         Date.now() + 15 * 60_000,
         controller.signal,
       );
-      if (generation !== generationRef.current) return;
-      activeJobRef.current = { client, reference: binding.reference };
-      setCleanupPending(true);
+      if (bindingAttempt.cancelRequested
+          || generation !== generationRef.current
+          || bindingAttemptRef.current !== bindingAttempt) {
+        await deleteReturnedBinding(bindingAttempt, binding);
+        return;
+      }
+      if (!recordBoundRemoteJob(bindingAttempt, binding)) {
+        await deleteReturnedBinding(bindingAttempt, binding);
+        return;
+      }
       const verified = await runRemoteAnalysis({
         client,
         binding,
@@ -378,8 +610,7 @@ export function RemoteAnalysisWorkspace({
         throw new Error("The verified service result is not a prepared-space source.");
       }
       sourceJobRef.current = { client, reference: binding.reference };
-      activeJobRef.current = null;
-      setCleanupPending(false);
+      const retainedCleanup = releaseBoundRemoteJob();
       setActive({
         workflowId: prepared.workflowId,
         activationIdentity: binding.datasetReceipt.activationIdentity,
@@ -396,9 +627,12 @@ export function RemoteAnalysisWorkspace({
       setPrepared(null);
       workflowIdRef.current = null;
       setProgress(100);
-      setStatus("completed");
-      setMessage("Prepared source activated. The service re-read the immutable upload, verified its exact bytes, executed the strict exchange parser and frozen mapping, and published a checksum-verified prepared-space result. jENA was not executed.");
+      setStatus(retainedCleanup ? "error" : "completed");
+      if (!retainedCleanup) {
+        setMessage("Prepared source activated. The service re-read the immutable upload, verified its exact bytes, executed the strict exchange parser and frozen mapping, and published a checksum-verified prepared-space result. jENA was not executed.");
+      }
     } catch (runError) {
+      if (handleBindingFailure(bindingAttempt, runError, "Prepared activation failed.")) return;
       if (generation !== generationRef.current) return;
       if (shouldRetainRemoteJob(runError)) {
         setCleanupPending(true);
@@ -412,8 +646,7 @@ export function RemoteAnalysisWorkspace({
         try {
           await deleteRemoteJobData(cleanup.client, cleanup.reference);
           if (generation !== generationRef.current) return;
-          activeJobRef.current = null;
-          setCleanupPending(false);
+          if (releaseBoundRemoteJob()) return;
         } catch (cleanupError) {
           if (generation !== generationRef.current) return;
           setCleanupPending(true);
@@ -422,13 +655,14 @@ export function RemoteAnalysisWorkspace({
           return;
         }
       }
+      if (remoteJobStageRef.current === "bound") releaseBoundRemoteJob();
       setStatus("error");
       setError(runError instanceof Error ? runError.message : "Prepared activation failed.");
     }
   }
 
   async function parseSelectedWorksheet(): Promise<void> {
-    if (!inventory || !worksheet) return;
+    if (!inventory || !worksheet || remoteJobLockRef.current) return;
     abortRequests();
     const generation = generationRef.current;
     const controller = new AbortController();
@@ -451,6 +685,7 @@ export function RemoteAnalysisWorkspace({
   }
 
   function updateMapping(next: AnalysisMapping): void {
+    if (remoteJobLockRef.current) return;
     abortRequests();
     setMapping(next);
     setPreview(null);
@@ -461,7 +696,7 @@ export function RemoteAnalysisWorkspace({
   }
 
   async function requestPreview(): Promise<void> {
-    if (!parsed || !mapping || mappingError(mapping)) return;
+    if (!parsed || !mapping || mappingError(mapping) || remoteJobLockRef.current) return;
     abortRequests();
     const generation = generationRef.current;
     const controller = new AbortController();
@@ -484,7 +719,7 @@ export function RemoteAnalysisWorkspace({
   }
 
   async function activatePreview(): Promise<void> {
-    if (!preview?.activatable || !mapping) return;
+    if (!preview?.activatable || !mapping || remoteJobLockRef.current) return;
     abortRequests();
     const generation = generationRef.current;
     const controller = new AbortController();
@@ -540,11 +775,12 @@ export function RemoteAnalysisWorkspace({
 
   async function runAnalysis(): Promise<void> {
     if (!active || !activeMapping || !client || status === "blocked"
-        || selectedTaskKind !== "ena-model" || enaSource) return;
+        || selectedTaskKind !== "ena-model" || enaSource || remoteJobLockRef.current) return;
     abortRequests();
     const generation = generationRef.current;
     const controller = new AbortController();
     requestAbortRef.current = controller;
+    const bindingAttempt = beginRemoteBinding(client, controller, generation);
     const runId = uniqueId("remote-run");
     setStatus("running");
     setResult(null);
@@ -573,9 +809,16 @@ export function RemoteAnalysisWorkspace({
         task,
         controller.signal,
       );
-      if (generation !== generationRef.current) return;
-      activeJobRef.current = { client, reference: binding.reference };
-      setCleanupPending(true);
+      if (bindingAttempt.cancelRequested
+          || generation !== generationRef.current
+          || bindingAttemptRef.current !== bindingAttempt) {
+        await deleteReturnedBinding(bindingAttempt, binding);
+        return;
+      }
+      if (!recordBoundRemoteJob(bindingAttempt, binding)) {
+        await deleteReturnedBinding(bindingAttempt, binding);
+        return;
+      }
       const verified = await runRemoteAnalysis({
         client,
         binding,
@@ -593,8 +836,7 @@ export function RemoteAnalysisWorkspace({
       });
       if (generation !== generationRef.current) return;
       sourceJobRef.current = { client, reference: binding.reference };
-      activeJobRef.current = null;
-      setCleanupPending(false);
+      const retainedCleanup = releaseBoundRemoteJob();
       setEnaSource({
         reference: binding.reference,
         datasetReceipt: binding.datasetReceipt,
@@ -603,9 +845,12 @@ export function RemoteAnalysisWorkspace({
       setEnaSourceResult(verified);
       setResult(verified);
       setProgress(100);
-      setStatus("completed");
-      setMessage("Remote ENA completed. Exact result bytes passed SHA-256, schema, variant, build, and ownership validation. Raw activation bytes are deleted at terminal publication; the service-owned ENA result remains capability-bound only for this derived-analysis session.");
+      setStatus(retainedCleanup ? "error" : "completed");
+      if (!retainedCleanup) {
+        setMessage("Remote ENA completed. Exact result bytes passed SHA-256, schema, variant, build, and ownership validation. Raw activation bytes are deleted at terminal publication; the service-owned ENA result remains capability-bound only for this derived-analysis session.");
+      }
     } catch (runError) {
+      if (handleBindingFailure(bindingAttempt, runError, "Remote analysis failed.")) return;
       if (generation !== generationRef.current) return;
       if (shouldRetainRemoteJob(runError)) {
         setCleanupPending(true);
@@ -619,8 +864,7 @@ export function RemoteAnalysisWorkspace({
         try {
           await deleteRemoteJobData(cleanup.client, cleanup.reference);
           if (generation !== generationRef.current) return;
-          activeJobRef.current = null;
-          setCleanupPending(false);
+          if (releaseBoundRemoteJob()) return;
         } catch (cleanupError) {
           if (generation !== generationRef.current) return;
           setCleanupPending(true);
@@ -629,6 +873,7 @@ export function RemoteAnalysisWorkspace({
           return;
         }
       }
+      if (remoteJobStageRef.current === "bound") releaseBoundRemoteJob();
       setStatus("error");
       setError(runError instanceof Error ? runError.message : "Remote analysis failed.");
     }
@@ -637,11 +882,12 @@ export function RemoteAnalysisWorkspace({
   async function runDerivedAnalysis(task: ActivatedAnalysisTaskSpecV1): Promise<void> {
     if (!client || !enaSource || !enaSourceResult || task.kind === "ena-model"
         || task.kind !== selectedTaskKind || status === "blocked" || cleanupPending
-        || status === "running" || status === "cancelling") return;
+        || status === "running" || status === "cancelling" || remoteJobLockRef.current) return;
     abortRequests();
     const generation = generationRef.current;
     const controller = new AbortController();
     requestAbortRef.current = controller;
+    const bindingAttempt = beginRemoteBinding(client, controller, generation);
     setStatus("running");
     setResult(null);
     setError(null);
@@ -649,9 +895,16 @@ export function RemoteAnalysisWorkspace({
     setMessage("Authorizing a derived job against the retained service-owned scientific result hash…");
     try {
       const binding = await workflow.bindDerivedExecution(enaSource, task, controller.signal);
-      if (generation !== generationRef.current) return;
-      activeJobRef.current = { client, reference: binding.reference };
-      setCleanupPending(true);
+      if (bindingAttempt.cancelRequested
+          || generation !== generationRef.current
+          || bindingAttemptRef.current !== bindingAttempt) {
+        await deleteReturnedBinding(bindingAttempt, binding);
+        return;
+      }
+      if (!recordBoundRemoteJob(bindingAttempt, binding)) {
+        await deleteReturnedBinding(bindingAttempt, binding);
+        return;
+      }
       const verified = await runRemoteAnalysis({
         client,
         binding,
@@ -670,13 +923,15 @@ export function RemoteAnalysisWorkspace({
       if (generation !== generationRef.current) return;
       await deleteRemoteJobData(client, binding.reference);
       if (generation !== generationRef.current) return;
-      activeJobRef.current = null;
-      setCleanupPending(false);
+      const retainedCleanup = releaseBoundRemoteJob();
       setResult(verified);
       setProgress(100);
-      setStatus("completed");
-      setMessage("Derived analysis completed. Exact result bytes and ownership passed verification; its derived job objects are attested deleted. The scientific source remains capability-bound for another reviewed derived task.");
+      setStatus(retainedCleanup ? "error" : "completed");
+      if (!retainedCleanup) {
+        setMessage("Derived analysis completed. Exact result bytes and ownership passed verification; its derived job objects are attested deleted. The scientific source remains capability-bound for another reviewed derived task.");
+      }
     } catch (runError) {
+      if (handleBindingFailure(bindingAttempt, runError, "Remote derived analysis failed.")) return;
       if (generation !== generationRef.current) return;
       if (shouldRetainRemoteJob(runError)) {
         setCleanupPending(true);
@@ -690,8 +945,7 @@ export function RemoteAnalysisWorkspace({
         try {
           await deleteRemoteJobData(cleanup.client, cleanup.reference);
           if (generation !== generationRef.current) return;
-          activeJobRef.current = null;
-          setCleanupPending(false);
+          if (releaseBoundRemoteJob()) return;
         } catch (cleanupError) {
           if (generation !== generationRef.current) return;
           setCleanupPending(true);
@@ -700,12 +954,25 @@ export function RemoteAnalysisWorkspace({
           return;
         }
       }
+      if (remoteJobStageRef.current === "bound") releaseBoundRemoteJob();
       setStatus("error");
       setError(runError instanceof Error ? runError.message : "Remote derived analysis failed.");
     }
   }
 
   async function cancelAnalysis(): Promise<void> {
+    const bindingAttempt = bindingAttemptRef.current;
+    if (bindingAttempt && remoteJobStageRef.current === "binding") {
+      if (bindingAttempt.cancelRequested) return;
+      bindingAttempt.cancelRequested = true;
+      setStatus("cancelling");
+      setResult(null);
+      setError(null);
+      setMessage("Cancelling the local binding request. No remote deletion receipt will be claimed unless a job capability is subsequently returned.");
+      bindingAttempt.controller.abort(new DOMException("Binding cancelled locally", "AbortError"));
+      return;
+    }
+
     const activeJob = activeJobRef.current;
     if (!activeJob || (status !== "running" && !cleanupPending)) return;
     const cancellingRunningWork = status === "running";
@@ -717,18 +984,21 @@ export function RemoteAnalysisWorkspace({
       ? "Cancellation requested. Waiting for the service deletion receipt and observed capacity release…"
       : "Retrying deletion of remote input and result objects…");
     try {
-      if (cancellingRunningWork) {
-        await cancelRemoteAnalysis(activeJob.client, activeJob.reference);
-      } else {
-        await deleteRemoteJobData(activeJob.client, activeJob.reference);
-      }
+      const deletion = cancellingRunningWork
+        ? await cancelRemoteAnalysis(activeJob.client, activeJob.reference)
+        : await deleteRemoteJobData(activeJob.client, activeJob.reference);
       if (activeJobRef.current !== activeJob) return;
-      activeJobRef.current = null;
-      setCleanupPending(false);
+      const retainedCleanup = releaseBoundRemoteJob();
+      if (retainedCleanup) {
+        setProgress(0);
+        return;
+      }
       setStatus("cancelled");
       setProgress(0);
       setMessage(cancellingRunningWork
-        ? "Cancellation observed. Input and result objects are attested deleted."
+        ? deletion.cancelled
+          ? "Cancellation observed. Input and result objects are attested deleted."
+          : "The job reached a terminal state before cancellation. Input and result objects are attested deleted."
         : "Remote input and result deletion is now attested.");
     } catch (cancelError) {
       if (activeJobRef.current !== activeJob) return;
@@ -797,6 +1067,11 @@ export function RemoteAnalysisWorkspace({
 
   const mappingValidation = mapping ? mappingError(mapping) : null;
   const serviceReady = status !== "blocked" && computeFlyBuildId !== null;
+  const workflowMutationLocked = remoteJobStage !== "idle"
+    || status === "running"
+    || status === "cancelling"
+    || cleanupPending
+    || sourceDeleting;
   const selectedTaskLabel = REMOTE_TASK_OPTIONS.find(
     (option) => option.kind === selectedTaskKind,
   )?.label ?? selectedTaskKind;
@@ -895,7 +1170,7 @@ export function RemoteAnalysisWorkspace({
                   type="checkbox"
                   checked={consent}
                   onChange={(event) => setConsent(event.currentTarget.checked)}
-                  disabled={!serviceReady}
+                  disabled={!serviceReady || workflowMutationLocked}
                   data-testid="remote-processing-consent"
                 />
                 <span>I understand and consent to this server processing and retention policy.</span>
@@ -907,7 +1182,7 @@ export function RemoteAnalysisWorkspace({
                 type="file"
                 accept=".csv,.xls,.xlsx,.ena3d.json,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json"
                 onChange={handleFile}
-                disabled={!serviceReady || status === "running" || status === "cancelling"}
+                disabled={!serviceReady || workflowMutationLocked}
                 data-testid="remote-file-input"
               />
             </label>
@@ -925,7 +1200,7 @@ export function RemoteAnalysisWorkspace({
               type="button"
               className="button button--primary"
               onClick={() => void inspectSelected()}
-              disabled={!serviceReady || !consent || !selectedFile || status === "uploading"}
+              disabled={!serviceReady || !consent || !selectedFile || status === "uploading" || workflowMutationLocked}
               data-testid="remote-upload-inspect"
             >
               <Upload size={18} aria-hidden="true" /> Upload and inspect
@@ -965,7 +1240,7 @@ export function RemoteAnalysisWorkspace({
                 type="button"
                 className="button button--primary"
                 onClick={() => void runPreparedAnalysis()}
-                disabled={Boolean(executionBlocker) || Boolean(enaSource) || cleanupPending || sourceDeleting || status === "running" || status === "cancelling"}
+                disabled={Boolean(executionBlocker) || Boolean(enaSource) || workflowMutationLocked}
                 data-testid="remote-prepared-activate"
               ><CheckCircle2 size={18} aria-hidden="true" /> Explicitly activate service parser</button>
             </section>
@@ -987,6 +1262,7 @@ export function RemoteAnalysisWorkspace({
                 id="remote-worksheet-select"
                 value={worksheet ? `${worksheet.index}` : ""}
                 onChange={(event) => {
+                  if (remoteJobLockRef.current) return;
                   abortRequests();
                   const next = inventory.worksheets.find((candidate) => `${candidate.index}` === event.currentTarget.value) ?? null;
                   setWorksheet(next?.selectable ? next : null);
@@ -994,7 +1270,7 @@ export function RemoteAnalysisWorkspace({
                   setMapping(null);
                   setPreview(null);
                 }}
-                disabled={status === "running" || status === "cancelling"}
+                disabled={workflowMutationLocked}
                 data-testid="remote-worksheet-select"
               >
                 <option value="">Choose a visible worksheet</option>
@@ -1007,7 +1283,7 @@ export function RemoteAnalysisWorkspace({
               <button
                 type="button"
                 className="button button--secondary"
-                disabled={!worksheet}
+                disabled={!worksheet || workflowMutationLocked}
                 onClick={() => void parseSelectedWorksheet()}
                 data-testid="remote-parse-sheet"
               >Parse exact worksheet</button>
@@ -1019,6 +1295,7 @@ export function RemoteAnalysisWorkspace({
               headers={[...parsed.headers]}
               mapping={mapping}
               error={mappingValidation}
+              disabled={workflowMutationLocked}
               onChange={updateMapping}
               onPreview={() => void requestPreview()}
             />
@@ -1053,7 +1330,7 @@ export function RemoteAnalysisWorkspace({
               <button
                 type="button"
                 className="button button--primary"
-                disabled={!preview.activatable}
+                disabled={!preview.activatable || workflowMutationLocked}
                 onClick={() => void activatePreview()}
                 data-testid="remote-activate"
               >
@@ -1086,11 +1363,12 @@ export function RemoteAnalysisWorkspace({
               id="remote-task-kind"
               value={selectedTaskKind}
               onChange={(event) => {
+                if (remoteJobLockRef.current) return;
                 setSelectedTaskKind(event.currentTarget.value as RemoteTaskKind);
                 setError(null);
                 setProgress(0);
               }}
-              disabled={status === "running" || status === "cancelling"}
+              disabled={workflowMutationLocked}
               data-testid="remote-task-kind"
             >
               {REMOTE_TASK_OPTIONS.map((option) => (
@@ -1114,16 +1392,20 @@ export function RemoteAnalysisWorkspace({
                 type="button"
                 className="button button--primary"
                 onClick={() => void runAnalysis()}
-                disabled={!active || selectedTaskKind !== "ena-model" || Boolean(effectiveExecutionBlocker) || cleanupPending || sourceDeleting || status === "running" || status === "cancelling"}
+                disabled={!active || selectedTaskKind !== "ena-model" || Boolean(effectiveExecutionBlocker) || remoteJobStage !== "idle" || cleanupPending || sourceDeleting || status === "running" || status === "cancelling"}
                 data-testid="remote-analysis-run"
               ><Play size={18} aria-hidden="true" /> {selectedTaskKind === "ena-model" ? "Run ENA on approved service" : "Use scientific controls below"}</button>
               <button
                 type="button"
                 className="button button--danger"
                 onClick={() => void cancelAnalysis()}
-                disabled={status !== "running" && !cleanupPending}
+                disabled={status === "cancelling" || (remoteJobStage !== "binding" && !cleanupPending)}
                 data-testid="remote-analysis-cancel"
-              ><Square size={17} aria-hidden="true" /> {status === "running" ? "Cancel and delete" : "Delete retained remote job"}</button>
+              ><Square size={17} aria-hidden="true" /> {
+                  remoteJobStage === "binding"
+                    ? status === "cancelling" ? "Cancelling binding…" : "Cancel binding"
+                    : status === "running" ? "Cancel and delete" : "Delete retained remote job"
+                }</button>
             </div>
             {result && (
               <button
@@ -1203,11 +1485,12 @@ interface RemoteMappingEditorProps {
   readonly headers: string[];
   readonly mapping: AnalysisMapping;
   readonly error: string | null;
+  readonly disabled: boolean;
   readonly onChange: (mapping: AnalysisMapping) => void;
   readonly onPreview: () => void;
 }
 
-function RemoteMappingEditor({ headers, mapping, error, onChange, onPreview }: RemoteMappingEditorProps) {
+function RemoteMappingEditor({ headers, mapping, error, disabled, onChange, onPreview }: RemoteMappingEditorProps) {
   const toggle = (key: "unitColumns" | "conversationColumns" | "codeColumns", header: string) => {
     const values = mapping[key];
     onChange({
@@ -1225,7 +1508,7 @@ function RemoteMappingEditor({ headers, mapping, error, onChange, onPreview }: R
       </div>
       <div className="remote-role-grid">
         {(["unitColumns", "conversationColumns", "codeColumns"] as const).map((key) => (
-          <fieldset key={key}>
+          <fieldset key={key} disabled={disabled}>
             <legend>{key === "unitColumns" ? "Unit columns" : key === "conversationColumns" ? "Conversation columns" : "Code columns"}</legend>
             {headers.map((header) => (
               <label key={`${key}-${header}`}>
@@ -1242,11 +1525,11 @@ function RemoteMappingEditor({ headers, mapping, error, onChange, onPreview }: R
           ["timeColumn", "Time column"],
           ["entityColumn", "Participant column"],
         ] as const).map(([key, label]) => (
-          <label key={key}><span>{label}</span><select value={mapping[key]} onChange={(event) => onChange({ ...mapping, [key]: event.currentTarget.value })}>{headers.map((header) => <option value={header} key={`${key}-${header}`}>{header}</option>)}</select></label>
+          <label key={key}><span>{label}</span><select value={mapping[key]} disabled={disabled} onChange={(event) => onChange({ ...mapping, [key]: event.currentTarget.value })}>{headers.map((header) => <option value={header} key={`${key}-${header}`}>{header}</option>)}</select></label>
         ))}
       </div>
       {error && <p className="validation-hint" role="alert">{error}</p>}
-      <button type="button" className="button button--secondary" disabled={Boolean(error)} onClick={onPreview} data-testid="remote-request-preview">Request typed preview</button>
+      <button type="button" className="button button--secondary" disabled={Boolean(error) || disabled} onClick={onPreview} data-testid="remote-request-preview">Request typed preview</button>
     </section>
   );
 }

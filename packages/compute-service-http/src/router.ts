@@ -109,6 +109,8 @@ const DEFAULT_JSON_BYTES = 5 * 1024 * 1024;
 const DEFAULT_LONGITUDINAL_JSON_BYTES = 32 * 1024 * 1024;
 const MAX_LONGITUDINAL_JSON_BYTES = 32 * 1024 * 1024;
 const LONGITUDINAL_HARD_DEADLINE_MS = 60_000;
+const DEFAULT_EVENT_HEARTBEAT_INTERVAL_MS = 15_000;
+const MAX_EVENT_HEARTBEAT_INTERVAL_MS = 60_000;
 const JSON_CONTENT_TYPE = /^application\/json(?:\s*;\s*charset=utf-8)?$/iu;
 const IDEMPOTENCY_KEY = /^[^\u0000-\u0020\u007f]{8,200}$/u;
 const GIT_COMMIT = /^[a-f0-9]{40}$/u;
@@ -159,6 +161,7 @@ export interface ComputeV1HttpRouterOptions {
   readonly maxJsonBodyBytes?: number;
   readonly maxLongitudinalJsonBodyBytes?: number;
   readonly maxLongitudinalStoredInputBytes?: number;
+  readonly eventHeartbeatIntervalMs?: number;
 }
 
 interface RequestContext {
@@ -449,6 +452,18 @@ function publicState(
   }
 }
 
+function coreDeletionProvesObjectsAbsent(
+  coreTaskId: string | undefined,
+  record: ComputeJobRecordV1 | null,
+): boolean {
+  if (record === null) return coreTaskId === undefined;
+  const receipt = record.deletionReceipt;
+  return record.state === "deleted" &&
+    receipt?.requestObjectAbsent === true &&
+    receipt.ownedResultObjectsAbsent === true &&
+    receipt.ownedResultObjectCount === record.ownedResultObjectKeys.length;
+}
+
 function progressForState(
   state: RemoteJobStateV1,
 ): AnalysisJobStatusV1["progress"] {
@@ -516,6 +531,7 @@ export class ComputeV1HttpRouter {
   readonly #maxJsonBodyBytes: number;
   readonly #maxLongitudinalJsonBodyBytes: number;
   readonly #maxLongitudinalStoredInputBytes: number;
+  readonly #eventHeartbeatIntervalMs: number;
 
   constructor(options: ComputeV1HttpRouterOptions) {
     if (!(options.core instanceof ComputeServiceCore)) {
@@ -596,6 +612,11 @@ export class ComputeV1HttpRouter {
       options.maxLongitudinalStoredInputBytes ?? MAX_LONGITUDINAL_STORED_INPUT_BYTES_V2,
       "maxLongitudinalStoredInputBytes",
       MAX_LONGITUDINAL_STORED_INPUT_BYTES_V2,
+    );
+    this.#eventHeartbeatIntervalMs = validatePositiveInteger(
+      options.eventHeartbeatIntervalMs ?? DEFAULT_EVENT_HEARTBEAT_INTERVAL_MS,
+      "eventHeartbeatIntervalMs",
+      MAX_EVENT_HEARTBEAT_INTERVAL_MS,
     );
   }
 
@@ -893,11 +914,11 @@ export class ComputeV1HttpRouter {
   }
 
   /**
-   * Completes a previously persisted DELETE intent without requiring the
-   * capability or plaintext idempotency key. This hook is intentionally
-   * unavailable until the durable intent exists and never starts a deletion.
-   * It is used by the singleton database temporal sweeper after the owning
-   * worker has released any fenced capacity slot.
+   * Completes a persisted DELETE intent without requiring the capability or
+   * plaintext idempotency key. The singleton temporal sweeper may establish
+   * that intent only after the job TTL, or after the narrower longitudinal
+   * orphan deadline. This internal lifecycle hook is not a public authorization
+   * path and leaves the user's DELETE idempotency-key namespace unclaimed.
    */
   async reconcileDurableDeletion(jobId: string): Promise<boolean> {
     if (!OPAQUE_ID.test(jobId)) {
@@ -907,26 +928,31 @@ export class ComputeV1HttpRouter {
     if (job === null) {
       return false;
     }
-    if (job.deleteRequestedAtMs === undefined ||
-        job.deleteIdempotencyHash === undefined) {
+    if (job.deleteRequestedAtMs === undefined) {
+      const now = this.#infrastructure.clock.now();
       const deadlineAtMs = job.createdAtMs + LONGITUDINAL_HARD_DEADLINE_MS;
+      const expired = now >= job.expiresAtMs;
       const orphanedLongitudinalInput =
         job.taskKind === LONGITUDINAL_COMPUTE_TASK_KIND_V2 &&
         job.inputDeletedAtMs === undefined &&
         Number.isSafeInteger(deadlineAtMs) &&
-        this.#infrastructure.clock.now() >= deadlineAtMs &&
+        now >= deadlineAtMs &&
         job.coreTaskId !== undefined &&
         await this.#core.getTask(job.coreTaskId) === null;
-      if (!orphanedLongitudinalInput) return false;
-      const requestedAtMs = this.#infrastructure.clock.now();
+      if (!expired && !orphanedLongitudinalInput) return false;
+      const requestedAtMs = now;
       job = await this.#patchJob(job.jobId, (current) => ({
         ...current,
         revision: current.revision + 1,
         updatedAtMs: requestedAtMs,
-        deleteIdempotencyHash: current.deleteIdempotencyHash ??
-          this.#infrastructure.capabilityCodec.hashSecret(
-            `longitudinal-deadline-cleanup\0${jobId}`,
-          ),
+        ...(expired
+          ? {}
+          : {
+              deleteIdempotencyHash: current.deleteIdempotencyHash ??
+                this.#infrastructure.capabilityCodec.hashSecret(
+                  `longitudinal-deadline-cleanup\0${jobId}`,
+                ),
+            }),
         deleteRequestedAtMs: current.deleteRequestedAtMs ?? requestedAtMs,
         deleteCancelled: current.deleteCancelled ?? true,
         deleteTerminationRequired:
@@ -934,7 +960,12 @@ export class ComputeV1HttpRouter {
         deleteCapacityReserved: current.deleteCapacityReserved === true,
       }));
     }
-    if (job.inputDeletedAtMs !== undefined) return true;
+    if (job.deletionCompletedAtMs !== undefined) {
+      const completedCore = job.coreTaskId === undefined
+        ? null
+        : await this.#core.getTask(job.coreTaskId);
+      if (coreDeletionProvesObjectsAbsent(job.coreTaskId, completedCore)) return true;
+    }
 
     let coreRecord = job.coreTaskId === undefined
       ? null
@@ -999,6 +1030,10 @@ export class ComputeV1HttpRouter {
       coreRecord = deletion.record;
       resultKeys = deletion.record.ownedResultObjectKeys;
     }
+    const coreDeletionCompleted = coreDeletionProvesObjectsAbsent(
+      job.coreTaskId,
+      coreRecord,
+    );
     if (job.inputObjectOwnedByJob === false &&
         job.activatedDatasetId !== undefined &&
         job.activationReceiptSha256 !== undefined) {
@@ -1029,9 +1064,12 @@ export class ComputeV1HttpRouter {
       revision: current.revision + 1,
       updatedAtMs: completedAtMs,
       inputDeletedAtMs: current.inputDeletedAtMs ?? completedAtMs,
+      ...(coreDeletionCompleted
+        ? { deletionCompletedAtMs: current.deletionCompletedAtMs ?? completedAtMs }
+        : {}),
     }));
     await this.#publishStatus((await this.#statusSnapshot(completed)).status);
-    return true;
+    return coreDeletionCompleted;
   }
 
   /** Worker-facing progress hook; only aggregate progress fields are accepted. */
@@ -2806,7 +2844,8 @@ export class ComputeV1HttpRouter {
       );
     }
     const pending = pendingTermination || !terminationObserved || !capacityReleased ||
-      deletionRecord?.state === "cancelling";
+      deletionRecord?.state === "cancelling" ||
+      (job.coreTaskId !== undefined && deletionRecord === null);
     if (pending) {
       if (wantsV2) {
         const receipt: AnalysisDeletionReceiptV2 = {
@@ -2848,6 +2887,9 @@ export class ComputeV1HttpRouter {
       deletionRecord = deletion.record;
       resultKeys = deletion.record.ownedResultObjectKeys;
     }
+    if (!coreDeletionProvesObjectsAbsent(job.coreTaskId, deletionRecord)) {
+      httpError("INTERNAL_ERROR", 500, "Core deletion lacks an object-absence receipt.");
+    }
     if (job.inputObjectOwnedByJob === false &&
         job.activatedDatasetId !== undefined &&
         job.activationReceiptSha256 !== undefined) {
@@ -2878,6 +2920,7 @@ export class ComputeV1HttpRouter {
       revision: current.revision + 1,
       updatedAtMs: completedAtMs,
       inputDeletedAtMs: current.inputDeletedAtMs ?? completedAtMs,
+      deletionCompletedAtMs: current.deletionCompletedAtMs ?? completedAtMs,
     }));
     await this.#publishStatus((await this.#statusSnapshot(completed)).status);
     if (wantsV2) {
@@ -2887,7 +2930,7 @@ export class ComputeV1HttpRouter {
         cancelled: completed.deleteCancelled ?? false,
         inputDeleted: true,
         resultDeleted: true,
-        deletedAt: isoTimestamp(completed.inputDeletedAtMs ?? completedAtMs),
+        deletedAt: isoTimestamp(completed.deletionCompletedAtMs ?? completedAtMs),
         intentAccepted: true,
         termination: completed.deleteTerminationRequired === true
           ? "observed"
@@ -2905,7 +2948,7 @@ export class ComputeV1HttpRouter {
       cancelled: completed.deleteCancelled ?? false,
       inputDeleted: true,
       resultDeleted: true,
-      deletedAt: isoTimestamp(completed.inputDeletedAtMs ?? completedAtMs),
+      deletedAt: isoTimestamp(completed.deletionCompletedAtMs ?? completedAtMs),
     };
     return this.#json(200, legacy, context);
   }
@@ -2940,29 +2983,77 @@ export class ComputeV1HttpRouter {
       .subscribe(job.jobId, afterSequence, abortController.signal)
       [Symbol.asyncIterator]();
     const encoder = new TextEncoder();
+    let cleanupPromise: Promise<void> | null = null;
+    const cleanupStream = (): Promise<void> => {
+      cleanupPromise ??= (async () => {
+        abortController.abort();
+        request.signal.removeEventListener("abort", abort);
+        await iterator.return?.();
+      })();
+      return cleanupPromise;
+    };
+    let pendingObservation: Promise<{
+      readonly kind: "event";
+      readonly next: IteratorResult<AnalysisJobEventV1>;
+    }> | null = null;
+    const nextOrHeartbeat = async (): Promise<
+      | { readonly kind: "event"; readonly next: IteratorResult<AnalysisJobEventV1> }
+      | { readonly kind: "heartbeat" }
+    > => {
+      pendingObservation ??= iterator.next().then((next) => ({
+        kind: "event" as const,
+        next,
+      }));
+      let heartbeatTimer: ReturnType<typeof setTimeout> | undefined;
+      const heartbeat = new Promise<{ readonly kind: "heartbeat" }>((resolve) => {
+        heartbeatTimer = setTimeout(
+          () => resolve({ kind: "heartbeat" }),
+          this.#eventHeartbeatIntervalMs,
+        );
+      });
+      try {
+        const result = await Promise.race([pendingObservation, heartbeat]);
+        if (result.kind === "event") pendingObservation = null;
+        return result;
+      } finally {
+        if (heartbeatTimer !== undefined) clearTimeout(heartbeatTimer);
+      }
+    };
     const stream = new ReadableStream<Uint8Array>({
       async pull(controller) {
-        const next = await iterator.next();
-        if (next.done) {
-          controller.close();
-          return;
-        }
-        controller.enqueue(
-          encoder.encode(
-            `id: ${next.value.sequence}\nevent: progress\ndata: ${JSON.stringify(next.value)}\n\n`,
-          ),
-        );
-        if (TERMINAL_REMOTE_STATES.has(next.value.state)) {
-          abortController.abort();
-          await iterator.return?.();
-          request.signal.removeEventListener("abort", abort);
-          controller.close();
+        try {
+          const observed = await nextOrHeartbeat();
+          if (observed.kind === "heartbeat") {
+            controller.enqueue(encoder.encode(": heartbeat\n\n"));
+            return;
+          }
+          const { next } = observed;
+          if (next.done) {
+            await cleanupStream();
+            controller.close();
+            return;
+          }
+          controller.enqueue(
+            encoder.encode(
+              `id: ${next.value.sequence}\nevent: progress\ndata: ${JSON.stringify(next.value)}\n\n`,
+            ),
+          );
+          if (TERMINAL_REMOTE_STATES.has(next.value.state)) {
+            await cleanupStream();
+            controller.close();
+          }
+        } catch (streamError) {
+          try {
+            await cleanupStream();
+          } catch {
+            // Preserve the event-source failure as the stream error while still
+            // attempting every cleanup operation exactly once.
+          }
+          controller.error(streamError);
         }
       },
       async cancel() {
-        abortController.abort();
-        await iterator.return?.();
-        request.signal.removeEventListener("abort", abort);
+        await cleanupStream();
       },
     });
     return new Response(stream, {

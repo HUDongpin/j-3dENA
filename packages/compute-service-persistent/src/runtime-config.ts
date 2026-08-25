@@ -34,6 +34,7 @@ const REQUIRED_MIGRATION_VERSIONS = [
   "0001-persistent-compute",
   "0002-persistent-control-plane",
   "0003-build-approval-v3",
+  "0004-scientific-result-generations",
 ] as const;
 const RUNTIME_MANIFEST_FIELDS = [
   "schemaVersion",

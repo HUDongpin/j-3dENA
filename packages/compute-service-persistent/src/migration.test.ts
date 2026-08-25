@@ -29,7 +29,7 @@ class MigrationExecutor implements SqlQueryExecutor {
 }
 
 describe("persistent compute migration chain", () => {
-  it("binds the checked-in ordered 0001/0002/0003 migration example to exact bytes", async () => {
+  it("binds the checked-in ordered 0001/0002/0003/0004 migration example to exact bytes", async () => {
     const loaded = await loadMigrationConfig(
       new URL("../deploy/migration-config.example.json", import.meta.url).pathname,
       { NEON_DIRECT_DATABASE_URL: "postgresql://example.invalid/db" },
@@ -47,6 +47,10 @@ describe("persistent compute migration chain", () => {
         {
           version: "0003-build-approval-v3",
           sha256: "104cdcb19e043d8bd65d717dc19fb0285a45627260278f1bee8e4a5197218326",
+        },
+        {
+          version: "0004-scientific-result-generations",
+          sha256: "ff61b7f367f7e03e790725fb766f1e29c4b89d03fe586901f866c3bbebde8ce7",
         },
       ]);
   });

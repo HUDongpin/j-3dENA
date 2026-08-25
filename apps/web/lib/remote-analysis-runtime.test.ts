@@ -547,6 +547,29 @@ describe("remote analysis runtime", () => {
     );
   });
 
+  it("accepts complete deletion when the job wins the terminal-state race", async () => {
+    const client = clientFor(artifactBytes());
+    vi.mocked(client.deleteJobUntilComplete).mockResolvedValueOnce({
+      schemaVersion: "3dena.job-deletion-receipt.v2",
+      jobId: binding.reference.jobId,
+      cancelled: false,
+      inputDeleted: true,
+      resultDeleted: true,
+      deletedAt: new Date().toISOString(),
+      intentAccepted: true,
+      termination: "not_required",
+      capacity: "not_reserved",
+      objects: "deleted",
+    });
+
+    await expect(cancelRemoteAnalysis(client, binding.reference)).resolves.toMatchObject({
+      cancelled: false,
+      termination: "not_required",
+      capacity: "not_reserved",
+      objects: "deleted",
+    });
+  });
+
   it("reuses one deterministic deletion operation key after a lost response retry", async () => {
     const client = clientFor(artifactBytes());
     await deleteRemoteJobData(client, binding.reference);
