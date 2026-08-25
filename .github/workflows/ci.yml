@@ -15,13 +15,51 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  public-package-head:
+    name: Classify public package source/generated HEAD
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      kind: ${{ steps.classify.outputs.kind }}
+      stage: ${{ steps.classify.outputs.stage }}
+      head: ${{ steps.classify.outputs.head }}
+      source-head: ${{ steps.classify.outputs.source-head }}
+    steps:
+      - name: Check out exact pull-request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Use the frozen npm release
+        run: npm install --global npm@11.16.0
+
+      - name: Install exact verification dependencies
+        run: npm ci
+
+      - name: Classify and verify exact S/A/C phase
+        id: classify
+        run: node packages/analysis/scripts/public-package-head-governance.mjs --github-output "$GITHUB_OUTPUT"
+
   checks:
     name: Lint, test, build, and runtime boundary
+    needs: public-package-head
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -34,6 +72,10 @@ jobs:
 
       - name: Install exact dependencies
         run: npm ci
+
+      - name: Verify tracked generated public package phase without rebuilding
+        if: needs.public-package-head.outputs.kind == 'generated'
+        run: node packages/analysis/scripts/public-package-head-governance.mjs
 
       - name: Lint
         run: npm run lint
@@ -48,6 +90,7 @@ jobs:
         run: npm audit --audit-level=moderate
 
       - name: Build source-staged public facade package
+        if: needs.public-package-head.outputs.kind == 'source'
         run: npm run build:public --workspace @3dena/analysis
 
       - name: Golden parity tests
@@ -111,7 +154,8 @@ jobs:
 
   public-package-producer:
     name: Deterministic public package producer
-    needs: checks
+    needs: [checks, public-package-head]
+    if: needs.public-package-head.outputs.kind == 'source'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     outputs:
@@ -124,13 +168,15 @@ jobs:
       - name: Check out detached source S
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ needs.public-package-head.outputs.source-head }}
           fetch-depth: 1
           persist-credentials: false
 
       - name: Verify detached source S
         id: source
         shell: bash
+        env:
+          EXPECTED_SOURCE_HEAD: ${{ needs.public-package-head.outputs.source-head }}
         run: |
           set -euo pipefail
           if git symbolic-ref -q HEAD; then
@@ -138,6 +184,7 @@ jobs:
             exit 1
           fi
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_HEAD"
           printf 'head=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Node.js
@@ -232,6 +279,8 @@ jobs:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ github.run_id }}
+          skip-decompress: true
+          digest-mismatch: error
 
       - name: Download receipt by numeric artifact ID
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -242,6 +291,8 @@ jobs:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ github.run_id }}
+          skip-decompress: true
+          digest-mismatch: error
 
       - name: Verify raw artifact hashes and detached source
         shell: bash

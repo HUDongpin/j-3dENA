@@ -6,11 +6,23 @@ import { describe, expect, it } from "vitest";
 const repositoryRoot = resolve(import.meta.dirname, "../../..");
 
 describe("public package CI source and artifact governance", () => {
-  it("builds twice from detached source S and hands raw artifacts to an ID-bound consumer", async () => {
+  it("classifies S/A/C fail-closed and builds only detached source S", async () => {
     const workflow = await readFile(resolve(repositoryRoot, ".github/workflows/ci.yml"), "utf8");
+    const classifier = workflow.match(/  public-package-head:[\s\S]*?(?=\n  checks:)/u)?.[0] ?? "";
+    const checks = workflow.match(/  checks:[\s\S]*?(?=\n  public-package-producer:)/u)?.[0] ?? "";
     const producer = workflow.match(/  public-package-producer:[\s\S]*?(?=\n  public-package-consumer:)/u)?.[0] ?? "";
     const consumer = workflow.match(/  public-package-consumer:[\s\S]*?(?=\n  [a-z][a-z-]+:|$)/u)?.[0] ?? "";
-    expect(producer).toContain("github.event.pull_request.head.sha || github.sha");
+    expect(classifier).toContain("github.event.pull_request.head.sha || github.sha");
+    expect(classifier).toContain("fetch-depth: 0");
+    expect(classifier).toContain("public-package-head-governance.mjs");
+    expect(classifier).toContain("$GITHUB_OUTPUT");
+    expect(checks).toContain("needs: public-package-head");
+    expect(checks).toContain("github.event.pull_request.head.sha || github.sha");
+    expect(checks).toMatch(/if: needs\.public-package-head\.outputs\.kind == 'generated'[\s\S]*?public-package-head-governance\.mjs/u);
+    expect(checks).toMatch(/if: needs\.public-package-head\.outputs\.kind == 'source'[\s\S]*?npm run build:public/u);
+    expect(producer).toContain("needs: [checks, public-package-head]");
+    expect(producer).toContain("if: needs.public-package-head.outputs.kind == 'source'");
+    expect(producer).toContain("ref: ${{ needs.public-package-head.outputs.source-head }}");
     expect(producer).toContain("git symbolic-ref -q HEAD");
     expect(producer).toContain("compare-public-package-trees.mjs");
     expect(producer.match(/archive: false/gu)).toHaveLength(2);
@@ -25,5 +37,7 @@ describe("public package CI source and artifact governance", () => {
     expect(consumer).toContain("github-token: ${{ github.token }}");
     expect(consumer).toContain("repository: ${{ github.repository }}");
     expect(consumer).toContain("run-id: ${{ github.run_id }}");
+    expect(consumer.match(/skip-decompress: true/gu)).toHaveLength(2);
+    expect(consumer.match(/digest-mismatch: error/gu)).toHaveLength(2);
   });
 });
