@@ -1,9 +1,13 @@
 import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { PUBLIC_PACKAGE_RELEASE_VERSION } from "./public-package-release-contract.mjs";
+import {
+  validatePublicPackageArtifactReceiptV2,
+  verifyPublicPackageArtifactReceiptV2,
+} from "./public-package-artifact-receipt.mjs";
 
 const expectedFiles = new Set([
   "LICENSE",
@@ -76,7 +80,47 @@ export async function verifyPublicPackageArtifactDigests(packageDirectory, prove
   return Object.freeze({ indexJsSha256, indexJsMapSha256, schemaIndexSha256 });
 }
 
-export async function verifyPublicPackage(packageDirectory) {
+export function verifyPublicPackageSourceBinding(provenance, {
+  expectedSourceHead,
+  artifactReceipt,
+} = {}) {
+  const receipt = artifactReceipt === undefined
+    ? undefined
+    : validatePublicPackageArtifactReceiptV2(artifactReceipt);
+  if (expectedSourceHead !== undefined && !/^[0-9a-f]{40}$/u.test(expectedSourceHead)) {
+    fail("expected source head is not a full Git commit identity");
+  }
+  if (
+    receipt !== undefined
+    && expectedSourceHead !== undefined
+    && receipt.source.repositoryHead !== expectedSourceHead
+  ) {
+    fail("expected source head differs from receipt source");
+  }
+  const sourceHead = receipt?.source.repositoryHead
+    ?? expectedSourceHead
+    ?? provenance.source?.repositoryHead;
+  if (!/^[0-9a-f]{40}$/u.test(sourceHead ?? "")) fail("public package has no valid source anchor");
+  if (
+    provenance.source?.repositoryHead !== sourceHead
+    || provenance.package?.buildId !== sourceHead
+    || (receipt !== undefined && receipt.package.buildId !== sourceHead)
+  ) {
+    fail("source repositoryHead, package buildId, and receipt source must be identical");
+  }
+  if (
+    receipt !== undefined
+    && (
+      receipt.package.name !== provenance.package?.name
+      || receipt.package.version !== provenance.package?.version
+    )
+  ) {
+    fail("receipt package identity differs from provenance");
+  }
+  return sourceHead;
+}
+
+export async function verifyPublicPackage(packageDirectory, options = {}) {
   const directory = resolve(packageDirectory);
   if (!(await stat(directory)).isDirectory()) fail("staging path is not a directory");
 
@@ -201,6 +245,7 @@ export async function verifyPublicPackage(packageDirectory) {
   if (provenance.dependencies?.sheetJs?.sha256 !== "8dc73fc3b00203e72d176e85b50938627c7b086e607c682e8d3c22c02bb99fe8") {
     fail("SheetJS custody hash drifted");
   }
+  const sourceHead = verifyPublicPackageSourceBinding(provenance, options);
 
   const { indexJsSha256: digest } = await verifyPublicPackageArtifactDigests(directory, provenance);
 
@@ -216,10 +261,45 @@ export async function verifyPublicPackage(packageDirectory) {
     fail("public runtime scientific SDK identity is not the exact package version");
   }
 
-  return Object.freeze({ directory, files: Object.freeze(files), indexJsSha256: digest });
+  return Object.freeze({ directory, files: Object.freeze(files), indexJsSha256: digest, sourceHead });
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {
-  const result = await verifyPublicPackage(process.argv[2] ?? "./dist/package");
+function parseArguments(arguments_) {
+  const result = {};
+  for (let index = 0; index < arguments_.length; index += 1) {
+    const argument = arguments_[index];
+    if (argument !== "--package" && argument !== "--tarball" && argument !== "--receipt") {
+      fail(`unknown argument ${argument}`);
+    }
+    const value = arguments_[index + 1];
+    if (!value || value.startsWith("--")) fail(`${argument} requires a value`);
+    const key = argument === "--package"
+      ? "packageDirectory"
+      : argument === "--tarball"
+        ? "tarballPath"
+        : "receiptPath";
+    if (result[key] !== undefined) fail(`${argument} may be supplied only once`);
+    result[key] = value;
+    index += 1;
+  }
+  for (const [key, argument] of [
+    ["packageDirectory", "--package"],
+    ["tarballPath", "--tarball"],
+    ["receiptPath", "--receipt"],
+  ]) {
+    if (result[key] === undefined) fail(`${argument} is required`);
+  }
+  return result;
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const options = parseArguments(process.argv.slice(2));
+  const artifactReceipt = JSON.parse(await readFile(resolve(options.receiptPath), "utf8"));
+  await verifyPublicPackageArtifactReceiptV2({
+    receipt: artifactReceipt,
+    packageDirectory: options.packageDirectory,
+    tarballPath: options.tarballPath,
+  });
+  const result = await verifyPublicPackage(options.packageDirectory, { artifactReceipt });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }
