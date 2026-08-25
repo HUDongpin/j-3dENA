@@ -1,6 +1,6 @@
 {
   "name": "j-3dena",
-  "version": "0.2.0-implemented-unverified.9",
+  "version": "0.2.0-implemented-unverified.10",
   "description": "Public TypeScript analysis facade for the j-3dENA successor",
   "type": "module",
   "license": "GPL-3.0-only",
