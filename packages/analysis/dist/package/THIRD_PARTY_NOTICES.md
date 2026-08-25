@@ -18,7 +18,17 @@ peer. It does not bundle a second engine instance. The reviewed artifact is
 generated from the pinned official source commit and its transport integrity is
 bound in `PROVENANCE.json`. rENA remains attribution and historical comparison
 context; it is not the numerical oracle for this trajectory contract. The
-upstream license and provenance files are reproduced under `THIRD_PARTY/`.
+upstream license is reproduced byte-for-byte under `THIRD_PARTY/`. The
+redistributed `THIRD_PARTY/jena-js-PROVENANCE.md` is instead a deterministic,
+privacy-sanitized copy.
+Recognized high-confidence or explicitly path-labeled local filesystem paths are
+replaced in full with a fixed placeholder, retaining no path components;
+ambiguous unquoted path-like values fail closed. Its
+transparent header records the upstream original provenance SHA-256 and
+reviewed jENA artifact identity. The exact original provenance bytes remain
+unchanged inside the reviewed tarball, whose hash and receipt stay under
+repository custody; this public-package transformation does not alter the jENA
+code, numerical contract, license, tarball, or receipt.
 
 ## SheetJS Community Edition (xlsx) 0.20.3
 

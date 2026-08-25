@@ -1,3 +1,16 @@
+# Redistribution privacy notice
+
+This file is a deterministic privacy-sanitized copy of the upstream jENA provenance document.
+Recognized high-confidence or explicitly path-labeled local filesystem paths are replaced in full with [LOCAL_PATH_REDACTED], retaining no path components; ambiguous unquoted path-like values fail closed.
+The exact original provenance bytes remain inside the reviewed jENA tarball under hash custody and are not modified by this redistribution step.
+
+Reviewed artifact: jena-js@0.7.0-ona.0
+Official source commit: 90790856f00bdef63dbd27fc3a5b502e8cffe65f
+Reviewed tarball SHA-256: 1e071eaa4085688bbbd5f9d7122513a4bf82a0eaf955d399ab21706204fc8afe
+Upstream original provenance SHA-256: f7d0a7c545036beb53f480bd33393d2a1ad20b7763e7863fcb8e115fe32a12dd
+
+---
+
 # Provenance and Runtime Notes
 
 `jena-js` (published at https://github.com/HUDongpin/jENA) is a standalone JavaScript/TypeScript ENA runtime derived from the rENA R package.
@@ -86,11 +99,11 @@ the generated CSV is distributed in the npm tarball.
 
 | Oracle artifact | Local path | SHA-256 |
 |---|---|---|
-| Yu coded workbook | `/Volumes/Starship/ONA/Yu_ena_coded_data_0712.xlsx` | `f2132f8dc3e147609169472594a2031130be23eab4a2ac0fb9adcb6d9d667042` |
-| R ordered connection-count golden | `/Volumes/Starship/ONA/ona_output/yu_within_student/ona_connection_counts.csv` | `b4c0a6921ece7df51d846b3864e239747062da304a212aa0e2402d4a85074253` |
-| Oracle harness | `/Volumes/Starship/ONA/ONA_analysis.R` | `92f309c7c3fb893c50556fee94a67b7d2c80fe9894b825cdb329ba0ab7d14e85` |
+| Yu coded workbook | [LOCAL_PATH_REDACTED] | `f2132f8dc3e147609169472594a2031130be23eab4a2ac0fb9adcb6d9d667042` |
+| R ordered connection-count golden | [LOCAL_PATH_REDACTED] | `b4c0a6921ece7df51d846b3864e239747062da304a212aa0e2402d4a85074253` |
+| Oracle harness | [LOCAL_PATH_REDACTED] | `92f309c7c3fb893c50556fee94a67b7d2c80fe9894b825cdb329ba0ab7d14e85` |
 
-The recorded invocation was `cd /Volumes/Starship/ONA && Rscript ONA_analysis.R`
+The recorded invocation was `cd [LOCAL_PATH_REDACTED] && Rscript ONA_analysis.R`
 with `DATASET = "yu"`, `YU_DESIGN = "within_student"`, input and output paths
 shown above, and `window_size = 2`. The harness pre-sorted input rows by
 `Group`, `Name`, and numeric lesson order, then used `Group + Name` as both
