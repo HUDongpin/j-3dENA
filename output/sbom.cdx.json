@@ -2,7 +2,7 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.5.schema.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:27a294b2-49a8-5853-89b4-670adb8813f0",
+  "serialNumber": "urn:uuid:ef2d4f54-9652-88e3-bdb5-9958e4301254",
   "version": 1,
   "metadata": {
     "component": {
@@ -22,11 +22,11 @@
       "properties": [
         {
           "name": "3dena:sbom:contract",
-          "value": "3dena.release-sbom.cyclonedx-1.5.v1"
+          "value": "3dena.release-sbom.cyclonedx-1.5.v2"
         },
         {
           "name": "3dena:sbom:production-graph-sha256",
-          "value": "f297a6b5acb931ea99c670b91a953d6690a0126a65da3c050d3458f163217882"
+          "value": "88dd42b2e97a3817b101d7b105d73dd2367560c3475b330ec08d26c3834d0716"
         },
         {
           "name": "cdx:npm:package:private",
@@ -37,11 +37,11 @@
     "properties": [
       {
         "name": "3dena:sbom:contract",
-        "value": "3dena.release-sbom.cyclonedx-1.5.v1"
+        "value": "3dena.release-sbom.cyclonedx-1.5.v2"
       },
       {
         "name": "3dena:sbom:production-graph-sha256",
-        "value": "f297a6b5acb931ea99c670b91a953d6690a0126a65da3c050d3458f163217882"
+        "value": "88dd42b2e97a3817b101d7b105d73dd2367560c3475b330ec08d26c3834d0716"
       }
     ]
   },
@@ -76,12 +76,12 @@
       ]
     },
     {
-      "bom-ref": "@3dena/analysis@0.1.0",
+      "bom-ref": "@3dena/analysis@0.2.0",
       "type": "library",
       "name": "@3dena/analysis",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "scope": "required",
-      "purl": "pkg:npm/%403dena/analysis@0.1.0",
+      "purl": "pkg:npm/%403dena/analysis@0.2.0",
       "licenses": [
         {
           "license": {
@@ -337,12 +337,12 @@
       ]
     },
     {
-      "bom-ref": "@3dena/stats@0.1.0",
+      "bom-ref": "@3dena/stats@0.2.0",
       "type": "library",
       "name": "@3dena/stats",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "scope": "required",
-      "purl": "pkg:npm/%403dena/stats@0.1.0",
+      "purl": "pkg:npm/%403dena/stats@0.2.0",
       "licenses": [
         {
           "license": {
@@ -395,12 +395,12 @@
       ]
     },
     {
-      "bom-ref": "@3dena/trajectory@0.1.0",
+      "bom-ref": "@3dena/trajectory@0.2.0",
       "type": "library",
       "name": "@3dena/trajectory",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "scope": "required",
-      "purl": "pkg:npm/%403dena/trajectory@0.1.0",
+      "purl": "pkg:npm/%403dena/trajectory@0.2.0",
       "licenses": [
         {
           "license": {
@@ -5001,12 +5001,12 @@
       ]
     },
     {
-      "bom-ref": "jena-js@0.6.2",
+      "bom-ref": "jena-js@0.7.0-ona.0",
       "type": "library",
       "name": "jena-js",
-      "version": "0.6.2",
+      "version": "0.7.0-ona.0",
       "scope": "required",
-      "purl": "pkg:npm/jena-js@0.6.2",
+      "purl": "pkg:npm/jena-js@0.7.0-ona.0",
       "licenses": [
         {
           "license": {
@@ -8604,7 +8604,7 @@
       "ref": "3dena-next@0.1.0",
       "dependsOn": [
         "@3dena/ai-contract@0.1.0",
-        "@3dena/analysis@0.1.0",
+        "@3dena/analysis@0.2.0",
         "@3dena/compute-service-core@0.1.0",
         "@3dena/compute-service-http@0.1.0",
         "@3dena/compute-service-node@0.1.0",
@@ -8613,9 +8613,9 @@
         "@3dena/export@0.1.0",
         "@3dena/io@0.1.0",
         "@3dena/parity-contracts@0.1.0",
-        "@3dena/stats@0.1.0",
+        "@3dena/stats@0.2.0",
         "@3dena/tabular-import@0.1.0",
-        "@3dena/trajectory@0.1.0",
+        "@3dena/trajectory@0.2.0",
         "@3dena/web@0.1.0",
         "plotly.js@3.7.0"
       ]
@@ -8625,14 +8625,14 @@
       "dependsOn": []
     },
     {
-      "ref": "@3dena/analysis@0.1.0",
+      "ref": "@3dena/analysis@0.2.0",
       "dependsOn": [
         "@3dena/export@0.1.0",
         "@3dena/io@0.1.0",
-        "@3dena/stats@0.1.0",
+        "@3dena/stats@0.2.0",
         "@3dena/tabular-import@0.1.0",
-        "@3dena/trajectory@0.1.0",
-        "jena-js@0.6.2"
+        "@3dena/trajectory@0.2.0",
+        "jena-js@0.7.0-ona.0"
       ]
     },
     {
@@ -8642,7 +8642,7 @@
     {
       "ref": "@3dena/compute-service-http@0.1.0",
       "dependsOn": [
-        "@3dena/analysis@0.1.0",
+        "@3dena/analysis@0.2.0",
         "@3dena/compute-service-core@0.1.0",
         "@3dena/dataset-workflow@0.1.0"
       ]
@@ -8650,14 +8650,14 @@
     {
       "ref": "@3dena/compute-service-node@0.1.0",
       "dependsOn": [
-        "@3dena/analysis@0.1.0",
+        "@3dena/analysis@0.2.0",
         "@3dena/compute-service-core@0.1.0"
       ]
     },
     {
       "ref": "@3dena/compute-service-persistent@0.1.0",
       "dependsOn": [
-        "@3dena/analysis@0.1.0",
+        "@3dena/analysis@0.2.0",
         "@3dena/compute-service-core@0.1.0",
         "@3dena/compute-service-http@0.1.0",
         "@3dena/compute-service-node@0.1.0",
@@ -8669,7 +8669,7 @@
     {
       "ref": "@3dena/dataset-workflow@0.1.0",
       "dependsOn": [
-        "@3dena/analysis@0.1.0",
+        "@3dena/analysis@0.2.0",
         "@3dena/tabular-import@0.1.0"
       ]
     },
@@ -8686,7 +8686,7 @@
       "dependsOn": []
     },
     {
-      "ref": "@3dena/stats@0.1.0",
+      "ref": "@3dena/stats@0.2.0",
       "dependsOn": []
     },
     {
@@ -8696,13 +8696,13 @@
       ]
     },
     {
-      "ref": "@3dena/trajectory@0.1.0",
+      "ref": "@3dena/trajectory@0.2.0",
       "dependsOn": []
     },
     {
       "ref": "@3dena/web@0.1.0",
       "dependsOn": [
-        "@3dena/analysis@0.1.0",
+        "@3dena/analysis@0.2.0",
         "@3dena/compute-service-http@0.1.0",
         "@3dena/dataset-workflow@0.1.0",
         "@3dena/export@0.1.0",
@@ -9785,10 +9785,8 @@
       "dependsOn": []
     },
     {
-      "ref": "jena-js@0.6.2",
-      "dependsOn": [
-        "jena-js@0.6.2"
-      ]
+      "ref": "jena-js@0.7.0-ona.0",
+      "dependsOn": []
     },
     {
       "ref": "jose@5.10.0",
