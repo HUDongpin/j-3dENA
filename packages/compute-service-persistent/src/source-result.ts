@@ -27,6 +27,8 @@ import {
 } from "./util";
 
 interface SourceResultRow extends Record<string, unknown> {
+  readonly publication_id?: unknown;
+  readonly generation?: unknown;
   readonly result_hash?: unknown;
   readonly dataset_hash?: unknown;
   readonly spec_hash?: unknown;
@@ -62,6 +64,24 @@ function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+function publicationMatches(
+  row: SourceResultRow,
+  record: PublishedScientificResultRecordV1,
+): boolean {
+  return row.result_hash === record.sourceResultHash &&
+    row.dataset_hash === record.owner.datasetHash &&
+    row.spec_hash === record.owner.specHash &&
+    row.build_id === record.buildId &&
+    row.task_id === record.owner.taskId &&
+    row.object_key === record.object.key &&
+    row.object_sha256 === record.object.sha256 &&
+    safeInteger(row.object_byte_length) === record.object.byteLength &&
+    safeInteger(row.published_at_ms) === record.publishedAtMs &&
+    safeInteger(row.expires_at_ms) === record.expiresAtMs &&
+    canonicalStringify(row.publication_receipt) ===
+      canonicalStringify(record.publicationReceipt);
+}
+
 /**
  * Append-only publication index and exact-byte resolver for derived tasks.
  * It accepts only primary raw ENA or prepared-exchange import results; derived
@@ -91,44 +111,104 @@ export class PostgresPublishedSourceResultRegistry
       !Number.isSafeInteger(record.expiresAtMs) ||
       record.expiresAtMs <= record.publishedAtMs
     ) persistentError("BUILD_APPROVAL_INVALID");
-    const inserted = await this.#database.query(
-      `INSERT INTO compute_scientific_results (
-        result_hash, dataset_hash, spec_hash, build_id, task_id,
-        object_key, object_sha256, object_byte_length,
-        published_at, expires_at, publication_receipt
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,to_timestamp($9 / 1000.0),
-        to_timestamp($10 / 1000.0),$11::jsonb)
-      ON CONFLICT (result_hash) DO NOTHING`,
-      [record.sourceResultHash, record.owner.datasetHash, record.owner.specHash,
-        record.buildId, record.owner.taskId, record.object.key,
-        record.object.sha256, record.object.byteLength, record.publishedAtMs,
-        record.expiresAtMs, JSON.stringify(record.publicationReceipt)],
+    await this.#database.transaction(async (sql) => {
+      const lock = await sql.query(
+        `SELECT pg_advisory_xact_lock(hashtextextended($1, 0)) AS locked`,
+        [record.sourceResultHash],
+      );
+      if (lock.rowCount !== 1) persistentError("DATABASE_FAILURE");
+
+      const existing = await sql.query<SourceResultRow>(
+        `SELECT publication.publication_id, publication.generation,
+          publication.result_hash, publication.dataset_hash,
+          publication.spec_hash, publication.build_id, publication.task_id,
+          publication.object_key, publication.object_sha256,
+          publication.object_byte_length,
+          extract(epoch FROM publication.published_at) * 1000 AS published_at_ms,
+          extract(epoch FROM publication.expires_at) * 1000 AS expires_at_ms,
+          publication.publication_receipt
+         FROM compute_scientific_result_active AS mapping
+         JOIN compute_scientific_result_publications AS publication
+           ON publication.publication_id = mapping.publication_id
+          AND publication.result_hash = mapping.result_hash
+          AND publication.expires_at = mapping.expires_at
+         WHERE mapping.result_hash = $1
+           AND mapping.expires_at > clock_timestamp()
+         FOR UPDATE OF mapping`,
+        [record.sourceResultHash],
+      );
+      if (existing.rowCount > 1) persistentError("DATABASE_FAILURE");
+      const row = existing.rows[0];
+      if (row !== undefined) {
+        if (publicationMatches(row, record)) return;
+        persistentError("DATABASE_CONFLICT");
+      }
+
+      const retired = await sql.query(
+        `DELETE FROM compute_scientific_result_active
+         WHERE result_hash = $1 AND expires_at <= clock_timestamp()`,
+        [record.sourceResultHash],
+      );
+      if (retired.rowCount > 1) persistentError("DATABASE_FAILURE");
+
+      const inserted = await sql.query<SourceResultRow>(
+        `INSERT INTO compute_scientific_result_publications (
+          result_hash, generation, dataset_hash, spec_hash, build_id, task_id,
+          object_key, object_sha256, object_byte_length,
+          published_at, expires_at, publication_receipt
+        )
+        SELECT $1, COALESCE(MAX(history.generation), 0) + 1,
+          $2, $3, $4, $5, $6, $7, $8,
+          to_timestamp($9 / 1000.0), to_timestamp($10 / 1000.0), $11::jsonb
+        FROM compute_scientific_result_publications AS history
+        WHERE history.result_hash = $1
+        RETURNING publication_id, generation`,
+        [record.sourceResultHash, record.owner.datasetHash, record.owner.specHash,
+          record.buildId, record.owner.taskId, record.object.key,
+          record.object.sha256, record.object.byteLength, record.publishedAtMs,
+          record.expiresAtMs, JSON.stringify(record.publicationReceipt)],
+      );
+      if (inserted.rowCount !== 1) persistentError("DATABASE_FAILURE");
+      const publicationId = safeInteger(inserted.rows[0]?.publication_id);
+      if (publicationId < 1 || safeInteger(inserted.rows[0]?.generation) < 1) {
+        persistentError("DATABASE_FAILURE");
+      }
+      const activated = await sql.query(
+        `INSERT INTO compute_scientific_result_active (
+          result_hash, publication_id, expires_at
+        ) VALUES ($1, $2, to_timestamp($3 / 1000.0))`,
+        [record.sourceResultHash, publicationId, record.expiresAtMs],
+      );
+      if (activated.rowCount !== 1) persistentError("DATABASE_FAILURE");
+    });
+  }
+
+  /**
+   * Deletes only expired lookup metadata. Immutable publication generations,
+   * including migration-backfilled 0001 evidence, are never mutated here.
+   */
+  async purgeExpiredActiveMappings(batchSize = 1_000): Promise<number> {
+    if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 10_000) {
+      persistentError("CONFIGURATION_INVALID");
+    }
+    const deleted = await this.#database.query(
+      `WITH expired AS (
+         SELECT result_hash
+         FROM compute_scientific_result_active
+         WHERE expires_at <= clock_timestamp()
+         ORDER BY expires_at, result_hash
+         FOR UPDATE SKIP LOCKED
+         LIMIT $1
+       )
+       DELETE FROM compute_scientific_result_active AS mapping
+       USING expired
+       WHERE mapping.result_hash = expired.result_hash`,
+      [batchSize],
     );
-    if (inserted.rowCount === 1) return;
-    const existing = await this.#database.query<SourceResultRow>(
-      `SELECT result_hash, dataset_hash, spec_hash, build_id, task_id,
-        object_key, object_sha256, object_byte_length,
-        extract(epoch FROM published_at) * 1000 AS published_at_ms,
-        extract(epoch FROM expires_at) * 1000 AS expires_at_ms,
-        publication_receipt
-       FROM compute_scientific_results WHERE result_hash = $1`,
-      [record.sourceResultHash],
-    );
-    const row = existing.rows[0];
-    if (
-      row?.result_hash !== record.sourceResultHash ||
-      row.dataset_hash !== record.owner.datasetHash ||
-      row.spec_hash !== record.owner.specHash ||
-      row.build_id !== record.buildId ||
-      row.task_id !== record.owner.taskId ||
-      row.object_key !== record.object.key ||
-      row.object_sha256 !== record.object.sha256 ||
-      safeInteger(row.object_byte_length) !== record.object.byteLength ||
-      safeInteger(row.published_at_ms) !== record.publishedAtMs ||
-      safeInteger(row.expires_at_ms) !== record.expiresAtMs ||
-      canonicalStringify(row.publication_receipt) !==
-        canonicalStringify(record.publicationReceipt)
-    ) persistentError("DATABASE_CONFLICT");
+    if (deleted.rowCount < 0 || deleted.rowCount > batchSize) {
+      persistentError("DATABASE_FAILURE");
+    }
+    return deleted.rowCount;
   }
 
   async resolve(input: Readonly<{
@@ -144,13 +224,23 @@ export class PostgresPublishedSourceResultRegistry
       !Number.isSafeInteger(input.nowMs)
     ) return null;
     const result = await this.#database.query<SourceResultRow>(
-      `SELECT result_hash, dataset_hash, spec_hash, build_id, task_id,
-        object_key, object_sha256, object_byte_length,
-        extract(epoch FROM published_at) * 1000 AS published_at_ms,
-        extract(epoch FROM expires_at) * 1000 AS expires_at_ms
-       FROM compute_scientific_results
-       WHERE result_hash = $1 AND dataset_hash = $2 AND build_id = $3
-         AND expires_at > to_timestamp($4 / 1000.0)`,
+      `SELECT publication.result_hash, publication.dataset_hash,
+        publication.spec_hash, publication.build_id, publication.task_id,
+        publication.object_key, publication.object_sha256,
+        publication.object_byte_length,
+        extract(epoch FROM publication.published_at) * 1000 AS published_at_ms,
+        extract(epoch FROM publication.expires_at) * 1000 AS expires_at_ms
+       FROM compute_scientific_result_active AS mapping
+       JOIN compute_scientific_result_publications AS publication
+         ON publication.publication_id = mapping.publication_id
+        AND publication.result_hash = mapping.result_hash
+        AND publication.expires_at = mapping.expires_at
+       WHERE mapping.result_hash = $1
+         AND publication.dataset_hash = $2
+         AND publication.build_id = $3
+         AND publication.published_at <= clock_timestamp()
+         AND mapping.expires_at > clock_timestamp()
+         AND mapping.expires_at > to_timestamp($4 / 1000.0)`,
       [input.sourceResultHash, input.activatedDatasetSha256,
         input.requiredBuildId, input.nowMs],
     );

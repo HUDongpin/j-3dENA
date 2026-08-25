@@ -94,33 +94,44 @@ export interface AnalysisClientConfig {
     fetch?: typeof fetch;
     /** Client-side request deadline; the scientific task retains its own deadline. */
     requestTimeoutMilliseconds?: number;
+    /** Maximum number of attempts for transient, idempotent compute requests. */
+    retryMaxAttempts?: number;
+    /** Initial delay for bounded exponential backoff. */
+    retryBaseDelayMilliseconds?: number;
+    /** Maximum client-selected exponential-backoff delay. Retry-After is never shortened. */
+    retryMaximumDelayMilliseconds?: number;
+    /** Total wall-clock retry window, including Retry-After delays. */
+    retryTotalTimeoutMilliseconds?: number;
+    /** Maximum silence after an SSE connection is established before recovery begins. */
+    eventIdleTimeoutMilliseconds?: number;
     /** Delay between stable-key V2 deletion reconciliation requests. */
     deletionPollIntervalMilliseconds?: number;
     /** Total time allowed for the durable deletion lifecycle to close. */
     deletionCompletionTimeoutMilliseconds?: number;
 }
 export interface AnalysisClientV1 {
-    createJob(request: CreateAnalysisJobRequestV1, idempotencyKey: string): Promise<AnalysisJobCapabilityV1>;
-    executeJob(reference: AnalysisJobReferenceV1, request: ExecuteAnalysisJobRequestV1, idempotencyKey: string): Promise<AnalysisJobStatusV1>;
-    getJob(reference: AnalysisJobReferenceV1): Promise<AnalysisJobStatusV1>;
+    createJob(request: CreateAnalysisJobRequestV1, idempotencyKey: string, signal?: AbortSignal): Promise<AnalysisJobCapabilityV1>;
+    executeJob(reference: AnalysisJobReferenceV1, request: ExecuteAnalysisJobRequestV1, idempotencyKey: string, signal?: AbortSignal): Promise<AnalysisJobStatusV1>;
+    getJob(reference: AnalysisJobReferenceV1, signal?: AbortSignal): Promise<AnalysisJobStatusV1>;
     events(reference: AnalysisJobReferenceV1, signal?: AbortSignal): AsyncGenerator<AnalysisJobEventV1>;
-    getResult(reference: AnalysisJobReferenceV1): Promise<AnalysisJobResultReferenceV1>;
-    deleteJob(reference: AnalysisJobReferenceV1, idempotencyKey: string): Promise<AnalysisDeletionReceiptV1>;
-    getBuildInfo(): Promise<AnalysisComputeBuildInfoV1>;
+    getResult(reference: AnalysisJobReferenceV1, signal?: AbortSignal): Promise<AnalysisJobResultReferenceV1>;
+    deleteJob(reference: AnalysisJobReferenceV1, idempotencyKey: string, signal?: AbortSignal): Promise<AnalysisDeletionReceiptV1>;
+    getBuildInfo(signal?: AbortSignal): Promise<AnalysisComputeBuildInfoV1>;
 }
 /**
  * Additive durable-deletion client contract. Keeping these methods out of V1
  * preserves source compatibility for existing V1-only client implementations.
  */
 export interface AnalysisClientV2 extends AnalysisClientV1 {
-    deleteJobV2(reference: AnalysisJobReferenceV1, idempotencyKey: string): Promise<AnalysisDeletionReceiptV2>;
-    deleteJobUntilComplete(reference: AnalysisJobReferenceV1, idempotencyKey: string): Promise<AnalysisDeletionReceiptV2>;
+    deleteJobV2(reference: AnalysisJobReferenceV1, idempotencyKey: string, signal?: AbortSignal): Promise<AnalysisDeletionReceiptV2>;
+    deleteJobUntilComplete(reference: AnalysisJobReferenceV1, idempotencyKey: string, signal?: AbortSignal): Promise<AnalysisDeletionReceiptV2>;
 }
 export declare class AnalysisClientError extends Error {
     readonly code: string;
     readonly status: number | null;
     readonly requestId: string | null;
-    constructor(code: string, message: string, status?: number | null, requestId?: string | null);
+    readonly retryAfterMilliseconds: number | null;
+    constructor(code: string, message: string, status?: number | null, requestId?: string | null, retryAfterMilliseconds?: number | null);
 }
 /** Creates the capability-token remote client used by the public Web product. */
 export declare function createAnalysisClient(config: AnalysisClientConfig): AnalysisClientV2;

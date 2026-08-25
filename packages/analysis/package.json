@@ -19,8 +19,10 @@
     "test": "vitest run",
     "build": "tsc --noEmit",
     "build:public": "node ./scripts/build-public-package.mjs",
-    "pack:check": "node ./scripts/verify-public-package.mjs ./dist/package",
-    "test:public-package": "node ./scripts/smoke-public-package.mjs ./dist/package"
+    "artifact:public": "node ./scripts/generate-public-package-artifact.mjs",
+    "compare:public-trees": "node ./scripts/compare-public-package-trees.mjs",
+    "pack:check": "node ./scripts/verify-public-package.mjs",
+    "test:public-package": "node ./scripts/smoke-public-package.mjs"
   },
   "dependencies": {
     "@3dena/export": "0.1.0",

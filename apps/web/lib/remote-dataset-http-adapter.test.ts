@@ -80,12 +80,32 @@ function receipt(sha256: string, byteLength: number): DatasetReceiptV1 {
   };
 }
 
+interface RecordedRequest {
+  readonly url: string;
+  readonly method: string;
+  readonly headers: Headers;
+  readonly body: BodyInit | null | undefined;
+}
+
+interface RemoteHarnessOptions {
+  readonly adapter?: Readonly<{
+    requestTimeoutMilliseconds?: number;
+    retryMaxAttempts?: number;
+    retryBaseDelayMilliseconds?: number;
+    retryMaximumDelayMilliseconds?: number;
+    retryTotalTimeoutMilliseconds?: number;
+  }>;
+  readonly beforeRoute?: (
+    request: RecordedRequest,
+  ) => Response | undefined | Promise<Response | undefined>;
+}
+
 function remoteHarness(contractVersions: string[] = [
   "3dena.compute-dataset-http.v1",
   "3dena.compute-prepared-import-http.v1",
   "3dena.compute-source-result-job-http.v1",
   "3dena.contract.v1",
-]) {
+], options: RemoteHarnessOptions = {}) {
   let preflight: Record<string, unknown> | null = null;
   let mappingBody: Record<string, unknown> | null = null;
   let jobRequests = 0;
@@ -93,12 +113,15 @@ function remoteHarness(contractVersions: string[] = [
   let sourceCreateBody: Record<string, unknown> | null = null;
   let preparedCreateBody: Record<string, unknown> | null = null;
   let preparedExecuteBody: Record<string, unknown> | null = null;
-  const requests: Array<{ url: string; method: string; headers: Headers }> = [];
+  const requests: RecordedRequest[] = [];
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const method = init?.method ?? "GET";
     const headers = new Headers(init?.headers);
-    requests.push({ url, method, headers });
+    const request = { url, method, headers, body: init?.body };
+    requests.push(request);
+    const intercepted = await options.beforeRoute?.(request);
+    if (intercepted !== undefined) return intercepted;
 
     if (url === `${BASE}/build-info`) {
       return json({
@@ -327,7 +350,11 @@ function remoteHarness(contractVersions: string[] = [
     return json({ code: "NOT_FOUND" }, 404);
   });
   return {
-    adapter: createHttpRemoteDatasetWorkflowAdapter({ baseUrl: BASE, fetch: fetchMock as typeof fetch }),
+    adapter: createHttpRemoteDatasetWorkflowAdapter({
+      baseUrl: BASE,
+      fetch: fetchMock as typeof fetch,
+      ...options.adapter,
+    }),
     fetchMock,
     requests,
     mappingBody: () => mappingBody,
@@ -337,6 +364,32 @@ function remoteHarness(contractVersions: string[] = [
     preparedCreateBody: () => preparedCreateBody,
     preparedExecuteBody: () => preparedExecuteBody,
   };
+}
+
+async function activateSyntheticDataset(target: ReturnType<typeof remoteHarness>) {
+  const file = new File([
+    "participant,group,conversation,A,B,C\np1,g1,c1,1,0,1\np2,g2,c2,0,1,1\n",
+  ], "study.csv", { type: "text/csv" });
+  const signal = new AbortController().signal;
+  const inventory = await target.adapter.inspect(file, signal, vi.fn());
+  const parsed = await target.adapter.parseWorksheet(
+    inventory,
+    inventory.worksheets[0]!,
+    signal,
+  );
+  const preview = await target.adapter.prepare(parsed, {
+    unitColumns: ["participant", "group"],
+    conversationColumns: ["conversation"],
+    codeColumns: ["A", "B", "C"],
+    groupColumn: "group",
+    timeColumn: "conversation",
+    entityColumn: "participant",
+    model: "AccumulatedTrajectory",
+    window: "MovingStanzaWindow",
+    windowSizeBack: 4,
+  }, signal);
+  const active = await target.adapter.activate(preview, null, signal);
+  return { active, inventory };
 }
 
 describe("HTTP remote dataset workflow adapter", () => {
@@ -639,6 +692,400 @@ describe("HTTP remote dataset workflow adapter", () => {
       },
     });
     expect(JSON.stringify(target.preparedExecuteBody())).not.toContain("exactBytesBase64");
+  });
+
+  it("replays create and execute mutations with one stable body and idempotency key after a persisted response is lost", async () => {
+    type Operation =
+      | "activated-create"
+      | "source-result-create"
+      | "prepared-execute"
+      | "activated-execute"
+      | "derived-execute";
+    const attempts = new Map<Operation, Array<{
+      readonly body: string;
+      readonly idempotencyKey: string | null;
+    }>>();
+    const persisted = new Set<Operation>();
+    const operation = (request: RecordedRequest): Operation | null => {
+      if (request.method !== "POST" || typeof request.body !== "string") return null;
+      const body = JSON.parse(request.body) as {
+        schemaVersion?: string;
+        task?: { kind?: string };
+      };
+      if (request.url === `${BASE}/v1/jobs`
+          && body.schemaVersion === "3dena.create-activated-job-request.v1") {
+        return "activated-create";
+      }
+      if (request.url === `${BASE}/v1/jobs`
+          && body.schemaVersion === "3dena.create-source-result-job-request.v1") {
+        return "source-result-create";
+      }
+      if (!request.url.endsWith("/execute")) return null;
+      if (body.schemaVersion === "3dena.execute-prepared-import-job-request.v1") {
+        return "prepared-execute";
+      }
+      if (body.schemaVersion !== "3dena.execute-activated-job-request.v1") return null;
+      return body.task?.kind === "ena-model" ? "activated-execute" : "derived-execute";
+    };
+    const replayResponse = (name: Operation, request: RecordedRequest): Response => {
+      if (name === "activated-create") {
+        return json({
+          schemaVersion: "3dena.job-capability.v1",
+          jobId: "job-12345678",
+          capabilityToken: "job-capability-token-12345678",
+          uploadUrl: `${BASE}/v1/datasets/${DATASET_ID}/content`,
+          expiresAt: "2026-08-22T00:00:00.000Z",
+        }, 201);
+      }
+      if (name === "source-result-create") {
+        const body = JSON.parse(String(request.body)) as {
+          sourceJobId: string;
+          sourceResultHash: string;
+        };
+        return json({
+          schemaVersion: "3dena.source-result-job-capability.v1",
+          jobId: "derived-job-12345678",
+          capabilityToken: "derived-capability-token-12345678",
+          sourceJobId: body.sourceJobId,
+          sourceResultHash: body.sourceResultHash,
+          expiresAt: "2026-08-22T00:00:00.000Z",
+        }, 201);
+      }
+      return json({
+        schemaVersion: "3dena.job-status.v1",
+        jobId: name === "derived-execute"
+          ? "derived-job-12345678"
+          : "job-12345678",
+        state: "QUEUED",
+        owner: null,
+        progress: null,
+        createdAt: "2026-08-21T00:00:00.000Z",
+        updatedAt: "2026-08-21T00:00:00.000Z",
+        expiresAt: "2026-08-22T00:00:00.000Z",
+        resultAvailable: false,
+        errorCode: null,
+      }, 202);
+    };
+    const target = remoteHarness(undefined, {
+      adapter: {
+        requestTimeoutMilliseconds: 100,
+        retryMaxAttempts: 2,
+        retryBaseDelayMilliseconds: 1,
+        retryMaximumDelayMilliseconds: 1,
+        retryTotalTimeoutMilliseconds: 500,
+      },
+      beforeRoute(request) {
+        const name = operation(request);
+        if (name === null) return undefined;
+        const observed = attempts.get(name) ?? [];
+        observed.push({
+          body: String(request.body),
+          idempotencyKey: request.headers.get("idempotency-key"),
+        });
+        attempts.set(name, observed);
+        if (!persisted.has(name)) {
+          persisted.add(name);
+          throw new TypeError("The service persisted the operation but its response was lost.");
+        }
+        return replayResponse(name, request);
+      },
+    });
+    const signal = new AbortController().signal;
+    const { active } = await activateSyntheticDataset(target);
+    const enaTask: ActivatedAnalysisTaskSpecV1 = {
+      schemaVersion: "3dena.activated-ena-model-task-spec.v1",
+      kind: "ena-model",
+      runId: "remote-run-replay",
+      deadlineEpochMilliseconds: Date.now() + 60_000,
+      spec: {
+        schemaVersion: "3dena.analysis-spec.v1",
+        model: "AccumulatedTrajectory",
+        window: "MovingStanzaWindow",
+        weightBy: "binary",
+        windowSizeBack: 4,
+        windowSizeForward: 0,
+        centerAlignToOrigin: true,
+        cohortPolicy: "available",
+      },
+    };
+    const activated = await target.adapter.bindExecution(active, enaTask, signal);
+    expect(activated.reference).toEqual({
+      jobId: "job-12345678",
+      capabilityToken: "job-capability-token-12345678",
+    });
+    await activated.start(signal);
+    await activated.start(signal);
+
+    const sourceResultHash = "f".repeat(64);
+    const derived = await target.adapter.bindDerivedExecution({
+      reference: activated.reference,
+      datasetReceipt: active.receipt,
+      sourceResultHash,
+    }, {
+      schemaVersion: "3dena.activated-trajectory-task-spec.v1",
+      kind: "trajectory",
+      runId: "derived-run-replay",
+      deadlineEpochMilliseconds: Date.now() + 60_000,
+      sourceResultHash,
+      group: "g1",
+      selectedDimensions: ["SVD1", "SVD2", "SVD3"],
+      cohortPolicy: "available",
+      periods: [{
+        sourceTimeCanonical: "period-1",
+        value: { type: "numeric-v1", value: 1, unit: "period" },
+      }],
+      estimand: { kind: "equal-participant-v1" },
+    }, signal);
+    expect(derived.reference).toEqual({
+      jobId: "derived-job-12345678",
+      capabilityToken: "derived-capability-token-12345678",
+    });
+    await derived.start(signal);
+    await derived.start(signal);
+
+    const bytes = class1ShapedSyntheticPreparedBytes();
+    const prepared = await target.adapter.inspectPrepared(new File([
+      Uint8Array.from(bytes),
+    ], "prepared.ena3d.json", { type: "application/json" }), signal, vi.fn());
+    const preparedBinding = await target.adapter.bindPreparedExecution(
+      prepared,
+      "prepared-run-replay",
+      Date.now() + 60_000,
+      signal,
+    );
+    await preparedBinding.start(signal);
+    await preparedBinding.start(signal);
+
+    const expectedOperations: Operation[] = [
+      "activated-create",
+      "source-result-create",
+      "prepared-execute",
+      "activated-execute",
+      "derived-execute",
+    ];
+    expect([...persisted].sort()).toEqual([...expectedOperations].sort());
+    for (const name of expectedOperations) {
+      const observed = attempts.get(name);
+      expect(observed, name).toHaveLength(name.endsWith("execute") ? 3 : 2);
+      expect(observed?.[0]?.idempotencyKey, name).toMatch(/^[^\s]{8,200}$/u);
+      expect(observed?.every((item) => (
+        item.body === observed[0]?.body
+        && item.idempotencyKey === observed[0]?.idempotencyKey
+      )), name).toBe(true);
+    }
+  });
+
+  it("uses a bounded client deadline that aborts the in-flight request body", async () => {
+    const observedSignals: AbortSignal[] = [];
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal as AbortSignal;
+        observedSignals.push(signal);
+        if (signal.aborted) {
+          reject(signal.reason);
+          return;
+        }
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      }));
+    const configuration = {
+      baseUrl: BASE,
+      fetch: fetchMock as typeof fetch,
+      requestTimeoutMilliseconds: 10,
+      retryMaxAttempts: 1,
+      retryBaseDelayMilliseconds: 1,
+      retryMaximumDelayMilliseconds: 1,
+      retryTotalTimeoutMilliseconds: 100,
+    };
+    const adapter = createHttpRemoteDatasetWorkflowAdapter(configuration);
+    const safety = new AbortController();
+    const safetyTimer = setTimeout(() => safety.abort(new Error("test safety deadline")), 250);
+    try {
+      await expect(adapter.capabilities(safety.signal)).rejects.toMatchObject({
+        code: "REQUEST_TIMEOUT",
+      });
+    } finally {
+      clearTimeout(safetyTimer);
+    }
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(observedSignals).toHaveLength(1);
+    expect(observedSignals[0]?.aborted).toBe(true);
+  });
+
+  it("keeps successful JSON response-body consumption inside the client deadline", async () => {
+    const cancelled = vi.fn();
+    const hangingBody = new ReadableStream<Uint8Array>({
+      start() {
+        // Headers arrived, but an intermediary silently stopped forwarding bytes.
+      },
+      cancel(reason) {
+        cancelled(reason);
+      },
+    });
+    const fetchMock = vi.fn(async () => new Response(hangingBody, {
+      status: 200,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    }));
+    const configuration = {
+      baseUrl: BASE,
+      fetch: fetchMock as typeof fetch,
+      requestTimeoutMilliseconds: 10,
+      retryMaxAttempts: 1,
+      retryBaseDelayMilliseconds: 1,
+      retryMaximumDelayMilliseconds: 1,
+      retryTotalTimeoutMilliseconds: 100,
+    };
+    await expect(
+      createHttpRemoteDatasetWorkflowAdapter(configuration).capabilities(),
+    ).rejects.toMatchObject({ code: "REQUEST_TIMEOUT" });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(cancelled).toHaveBeenCalledOnce();
+  });
+
+  it("honors caller abort before an attempt and never retries it", async () => {
+    const fetchMock = vi.fn(async () => json({}));
+    const configuration = {
+      baseUrl: BASE,
+      fetch: fetchMock as typeof fetch,
+      requestTimeoutMilliseconds: 100,
+      retryMaxAttempts: 4,
+      retryBaseDelayMilliseconds: 1,
+      retryMaximumDelayMilliseconds: 1,
+      retryTotalTimeoutMilliseconds: 500,
+    };
+    const adapter = createHttpRemoteDatasetWorkflowAdapter(configuration);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(adapter.capabilities(controller.signal)).rejects.toMatchObject({
+      code: "ABORTED",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("forwards an in-flight caller abort and never retries it", async () => {
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal as AbortSignal;
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      }));
+    const configuration = {
+      baseUrl: BASE,
+      fetch: fetchMock as typeof fetch,
+      requestTimeoutMilliseconds: 1_000,
+      retryMaxAttempts: 4,
+      retryBaseDelayMilliseconds: 1,
+      retryMaximumDelayMilliseconds: 1,
+      retryTotalTimeoutMilliseconds: 2_000,
+    };
+    const adapter = createHttpRemoteDatasetWorkflowAdapter(configuration);
+    const controller = new AbortController();
+    const pending = adapter.capabilities(controller.signal);
+    const assertion = expect(pending).rejects.toMatchObject({ code: "ABORTED" });
+    controller.abort();
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("bounds transient retries by attempt count", async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new TypeError("connection reset");
+    });
+    const configuration = {
+      baseUrl: BASE,
+      fetch: fetchMock as typeof fetch,
+      requestTimeoutMilliseconds: 100,
+      retryMaxAttempts: 3,
+      retryBaseDelayMilliseconds: 1,
+      retryMaximumDelayMilliseconds: 1,
+      retryTotalTimeoutMilliseconds: 500,
+    };
+    const adapter = createHttpRemoteDatasetWorkflowAdapter(configuration);
+    await expect(adapter.capabilities()).rejects.toMatchObject({
+      code: "NETWORK_FAILURE",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not retry before the server Retry-After delay", async () => {
+    vi.useFakeTimers();
+    try {
+      let attempts = 0;
+      const fetchMock = vi.fn(async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          return new Response(JSON.stringify({ code: "CAPACITY_EXHAUSTED" }), {
+            status: 503,
+            headers: {
+              "content-type": "application/json; charset=utf-8",
+              "retry-after": "1",
+              "x-request-id": "retry-after-test",
+            },
+          });
+        }
+        return json({
+          schemaVersion: "3dena.compute-build-info.v1",
+          approvalManifestSha256: "1".repeat(64),
+          releaseId: "release-20260821",
+          gitCommit: "2".repeat(40),
+          flyImageDigest: `sha256:${"3".repeat(64)}`,
+          flyBuildId: "fly-build-20260821",
+          role: "api",
+          contractVersions: [
+            "3dena.compute-dataset-http.v1",
+            "3dena.compute-prepared-import-http.v1",
+            "3dena.compute-source-result-job-http.v1",
+            "3dena.contract.v1",
+          ],
+        });
+      });
+      const configuration = {
+        baseUrl: BASE,
+        fetch: fetchMock as typeof fetch,
+        requestTimeoutMilliseconds: 100,
+        retryMaxAttempts: 2,
+        retryBaseDelayMilliseconds: 1,
+        retryMaximumDelayMilliseconds: 1,
+        retryTotalTimeoutMilliseconds: 2_000,
+      };
+      const pending = createHttpRemoteDatasetWorkflowAdapter(configuration).capabilities();
+      await vi.advanceTimersByTimeAsync(999);
+      expect(fetchMock).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(pending).resolves.toMatchObject({ available: true });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not shorten Retry-After to fit the remaining total retry budget", async () => {
+    const fetchMock = vi.fn(async () => new Response(
+      JSON.stringify({ code: "CAPACITY_EXHAUSTED" }),
+      {
+        status: 503,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "retry-after": "2",
+          "x-request-id": "retry-budget-test",
+        },
+      },
+    ));
+    const configuration = {
+      baseUrl: BASE,
+      fetch: fetchMock as typeof fetch,
+      requestTimeoutMilliseconds: 100,
+      retryMaxAttempts: 4,
+      retryBaseDelayMilliseconds: 1,
+      retryMaximumDelayMilliseconds: 1,
+      retryTotalTimeoutMilliseconds: 1_000,
+    };
+    await expect(
+      createHttpRemoteDatasetWorkflowAdapter(configuration).capabilities(),
+    ).rejects.toMatchObject({
+      code: "CAPACITY_EXHAUSTED",
+      status: 503,
+      retryAfterMilliseconds: 2_000,
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("rejects prepared exchanges before allocating a remote capability", async () => {

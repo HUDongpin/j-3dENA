@@ -1,9 +1,13 @@
 import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { PUBLIC_PACKAGE_RELEASE_VERSION } from "./public-package-release-contract.mjs";
+import {
+  validatePublicPackageArtifactReceiptV2,
+  verifyPublicPackageArtifactReceiptV2,
+} from "./public-package-artifact-receipt.mjs";
 
 const expectedFiles = new Set([
   "LICENSE",
@@ -29,6 +33,21 @@ const expectedManifestFiles = [
   "PROVENANCE.json"
 ];
 
+const expectedManifestKeys = [
+  "name",
+  "version",
+  "description",
+  "type",
+  "license",
+  "sideEffects",
+  "peerDependencies",
+  "engines",
+  "exports",
+  "files",
+  "publishConfig",
+  "repository"
+];
+
 export const PUBLIC_PACKAGE_RUNTIME_EXPORT_NAMES = Object.freeze([
   "adaptFittedJenaTrajectoryResultV2",
   "assertAnalysisExecutionDatasetV2", "assertAnalysisResultEnvelopeV1",
@@ -43,6 +62,105 @@ export const PUBLIC_PACKAGE_RUNTIME_EXPORT_NAMES = Object.freeze([
 
 function fail(message) {
   throw new Error(`PUBLIC_PACKAGE_INVALID: ${message}`);
+}
+
+function requireExactObject(value, expectedKeys, path) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    fail(`${path} must be an object`);
+  }
+  const actualKeys = Object.keys(value).sort();
+  const sortedExpectedKeys = [...expectedKeys].sort();
+  if (
+    actualKeys.length !== sortedExpectedKeys.length
+    || actualKeys.some((key, index) => key !== sortedExpectedKeys[index])
+  ) {
+    fail(`${path} keys must be exactly ${sortedExpectedKeys.join(", ")}`);
+  }
+  return value;
+}
+
+function requireExactValue(actual, expected, path) {
+  if (!Object.is(actual, expected)) fail(`${path} changed`);
+}
+
+export function verifyPublicPackageManifest(candidate) {
+  if (
+    candidate !== null
+    && typeof candidate === "object"
+    && !Array.isArray(candidate)
+    && Object.hasOwn(candidate, "scripts")
+  ) {
+    fail("package manifest must not contain lifecycle scripts");
+  }
+  const manifest = requireExactObject(candidate, expectedManifestKeys, "package manifest");
+
+  requireExactValue(manifest.name, "j-3dena", "package manifest name");
+  requireExactValue(
+    manifest.version,
+    PUBLIC_PACKAGE_RELEASE_VERSION,
+    "package manifest version",
+  );
+  requireExactValue(
+    manifest.description,
+    "Public TypeScript analysis facade for the j-3dENA successor",
+    "package manifest description",
+  );
+  requireExactValue(manifest.type, "module", "package manifest type");
+  requireExactValue(manifest.license, "GPL-3.0-only", "package manifest license");
+  requireExactValue(manifest.sideEffects, false, "package manifest sideEffects");
+
+  const peerDependencies = requireExactObject(
+    manifest.peerDependencies,
+    ["jena-js"],
+    "package manifest peerDependencies",
+  );
+  requireExactValue(
+    peerDependencies["jena-js"],
+    "0.7.0-ona.0",
+    "package manifest peerDependencies.jena-js",
+  );
+
+  const engines = requireExactObject(manifest.engines, ["node"], "package manifest engines");
+  requireExactValue(engines.node, ">=20.9.0", "package manifest engines.node");
+
+  const exports = requireExactObject(manifest.exports, ["."], "package manifest exports");
+  const rootExport = requireExactObject(
+    exports["."],
+    ["types", "import"],
+    "package manifest exports[\".\"]",
+  );
+  requireExactValue(rootExport.types, "./index.d.ts", "package manifest exports[\".\"].types");
+  requireExactValue(rootExport.import, "./index.js", "package manifest exports[\".\"].import");
+
+  if (
+    !Array.isArray(manifest.files)
+    || manifest.files.length !== expectedManifestFiles.length
+    || manifest.files.some((file, index) => file !== expectedManifestFiles[index])
+  ) {
+    fail("package manifest files changed");
+  }
+
+  const publishConfig = requireExactObject(
+    manifest.publishConfig,
+    ["access", "provenance"],
+    "package manifest publishConfig",
+  );
+  requireExactValue(publishConfig.access, "public", "package manifest publishConfig.access");
+  requireExactValue(publishConfig.provenance, true, "package manifest publishConfig.provenance");
+
+  const repository = requireExactObject(
+    manifest.repository,
+    ["type", "url"],
+    "package manifest repository",
+  );
+  requireExactValue(repository.type, "git", "package manifest repository.type");
+  requireExactValue(
+    repository.url,
+    "git+https://github.com/HUDongpin/j-3dENA.git",
+    "package manifest repository.url",
+  );
+
+  return manifest;
 }
 
 async function listFiles(directory, prefix = "") {
@@ -76,32 +194,52 @@ export async function verifyPublicPackageArtifactDigests(packageDirectory, prove
   return Object.freeze({ indexJsSha256, indexJsMapSha256, schemaIndexSha256 });
 }
 
-export async function verifyPublicPackage(packageDirectory) {
+export function verifyPublicPackageSourceBinding(provenance, {
+  expectedSourceHead,
+  artifactReceipt,
+} = {}) {
+  const receipt = artifactReceipt === undefined
+    ? undefined
+    : validatePublicPackageArtifactReceiptV2(artifactReceipt);
+  if (expectedSourceHead !== undefined && !/^[0-9a-f]{40}$/u.test(expectedSourceHead)) {
+    fail("expected source head is not a full Git commit identity");
+  }
+  if (
+    receipt !== undefined
+    && expectedSourceHead !== undefined
+    && receipt.source.repositoryHead !== expectedSourceHead
+  ) {
+    fail("expected source head differs from receipt source");
+  }
+  const sourceHead = receipt?.source.repositoryHead
+    ?? expectedSourceHead
+    ?? provenance.source?.repositoryHead;
+  if (!/^[0-9a-f]{40}$/u.test(sourceHead ?? "")) fail("public package has no valid source anchor");
+  if (
+    provenance.source?.repositoryHead !== sourceHead
+    || provenance.package?.buildId !== sourceHead
+    || (receipt !== undefined && receipt.package.buildId !== sourceHead)
+  ) {
+    fail("source repositoryHead, package buildId, and receipt source must be identical");
+  }
+  if (
+    receipt !== undefined
+    && (
+      receipt.package.name !== provenance.package?.name
+      || receipt.package.version !== provenance.package?.version
+    )
+  ) {
+    fail("receipt package identity differs from provenance");
+  }
+  return sourceHead;
+}
+
+export async function verifyPublicPackage(packageDirectory, options = {}) {
   const directory = resolve(packageDirectory);
   if (!(await stat(directory)).isDirectory()) fail("staging path is not a directory");
 
   const manifest = JSON.parse(await readFile(resolve(directory, "package.json"), "utf8"));
-  if (manifest.name !== "j-3dena") fail("unexpected package name");
-  if (manifest.version !== PUBLIC_PACKAGE_RELEASE_VERSION) {
-    fail("package version does not match the source-controlled release contract");
-  }
-  if (manifest.private !== undefined) fail("staged public manifest must not contain private");
-  if (manifest.type !== "module") fail("package must be ESM-only");
-  if (manifest.license !== "GPL-3.0-only") fail("license must be GPL-3.0-only");
-  if (manifest.engines?.node !== ">=20.9.0") fail("Node engine contract changed");
-  if (manifest.repository?.url !== "git+https://github.com/HUDongpin/j-3dENA.git") {
-    fail("repository provenance does not point to the owner repository");
-  }
-  if (Object.keys(manifest.exports ?? {}).join(",") !== ".") fail("only the root export is public");
-  if (manifest.dependencies !== undefined || manifest.optionalDependencies !== undefined) {
-    fail("public facade must not publish bundled runtime dependency edges");
-  }
-  if (JSON.stringify(manifest.peerDependencies) !== JSON.stringify({ "jena-js": "0.7.0-ona.0" })) {
-    fail("public facade must expose the exact single-instance jENA peer contract");
-  }
-  if (JSON.stringify(manifest.files) !== JSON.stringify(expectedManifestFiles)) {
-    fail("public facade package inventory changed");
-  }
+  verifyPublicPackageManifest(manifest);
 
   const manifestText = JSON.stringify(manifest);
   if (manifestText.includes("file:") || manifestText.includes("workspace:")) {
@@ -201,6 +339,7 @@ export async function verifyPublicPackage(packageDirectory) {
   if (provenance.dependencies?.sheetJs?.sha256 !== "8dc73fc3b00203e72d176e85b50938627c7b086e607c682e8d3c22c02bb99fe8") {
     fail("SheetJS custody hash drifted");
   }
+  const sourceHead = verifyPublicPackageSourceBinding(provenance, options);
 
   const { indexJsSha256: digest } = await verifyPublicPackageArtifactDigests(directory, provenance);
 
@@ -216,10 +355,45 @@ export async function verifyPublicPackage(packageDirectory) {
     fail("public runtime scientific SDK identity is not the exact package version");
   }
 
-  return Object.freeze({ directory, files: Object.freeze(files), indexJsSha256: digest });
+  return Object.freeze({ directory, files: Object.freeze(files), indexJsSha256: digest, sourceHead });
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {
-  const result = await verifyPublicPackage(process.argv[2] ?? "./dist/package");
+function parseArguments(arguments_) {
+  const result = {};
+  for (let index = 0; index < arguments_.length; index += 1) {
+    const argument = arguments_[index];
+    if (argument !== "--package" && argument !== "--tarball" && argument !== "--receipt") {
+      fail(`unknown argument ${argument}`);
+    }
+    const value = arguments_[index + 1];
+    if (!value || value.startsWith("--")) fail(`${argument} requires a value`);
+    const key = argument === "--package"
+      ? "packageDirectory"
+      : argument === "--tarball"
+        ? "tarballPath"
+        : "receiptPath";
+    if (result[key] !== undefined) fail(`${argument} may be supplied only once`);
+    result[key] = value;
+    index += 1;
+  }
+  for (const [key, argument] of [
+    ["packageDirectory", "--package"],
+    ["tarballPath", "--tarball"],
+    ["receiptPath", "--receipt"],
+  ]) {
+    if (result[key] === undefined) fail(`${argument} is required`);
+  }
+  return result;
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const options = parseArguments(process.argv.slice(2));
+  const artifactReceipt = JSON.parse(await readFile(resolve(options.receiptPath), "utf8"));
+  await verifyPublicPackageArtifactReceiptV2({
+    receipt: artifactReceipt,
+    packageDirectory: options.packageDirectory,
+    tarballPath: options.tarballPath,
+  });
+  const result = await verifyPublicPackage(options.packageDirectory, { artifactReceipt });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }

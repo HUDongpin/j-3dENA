@@ -275,35 +275,48 @@ export class PostgresTemporalDueSource implements PersistentTemporalDueSourceV1 
         }>(
           `SELECT h.job_id,
              CASE
-               WHEN h.record ? 'deleteRequestedAtMs' OR NOT EXISTS (
-                 SELECT 1 FROM compute_jobs AS core
-                 WHERE core.task_id = h.record->>'coreTaskId'
-               ) THEN 'http-deletion'
+               WHEN h.expires_at <= clock_timestamp()
+                 AND h.record ? 'deletionCompletedAtMs' THEN 'http-purge'
+               WHEN h.record ? 'deleteRequestedAtMs'
+                 OR h.expires_at <= clock_timestamp()
+                 OR NOT EXISTS (
+                   SELECT 1 FROM compute_jobs AS core
+                   WHERE core.task_id = h.record->>'coreTaskId'
+                 ) THEN 'http-deletion'
                ELSE 'http-reconcile'
              END AS work_kind
            FROM compute_http_jobs AS h
-           WHERE NOT (h.record ? 'inputDeletedAtMs')
-             AND (
-               h.record ? 'deleteRequestedAtMs'
-               OR (
-                 h.record->>'taskKind' = 'longitudinal-analysis-v2'
-                 AND h.record ? 'coreTaskId'
-                 AND (
-                   (
-                     jsonb_typeof(h.record->'createdAtMs') = 'number'
-                     AND (h.record->>'createdAtMs')::bigint + 60000 <=
-                       floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint
-                     AND NOT EXISTS (
+           WHERE (
+               h.expires_at <= clock_timestamp()
+               AND h.record ? 'deletionCompletedAtMs'
+             ) OR (
+               NOT (h.record ? 'deletionCompletedAtMs')
+               AND (
+                 h.expires_at <= clock_timestamp()
+                 OR h.record ? 'deleteRequestedAtMs'
+                 OR (
+                   NOT (h.record ? 'inputDeletedAtMs')
+                   AND
+                   h.record->>'taskKind' = 'longitudinal-analysis-v2'
+                   AND h.record ? 'coreTaskId'
+                   AND (
+                     (
+                       jsonb_typeof(h.record->'createdAtMs') = 'number'
+                       AND (h.record->>'createdAtMs')::bigint + 60000 <=
+                         floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint
+                       AND NOT EXISTS (
+                         SELECT 1 FROM compute_jobs AS core
+                         WHERE core.task_id = h.record->>'coreTaskId'
+                       )
+                     )
+                     OR EXISTS (
                        SELECT 1 FROM compute_jobs AS core
                        WHERE core.task_id = h.record->>'coreTaskId'
-                     )
-                   )
-                   OR EXISTS (
-                     SELECT 1 FROM compute_jobs AS core
-                     WHERE core.task_id = h.record->>'coreTaskId'
-                       AND core.state IN (
-                         'succeeded','failed','cancelled','timed_out','expired','deleted'
+                         AND core.state IN (
+                           'succeeded','failed','cancelled','timed_out','expired','deleted'
+                         )
                        )
+                     )
                    )
                  )
                )
@@ -316,7 +329,8 @@ export class PostgresTemporalDueSource implements PersistentTemporalDueSourceV1 
         for (const row of deletions.rows) {
           if (typeof row.job_id !== "string" || !OPAQUE_ID.test(row.job_id) ||
               (row.work_kind !== "http-deletion" &&
-                row.work_kind !== "http-reconcile")) {
+                row.work_kind !== "http-reconcile" &&
+                row.work_kind !== "http-purge")) {
             persistentError("DATABASE_FAILURE");
           }
           work.push(Object.freeze({ kind: row.work_kind, id: row.job_id }));
@@ -383,10 +397,80 @@ function assertHttpRecord(value: unknown): asserts value is ComputeHttpJobRecord
     !Number.isSafeInteger(value.revision) ||
     Number(value.revision) < 0 ||
     typeof value.createIdempotencyHash !== "string" ||
-    !/^[a-f0-9]{64}$/u.test(value.createIdempotencyHash)
+    !/^[a-f0-9]{64}$/u.test(value.createIdempotencyHash) ||
+    (value.inputDeletedAtMs !== undefined &&
+      (!Number.isSafeInteger(value.inputDeletedAtMs) || Number(value.inputDeletedAtMs) < 0)) ||
+    (value.deletionCompletedAtMs !== undefined &&
+      (!Number.isSafeInteger(value.deletionCompletedAtMs) ||
+        Number(value.deletionCompletedAtMs) < 0 ||
+        !Number.isSafeInteger(value.inputDeletedAtMs) ||
+        !Number.isSafeInteger(value.deleteRequestedAtMs) ||
+        Number(value.deletionCompletedAtMs) < Number(value.inputDeletedAtMs) ||
+        Number(value.deletionCompletedAtMs) < Number(value.deleteRequestedAtMs)))
   ) {
     persistentError("DATABASE_FAILURE");
   }
+}
+
+const HTTP_EVENT_STATES = new Set<AnalysisJobEventV1["state"]>([
+  "CREATED",
+  "UPLOADED",
+  "QUEUED",
+  "RUNNING",
+  "CANCEL_REQUESTED",
+  "SUCCEEDED",
+  "FAILED",
+  "CANCELLED",
+  "EXPIRED",
+]);
+
+function storedHttpEvent(value: unknown): AnalysisJobEventV1 {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "schemaVersion",
+      "sequence",
+      "state",
+      "phase",
+      "completed",
+      "total",
+      "emittedAt",
+    ]) ||
+    value.schemaVersion !== "3dena.job-event.v1" ||
+    typeof value.state !== "string" ||
+    !HTTP_EVENT_STATES.has(value.state as AnalysisJobEventV1["state"]) ||
+    typeof value.phase !== "string" ||
+    !Number.isSafeInteger(value.completed) ||
+    Number(value.completed) < 0 ||
+    (value.total !== null &&
+      (!Number.isSafeInteger(value.total) ||
+        Number(value.total) < Number(value.completed))) ||
+    typeof value.emittedAt !== "string" ||
+    Number.isNaN(Date.parse(value.emittedAt))
+  ) {
+    persistentError("DATABASE_FAILURE");
+  }
+  const sequence = safeInteger(value.sequence);
+  if (sequence < 1) persistentError("DATABASE_FAILURE");
+  return Object.freeze({
+    schemaVersion: "3dena.job-event.v1",
+    sequence,
+    state: value.state as AnalysisJobEventV1["state"],
+    phase: value.phase,
+    completed: Number(value.completed),
+    total: value.total === null ? null : Number(value.total),
+    emittedAt: value.emittedAt,
+  });
+}
+
+function sameHttpEventSnapshot(
+  previous: AnalysisJobEventV1,
+  input: ComputeHttpProgressEventInput,
+): boolean {
+  return previous.state === input.state &&
+    previous.phase === input.phase &&
+    previous.completed === input.completed &&
+    previous.total === input.total;
 }
 
 function firstRecord<Row extends RecordRow>(result: SqlQueryResult<Row>): unknown | null {
@@ -576,9 +660,9 @@ export class PostgresComputeAuditSink implements ComputeAuditSink {
 export class PostgresComputeHttpJobRepository
   implements ComputeHttpJobRepository
 {
-  readonly #database: SqlQueryExecutor;
+  readonly #database: PostgresDatabase;
 
-  constructor(database: SqlQueryExecutor) {
+  constructor(database: PostgresDatabase) {
     this.#database = database;
   }
 
@@ -657,6 +741,60 @@ export class PostgresComputeHttpJobRepository
     if (current === null) persistentError("DATABASE_FAILURE");
     return Object.freeze({ applied: false, record: current });
   }
+
+  /**
+   * Removes only an expired HTTP tombstone whose owned input/result deletion
+   * has already been durably recorded. Replay events and their sequence cursor
+   * remain available until this exact retention boundary, then disappear in
+   * the same transaction as the owning job row.
+   */
+  async purgeExpired(jobId: string): Promise<boolean> {
+    if (!OPAQUE_ID.test(jobId)) persistentError("CONFIGURATION_INVALID");
+    return this.#database.transaction(async (sql) => {
+      const eligible = await sql.query<{ job_id: unknown; [key: string]: unknown }>(
+        `SELECT job_id FROM compute_http_jobs AS h
+         WHERE h.job_id = $1
+           AND h.expires_at <= clock_timestamp()
+           AND h.record ? 'deletionCompletedAtMs'
+           AND jsonb_typeof(h.record->'deletionCompletedAtMs') = 'number'
+           AND (
+             NOT (h.record ? 'coreTaskId')
+             OR EXISTS (
+               SELECT 1 FROM compute_jobs AS core
+               WHERE core.task_id = h.record->>'coreTaskId'
+                 AND core.state = 'deleted'
+                 AND core.record->'deletionReceipt'->>'requestObjectAbsent' = 'true'
+                 AND core.record->'deletionReceipt'->>'ownedResultObjectsAbsent' = 'true'
+                 AND jsonb_typeof(core.record->'ownedResultObjectKeys') = 'array'
+                 AND (core.record->'deletionReceipt'->>'ownedResultObjectCount')
+                   ~ '^(0|[1-9][0-9]{0,9})$'
+                 AND (core.record->'deletionReceipt'->>'ownedResultObjectCount')::bigint
+                   = jsonb_array_length(core.record->'ownedResultObjectKeys')
+             )
+           )
+         FOR UPDATE OF h`,
+        [jobId],
+      );
+      if (eligible.rowCount === 0) return false;
+      if (eligible.rowCount !== 1 || eligible.rows[0]?.job_id !== jobId) {
+        persistentError("DATABASE_FAILURE");
+      }
+      await sql.query("DELETE FROM compute_events WHERE job_id = $1", [jobId]);
+      const cursor = await sql.query(
+        "DELETE FROM compute_event_cursors WHERE job_id = $1",
+        [jobId],
+      );
+      if (cursor.rowCount < 0 || cursor.rowCount > 1) {
+        persistentError("DATABASE_FAILURE");
+      }
+      const job = await sql.query(
+        "DELETE FROM compute_http_jobs WHERE job_id = $1",
+        [jobId],
+      );
+      if (job.rowCount !== 1) persistentError("DATABASE_FAILURE");
+      return true;
+    });
+  }
 }
 
 export interface PostgresEventBrokerOptions {
@@ -684,6 +822,53 @@ export class PostgresComputeHttpEventBroker implements ComputeHttpEventBroker {
     input: ComputeHttpProgressEventInput,
   ): Promise<AnalysisJobEventV1> {
     return this.#database.transaction(async (sql) => {
+      const owner = await sql.query<{ job_id: unknown; [key: string]: unknown }>(
+        `SELECT job_id FROM compute_http_jobs
+         WHERE job_id = $1 FOR KEY SHARE`,
+        [jobId],
+      );
+      if (owner.rowCount !== 1 || owner.rows[0]?.job_id !== jobId) {
+        persistentError("DATABASE_FAILURE");
+      }
+      const insertedCursor = await sql.query(
+        `INSERT INTO compute_event_cursors (job_id, next_sequence)
+         VALUES ($1, 1) ON CONFLICT (job_id) DO NOTHING`,
+        [jobId],
+      );
+      if (insertedCursor.rowCount < 0 || insertedCursor.rowCount > 1) {
+        persistentError("DATABASE_FAILURE");
+      }
+      const cursorState = await sql.query<{
+        next_sequence: string | number;
+        [key: string]: unknown;
+      }>(
+        `SELECT next_sequence FROM compute_event_cursors
+         WHERE job_id = $1 FOR UPDATE`,
+        [jobId],
+      );
+      if (cursorState.rowCount !== 1) persistentError("DATABASE_FAILURE");
+      const nextSequence = safeInteger(cursorState.rows[0]?.next_sequence);
+      if (nextSequence < 1) persistentError("DATABASE_FAILURE");
+      const latest = await sql.query<{ event: unknown; [key: string]: unknown }>(
+        `SELECT event FROM compute_events
+         WHERE job_id = $1 ORDER BY sequence DESC LIMIT 1`,
+        [jobId],
+      );
+      if (latest.rowCount < 0 || latest.rowCount > 1) {
+        persistentError("DATABASE_FAILURE");
+      }
+      const previous = latest.rowCount === 0
+        ? null
+        : storedHttpEvent(latest.rows[0]?.event);
+      if (
+        (previous === null && nextSequence !== 1) ||
+        (previous !== null && previous.sequence !== nextSequence - 1)
+      ) {
+        persistentError("DATABASE_FAILURE");
+      }
+      if (previous !== null && sameHttpEventSnapshot(previous, input)) {
+        return previous;
+      }
       const serverTime = await sql.query<{
         emitted_at: unknown;
         [key: string]: unknown;
@@ -694,28 +879,28 @@ export class PostgresComputeHttpEventBroker implements ComputeHttpEventBroker {
         : typeof emittedAtValue === "string" && !Number.isNaN(Date.parse(emittedAtValue))
           ? new Date(emittedAtValue).toISOString()
           : persistentError("DATABASE_FAILURE");
-      await sql.query(
-        `INSERT INTO compute_event_cursors (job_id, next_sequence)
-         VALUES ($1, 1) ON CONFLICT (job_id) DO NOTHING`,
-        [jobId],
-      );
       const cursor = await sql.query<{ sequence: string | number; [key: string]: unknown }>(
         `UPDATE compute_event_cursors SET next_sequence = next_sequence + 1
-         WHERE job_id = $1 RETURNING next_sequence - 1 AS sequence`,
-        [jobId],
+         WHERE job_id = $1 AND next_sequence = $2
+         RETURNING next_sequence - 1 AS sequence`,
+        [jobId, nextSequence],
       );
       const sequence = safeInteger(cursor.rows[0]?.sequence);
+      if (cursor.rowCount !== 1 || sequence !== nextSequence) {
+        persistentError("DATABASE_FAILURE");
+      }
       const event: AnalysisJobEventV1 = Object.freeze({
         schemaVersion: "3dena.job-event.v1",
         sequence,
         ...input,
         emittedAt,
       });
-      await sql.query(
+      const inserted = await sql.query(
         `INSERT INTO compute_events (job_id, sequence, emitted_at, event)
          VALUES ($1,$2,$3,$4::jsonb)`,
         [jobId, sequence, emittedAt, JSON.stringify(event)],
       );
+      if (inserted.rowCount !== 1) persistentError("DATABASE_FAILURE");
       return event;
     });
   }
@@ -734,15 +919,29 @@ export class PostgresComputeHttpEventBroker implements ComputeHttpEventBroker {
       );
       if (result.rows.length > 0) {
         for (const row of result.rows) {
-          if (!isRecord(row.event) || row.event.schemaVersion !== "3dena.job-event.v1" ||
-              !Number.isSafeInteger(row.event.sequence) || Number(row.event.sequence) <= cursor) {
-            persistentError("DATABASE_FAILURE");
-          }
-          const event = cloneFrozen(row.event) as unknown as AnalysisJobEventV1;
+          const event = storedHttpEvent(row.event);
+          if (event.sequence <= cursor) persistentError("DATABASE_FAILURE");
           cursor = event.sequence;
           yield event;
         }
         continue;
+      }
+      // The owning HTTP tombstone and replay rows are purged atomically at
+      // their retention boundary. A subscriber may already be waiting when
+      // that transaction commits, so an empty event page must distinguish
+      // "nothing new yet" from "this stream no longer has an owner". Without
+      // this check the iterator would poll forever and the HTTP layer would
+      // keep emitting heartbeats that incorrectly mask the terminal purge.
+      const owner = await this.#database.query<{
+        job_id: unknown;
+        [key: string]: unknown;
+      }>(
+        "SELECT job_id FROM compute_http_jobs WHERE job_id = $1",
+        [jobId],
+      );
+      if (owner.rowCount === 0) return;
+      if (owner.rowCount !== 1 || owner.rows[0]?.job_id !== jobId) {
+        persistentError("DATABASE_FAILURE");
       }
       await new Promise<void>((resolve) => {
         if (signal?.aborted === true) return resolve();

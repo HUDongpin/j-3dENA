@@ -128,6 +128,7 @@ describe("compute container boundary", () => {
         { sha256: "a".repeat(64), version: "0001-persistent-compute" },
         { sha256: "b".repeat(64), version: "0002-persistent-control-plane" },
         { sha256: "c".repeat(64), version: "0003-build-approval-v3" },
+        { sha256: "d".repeat(64), version: "0004-scientific-result-generations" },
       ];
       await writeFile(join(directory, "compute-runtime.mjs"), runtime);
       await writeFile(join(directory, "scientific-worker-entry.mjs"), worker);

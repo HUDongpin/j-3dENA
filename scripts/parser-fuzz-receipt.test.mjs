@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,12 +26,18 @@ test("generates a source-bound receipt and rejects artifact tampering", { timeou
   const temporary = mkdtempSync(join(tmpdir(), "3dena-parser-fuzz-receipt-"));
   try {
     const output = join(temporary, "evidence");
+    const gitCommit = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: root,
+      encoding: "utf8",
+    }).trim();
     execFileSync(
       process.execPath,
       [
         resolve(root, "scripts/run-parser-fuzz.mjs"),
         "--root",
         root,
+        "--source-head",
+        gitCommit,
         "--output",
         output,
         "--seeds",
@@ -39,15 +45,16 @@ test("generates a source-bound receipt and rejects artifact tampering", { timeou
         "--cases-per-seed",
         "2",
       ],
-      { cwd: root, stdio: "pipe", timeout: 15_000 },
+      {
+        cwd: root,
+        env: { ...process.env, GITHUB_SHA: "f".repeat(40) },
+        stdio: "pipe",
+        timeout: 15_000,
+      },
     );
     const receiptPath = join(output, "parser-fuzz-receipt.json");
     const reportPath = join(output, "vitest-report.json");
     const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
-    const gitCommit = execFileSync("git", ["rev-parse", "HEAD"], {
-      cwd: root,
-      encoding: "utf8",
-    }).trim();
     const valid = inspectParserFuzzReceipt({
       receipt,
       root,
@@ -70,4 +77,100 @@ test("generates a source-bound receipt and rejects artifact tampering", { timeou
   } finally {
     rmSync(temporary, { recursive: true, force: true });
   }
+});
+
+test("rejects an explicit source-head mismatch before creating evidence", () => {
+  const temporary = mkdtempSync(join(tmpdir(), "3dena-parser-fuzz-source-head-"));
+  try {
+    const output = join(temporary, "evidence");
+    const gitCommit = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: root,
+      encoding: "utf8",
+    }).trim();
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve(root, "scripts/run-parser-fuzz.mjs"),
+        "--root",
+        root,
+        "--source-head",
+        "0".repeat(40),
+        "--output",
+        output,
+        "--seeds",
+        "00000001",
+        "--cases-per-seed",
+        "1",
+      ],
+      {
+        cwd: root,
+        encoding: "utf8",
+        env: { ...process.env, GITHUB_SHA: gitCommit },
+        timeout: 5_000,
+      },
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /source head does not match the checked-out parser fuzz source/u);
+    assert.equal(existsSync(output), false);
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
+test("rejects an ambient SHA mismatch and malformed explicit source heads", () => {
+  const temporary = mkdtempSync(join(tmpdir(), "3dena-parser-fuzz-invalid-head-"));
+  const cases = [
+    {
+      label: "ambient mismatch",
+      extraArguments: [],
+      githubSha: "f".repeat(40),
+      error: /source head does not match the checked-out parser fuzz source/u,
+    },
+    {
+      label: "uppercase explicit head",
+      extraArguments: ["--source-head", "A".repeat(40)],
+      githubSha: undefined,
+      error: /--source-head must be a full lowercase Git commit/u,
+    },
+    {
+      label: "short explicit head",
+      extraArguments: ["--source-head", "abc123"],
+      githubSha: undefined,
+      error: /--source-head must be a full lowercase Git commit/u,
+    },
+  ];
+  try {
+    for (const [index, scenario] of cases.entries()) {
+      const output = join(temporary, `evidence-${index}`);
+      const env = { ...process.env };
+      if (scenario.githubSha === undefined) delete env.GITHUB_SHA;
+      else env.GITHUB_SHA = scenario.githubSha;
+      const result = spawnSync(
+        process.execPath,
+        [
+          resolve(root, "scripts/run-parser-fuzz.mjs"),
+          "--root",
+          root,
+          ...scenario.extraArguments,
+          "--output",
+          output,
+        ],
+        { cwd: root, encoding: "utf8", env, timeout: 5_000 },
+      );
+      assert.equal(result.status, 1, scenario.label);
+      assert.match(result.stderr, scenario.error, scenario.label);
+      assert.equal(existsSync(output), false, scenario.label);
+    }
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
+test("the parser-fuzz workflow checks out and binds the exact event source head", () => {
+  const workflow = readFileSync(resolve(root, ".github/workflows/parser-fuzz.yml"), "utf8");
+  assert.match(workflow, /ref: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/u);
+  assert.match(workflow, /PARSER_FUZZ_SOURCE_HEAD: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/u);
+  assert.match(workflow, /--source-head "\$PARSER_FUZZ_SOURCE_HEAD"/u);
+  assert.match(workflow, /\$\{PARSER_FUZZ_SOURCE_HEAD:0:8\}/u);
+  assert.doesNotMatch(workflow, /\$\{GITHUB_SHA:0:8\}/u);
 });

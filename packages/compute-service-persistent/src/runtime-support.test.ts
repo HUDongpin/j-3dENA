@@ -1,3 +1,5 @@
+import { createServer, get, type Server } from "node:http";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -28,9 +30,207 @@ import {
   SCIENTIFIC_WORKER_PROTOCOL_VERSION,
 } from "@3dena/compute-service-node";
 
-import { CoreScientificResultPublisher } from "./runtime-support";
+import {
+  CoreScientificResultPublisher,
+  bridgeNodeHttpRequest,
+  runPersistentRetentionCycle,
+} from "./runtime-support";
 
 const DATASET_HASH = "1".repeat(64);
+
+function deferred<T = void>(): {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (reason?: unknown) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((innerResolve, innerReject) => {
+    resolve = innerResolve;
+    reject = innerReject;
+  });
+  return { promise, resolve, reject };
+}
+
+async function listenLoopback(server: Server): Promise<string> {
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+  const address = server.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("Expected an IPv4 loopback address.");
+  }
+  return `http://127.0.0.1:${address.port}`;
+}
+
+async function closeServer(server: Server): Promise<void> {
+  server.closeAllConnections();
+  if (!server.listening) return;
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => error === undefined ? resolve() : reject(error));
+  });
+}
+
+async function within<T>(promise: Promise<T>, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label}.`)), 2_000);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+describe("Node HTTP to Web transport bridge", () => {
+  it("aborts the Web request and cancels the SSE body iterator when the client disconnects", async () => {
+    const signalAborted = deferred();
+    const bodyCancelled = deferred();
+    const iteratorCleaned = deferred();
+    const bridgeSettled = deferred();
+    const firstChunkReceived = deferred();
+    const firstChunk = new TextEncoder().encode("id: 1\ndata: ready\n\n");
+    let pendingNext: ((result: IteratorResult<Uint8Array>) => void) | undefined;
+    let iteratorReads = 0;
+    let cancelled = false;
+    let observedSignal: AbortSignal | undefined;
+    const iterator: AsyncIterator<Uint8Array> = {
+      next() {
+        iteratorReads += 1;
+        if (iteratorReads === 1) {
+          return Promise.resolve({ done: false, value: firstChunk });
+        }
+        return new Promise<IteratorResult<Uint8Array>>((resolve) => {
+          pendingNext = resolve;
+        });
+      },
+      return() {
+        iteratorCleaned.resolve();
+        pendingNext?.({ done: true, value: undefined });
+        return Promise.resolve({ done: true, value: undefined });
+      },
+    };
+    const body = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        const next = await iterator.next();
+        if (cancelled) return;
+        if (next.done) controller.close();
+        else controller.enqueue(next.value);
+      },
+      async cancel() {
+        cancelled = true;
+        bodyCancelled.resolve();
+        await iterator.return?.();
+      },
+    });
+    let baseUrl = "";
+    const server = createServer((request, response) => {
+      void bridgeNodeHttpRequest(request, response, baseUrl, (webRequest) => {
+        observedSignal = webRequest.signal;
+        webRequest.signal.addEventListener("abort", () => signalAborted.resolve(), {
+          once: true,
+        });
+        return new Response(body, {
+          headers: { "content-type": "text/event-stream" },
+        });
+      }).then(bridgeSettled.resolve, bridgeSettled.reject);
+    });
+    try {
+      baseUrl = await listenLoopback(server);
+      const client = get(`${baseUrl}/v1/jobs/job-1/events`, (response) => {
+        response.once("data", () => {
+          firstChunkReceived.resolve();
+          response.destroy();
+        });
+      });
+      client.on("error", () => undefined);
+
+      await within(firstChunkReceived.promise, "the first SSE chunk");
+      await within(signalAborted.promise, "the Web request abort signal");
+      await within(bodyCancelled.promise, "the response body cancellation");
+      await within(iteratorCleaned.promise, "the response iterator cleanup");
+      await within(bridgeSettled.promise, "the HTTP bridge to settle");
+      expect(observedSignal?.aborted).toBe(true);
+      expect(iteratorReads).toBeGreaterThanOrEqual(2);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("does not abort or cancel a normally completed Web response", async () => {
+    const bridgeSettled = deferred();
+    let observedSignal: AbortSignal | undefined;
+    let cancelCalls = 0;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("ok"));
+        controller.close();
+      },
+      cancel() {
+        cancelCalls += 1;
+      },
+    });
+    let baseUrl = "";
+    const server = createServer((request, response) => {
+      void bridgeNodeHttpRequest(request, response, baseUrl, (webRequest) => {
+        observedSignal = webRequest.signal;
+        return new Response(body, { status: 200 });
+      }).then(bridgeSettled.resolve, bridgeSettled.reject);
+    });
+    try {
+      baseUrl = await listenLoopback(server);
+      const responseBody = deferred<string>();
+      const client = get(`${baseUrl}/health`, (response) => {
+        response.setEncoding("utf8");
+        let value = "";
+        response.on("data", (chunk: string) => {
+          value += chunk;
+        });
+        response.once("end", () => responseBody.resolve(value));
+        response.once("error", responseBody.reject);
+      });
+      client.once("error", responseBody.reject);
+
+      await expect(within(responseBody.promise, "the normal response")).resolves.toBe("ok");
+      await within(bridgeSettled.promise, "the normal HTTP bridge to settle");
+      expect(observedSignal?.aborted).toBe(false);
+      expect(cancelCalls).toBe(0);
+    } finally {
+      await closeServer(server);
+    }
+  });
+});
+
+describe("persistent retention composition", () => {
+  it("attempts expired source-result active cleanup even when a peer sweep fails", async () => {
+    const calls: string[] = [];
+    await expect(runPersistentRetentionCycle({
+      synchronize: async () => { calls.push("clock"); },
+      sweepObjects: async () => {
+        calls.push("objects");
+        throw new Error("isolated object sweep failure");
+      },
+      reconcileOrphans: async () => { calls.push("orphans"); },
+      purgeExpiredSourceResultMappings: async () => {
+        calls.push("source-result-active");
+        return 1;
+      },
+    })).rejects.toThrow("retention sweep failed");
+    expect(calls[0]).toBe("clock");
+    expect(new Set(calls.slice(1))).toEqual(new Set([
+      "objects",
+      "orphans",
+      "source-result-active",
+    ]));
+  });
+});
 
 function receipt(specHash: string): DatasetReceiptV1 {
   const headers = ["Class", "Student", "Condition", "Time", "A", "B", "C", "D"];

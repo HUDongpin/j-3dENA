@@ -116,7 +116,8 @@ var REQUIRED_CONTRACT_VERSIONS = [
 var REQUIRED_MIGRATION_VERSIONS = [
 	"0001-persistent-compute",
 	"0002-persistent-control-plane",
-	"0003-build-approval-v3"
+	"0003-build-approval-v3",
+	"0004-scientific-result-generations"
 ];
 var RUNTIME_MANIFEST_FIELDS = [
 	"schemaVersion",
@@ -243,8 +244,8 @@ var init_build_identity = __esmMin((() => {
 		jenaVersion: injected("0.7.0-ona.0", "development-unbound"),
 		jenaCommit: injected("90790856f00bdef63dbd27fc3a5b502e8cffe65f", "development-unbound"),
 		jenaTarballIntegrity: injected("sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==", "development-unbound"),
-		sdkVersion: injected("0.2.0-implemented-unverified.6", "development-unbound"),
-		buildId: injected("a2ef75a6fd715c4e935a6f93978c3520b98504a4", "development-unbound"),
+		sdkVersion: injected("0.2.0-implemented-unverified.7", "development-unbound"),
+		buildId: injected("87b0e953129e1bacf00172c4abb6b31a5f8bb888", "development-unbound"),
 		bound: true
 	});
 })), HARD_ANALYSIS_LIMITS;
@@ -37904,6 +37905,8 @@ var DEFAULT_JSON_BYTES = 5242880;
 var DEFAULT_LONGITUDINAL_JSON_BYTES = 33554432;
 var MAX_LONGITUDINAL_JSON_BYTES = 33554432;
 var LONGITUDINAL_HARD_DEADLINE_MS = 6e4;
+var DEFAULT_EVENT_HEARTBEAT_INTERVAL_MS = 15e3;
+var MAX_EVENT_HEARTBEAT_INTERVAL_MS = 6e4;
 var JSON_CONTENT_TYPE = /^application\/json(?:\s*;\s*charset=utf-8)?$/iu;
 var IDEMPOTENCY_KEY = /^[^\u0000-\u0020\u007f]{8,200}$/u;
 var GIT_COMMIT = /^[a-f0-9]{40}$/u;
@@ -38162,6 +38165,11 @@ function publicState(job, core, uploaded, now) {
 		case "expired": return "EXPIRED";
 	}
 }
+function coreDeletionProvesObjectsAbsent(coreTaskId, record) {
+	if (record === null) return coreTaskId === void 0;
+	const receipt = record.deletionReceipt;
+	return record.state === "deleted" && receipt?.requestObjectAbsent === true && receipt.ownedResultObjectsAbsent === true && receipt.ownedResultObjectCount === record.ownedResultObjectKeys.length;
+}
 function progressForState(state) {
 	switch (state) {
 		case "CREATED": return {
@@ -38232,6 +38240,7 @@ var ComputeV1HttpRouter = class {
 	#maxJsonBodyBytes;
 	#maxLongitudinalJsonBodyBytes;
 	#maxLongitudinalStoredInputBytes;
+	#eventHeartbeatIntervalMs;
 	constructor(options) {
 		if (!(options.core instanceof ComputeServiceCore)) throw new TypeError("ComputeV1HttpRouter requires a ComputeServiceCore.");
 		if (!Array.isArray(options.allowedOrigins) || options.allowedOrigins.length < 1) throw new TypeError("At least one explicit CORS origin is required.");
@@ -38255,6 +38264,7 @@ var ComputeV1HttpRouter = class {
 		this.#maxJsonBodyBytes = validatePositiveInteger(options.maxJsonBodyBytes ?? DEFAULT_JSON_BYTES, "maxJsonBodyBytes", MAX_DATASET_BYTES);
 		this.#maxLongitudinalJsonBodyBytes = validatePositiveInteger(options.maxLongitudinalJsonBodyBytes ?? DEFAULT_LONGITUDINAL_JSON_BYTES, "maxLongitudinalJsonBodyBytes", MAX_LONGITUDINAL_JSON_BYTES);
 		this.#maxLongitudinalStoredInputBytes = validatePositiveInteger(options.maxLongitudinalStoredInputBytes ?? 33554432, "maxLongitudinalStoredInputBytes", MAX_LONGITUDINAL_STORED_INPUT_BYTES_V2);
+		this.#eventHeartbeatIntervalMs = validatePositiveInteger(options.eventHeartbeatIntervalMs ?? DEFAULT_EVENT_HEARTBEAT_INTERVAL_MS, "eventHeartbeatIntervalMs", MAX_EVENT_HEARTBEAT_INTERVAL_MS);
 	}
 	/** Web-standard entry point that a Node HTTP or Fastify shell can adapt. */
 	async handle(request) {
@@ -38473,32 +38483,38 @@ var ComputeV1HttpRouter = class {
 		return snapshot.status;
 	}
 	/**
-	* Completes a previously persisted DELETE intent without requiring the
-	* capability or plaintext idempotency key. This hook is intentionally
-	* unavailable until the durable intent exists and never starts a deletion.
-	* It is used by the singleton database temporal sweeper after the owning
-	* worker has released any fenced capacity slot.
+	* Completes a persisted DELETE intent without requiring the capability or
+	* plaintext idempotency key. The singleton temporal sweeper may establish
+	* that intent only after the job TTL, or after the narrower longitudinal
+	* orphan deadline. This internal lifecycle hook is not a public authorization
+	* path and leaves the user's DELETE idempotency-key namespace unclaimed.
 	*/
 	async reconcileDurableDeletion(jobId) {
 		if (!OPAQUE_ID.test(jobId)) httpError("INVALID_REQUEST", 400, "jobId is invalid for deletion reconciliation.");
 		let job = await this.#infrastructure.repository.get(jobId);
 		if (job === null) return false;
-		if (job.deleteRequestedAtMs === void 0 || job.deleteIdempotencyHash === void 0) {
+		if (job.deleteRequestedAtMs === void 0) {
+			const now = this.#infrastructure.clock.now();
 			const deadlineAtMs = job.createdAtMs + LONGITUDINAL_HARD_DEADLINE_MS;
-			if (!(job.taskKind === "longitudinal-analysis-v2" && job.inputDeletedAtMs === void 0 && Number.isSafeInteger(deadlineAtMs) && this.#infrastructure.clock.now() >= deadlineAtMs && job.coreTaskId !== void 0 && await this.#core.getTask(job.coreTaskId) === null)) return false;
-			const requestedAtMs = this.#infrastructure.clock.now();
+			const expired = now >= job.expiresAtMs;
+			const orphanedLongitudinalInput = job.taskKind === "longitudinal-analysis-v2" && job.inputDeletedAtMs === void 0 && Number.isSafeInteger(deadlineAtMs) && now >= deadlineAtMs && job.coreTaskId !== void 0 && await this.#core.getTask(job.coreTaskId) === null;
+			if (!expired && !orphanedLongitudinalInput) return false;
+			const requestedAtMs = now;
 			job = await this.#patchJob(job.jobId, (current) => ({
 				...current,
 				revision: current.revision + 1,
 				updatedAtMs: requestedAtMs,
-				deleteIdempotencyHash: current.deleteIdempotencyHash ?? this.#infrastructure.capabilityCodec.hashSecret(`longitudinal-deadline-cleanup\0${jobId}`),
+				...expired ? {} : { deleteIdempotencyHash: current.deleteIdempotencyHash ?? this.#infrastructure.capabilityCodec.hashSecret(`longitudinal-deadline-cleanup\0${jobId}`) },
 				deleteRequestedAtMs: current.deleteRequestedAtMs ?? requestedAtMs,
 				deleteCancelled: current.deleteCancelled ?? true,
 				deleteTerminationRequired: current.deleteTerminationRequired === true,
 				deleteCapacityReserved: current.deleteCapacityReserved === true
 			}));
 		}
-		if (job.inputDeletedAtMs !== void 0) return true;
+		if (job.deletionCompletedAtMs !== void 0) {
+			const completedCore = job.coreTaskId === void 0 ? null : await this.#core.getTask(job.coreTaskId);
+			if (coreDeletionProvesObjectsAbsent(job.coreTaskId, completedCore)) return true;
+		}
 		let coreRecord = job.coreTaskId === void 0 ? null : await this.#core.getTask(job.coreTaskId);
 		let capacityReleased = job.coreTaskId === void 0;
 		if (job.coreTaskId !== void 0) capacityReleased = this.#infrastructure.deletionLifecycle !== void 0 ? await this.#infrastructure.deletionLifecycle.capacityReleased(job.coreTaskId) : !this.#core.capacitySnapshot().slots.some((slot) => slot.taskRef === coreRecord?.taskRef);
@@ -38544,6 +38560,7 @@ var ComputeV1HttpRouter = class {
 			coreRecord = deletion.record;
 			resultKeys = deletion.record.ownedResultObjectKeys;
 		}
+		const coreDeletionCompleted = coreDeletionProvesObjectsAbsent(job.coreTaskId, coreRecord);
 		if (job.inputObjectOwnedByJob === false && job.activatedDatasetId !== void 0 && job.activationReceiptSha256 !== void 0) await this.#requireDatasetService().deleteActivated(job.activatedDatasetId, job.activationReceiptSha256);
 		const inputKeys = [job.inputObjectOwnedByJob === false ? void 0 : job.inputObjectKey, job.executionObjectKey].filter((key) => key !== void 0);
 		for (const key of [...inputKeys, ...resultKeys]) await this.#infrastructure.objectStore.delete(key);
@@ -38556,10 +38573,11 @@ var ComputeV1HttpRouter = class {
 			...current,
 			revision: current.revision + 1,
 			updatedAtMs: completedAtMs,
-			inputDeletedAtMs: current.inputDeletedAtMs ?? completedAtMs
+			inputDeletedAtMs: current.inputDeletedAtMs ?? completedAtMs,
+			...coreDeletionCompleted ? { deletionCompletedAtMs: current.deletionCompletedAtMs ?? completedAtMs } : {}
 		}));
 		await this.#publishStatus((await this.#statusSnapshot(completed)).status);
-		return true;
+		return coreDeletionCompleted;
 	}
 	/** Worker-facing progress hook; only aggregate progress fields are accepted. */
 	async publishProgress(jobId, progress) {
@@ -39607,7 +39625,7 @@ var ComputeV1HttpRouter = class {
 			"deleted"
 		].includes(deletionRecord.state));
 		if (intent.deleteTerminationRequired === true && capacityReleased && !terminationObserved) httpError("INTERNAL_ERROR", 500, "Distributed capacity was released without an observed-termination receipt.");
-		if (pendingTermination || !terminationObserved || !capacityReleased || deletionRecord?.state === "cancelling") {
+		if (pendingTermination || !terminationObserved || !capacityReleased || deletionRecord?.state === "cancelling" || job.coreTaskId !== void 0 && deletionRecord === null) {
 			if (wantsV2) {
 				const receipt = {
 					schemaVersion: "3dena.job-deletion-receipt.v2",
@@ -39640,6 +39658,7 @@ var ComputeV1HttpRouter = class {
 			deletionRecord = deletion.record;
 			resultKeys = deletion.record.ownedResultObjectKeys;
 		}
+		if (!coreDeletionProvesObjectsAbsent(job.coreTaskId, deletionRecord)) httpError("INTERNAL_ERROR", 500, "Core deletion lacks an object-absence receipt.");
 		if (job.inputObjectOwnedByJob === false && job.activatedDatasetId !== void 0 && job.activationReceiptSha256 !== void 0) await this.#requireDatasetService().deleteActivated(job.activatedDatasetId, job.activationReceiptSha256);
 		const inputKeys = [job.inputObjectOwnedByJob === false ? void 0 : job.inputObjectKey, job.executionObjectKey].filter((key) => key !== void 0);
 		for (const key of [...inputKeys, ...resultKeys]) await this.#infrastructure.objectStore.delete(key);
@@ -39652,7 +39671,8 @@ var ComputeV1HttpRouter = class {
 			...current,
 			revision: current.revision + 1,
 			updatedAtMs: completedAtMs,
-			inputDeletedAtMs: current.inputDeletedAtMs ?? completedAtMs
+			inputDeletedAtMs: current.inputDeletedAtMs ?? completedAtMs,
+			deletionCompletedAtMs: current.deletionCompletedAtMs ?? completedAtMs
 		}));
 		await this.#publishStatus((await this.#statusSnapshot(completed)).status);
 		if (wantsV2) {
@@ -39662,7 +39682,7 @@ var ComputeV1HttpRouter = class {
 				cancelled: completed.deleteCancelled ?? false,
 				inputDeleted: true,
 				resultDeleted: true,
-				deletedAt: isoTimestamp(completed.inputDeletedAtMs ?? completedAtMs),
+				deletedAt: isoTimestamp(completed.deletionCompletedAtMs ?? completedAtMs),
 				intentAccepted: true,
 				termination: completed.deleteTerminationRequired === true ? "observed" : "not_required",
 				capacity: completed.deleteCapacityReserved === true ? "released" : "not_reserved",
@@ -39676,7 +39696,7 @@ var ComputeV1HttpRouter = class {
 			cancelled: completed.deleteCancelled ?? false,
 			inputDeleted: true,
 			resultDeleted: true,
-			deletedAt: isoTimestamp(completed.inputDeletedAtMs ?? completedAtMs)
+			deletedAt: isoTimestamp(completed.deletionCompletedAtMs ?? completedAtMs)
 		};
 		return this.#json(200, legacy, context);
 	}
@@ -39696,25 +39716,61 @@ var ComputeV1HttpRouter = class {
 		request.signal.addEventListener("abort", abort, { once: true });
 		const iterator = this.#infrastructure.events.subscribe(job.jobId, afterSequence, abortController.signal)[Symbol.asyncIterator]();
 		const encoder = new TextEncoder();
+		let cleanupPromise = null;
+		const cleanupStream = () => {
+			cleanupPromise ??= (async () => {
+				abortController.abort();
+				request.signal.removeEventListener("abort", abort);
+				await iterator.return?.();
+			})();
+			return cleanupPromise;
+		};
+		let pendingObservation = null;
+		const nextOrHeartbeat = async () => {
+			pendingObservation ??= iterator.next().then((next) => ({
+				kind: "event",
+				next
+			}));
+			let heartbeatTimer;
+			const heartbeat = new Promise((resolve) => {
+				heartbeatTimer = setTimeout(() => resolve({ kind: "heartbeat" }), this.#eventHeartbeatIntervalMs);
+			});
+			try {
+				const result = await Promise.race([pendingObservation, heartbeat]);
+				if (result.kind === "event") pendingObservation = null;
+				return result;
+			} finally {
+				if (heartbeatTimer !== void 0) clearTimeout(heartbeatTimer);
+			}
+		};
 		const stream = new ReadableStream({
 			async pull(controller) {
-				const next = await iterator.next();
-				if (next.done) {
-					controller.close();
-					return;
-				}
-				controller.enqueue(encoder.encode(`id: ${next.value.sequence}\nevent: progress\ndata: ${JSON.stringify(next.value)}\n\n`));
-				if (TERMINAL_REMOTE_STATES.has(next.value.state)) {
-					abortController.abort();
-					await iterator.return?.();
-					request.signal.removeEventListener("abort", abort);
-					controller.close();
+				try {
+					const observed = await nextOrHeartbeat();
+					if (observed.kind === "heartbeat") {
+						controller.enqueue(encoder.encode(": heartbeat\n\n"));
+						return;
+					}
+					const { next } = observed;
+					if (next.done) {
+						await cleanupStream();
+						controller.close();
+						return;
+					}
+					controller.enqueue(encoder.encode(`id: ${next.value.sequence}\nevent: progress\ndata: ${JSON.stringify(next.value)}\n\n`));
+					if (TERMINAL_REMOTE_STATES.has(next.value.state)) {
+						await cleanupStream();
+						controller.close();
+					}
+				} catch (streamError) {
+					try {
+						await cleanupStream();
+					} catch {}
+					controller.error(streamError);
 				}
 			},
 			async cancel() {
-				abortController.abort();
-				await iterator.return?.();
-				request.signal.removeEventListener("abort", abort);
+				await cleanupStream();
 			}
 		});
 		return new Response(stream, {
@@ -39995,7 +40051,7 @@ var ComputeV1HttpRouter = class {
 		});
 		if (context.origin !== null && this.#allowedOrigins.has(context.origin)) {
 			headers.set("access-control-allow-origin", context.origin);
-			headers.set("access-control-expose-headers", "x-request-id, x-3dena-contract-version, x-3dena-result-sha256");
+			headers.set("access-control-expose-headers", "retry-after, x-request-id, x-3dena-contract-version, x-3dena-result-sha256");
 		}
 		return headers;
 	}
@@ -84802,35 +84858,48 @@ var PostgresTemporalDueSource = class {
 			if (httpLimit > 0) {
 				const deletions = await sql.query(`SELECT h.job_id,
              CASE
-               WHEN h.record ? 'deleteRequestedAtMs' OR NOT EXISTS (
-                 SELECT 1 FROM compute_jobs AS core
-                 WHERE core.task_id = h.record->>'coreTaskId'
-               ) THEN 'http-deletion'
+               WHEN h.expires_at <= clock_timestamp()
+                 AND h.record ? 'deletionCompletedAtMs' THEN 'http-purge'
+               WHEN h.record ? 'deleteRequestedAtMs'
+                 OR h.expires_at <= clock_timestamp()
+                 OR NOT EXISTS (
+                   SELECT 1 FROM compute_jobs AS core
+                   WHERE core.task_id = h.record->>'coreTaskId'
+                 ) THEN 'http-deletion'
                ELSE 'http-reconcile'
              END AS work_kind
            FROM compute_http_jobs AS h
-           WHERE NOT (h.record ? 'inputDeletedAtMs')
-             AND (
-               h.record ? 'deleteRequestedAtMs'
-               OR (
-                 h.record->>'taskKind' = 'longitudinal-analysis-v2'
-                 AND h.record ? 'coreTaskId'
-                 AND (
-                   (
-                     jsonb_typeof(h.record->'createdAtMs') = 'number'
-                     AND (h.record->>'createdAtMs')::bigint + 60000 <=
-                       floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint
-                     AND NOT EXISTS (
+           WHERE (
+               h.expires_at <= clock_timestamp()
+               AND h.record ? 'deletionCompletedAtMs'
+             ) OR (
+               NOT (h.record ? 'deletionCompletedAtMs')
+               AND (
+                 h.expires_at <= clock_timestamp()
+                 OR h.record ? 'deleteRequestedAtMs'
+                 OR (
+                   NOT (h.record ? 'inputDeletedAtMs')
+                   AND
+                   h.record->>'taskKind' = 'longitudinal-analysis-v2'
+                   AND h.record ? 'coreTaskId'
+                   AND (
+                     (
+                       jsonb_typeof(h.record->'createdAtMs') = 'number'
+                       AND (h.record->>'createdAtMs')::bigint + 60000 <=
+                         floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint
+                       AND NOT EXISTS (
+                         SELECT 1 FROM compute_jobs AS core
+                         WHERE core.task_id = h.record->>'coreTaskId'
+                       )
+                     )
+                     OR EXISTS (
                        SELECT 1 FROM compute_jobs AS core
                        WHERE core.task_id = h.record->>'coreTaskId'
-                     )
-                   )
-                   OR EXISTS (
-                     SELECT 1 FROM compute_jobs AS core
-                     WHERE core.task_id = h.record->>'coreTaskId'
-                       AND core.state IN (
-                         'succeeded','failed','cancelled','timed_out','expired','deleted'
+                         AND core.state IN (
+                           'succeeded','failed','cancelled','timed_out','expired','deleted'
+                         )
                        )
+                     )
                    )
                  )
                )
@@ -84839,7 +84908,7 @@ var PostgresTemporalDueSource = class {
            FOR UPDATE OF h SKIP LOCKED
            LIMIT $1`, [httpLimit]);
 				for (const row of deletions.rows) {
-					if (typeof row.job_id !== "string" || !OPAQUE_ID$1.test(row.job_id) || row.work_kind !== "http-deletion" && row.work_kind !== "http-reconcile") persistentError("DATABASE_FAILURE");
+					if (typeof row.job_id !== "string" || !OPAQUE_ID$1.test(row.job_id) || row.work_kind !== "http-deletion" && row.work_kind !== "http-reconcile" && row.work_kind !== "http-purge") persistentError("DATABASE_FAILURE");
 					work.push(Object.freeze({
 						kind: row.work_kind,
 						id: row.job_id
@@ -84859,7 +84928,43 @@ function assertCoreRecord(value) {
 	if (!isRecord$3(value) || value.version !== "3dena.compute-job-record.v1" || !isRecord$3(value.owner) || typeof value.owner.taskId !== "string" || !OPAQUE_ID$1.test(value.owner.taskId) || typeof value.taskRef !== "string" || !/^[a-f0-9]{64}$/u.test(value.taskRef) || !Number.isSafeInteger(value.revision) || Number(value.revision) < 0 || !Number.isSafeInteger(value.leaseEpoch) || Number(value.leaseEpoch) < 0 || typeof value.state !== "string") persistentError("DATABASE_FAILURE");
 }
 function assertHttpRecord(value) {
-	if (!isRecord$3(value) || value.version !== "3dena.compute-http-job.v1" || typeof value.jobId !== "string" || !OPAQUE_ID$1.test(value.jobId) || !Number.isSafeInteger(value.revision) || Number(value.revision) < 0 || typeof value.createIdempotencyHash !== "string" || !/^[a-f0-9]{64}$/u.test(value.createIdempotencyHash)) persistentError("DATABASE_FAILURE");
+	if (!isRecord$3(value) || value.version !== "3dena.compute-http-job.v1" || typeof value.jobId !== "string" || !OPAQUE_ID$1.test(value.jobId) || !Number.isSafeInteger(value.revision) || Number(value.revision) < 0 || typeof value.createIdempotencyHash !== "string" || !/^[a-f0-9]{64}$/u.test(value.createIdempotencyHash) || value.inputDeletedAtMs !== void 0 && (!Number.isSafeInteger(value.inputDeletedAtMs) || Number(value.inputDeletedAtMs) < 0) || value.deletionCompletedAtMs !== void 0 && (!Number.isSafeInteger(value.deletionCompletedAtMs) || Number(value.deletionCompletedAtMs) < 0 || !Number.isSafeInteger(value.inputDeletedAtMs) || !Number.isSafeInteger(value.deleteRequestedAtMs) || Number(value.deletionCompletedAtMs) < Number(value.inputDeletedAtMs) || Number(value.deletionCompletedAtMs) < Number(value.deleteRequestedAtMs))) persistentError("DATABASE_FAILURE");
+}
+var HTTP_EVENT_STATES = /* @__PURE__ */ new Set([
+	"CREATED",
+	"UPLOADED",
+	"QUEUED",
+	"RUNNING",
+	"CANCEL_REQUESTED",
+	"SUCCEEDED",
+	"FAILED",
+	"CANCELLED",
+	"EXPIRED"
+]);
+function storedHttpEvent(value) {
+	if (!isRecord$3(value) || !hasExactKeys$1(value, [
+		"schemaVersion",
+		"sequence",
+		"state",
+		"phase",
+		"completed",
+		"total",
+		"emittedAt"
+	]) || value.schemaVersion !== "3dena.job-event.v1" || typeof value.state !== "string" || !HTTP_EVENT_STATES.has(value.state) || typeof value.phase !== "string" || !Number.isSafeInteger(value.completed) || Number(value.completed) < 0 || value.total !== null && (!Number.isSafeInteger(value.total) || Number(value.total) < Number(value.completed)) || typeof value.emittedAt !== "string" || Number.isNaN(Date.parse(value.emittedAt))) persistentError("DATABASE_FAILURE");
+	const sequence = safeInteger$1(value.sequence);
+	if (sequence < 1) persistentError("DATABASE_FAILURE");
+	return Object.freeze({
+		schemaVersion: "3dena.job-event.v1",
+		sequence,
+		state: value.state,
+		phase: value.phase,
+		completed: Number(value.completed),
+		total: value.total === null ? null : Number(value.total),
+		emittedAt: value.emittedAt
+	});
+}
+function sameHttpEventSnapshot(previous, input) {
+	return previous.state === input.state && previous.phase === input.phase && previous.completed === input.completed && previous.total === input.total;
 }
 function firstRecord(result) {
 	return result.rows[0]?.record ?? null;
@@ -85091,6 +85196,45 @@ var PostgresComputeHttpJobRepository = class {
 			record: current
 		});
 	}
+	/**
+	* Removes only an expired HTTP tombstone whose owned input/result deletion
+	* has already been durably recorded. Replay events and their sequence cursor
+	* remain available until this exact retention boundary, then disappear in
+	* the same transaction as the owning job row.
+	*/
+	async purgeExpired(jobId) {
+		if (!OPAQUE_ID$1.test(jobId)) persistentError("CONFIGURATION_INVALID");
+		return this.#database.transaction(async (sql) => {
+			const eligible = await sql.query(`SELECT job_id FROM compute_http_jobs AS h
+         WHERE h.job_id = $1
+           AND h.expires_at <= clock_timestamp()
+           AND h.record ? 'deletionCompletedAtMs'
+           AND jsonb_typeof(h.record->'deletionCompletedAtMs') = 'number'
+           AND (
+             NOT (h.record ? 'coreTaskId')
+             OR EXISTS (
+               SELECT 1 FROM compute_jobs AS core
+               WHERE core.task_id = h.record->>'coreTaskId'
+                 AND core.state = 'deleted'
+                 AND core.record->'deletionReceipt'->>'requestObjectAbsent' = 'true'
+                 AND core.record->'deletionReceipt'->>'ownedResultObjectsAbsent' = 'true'
+                 AND jsonb_typeof(core.record->'ownedResultObjectKeys') = 'array'
+                 AND (core.record->'deletionReceipt'->>'ownedResultObjectCount')
+                   ~ '^(0|[1-9][0-9]{0,9})$'
+                 AND (core.record->'deletionReceipt'->>'ownedResultObjectCount')::bigint
+                   = jsonb_array_length(core.record->'ownedResultObjectKeys')
+             )
+           )
+         FOR UPDATE OF h`, [jobId]);
+			if (eligible.rowCount === 0) return false;
+			if (eligible.rowCount !== 1 || eligible.rows[0]?.job_id !== jobId) persistentError("DATABASE_FAILURE");
+			await sql.query("DELETE FROM compute_events WHERE job_id = $1", [jobId]);
+			const cursor = await sql.query("DELETE FROM compute_event_cursors WHERE job_id = $1", [jobId]);
+			if (cursor.rowCount < 0 || cursor.rowCount > 1) persistentError("DATABASE_FAILURE");
+			if ((await sql.query("DELETE FROM compute_http_jobs WHERE job_id = $1", [jobId])).rowCount !== 1) persistentError("DATABASE_FAILURE");
+			return true;
+		});
+	}
 };
 var PostgresComputeHttpEventBroker = class {
 	#database;
@@ -85104,25 +85248,43 @@ var PostgresComputeHttpEventBroker = class {
 	}
 	async publish(jobId, input) {
 		return this.#database.transaction(async (sql) => {
+			const owner = await sql.query(`SELECT job_id FROM compute_http_jobs
+         WHERE job_id = $1 FOR KEY SHARE`, [jobId]);
+			if (owner.rowCount !== 1 || owner.rows[0]?.job_id !== jobId) persistentError("DATABASE_FAILURE");
+			const insertedCursor = await sql.query(`INSERT INTO compute_event_cursors (job_id, next_sequence)
+         VALUES ($1, 1) ON CONFLICT (job_id) DO NOTHING`, [jobId]);
+			if (insertedCursor.rowCount < 0 || insertedCursor.rowCount > 1) persistentError("DATABASE_FAILURE");
+			const cursorState = await sql.query(`SELECT next_sequence FROM compute_event_cursors
+         WHERE job_id = $1 FOR UPDATE`, [jobId]);
+			if (cursorState.rowCount !== 1) persistentError("DATABASE_FAILURE");
+			const nextSequence = safeInteger$1(cursorState.rows[0]?.next_sequence);
+			if (nextSequence < 1) persistentError("DATABASE_FAILURE");
+			const latest = await sql.query(`SELECT event FROM compute_events
+         WHERE job_id = $1 ORDER BY sequence DESC LIMIT 1`, [jobId]);
+			if (latest.rowCount < 0 || latest.rowCount > 1) persistentError("DATABASE_FAILURE");
+			const previous = latest.rowCount === 0 ? null : storedHttpEvent(latest.rows[0]?.event);
+			if (previous === null && nextSequence !== 1 || previous !== null && previous.sequence !== nextSequence - 1) persistentError("DATABASE_FAILURE");
+			if (previous !== null && sameHttpEventSnapshot(previous, input)) return previous;
 			const emittedAtValue = (await sql.query("SELECT clock_timestamp() AS emitted_at")).rows[0]?.emitted_at;
 			const emittedAt = emittedAtValue instanceof Date ? emittedAtValue.toISOString() : typeof emittedAtValue === "string" && !Number.isNaN(Date.parse(emittedAtValue)) ? new Date(emittedAtValue).toISOString() : persistentError("DATABASE_FAILURE");
-			await sql.query(`INSERT INTO compute_event_cursors (job_id, next_sequence)
-         VALUES ($1, 1) ON CONFLICT (job_id) DO NOTHING`, [jobId]);
-			const sequence = safeInteger$1((await sql.query(`UPDATE compute_event_cursors SET next_sequence = next_sequence + 1
-         WHERE job_id = $1 RETURNING next_sequence - 1 AS sequence`, [jobId])).rows[0]?.sequence);
+			const cursor = await sql.query(`UPDATE compute_event_cursors SET next_sequence = next_sequence + 1
+         WHERE job_id = $1 AND next_sequence = $2
+         RETURNING next_sequence - 1 AS sequence`, [jobId, nextSequence]);
+			const sequence = safeInteger$1(cursor.rows[0]?.sequence);
+			if (cursor.rowCount !== 1 || sequence !== nextSequence) persistentError("DATABASE_FAILURE");
 			const event = Object.freeze({
 				schemaVersion: "3dena.job-event.v1",
 				sequence,
 				...input,
 				emittedAt
 			});
-			await sql.query(`INSERT INTO compute_events (job_id, sequence, emitted_at, event)
+			if ((await sql.query(`INSERT INTO compute_events (job_id, sequence, emitted_at, event)
          VALUES ($1,$2,$3,$4::jsonb)`, [
 				jobId,
 				sequence,
 				emittedAt,
 				JSON.stringify(event)
-			]);
+			])).rowCount !== 1) persistentError("DATABASE_FAILURE");
 			return event;
 		});
 	}
@@ -85137,13 +85299,16 @@ var PostgresComputeHttpEventBroker = class {
 			]);
 			if (result.rows.length > 0) {
 				for (const row of result.rows) {
-					if (!isRecord$3(row.event) || row.event.schemaVersion !== "3dena.job-event.v1" || !Number.isSafeInteger(row.event.sequence) || Number(row.event.sequence) <= cursor) persistentError("DATABASE_FAILURE");
-					const event = cloneFrozen$2(row.event);
+					const event = storedHttpEvent(row.event);
+					if (event.sequence <= cursor) persistentError("DATABASE_FAILURE");
 					cursor = event.sequence;
 					yield event;
 				}
 				continue;
 			}
+			const owner = await this.#database.query("SELECT job_id FROM compute_http_jobs WHERE job_id = $1", [jobId]);
+			if (owner.rowCount === 0) return;
+			if (owner.rowCount !== 1 || owner.rows[0]?.job_id !== jobId) persistentError("DATABASE_FAILURE");
 			await new Promise((resolve) => {
 				if (signal?.aborted === true) return resolve();
 				let timer;
@@ -85757,6 +85922,9 @@ function safeInteger(value) {
 function sha256$1(bytes) {
 	return createHash("sha256").update(bytes).digest("hex");
 }
+function publicationMatches(row, record) {
+	return row.result_hash === record.sourceResultHash && row.dataset_hash === record.owner.datasetHash && row.spec_hash === record.owner.specHash && row.build_id === record.buildId && row.task_id === record.owner.taskId && row.object_key === record.object.key && row.object_sha256 === record.object.sha256 && safeInteger(row.object_byte_length) === record.object.byteLength && safeInteger(row.published_at_ms) === record.publishedAtMs && safeInteger(row.expires_at_ms) === record.expiresAtMs && canonicalStringify$2(row.publication_receipt) === canonicalStringify$2(record.publicationReceipt);
+}
 /**
 * Append-only publication index and exact-byte resolver for derived tasks.
 * It accepts only primary raw ENA or prepared-exchange import results; derived
@@ -85771,42 +85939,106 @@ var PostgresPublishedSourceResultRegistry = class {
 	}
 	async record(record) {
 		if (!LOWER_SHA256$1.test(record.sourceResultHash) || !LOWER_SHA256$1.test(record.owner.datasetHash) || !LOWER_SHA256$1.test(record.owner.specHash) || !OPAQUE_ID$1.test(record.owner.taskId) || !OPAQUE_ID$1.test(record.buildId) || !LOWER_SHA256$1.test(record.object.sha256) || !Number.isSafeInteger(record.object.byteLength) || record.object.byteLength < 1 || !Number.isSafeInteger(record.publishedAtMs) || !Number.isSafeInteger(record.expiresAtMs) || record.expiresAtMs <= record.publishedAtMs) persistentError("BUILD_APPROVAL_INVALID");
-		if ((await this.#database.query(`INSERT INTO compute_scientific_results (
-        result_hash, dataset_hash, spec_hash, build_id, task_id,
-        object_key, object_sha256, object_byte_length,
-        published_at, expires_at, publication_receipt
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,to_timestamp($9 / 1000.0),
-        to_timestamp($10 / 1000.0),$11::jsonb)
-      ON CONFLICT (result_hash) DO NOTHING`, [
-			record.sourceResultHash,
-			record.owner.datasetHash,
-			record.owner.specHash,
-			record.buildId,
-			record.owner.taskId,
-			record.object.key,
-			record.object.sha256,
-			record.object.byteLength,
-			record.publishedAtMs,
-			record.expiresAtMs,
-			JSON.stringify(record.publicationReceipt)
-		])).rowCount === 1) return;
-		const row = (await this.#database.query(`SELECT result_hash, dataset_hash, spec_hash, build_id, task_id,
-        object_key, object_sha256, object_byte_length,
-        extract(epoch FROM published_at) * 1000 AS published_at_ms,
-        extract(epoch FROM expires_at) * 1000 AS expires_at_ms,
-        publication_receipt
-       FROM compute_scientific_results WHERE result_hash = $1`, [record.sourceResultHash])).rows[0];
-		if (row?.result_hash !== record.sourceResultHash || row.dataset_hash !== record.owner.datasetHash || row.spec_hash !== record.owner.specHash || row.build_id !== record.buildId || row.task_id !== record.owner.taskId || row.object_key !== record.object.key || row.object_sha256 !== record.object.sha256 || safeInteger(row.object_byte_length) !== record.object.byteLength || safeInteger(row.published_at_ms) !== record.publishedAtMs || safeInteger(row.expires_at_ms) !== record.expiresAtMs || canonicalStringify$2(row.publication_receipt) !== canonicalStringify$2(record.publicationReceipt)) persistentError("DATABASE_CONFLICT");
+		await this.#database.transaction(async (sql) => {
+			if ((await sql.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0)) AS locked`, [record.sourceResultHash])).rowCount !== 1) persistentError("DATABASE_FAILURE");
+			const existing = await sql.query(`SELECT publication.publication_id, publication.generation,
+          publication.result_hash, publication.dataset_hash,
+          publication.spec_hash, publication.build_id, publication.task_id,
+          publication.object_key, publication.object_sha256,
+          publication.object_byte_length,
+          extract(epoch FROM publication.published_at) * 1000 AS published_at_ms,
+          extract(epoch FROM publication.expires_at) * 1000 AS expires_at_ms,
+          publication.publication_receipt
+         FROM compute_scientific_result_active AS mapping
+         JOIN compute_scientific_result_publications AS publication
+           ON publication.publication_id = mapping.publication_id
+          AND publication.result_hash = mapping.result_hash
+          AND publication.expires_at = mapping.expires_at
+         WHERE mapping.result_hash = $1
+           AND mapping.expires_at > clock_timestamp()
+         FOR UPDATE OF mapping`, [record.sourceResultHash]);
+			if (existing.rowCount > 1) persistentError("DATABASE_FAILURE");
+			const row = existing.rows[0];
+			if (row !== void 0) {
+				if (publicationMatches(row, record)) return;
+				persistentError("DATABASE_CONFLICT");
+			}
+			if ((await sql.query(`DELETE FROM compute_scientific_result_active
+         WHERE result_hash = $1 AND expires_at <= clock_timestamp()`, [record.sourceResultHash])).rowCount > 1) persistentError("DATABASE_FAILURE");
+			const inserted = await sql.query(`INSERT INTO compute_scientific_result_publications (
+          result_hash, generation, dataset_hash, spec_hash, build_id, task_id,
+          object_key, object_sha256, object_byte_length,
+          published_at, expires_at, publication_receipt
+        )
+        SELECT $1, COALESCE(MAX(history.generation), 0) + 1,
+          $2, $3, $4, $5, $6, $7, $8,
+          to_timestamp($9 / 1000.0), to_timestamp($10 / 1000.0), $11::jsonb
+        FROM compute_scientific_result_publications AS history
+        WHERE history.result_hash = $1
+        RETURNING publication_id, generation`, [
+				record.sourceResultHash,
+				record.owner.datasetHash,
+				record.owner.specHash,
+				record.buildId,
+				record.owner.taskId,
+				record.object.key,
+				record.object.sha256,
+				record.object.byteLength,
+				record.publishedAtMs,
+				record.expiresAtMs,
+				JSON.stringify(record.publicationReceipt)
+			]);
+			if (inserted.rowCount !== 1) persistentError("DATABASE_FAILURE");
+			const publicationId = safeInteger(inserted.rows[0]?.publication_id);
+			if (publicationId < 1 || safeInteger(inserted.rows[0]?.generation) < 1) persistentError("DATABASE_FAILURE");
+			if ((await sql.query(`INSERT INTO compute_scientific_result_active (
+          result_hash, publication_id, expires_at
+        ) VALUES ($1, $2, to_timestamp($3 / 1000.0))`, [
+				record.sourceResultHash,
+				publicationId,
+				record.expiresAtMs
+			])).rowCount !== 1) persistentError("DATABASE_FAILURE");
+		});
+	}
+	/**
+	* Deletes only expired lookup metadata. Immutable publication generations,
+	* including migration-backfilled 0001 evidence, are never mutated here.
+	*/
+	async purgeExpiredActiveMappings(batchSize = 1e3) {
+		if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 1e4) persistentError("CONFIGURATION_INVALID");
+		const deleted = await this.#database.query(`WITH expired AS (
+         SELECT result_hash
+         FROM compute_scientific_result_active
+         WHERE expires_at <= clock_timestamp()
+         ORDER BY expires_at, result_hash
+         FOR UPDATE SKIP LOCKED
+         LIMIT $1
+       )
+       DELETE FROM compute_scientific_result_active AS mapping
+       USING expired
+       WHERE mapping.result_hash = expired.result_hash`, [batchSize]);
+		if (deleted.rowCount < 0 || deleted.rowCount > batchSize) persistentError("DATABASE_FAILURE");
+		return deleted.rowCount;
 	}
 	async resolve(input) {
 		if (!LOWER_SHA256$1.test(input.sourceResultHash) || !LOWER_SHA256$1.test(input.activatedDatasetSha256) || !OPAQUE_ID$1.test(input.requiredBuildId) || !Number.isSafeInteger(input.nowMs)) return null;
-		const row = (await this.#database.query(`SELECT result_hash, dataset_hash, spec_hash, build_id, task_id,
-        object_key, object_sha256, object_byte_length,
-        extract(epoch FROM published_at) * 1000 AS published_at_ms,
-        extract(epoch FROM expires_at) * 1000 AS expires_at_ms
-       FROM compute_scientific_results
-       WHERE result_hash = $1 AND dataset_hash = $2 AND build_id = $3
-         AND expires_at > to_timestamp($4 / 1000.0)`, [
+		const row = (await this.#database.query(`SELECT publication.result_hash, publication.dataset_hash,
+        publication.spec_hash, publication.build_id, publication.task_id,
+        publication.object_key, publication.object_sha256,
+        publication.object_byte_length,
+        extract(epoch FROM publication.published_at) * 1000 AS published_at_ms,
+        extract(epoch FROM publication.expires_at) * 1000 AS expires_at_ms
+       FROM compute_scientific_result_active AS mapping
+       JOIN compute_scientific_result_publications AS publication
+         ON publication.publication_id = mapping.publication_id
+        AND publication.result_hash = mapping.result_hash
+        AND publication.expires_at = mapping.expires_at
+       WHERE mapping.result_hash = $1
+         AND publication.dataset_hash = $2
+         AND publication.build_id = $3
+         AND publication.published_at <= clock_timestamp()
+         AND mapping.expires_at > clock_timestamp()
+         AND mapping.expires_at > to_timestamp($4 / 1000.0)`, [
 			input.sourceResultHash,
 			input.activatedDatasetSha256,
 			input.requiredBuildId,
@@ -86476,12 +86708,14 @@ var PersistentTemporalTaskSweeper = class {
 	#core;
 	#reconcileHttpDeletion;
 	#reconcileHttpJob;
+	#purgeHttpJob;
 	#onTaskFailure;
 	constructor(input) {
 		this.#source = input.source;
 		this.#core = input.core;
 		this.#reconcileHttpDeletion = input.reconcileHttpDeletion ?? (async () => false);
 		this.#reconcileHttpJob = input.reconcileHttpJob ?? (async () => false);
+		this.#purgeHttpJob = input.purgeHttpJob ?? (async () => false);
 		this.#onTaskFailure = input.onTaskFailure ?? (() => void 0);
 	}
 	async sweep() {
@@ -86497,9 +86731,13 @@ var PersistentTemporalTaskSweeper = class {
 				if (await this.#reconcileHttpJob(item.id)) finalizedOrUpdated += 1;
 				continue;
 			}
+			if (item.kind === "http-purge") {
+				if (await this.#purgeHttpJob(item.id)) finalizedOrUpdated += 1;
+				continue;
+			}
 			const before = await this.#core.getTask(item.id);
 			if (before === null) throw new TypeError("Due task is missing.");
-			const after = before.state === "deleting" ? (await this.#core.deleteTask(item.id)).record : await this.#core.sweepTask(item.id);
+			const after = before.state === "deleting" || before.state === "expired" ? (await this.#core.deleteTask(item.id)).record : await this.#core.sweepTask(item.id);
 			if (after.revision !== before.revision || after.state !== before.state) finalizedOrUpdated += 1;
 		} catch {
 			failed += 1;
@@ -86980,7 +87218,7 @@ function requestBody(request) {
 		}
 	});
 }
-async function toWebRequest(request, publicBaseUrl) {
+async function toWebRequest(request, publicBaseUrl, signal) {
 	const url = new URL(request.url ?? "/", publicBaseUrl);
 	const headers = new Headers();
 	for (const [name, raw] of Object.entries(request.headers)) {
@@ -86991,13 +87229,15 @@ async function toWebRequest(request, publicBaseUrl) {
 	const method = request.method ?? "GET";
 	if (method === "GET" || method === "HEAD") return new Request(url, {
 		method,
-		headers
+		headers,
+		signal
 	});
 	const init = {
 		method,
 		headers,
 		body: requestBody(request),
-		duplex: "half"
+		duplex: "half",
+		signal
 	};
 	return new Request(url, init);
 }
@@ -87009,17 +87249,75 @@ async function sendWebResponse(response, target) {
 		return;
 	}
 	const reader = response.body.getReader();
+	let closedEarly = false;
+	let settleClosed;
+	const targetClosed = new Promise((resolve) => {
+		settleClosed = resolve;
+	});
+	let cancellation = null;
+	const cancelForClosedTarget = () => {
+		if (target.writableEnded || closedEarly) return;
+		closedEarly = true;
+		settleClosed();
+		cancellation = reader.cancel(new DOMException("The Node HTTP response was closed by the client.", "AbortError")).catch(() => void 0);
+	};
+	target.once("close", cancelForClosedTarget);
+	if (target.destroyed && !target.writableEnded) cancelForClosedTarget();
 	try {
-		while (true) {
-			const next = await reader.read();
-			if (next.done) break;
-			if (!target.write(next.value)) await new Promise((resolve) => target.once("drain", resolve));
+		while (!closedEarly) {
+			const next = await Promise.race([reader.read(), targetClosed.then(() => ({
+				done: true,
+				value: void 0
+			}))]);
+			if (closedEarly || next.done) break;
+			if (!target.write(next.value)) await new Promise((resolve) => {
+				const settle = () => {
+					target.off("drain", settle);
+					target.off("close", settle);
+					resolve();
+				};
+				target.once("drain", settle);
+				target.once("close", settle);
+				if (target.destroyed) settle();
+			});
 		}
-		target.end();
-	} catch {
-		target.destroy();
+		if (!closedEarly) target.end();
+	} catch (error) {
+		if (!closedEarly) {
+			await reader.cancel(error).catch(() => void 0);
+			target.destroy(error instanceof Error ? error : void 0);
+		}
 	} finally {
+		target.off("close", cancelForClosedTarget);
+		if (cancellation !== null) await cancellation;
 		reader.releaseLock();
+	}
+}
+/**
+* Bridges one real Node HTTP exchange into the Web Request/Response contract
+* consumed by the compute router. The Web signal remains live for the full
+* response lifetime so a client disappearing during an SSE stream is visible
+* to both the router and the response body's cancellation hook.
+*/
+async function bridgeNodeHttpRequest(request, response, publicBaseUrl, handle) {
+	const controller = new AbortController();
+	let completed = false;
+	const abortTransport = () => {
+		if (completed || controller.signal.aborted) return;
+		controller.abort(new DOMException("The Node HTTP client disconnected.", "AbortError"));
+	};
+	const abortClosedResponse = () => {
+		if (!response.writableEnded) abortTransport();
+	};
+	request.once("aborted", abortTransport);
+	response.once("close", abortClosedResponse);
+	if (request.aborted || response.destroyed && !response.writableEnded) abortTransport();
+	try {
+		await sendWebResponse(await handle(await toWebRequest(request, publicBaseUrl, controller.signal)), response);
+	} finally {
+		completed = true;
+		request.off("aborted", abortTransport);
+		response.off("close", abortClosedResponse);
 	}
 }
 function delay(milliseconds, signal) {
@@ -87034,12 +87332,24 @@ function delay(milliseconds, signal) {
 		signal.addEventListener("abort", settle, { once: true });
 	});
 }
+async function runPersistentRetentionCycle(input) {
+	await input.synchronize();
+	const failures = (await Promise.allSettled([
+		input.sweepObjects(),
+		input.reconcileOrphans(),
+		input.purgeExpiredSourceResultMappings()
+	])).filter((result) => result.status === "rejected").map((result) => result.reason);
+	if (failures.length > 0) throw new AggregateError(failures, "Persistent retention sweep failed.");
+}
 async function retentionLoop(common, signal) {
 	while (!signal.aborted) {
 		try {
-			await common.clock.synchronize();
-			await common.sweeper.sweep();
-			await common.orphanSweeper.sweep();
+			await runPersistentRetentionCycle({
+				synchronize: () => common.clock.synchronize(),
+				sweepObjects: () => common.sweeper.sweep(),
+				reconcileOrphans: () => common.orphanSweeper.sweep(),
+				purgeExpiredSourceResultMappings: () => common.sourceResults.purgeExpiredActiveMappings()
+			});
 		} catch {
 			process.stderr.write("COMPUTE_RETENTION_SWEEP_FAILED\n");
 		}
@@ -87060,10 +87370,11 @@ async function runApiRuntime(config, signal) {
 		deferProcessOwnedDeletionCompletion: true
 	});
 	const capabilityCodec = new HmacComputeHttpCapabilityCodec(config.capabilityHmacSecret);
+	const httpRepository = new PostgresComputeHttpJobRepository(common.database);
 	const router = new ComputeV1HttpRouter({
 		core,
 		infrastructure: {
-			repository: new PostgresComputeHttpJobRepository(common.database),
+			repository: httpRepository,
 			objectStore: common.objectStore,
 			clock: common.clock,
 			idFactory: new RandomComputeHttpIdFactory(),
@@ -87109,8 +87420,7 @@ async function runApiRuntime(config, signal) {
 		}
 		(async () => {
 			await common.clock.synchronize();
-			const webRequest = await toWebRequest(request, config.publicBaseUrl);
-			await sendWebResponse(await router.handle(webRequest), response);
+			await bridgeNodeHttpRequest(request, response, config.publicBaseUrl, (webRequest) => router.handle(webRequest));
 		})().catch(() => {
 			if (!response.headersSent) response.writeHead(500);
 			response.end();
@@ -87141,6 +87451,7 @@ async function runApiRuntime(config, signal) {
 				await router.reconcileJob(jobId);
 				return true;
 			},
+			purgeHttpJob: (jobId) => httpRepository.purgeExpired(jobId),
 			onTaskFailure: () => process.stderr.write("COMPUTE_TEMPORAL_TASK_SWEEP_FAILED\n")
 		}),
 		signal,

@@ -302,6 +302,398 @@ describe("createAnalysisClient", () => {
     expect((init.headers as Headers).get("authorization")).toBe("Bearer secret-job-capability");
   });
 
+  it("resumes SSE from the last observed id and keeps the in-memory cursor monotonic", async () => {
+    const encoder = new TextEncoder();
+    const eventPayload = (sequence: number, state: "RUNNING" | "SUCCEEDED") => JSON.stringify({
+      schemaVersion: "3dena.job-event.v1",
+      sequence,
+      state,
+      phase: state === "SUCCEEDED" ? "complete" : "jena",
+      completed: sequence,
+      total: 2,
+      emittedAt: `2026-08-20T12:00:0${sequence}.000Z`,
+    });
+    const responses = [
+      `id: 1\nevent: progress\ndata: ${eventPayload(1, "RUNNING")}\n\n`,
+      [
+        `id: 1\nevent: progress\ndata: ${eventPayload(1, "RUNNING")}\n\n`,
+        `id: 2\nevent: progress\ndata: ${eventPayload(2, "SUCCEEDED")}\n\n`,
+      ].join(""),
+    ];
+    const fetchMock = vi.fn(async () => {
+      const body = responses.shift();
+      return new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode(body));
+          controller.close();
+        },
+      }), {
+        status: 200,
+        headers: { "content-type": "text/event-stream; charset=utf-8" },
+      });
+    });
+    const client = createAnalysisClient({
+      baseUrl: "https://compute.example",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+
+    const first = [];
+    for await (const item of client.events(reference())) first.push(item.sequence);
+    const resumed = [];
+    for await (const item of client.events(reference())) resumed.push(item.sequence);
+
+    expect(first).toEqual([1]);
+    expect(resumed).toEqual([2]);
+    const calls = fetchMock.mock.calls as unknown as Array<[
+      RequestInfo | URL,
+      RequestInit | undefined,
+    ]>;
+    expect((calls[0]?.[1]?.headers as Headers).has("last-event-id")).toBe(false);
+    expect((calls[1]?.[1]?.headers as Headers).get("last-event-id")).toBe("1");
+  });
+
+  it("rejects an SSE id that does not match the event sequence", async () => {
+    const payload = JSON.stringify({
+      schemaVersion: "3dena.job-event.v1",
+      sequence: 1,
+      state: "RUNNING",
+      phase: "jena",
+      completed: 1,
+      total: 2,
+      emittedAt: "2026-08-20T12:00:01.000Z",
+    });
+    const client = createAnalysisClient({
+      baseUrl: "https://compute.example",
+      fetch: vi.fn(async () => new Response(
+        `id: 2\nevent: progress\ndata: ${payload}\n\n`,
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      )) as unknown as typeof fetch,
+    });
+
+    const consume = async () => {
+      for await (const _item of client.events(reference())) {
+        // Consume the strict stream.
+      }
+    };
+    await expect(consume()).rejects.toEqual(
+      expect.objectContaining<Partial<AnalysisClientError>>({ code: "INVALID_RESPONSE" }),
+    );
+  });
+
+  it("retries a transient mutation with one stable idempotency context", async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError("connection reset"))
+      .mockResolvedValueOnce(json(capability()));
+    const client = createAnalysisClient({
+      baseUrl: "https://compute.example",
+      fetch: fetchMock as unknown as typeof fetch,
+      retryBaseDelayMilliseconds: 1,
+      retryMaximumDelayMilliseconds: 1,
+      retryTotalTimeoutMilliseconds: 100,
+    });
+
+    await expect(client.createJob({
+      schemaVersion: "3dena.create-job-request.v1",
+      dataset: { sha256: DATASET_HASH, byteLength: 32, format: "csv" },
+      processingPolicyConfirmed: true,
+    }, "stable-create-operation-1")).resolves.toEqual(capability());
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const calls = fetchMock.mock.calls as unknown as Array<[
+      RequestInfo | URL,
+      RequestInit | undefined,
+    ]>;
+    expect(calls.map(([, init]) => (init?.headers as Headers).get("idempotency-key")))
+      .toEqual(["stable-create-operation-1", "stable-create-operation-1"]);
+    expect(calls[1]?.[1]?.body).toBe(calls[0]?.[1]?.body);
+  });
+
+  it("honors Retry-After without exceeding the bounded retry window", async () => {
+    const fetchMock = vi.fn(async () => json(
+      { code: "RATE_LIMITED" },
+      429,
+      { "retry-after": "1" },
+    ));
+    const client = createAnalysisClient({
+      baseUrl: "https://compute.example",
+      fetch: fetchMock as unknown as typeof fetch,
+      retryBaseDelayMilliseconds: 1,
+      retryMaximumDelayMilliseconds: 1,
+      retryTotalTimeoutMilliseconds: 25,
+    });
+
+    await expect(client.getJob(reference())).rejects.toEqual(
+      expect.objectContaining<Partial<AnalysisClientError>>({
+        code: "RATE_LIMITED",
+        status: 429,
+        retryAfterMilliseconds: 1_000,
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("parses an HTTP-date Retry-After without retrying before that date", async () => {
+    const retryAt = new Date(Date.now() + 60_000).toUTCString();
+    const fetchMock = vi.fn(async () => json(
+      { code: "SERVICE_BUSY" },
+      503,
+      { "retry-after": retryAt },
+    ));
+    const client = createAnalysisClient({
+      baseUrl: "https://compute.example",
+      fetch: fetchMock as unknown as typeof fetch,
+      retryBaseDelayMilliseconds: 1,
+      retryMaximumDelayMilliseconds: 1,
+      retryTotalTimeoutMilliseconds: 25,
+    });
+
+    const error = await client.getJob(reference()).then(
+      () => null,
+      (failure: unknown) => failure,
+    );
+    expect(error).toEqual(expect.objectContaining<Partial<AnalysisClientError>>({
+      code: "SERVICE_BUSY",
+      status: 503,
+    }));
+    expect((error as AnalysisClientError).retryAfterMilliseconds).toBeGreaterThan(58_000);
+    expect((error as AnalysisClientError).retryAfterMilliseconds).toBeLessThanOrEqual(60_000);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("aborts an exponential-backoff wait without issuing another request", async () => {
+    const fetchMock = vi.fn(async () => json({ code: "NOT_READY" }, 503));
+    const client = createAnalysisClient({
+      baseUrl: "https://compute.example",
+      fetch: fetchMock as unknown as typeof fetch,
+      retryBaseDelayMilliseconds: 10_000,
+      retryMaximumDelayMilliseconds: 10_000,
+      retryTotalTimeoutMilliseconds: 20_000,
+    });
+    const controller = new AbortController();
+    const outcome = client.getJob(reference(), controller.signal).then(
+      (value) => value,
+      (error: unknown) => error,
+    );
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    controller.abort(new DOMException("User cancelled", "AbortError"));
+
+    await expect(outcome).resolves.toEqual(
+      expect.objectContaining<Partial<AnalysisClientError>>({ code: "ABORTED" }),
+    );
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("aborts an established SSE read instead of leaving the page-session observer pending", async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start() {
+        // Intentionally stay open until the consumer aborts the observation.
+      },
+    });
+    const fetchMock = vi.fn(async () => new Response(stream, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }));
+    const client = createAnalysisClient({
+      baseUrl: "https://compute.example",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    const controller = new AbortController();
+    const outcome = (async () => {
+      for await (const _event of client.events(reference(), controller.signal)) {
+        // The fixture never emits an event.
+      }
+    })().then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    controller.abort(new DOMException("User cancelled", "AbortError"));
+
+    await expect(outcome).resolves.toEqual(
+      expect.objectContaining<Partial<AnalysisClientError>>({ code: "ABORTED" }),
+    );
+  });
+
+  it("interrupts an established but idle SSE stream and cancels its reader", async () => {
+    const cancelled = vi.fn();
+    const stream = new ReadableStream<Uint8Array>({
+      start() {
+        // A proxy can keep the HTTP connection open while silently dropping
+        // every subsequent byte. The client must not observe this forever.
+      },
+      cancel(reason) {
+        cancelled(reason);
+      },
+    });
+    const fetchMock = vi.fn(async () => new Response(stream, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }));
+    const client = createAnalysisClient({
+      baseUrl: "https://compute.example",
+      fetch: fetchMock as unknown as typeof fetch,
+      eventIdleTimeoutMilliseconds: 10,
+    });
+    const outcome = (async () => {
+      for await (const _event of client.events(reference())) {
+        // The fixture deliberately never emits a byte or closes.
+      }
+    })();
+
+    await expect(outcome).rejects.toEqual(
+      expect.objectContaining<Partial<AnalysisClientError>>({
+        code: "SSE_CONNECTION_INTERRUPTED",
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(cancelled).toHaveBeenCalledOnce();
+  });
+
+  it("retains the last complete event cursor when an SSE stream becomes idle", async () => {
+    const encoder = new TextEncoder();
+    const eventPayload = (sequence: number, state: "RUNNING" | "SUCCEEDED") =>
+      JSON.stringify({
+        schemaVersion: "3dena.job-event.v1",
+        sequence,
+        state,
+        phase: state === "SUCCEEDED" ? "complete" : "jena",
+        completed: sequence,
+        total: 2,
+        emittedAt: `2026-08-20T12:00:0${sequence}.000Z`,
+      });
+    const firstStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(
+          `id: 1\nevent: progress\ndata: ${eventPayload(1, "RUNNING")}\n\n`,
+        ));
+        // The connection remains open but becomes silent after event 1.
+      },
+    });
+    const secondStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(
+          `id: 2\nevent: progress\ndata: ${eventPayload(2, "SUCCEEDED")}\n\n`,
+        ));
+        controller.close();
+      },
+    });
+    const responses = [firstStream, secondStream];
+    const fetchMock = vi.fn(async () => new Response(responses.shift(), {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }));
+    const client = createAnalysisClient({
+      baseUrl: "https://compute.example",
+      fetch: fetchMock as unknown as typeof fetch,
+      eventIdleTimeoutMilliseconds: 10,
+    });
+    const firstSequences: number[] = [];
+
+    await expect((async () => {
+      for await (const item of client.events(reference())) {
+        firstSequences.push(item.sequence);
+      }
+    })()).rejects.toEqual(expect.objectContaining<Partial<AnalysisClientError>>({
+      code: "SSE_CONNECTION_INTERRUPTED",
+    }));
+    const resumedSequences: number[] = [];
+    for await (const item of client.events(reference())) {
+      resumedSequences.push(item.sequence);
+    }
+
+    expect(firstSequences).toEqual([1]);
+    expect(resumedSequences).toEqual([2]);
+    const calls = fetchMock.mock.calls as unknown as Array<[
+      RequestInfo | URL,
+      RequestInit | undefined,
+    ]>;
+    expect((calls[0]?.[1]?.headers as Headers).has("last-event-id")).toBe(false);
+    expect((calls[1]?.[1]?.headers as Headers).get("last-event-id")).toBe("1");
+  });
+
+  it("does not let incomplete SSE byte drips postpone the idle deadline", async () => {
+    const encoder = new TextEncoder();
+    let dripTimer: ReturnType<typeof setInterval> | undefined;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        dripTimer = setInterval(() => controller.enqueue(encoder.encode("x")), 5);
+      },
+      cancel() {
+        if (dripTimer !== undefined) clearInterval(dripTimer);
+      },
+    });
+    const client = createAnalysisClient({
+      baseUrl: "https://compute.example",
+      fetch: vi.fn(async () => new Response(stream, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      })) as unknown as typeof fetch,
+      eventIdleTimeoutMilliseconds: 20,
+    });
+
+    await expect((async () => {
+      for await (const _event of client.events(reference())) {
+        // No complete event or heartbeat is ever emitted.
+      }
+    })()).rejects.toEqual(expect.objectContaining<Partial<AnalysisClientError>>({
+      code: "SSE_CONNECTION_INTERRUPTED",
+    }));
+  });
+
+  it("keeps a successful JSON body inside the attempt timeout and retries an interrupted read", async () => {
+    const hangingBody = new ReadableStream<Uint8Array>({
+      start() {
+        // The request attempt deadline must cancel this otherwise-open body.
+      },
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(hangingBody, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }))
+      .mockResolvedValueOnce(json(status()));
+    const client = createAnalysisClient({
+      baseUrl: "https://compute.example",
+      fetch: fetchMock as unknown as typeof fetch,
+      requestTimeoutMilliseconds: 5,
+      retryBaseDelayMilliseconds: 1,
+      retryMaximumDelayMilliseconds: 1,
+      retryTotalTimeoutMilliseconds: 100,
+    });
+
+    await expect(client.getJob(reference())).resolves.toMatchObject({ state: "QUEUED" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("aborts while consuming a successful JSON body", async () => {
+    const hangingBody = new ReadableStream<Uint8Array>({
+      start() {
+        // The caller abort must cancel this otherwise-open body.
+      },
+    });
+    const fetchMock = vi.fn(async () => new Response(hangingBody, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    const client = createAnalysisClient({
+      baseUrl: "https://compute.example",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    const controller = new AbortController();
+    const outcome = client.getJob(reference(), controller.signal).then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    controller.abort(new DOMException("User cancelled", "AbortError"));
+
+    await expect(outcome).resolves.toEqual(
+      expect.objectContaining<Partial<AnalysisClientError>>({ code: "ABORTED" }),
+    );
+  });
+
   it("rejects unknown response fields and mismatched job identities", async () => {
     const unknownClient = createAnalysisClient({
       baseUrl: "https://compute.example",

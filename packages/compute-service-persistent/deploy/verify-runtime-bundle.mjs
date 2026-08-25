@@ -16,6 +16,7 @@ const requiredMigrations = Object.freeze([
   "0001-persistent-compute",
   "0002-persistent-control-plane",
   "0003-build-approval-v3",
+  "0004-scientific-result-generations",
 ]);
 const requiredJena = Object.freeze({
   version: "0.7.0-ona.0",

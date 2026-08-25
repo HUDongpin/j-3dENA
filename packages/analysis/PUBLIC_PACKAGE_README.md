@@ -48,6 +48,14 @@ The supported runtime root exports are exactly:
 - `hashAnalysisValueV1(value)`
 - `hashLongitudinalExecutionRequestV2(input)`
 
+`createAnalysisClient()` keeps capability tokens and the highest valid SSE
+event sequence in page-session memory. HTTP retries are bounded and preserve
+the caller's exact idempotency key and body. Its SSE idle watchdog defaults to
+30 seconds, resets only for a complete event or heartbeat comment, and can be
+tuned with `eventIdleTimeoutMilliseconds`; an idle connection is cancelled so
+the application can reconcile authoritative status and reconnect with
+`Last-Event-ID`.
+
 The plotting APIs are mutually exclusive presenter boundaries:
 `compilePlotlySpec()` is ENA-only: it renders fitted participant points, code
 nodes, network edges, and axes, but no group-period centroids or time-point

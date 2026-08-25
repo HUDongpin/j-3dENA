@@ -7,7 +7,7 @@ export interface PersistentTemporalSweepReceiptV1 {
 }
 
 export type PersistentTemporalWorkItemV1 = Readonly<{
-  kind: "task" | "http-deletion" | "http-reconcile";
+  kind: "task" | "http-deletion" | "http-reconcile" | "http-purge";
   id: string;
 }>;
 
@@ -62,6 +62,7 @@ export class PersistentTemporalTaskSweeper {
   readonly #core: ComputeServiceCore;
   readonly #reconcileHttpDeletion: (jobId: string) => Promise<boolean>;
   readonly #reconcileHttpJob: (jobId: string) => Promise<boolean>;
+  readonly #purgeHttpJob: (jobId: string) => Promise<boolean>;
   readonly #onTaskFailure: () => void;
 
   constructor(input: Readonly<{
@@ -69,12 +70,14 @@ export class PersistentTemporalTaskSweeper {
     core: ComputeServiceCore;
     reconcileHttpDeletion?: (jobId: string) => Promise<boolean>;
     reconcileHttpJob?: (jobId: string) => Promise<boolean>;
+    purgeHttpJob?: (jobId: string) => Promise<boolean>;
     onTaskFailure?: () => void;
   }>) {
     this.#source = input.source;
     this.#core = input.core;
     this.#reconcileHttpDeletion = input.reconcileHttpDeletion ?? (async () => false);
     this.#reconcileHttpJob = input.reconcileHttpJob ?? (async () => false);
+    this.#purgeHttpJob = input.purgeHttpJob ?? (async () => false);
     this.#onTaskFailure = input.onTaskFailure ?? (() => undefined);
   }
 
@@ -92,9 +95,13 @@ export class PersistentTemporalTaskSweeper {
           if (await this.#reconcileHttpJob(item.id)) finalizedOrUpdated += 1;
           continue;
         }
+        if (item.kind === "http-purge") {
+          if (await this.#purgeHttpJob(item.id)) finalizedOrUpdated += 1;
+          continue;
+        }
         const before = await this.#core.getTask(item.id);
         if (before === null) throw new TypeError("Due task is missing.");
-        const after = before.state === "deleting"
+        const after = before.state === "deleting" || before.state === "expired"
           ? (await this.#core.deleteTask(item.id)).record
           : await this.#core.sweepTask(item.id);
         if (after.revision !== before.revision || after.state !== before.state) {

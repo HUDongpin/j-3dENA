@@ -58,7 +58,14 @@ export interface ComputeHttpJobRecordV1 {
   readonly executionObjectKey?: string;
   readonly executeIdempotencyHash?: string;
   readonly executeRequestFingerprint?: string;
+  /** Input/execution objects only; terminal success may retain result objects. */
   readonly inputDeletedAtMs?: number;
+  /**
+   * Monotonic fact written only after every job-owned input and every core-owned
+   * result object has been observed absent. Persistent replay rows must not be
+   * purged before this fact and the bound core deletion receipt agree.
+   */
+  readonly deletionCompletedAtMs?: number;
   readonly deleteIdempotencyHash?: string;
   readonly deleteRequestedAtMs?: number;
   readonly deleteCancelled?: boolean;

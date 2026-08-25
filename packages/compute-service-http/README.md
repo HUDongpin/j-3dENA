@@ -15,7 +15,9 @@ Implemented v1 routes:
 - `POST /v1/jobs/{jobId}/execute` verifies the uploaded exact-byte receipt,
   freezes the analysis request in object storage, and queues a core task;
 - `GET /v1/jobs/{jobId}` reports the normalized public lifecycle;
-- `GET /v1/jobs/{jobId}/events` streams versioned aggregate progress over SSE;
+- `GET /v1/jobs/{jobId}/events` streams versioned aggregate progress over SSE,
+  resumes from `Last-Event-ID`, and emits comment heartbeats while a
+  non-terminal subscription has no new aggregate event;
 - `GET /v1/jobs/{jobId}/result` verifies the stored checksum before issuing a
   result reference;
 - `DELETE /v1/jobs/{jobId}` idempotently cancels/deletes and returns a data

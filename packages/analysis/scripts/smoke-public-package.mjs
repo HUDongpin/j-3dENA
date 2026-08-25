@@ -1,22 +1,21 @@
-import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { cp, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyPublicPackageArtifactReceiptV2 } from "./public-package-artifact-receipt.mjs";
+import { parsePublicPackageSmokeArguments } from "./public-package-smoke-contract.mjs";
 import { verifyPublicPackage } from "./verify-public-package.mjs";
 
 const require = createRequire(import.meta.url);
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(scriptDirectory, "../../..");
-const packageDirectory = resolve(process.argv[2] ?? resolve(scriptDirectory, "../dist/package"));
 const jenaTarball = resolve(repositoryRoot, "vendor/jena-js/jena-js-0.7.0-ona.0.tgz");
 const evidenceDirectory = process.env.THREEDENA_PUBLIC_PACKAGE_EVIDENCE_DIR === undefined
   ? null
   : resolve(repositoryRoot, process.env.THREEDENA_PUBLIC_PACKAGE_EVIDENCE_DIR);
-const npmCli = process.env.npm_execpath;
-if (!npmCli) throw new Error("PUBLIC_PACKAGE_SMOKE_FAILED: npm_execpath is required");
+let npmCli;
 
 function run(command, args, cwd, environment = {}) {
   return execFileSync(command, args, {
@@ -39,10 +38,6 @@ function runNpm(args, cwd) {
   });
 }
 
-function sha256(bytes) {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
 async function linkInstalledPackage(packageName, consumerDirectory) {
   const sourceDirectory = dirname(require.resolve(`${packageName}/package.json`));
   const targetDirectory = resolve(consumerDirectory, "node_modules", ...packageName.split("/"));
@@ -50,35 +45,35 @@ async function linkInstalledPackage(packageName, consumerDirectory) {
   await symlink(sourceDirectory, targetDirectory, "dir");
 }
 
-const verification = await verifyPublicPackage(packageDirectory);
-const temporaryRoot = await mkdtemp(join(tmpdir(), "3dena-public-package-smoke-"));
-npmCacheDirectory = resolve(temporaryRoot, "npm-cache");
-await mkdir(npmCacheDirectory);
-let completed = false;
-
-try {
-  const packDirectory = resolve(temporaryRoot, "pack");
-  await mkdir(packDirectory);
-  const packJson = runNpm(["pack", packageDirectory, "--json", "--pack-destination", packDirectory], repositoryRoot);
-  const packReceipts = JSON.parse(packJson);
-  if (!Array.isArray(packReceipts) || packReceipts.length !== 1 || typeof packReceipts[0]?.filename !== "string") {
-    throw new Error("PUBLIC_PACKAGE_SMOKE_FAILED: npm pack did not return one tarball receipt");
-  }
-  const packReceipt = packReceipts[0];
-  const tarball = resolve(packDirectory, packReceipt.filename);
-  const tarballBytes = await readFile(tarball);
-  if (packReceipt.integrity === undefined || packReceipt.shasum === undefined || !Array.isArray(packReceipt.files)) {
-    throw new Error("PUBLIC_PACKAGE_SMOKE_FAILED: npm pack receipt is incomplete");
-  }
+export async function smokePublicPackage({ tarballPath, receiptPath }) {
+  npmCli = process.env.npm_execpath;
+  if (!npmCli) throw new Error("PUBLIC_PACKAGE_SMOKE_FAILED: npm_execpath is required");
+  const tarball = resolve(tarballPath);
+  const artifactReceipt = JSON.parse(await readFile(resolve(receiptPath), "utf8"));
+  await verifyPublicPackageArtifactReceiptV2({ receipt: artifactReceipt, tarballPath: tarball });
+  const packReceipt = artifactReceipt.npmPack;
   const packedPaths = packReceipt.files.map((entry) => entry.path);
   if (packedPaths.some((path) => path.includes("node_modules") || path.includes("vendor/") || path.endsWith(".test.ts"))) {
     throw new Error("PUBLIC_PACKAGE_SMOKE_FAILED: tarball contains a forbidden source path");
   }
 
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "3dena-public-package-smoke-"));
+  npmCacheDirectory = resolve(temporaryRoot, "npm-cache");
+  await mkdir(npmCacheDirectory);
+  let completed = false;
+
+  try {
   const nodeConsumer = resolve(temporaryRoot, "node-consumer");
   await mkdir(nodeConsumer);
   await writeFile(resolve(nodeConsumer, "package.json"), `${JSON.stringify({ name: "3dena-node-consumer", private: true, type: "module" }, null, 2)}\n`);
   runNpm(["install", "--ignore-scripts", "--package-lock=false", "--no-audit", "--no-fund", tarball, jenaTarball], nodeConsumer);
+  const installedPackage = resolve(nodeConsumer, "node_modules/j-3dena");
+  await verifyPublicPackageArtifactReceiptV2({
+    receipt: artifactReceipt,
+    packageDirectory: installedPackage,
+    tarballPath: tarball,
+  });
+  const verification = await verifyPublicPackage(installedPackage, { artifactReceipt });
   const nodeSmoke = `
     import {
       adaptFittedJenaTrajectoryResultV2,
@@ -226,9 +221,11 @@ try {
   });
 
   const receipt = {
-    schemaVersion: "3dena.public-package-smoke-receipt.v1",
+    schemaVersion: "3dena.public-package-smoke-receipt.v2",
+    sourceHead: artifactReceipt.source.repositoryHead,
     packageVersion: packReceipt.version,
-    tarballSha256: sha256(tarballBytes),
+    tarballSha256: artifactReceipt.tarball.sha256,
+    packageTreeSha256: artifactReceipt.tree.sha256,
     packedSize: packReceipt.size,
     unpackedSize: packReceipt.unpackedSize,
     fileCount: packedPaths.length,
@@ -245,9 +242,10 @@ try {
     await cp(tarball, resolve(evidenceDirectory, packReceipt.filename));
     await writeFile(
       resolve(evidenceDirectory, "npm-pack.json"),
-      `${JSON.stringify(packReceipts, null, 2)}\n`,
+      `${JSON.stringify([packReceipt], null, 2)}\n`,
       "utf8",
     );
+    await cp(resolve(receiptPath), resolve(evidenceDirectory, "public-package-artifact-receipt.json"));
     await writeFile(
       resolve(evidenceDirectory, "public-package-smoke-receipt.json"),
       `${JSON.stringify(receipt, null, 2)}\n`,
@@ -262,4 +260,9 @@ try {
   } else {
     process.stderr.write(`Public package smoke workspace retained for diagnosis: ${temporaryRoot}\n`);
   }
+}
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await smokePublicPackage(parsePublicPackageSmokeArguments(process.argv.slice(2)));
 }

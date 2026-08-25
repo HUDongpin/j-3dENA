@@ -6159,12 +6159,14 @@ var AnalysisClientError = class extends Error {
 	code;
 	status;
 	requestId;
-	constructor(code, message, status = null, requestId = null) {
+	retryAfterMilliseconds;
+	constructor(code, message, status = null, requestId = null, retryAfterMilliseconds = null) {
 		super(message);
 		this.name = "AnalysisClientError";
 		this.code = code;
 		this.status = status;
 		this.requestId = requestId;
+		this.retryAfterMilliseconds = retryAfterMilliseconds;
 	}
 };
 var SHA256$2 = /^[a-f0-9]{64}$/u;
@@ -6182,6 +6184,21 @@ var JOB_STATES = /* @__PURE__ */ new Set([
 	"FAILED",
 	"CANCELLED",
 	"EXPIRED"
+]);
+var RETRYABLE_HTTP_STATUSES = /* @__PURE__ */ new Set([
+	408,
+	425,
+	429,
+	500,
+	502,
+	503,
+	504
+]);
+var RETRYABLE_CLIENT_CODES = /* @__PURE__ */ new Set([
+	"NETWORK_FAILURE",
+	"REQUEST_TIMEOUT",
+	"SSE_CONNECTION_FAILED",
+	"SSE_CONNECTION_INTERRUPTED"
 ]);
 function clientError(code, message) {
 	throw new AnalysisClientError(code, message);
@@ -6253,6 +6270,72 @@ function validateCreateRequest(request) {
 		"ena3d-json"
 	].includes(request.dataset.format)) clientError("INVALID_REQUEST", "Dataset format is unsupported.");
 	if (request.processingPolicyConfirmed !== true) clientError("PROCESSING_POLICY_NOT_CONFIRMED", "Server processing policy must be confirmed before creating a job.");
+}
+function aborted() {
+	return new AnalysisClientError("ABORTED", "Compute request was aborted by the caller.");
+}
+function retryAfterMilliseconds(response, now = Date.now()) {
+	const value = response.headers.get("retry-after")?.trim();
+	if (!value) return null;
+	if (/^(?:0|[1-9][0-9]{0,8})$/u.test(value)) {
+		const milliseconds = Number(value) * 1e3;
+		return Number.isSafeInteger(milliseconds) ? milliseconds : null;
+	}
+	const timestamp = Date.parse(value);
+	if (Number.isNaN(timestamp)) return null;
+	return Math.max(0, timestamp - now);
+}
+function retryable(error) {
+	return RETRYABLE_CLIENT_CODES.has(error.code) || error.status !== null && RETRYABLE_HTTP_STATUSES.has(error.status);
+}
+function wait(milliseconds, signal) {
+	return new Promise((resolve, reject) => {
+		if (signal?.aborted) {
+			reject(aborted());
+			return;
+		}
+		const onAbort = () => {
+			clearTimeout(timer);
+			reject(aborted());
+		};
+		const timer = setTimeout(() => {
+			signal?.removeEventListener("abort", onAbort);
+			resolve();
+		}, milliseconds);
+		signal?.addEventListener("abort", onAbort, { once: true });
+	});
+}
+async function readResponseText(response, signal) {
+	if (!response.body) return "";
+	const reader = response.body.getReader();
+	const decoder = new TextDecoder("utf-8", { fatal: true });
+	const chunks = [];
+	const onAbort = () => {
+		reader.cancel(signal.reason).catch(() => void 0);
+	};
+	signal.addEventListener("abort", onAbort, { once: true });
+	if (signal.aborted) onAbort();
+	try {
+		while (true) {
+			const { value, done } = await reader.read();
+			if (signal.aborted) throw signal.reason ?? new DOMException("Request aborted", "AbortError");
+			if (done) break;
+			try {
+				chunks.push(decoder.decode(value, { stream: true }));
+			} catch {
+				throw new AnalysisClientError("INVALID_RESPONSE", "Compute response body is not valid UTF-8.", response.status, response.headers.get("x-request-id"));
+			}
+		}
+		try {
+			chunks.push(decoder.decode());
+		} catch {
+			throw new AnalysisClientError("INVALID_RESPONSE", "Compute response body is not valid UTF-8.", response.status, response.headers.get("x-request-id"));
+		}
+		return chunks.join("");
+	} finally {
+		signal.removeEventListener("abort", onAbort);
+		await reader.cancel().catch(() => void 0);
+	}
 }
 function capability(value) {
 	const item = record(value, "response");
@@ -6354,7 +6437,7 @@ function event(value) {
 	if (item.schemaVersion !== "3dena.job-event.v1") clientError("INVALID_RESPONSE", "Unsupported job-event schema.");
 	return {
 		schemaVersion: "3dena.job-event.v1",
-		sequence: safeInteger(item.sequence, "event.sequence"),
+		sequence: safeInteger(item.sequence, "event.sequence", 1),
 		state: state(item.state, "event.state"),
 		phase: stringValue(item.phase, "event.phase"),
 		completed: safeInteger(item.completed, "event.completed"),
@@ -6500,11 +6583,19 @@ function createAnalysisClient(config) {
 	if (typeof fetchImplementation !== "function") clientError("INVALID_CLIENT_CONFIG", "A Fetch implementation is required.");
 	const timeout = config.requestTimeoutMilliseconds ?? 3e4;
 	if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 3e5) clientError("INVALID_CLIENT_CONFIG", "requestTimeoutMilliseconds must be in [1, 300000].");
+	const retryMaxAttempts = config.retryMaxAttempts ?? 4;
+	const retryBaseDelay = config.retryBaseDelayMilliseconds ?? 250;
+	const retryMaximumDelay = config.retryMaximumDelayMilliseconds ?? 4e3;
+	const retryTotalTimeout = config.retryTotalTimeoutMilliseconds ?? 3e4;
+	if (!Number.isSafeInteger(retryMaxAttempts) || retryMaxAttempts < 1 || retryMaxAttempts > 8 || !Number.isSafeInteger(retryBaseDelay) || retryBaseDelay < 1 || retryBaseDelay > 3e4 || !Number.isSafeInteger(retryMaximumDelay) || retryMaximumDelay < retryBaseDelay || retryMaximumDelay > 6e4 || !Number.isSafeInteger(retryTotalTimeout) || retryTotalTimeout < 1 || retryTotalTimeout > 3e5) clientError("INVALID_CLIENT_CONFIG", "Retry configuration is invalid.");
+	const eventIdleTimeout = config.eventIdleTimeoutMilliseconds ?? 3e4;
+	if (!Number.isSafeInteger(eventIdleTimeout) || eventIdleTimeout < 1 || eventIdleTimeout > 3e5) clientError("INVALID_CLIENT_CONFIG", "eventIdleTimeoutMilliseconds must be in [1, 300000].");
 	const deletionPollInterval = config.deletionPollIntervalMilliseconds ?? 250;
 	const deletionCompletionTimeout = config.deletionCompletionTimeoutMilliseconds ?? 6e4;
 	if (!Number.isSafeInteger(deletionPollInterval) || deletionPollInterval < 1 || deletionPollInterval > 1e4 || !Number.isSafeInteger(deletionCompletionTimeout) || deletionCompletionTimeout < deletionPollInterval || deletionCompletionTimeout > 3e5) clientError("INVALID_CLIENT_CONFIG", "Deletion polling configuration is invalid.");
 	const basePath = baseUrl.pathname === "/" ? "" : baseUrl.pathname.replace(/\/+$/u, "");
 	const url = (path) => new URL(`${basePath}${path}`, baseUrl.origin).toString();
+	const eventCursors = /* @__PURE__ */ new Map();
 	const headers = (reference, idempotencyKey, accept = "application/json") => {
 		const output = new Headers({
 			accept,
@@ -6521,55 +6612,98 @@ function createAnalysisClient(config) {
 		}
 		return output;
 	};
-	const waitForDeletionPoll = () => new Promise((resolve) => setTimeout(resolve, deletionPollInterval));
-	const deleteV2 = async (reference, idempotencyKey) => {
+	const waitForDeletionPoll = (signal) => wait(deletionPollInterval, signal);
+	const deleteV2 = async (reference, idempotencyKey, signal) => {
 		validateReference(reference);
 		const result = deletionReceiptV2(await invoke(`/v1/jobs/${encodeURIComponent(reference.jobId)}`, {
 			method: "DELETE",
 			headers: headers(reference, idempotencyKey, "application/vnd.3dena.job-deletion-receipt.v2+json")
-		}));
+		}, signal));
 		if (result.jobId !== reference.jobId) clientError("INVALID_RESPONSE", "Deletion receipt identity does not match the requested job.");
 		return result;
 	};
-	const invoke = async (path, init) => {
-		const controller = new AbortController();
-		const timer = setTimeout(() => controller.abort(new DOMException("Request deadline exceeded", "TimeoutError")), timeout);
+	const responseError = async (response, attemptSignal) => {
+		let code = `HTTP_${response.status}`;
 		try {
-			const response = await fetchImplementation(url(path), {
-				...init,
-				signal: controller.signal,
-				credentials: "omit",
-				redirect: "error"
-			});
-			const requestId = response.headers.get("x-request-id");
-			if (!response.ok) {
-				let code = `HTTP_${response.status}`;
-				try {
-					const body = await response.json();
-					if (typeof body?.code === "string" && /^[A-Z0-9_]{1,80}$/u.test(body.code)) code = body.code;
-				} catch {}
-				throw new AnalysisClientError(code, `Compute request failed with HTTP ${response.status}.`, response.status, requestId);
-			}
-			if (!(response.headers.get("content-type") ?? "").toLocaleLowerCase("en-US").startsWith("application/json")) throw new AnalysisClientError("INVALID_RESPONSE", "Compute response is not JSON.", response.status, requestId);
-			return await response.json();
+			const body = JSON.parse(await readResponseText(response, attemptSignal));
+			if (typeof body?.code === "string" && /^[A-Z0-9_]{1,80}$/u.test(body.code)) code = body.code;
 		} catch (error) {
-			if (error instanceof AnalysisClientError) throw error;
-			if (controller.signal.aborted) throw new AnalysisClientError("REQUEST_TIMEOUT", "Compute request exceeded the client deadline.");
-			throw new AnalysisClientError("NETWORK_FAILURE", "Compute request could not be completed.");
-		} finally {
-			clearTimeout(timer);
+			if (attemptSignal.aborted) throw error;
 		}
+		return new AnalysisClientError(code, `Compute request failed with HTTP ${response.status}.`, response.status, response.headers.get("x-request-id"), retryAfterMilliseconds(response));
+	};
+	const request = async (path, init, consume, signal) => {
+		const startedAt = Date.now();
+		let lastError = null;
+		for (let attempt = 1; attempt <= retryMaxAttempts; attempt += 1) {
+			if (signal?.aborted) throw aborted();
+			const elapsed = Date.now() - startedAt;
+			const remaining = retryTotalTimeout - elapsed;
+			if (remaining <= 0 && lastError !== null) throw lastError;
+			const controller = new AbortController();
+			let requestTimedOut = false;
+			let observedRetryAfterMilliseconds = null;
+			const onAbort = () => controller.abort(signal?.reason);
+			signal?.addEventListener("abort", onAbort, { once: true });
+			if (signal?.aborted) controller.abort(signal.reason);
+			const timer = setTimeout(() => {
+				requestTimedOut = true;
+				controller.abort(new DOMException("Request deadline exceeded", "TimeoutError"));
+			}, Math.min(timeout, Math.max(1, remaining)));
+			try {
+				const response = await fetchImplementation(url(path), {
+					...init,
+					signal: controller.signal,
+					credentials: "omit",
+					redirect: "error"
+				});
+				observedRetryAfterMilliseconds = retryAfterMilliseconds(response);
+				if (signal?.aborted) throw aborted();
+				if (response.ok) {
+					const consumed = await consume(response, controller.signal);
+					if (signal?.aborted) throw aborted();
+					return consumed;
+				}
+				lastError = await responseError(response, controller.signal);
+			} catch (error) {
+				if (error instanceof AnalysisClientError) lastError = error;
+				else if (signal?.aborted) throw aborted();
+				else if (requestTimedOut) lastError = new AnalysisClientError("REQUEST_TIMEOUT", "Compute request exceeded the client deadline.", null, null, observedRetryAfterMilliseconds);
+				else lastError = new AnalysisClientError("NETWORK_FAILURE", "Compute request could not be completed.", null, null, observedRetryAfterMilliseconds);
+			} finally {
+				clearTimeout(timer);
+				signal?.removeEventListener("abort", onAbort);
+			}
+			if (lastError === null || !retryable(lastError) || attempt === retryMaxAttempts) throw lastError ?? new AnalysisClientError("NETWORK_FAILURE", "Compute request could not be completed.");
+			const exponential = Math.min(retryMaximumDelay, retryBaseDelay * 2 ** (attempt - 1));
+			const retryDelay = Math.max(exponential, lastError.retryAfterMilliseconds ?? 0);
+			if (Date.now() - startedAt + retryDelay > retryTotalTimeout) throw lastError;
+			await wait(retryDelay, signal);
+		}
+		throw lastError ?? new AnalysisClientError("NETWORK_FAILURE", "Compute request could not be completed.");
+	};
+	const invoke = async (path, init, signal) => {
+		return request(path, init, async (response, attemptSignal) => {
+			const requestId = response.headers.get("x-request-id");
+			if (!(response.headers.get("content-type") ?? "").toLocaleLowerCase("en-US").startsWith("application/json")) throw new AnalysisClientError("INVALID_RESPONSE", "Compute response is not JSON.", response.status, requestId);
+			const body = await readResponseText(response, attemptSignal);
+			try {
+				return JSON.parse(body);
+			} catch {
+				throw new AnalysisClientError("INVALID_RESPONSE", "Compute response is not valid JSON.", response.status, requestId);
+			}
+		}, signal);
 	};
 	return Object.freeze({
-		async createJob(request, idempotencyKey) {
+		async createJob(request, idempotencyKey, signal) {
 			validateCreateRequest(request);
 			return capability(await invoke("/v1/jobs", {
 				method: "POST",
 				headers: headers(void 0, idempotencyKey),
 				body: JSON.stringify(request)
-			}));
+			}, signal));
 		},
-		async executeJob(reference, request, idempotencyKey) {
+		async executeJob(reference, request, idempotencyKey, signal) {
 			validateReference(reference);
 			exact(record(request, "request"), [
 				"schemaVersion",
@@ -6584,38 +6718,59 @@ function createAnalysisClient(config) {
 				method: "POST",
 				headers: headers(reference, idempotencyKey),
 				body: JSON.stringify(request)
-			}));
+			}, signal));
 			if (result.jobId !== reference.jobId) clientError("INVALID_RESPONSE", "Job status identity does not match the requested job.");
 			return result;
 		},
-		async getJob(reference) {
+		async getJob(reference, signal) {
 			validateReference(reference);
 			const result = jobStatus(await invoke(`/v1/jobs/${encodeURIComponent(reference.jobId)}`, {
 				method: "GET",
 				headers: headers(reference)
-			}));
+			}, signal));
 			if (result.jobId !== reference.jobId) clientError("INVALID_RESPONSE", "Job status identity does not match the requested job.");
 			return result;
 		},
 		async *events(reference, signal) {
 			validateReference(reference);
-			const response = await fetchImplementation(url(`/v1/jobs/${encodeURIComponent(reference.jobId)}/events`), {
-				method: "GET",
-				headers: new Headers({
-					accept: "text/event-stream",
-					authorization: `Bearer ${reference.capabilityToken}`,
-					"x-3dena-contract-version": ANALYSIS_CONTRACT_VERSION_V1
-				}),
-				credentials: "omit",
-				redirect: "error",
-				...signal ? { signal } : {}
+			const cursorAtConnection = eventCursors.get(reference.jobId) ?? 0;
+			const eventHeaders = new Headers({
+				accept: "text/event-stream",
+				authorization: `Bearer ${reference.capabilityToken}`,
+				"x-3dena-contract-version": ANALYSIS_CONTRACT_VERSION_V1
 			});
-			if (!response.ok || !response.body || !(response.headers.get("content-type") ?? "").toLocaleLowerCase("en-US").startsWith("text/event-stream")) throw new AnalysisClientError("SSE_CONNECTION_FAILED", `Compute event stream failed with HTTP ${response.status}.`, response.status, response.headers.get("x-request-id"));
+			if (cursorAtConnection > 0) eventHeaders.set("last-event-id", String(cursorAtConnection));
+			const response = await request(`/v1/jobs/${encodeURIComponent(reference.jobId)}/events`, {
+				method: "GET",
+				headers: eventHeaders
+			}, async (eventResponse) => eventResponse, signal);
+			if (!response.body || !(response.headers.get("content-type") ?? "").toLocaleLowerCase("en-US").startsWith("text/event-stream")) throw new AnalysisClientError("SSE_CONNECTION_FAILED", `Compute event stream failed with HTTP ${response.status}.`, response.status, response.headers.get("x-request-id"));
 			const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+			const onStreamAbort = () => {
+				reader.cancel(signal?.reason).catch(() => void 0);
+			};
+			signal?.addEventListener("abort", onStreamAbort, { once: true });
+			if (signal?.aborted) onStreamAbort();
 			let buffer = "";
+			let activityDeadline = Date.now() + eventIdleTimeout;
 			try {
 				while (true) {
-					const { value, done } = await reader.read();
+					let idleTimer;
+					const idleFailure = new AnalysisClientError("SSE_CONNECTION_INTERRUPTED", "Compute event stream was silent beyond the client idle deadline.");
+					const idleDeadline = new Promise((_resolve, reject) => {
+						idleTimer = setTimeout(() => {
+							reject(idleFailure);
+							reader.cancel(idleFailure).catch(() => void 0);
+						}, Math.max(1, activityDeadline - Date.now()));
+					});
+					let next;
+					try {
+						next = await Promise.race([reader.read(), idleDeadline]);
+					} finally {
+						if (idleTimer !== void 0) clearTimeout(idleTimer);
+					}
+					const { value, done } = next;
+					if (signal?.aborted) throw aborted();
 					if (done) break;
 					buffer += value;
 					buffer = buffer.replace(/\r\n/gu, "\n");
@@ -6623,7 +6778,11 @@ function createAnalysisClient(config) {
 					while (boundary >= 0) {
 						const block = buffer.slice(0, boundary).replace(/\r/gu, "");
 						buffer = buffer.slice(boundary + 2);
-						const data = block.split("\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
+						const lines = block.split("\n");
+						const ids = lines.filter((line) => line.startsWith("id:")).map((line) => line.slice(3).trim());
+						if (ids.length > 1 || ids[0] !== void 0 && !/^(?:0|[1-9][0-9]{0,14})$/u.test(ids[0])) clientError("INVALID_RESPONSE", "SSE event id is invalid.");
+						const data = lines.filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
+						const heartbeat = lines.some((line) => line.startsWith(":"));
 						if (data !== "") {
 							let parsed;
 							try {
@@ -6631,51 +6790,65 @@ function createAnalysisClient(config) {
 							} catch {
 								clientError("INVALID_RESPONSE", "SSE data is not valid JSON.");
 							}
-							yield event(parsed);
-						}
+							const parsedEvent = event(parsed);
+							const eventId = ids[0] === void 0 ? parsedEvent.sequence : Number(ids[0]);
+							if (!Number.isSafeInteger(eventId) || eventId !== parsedEvent.sequence) clientError("INVALID_RESPONSE", "SSE event id does not match its sequence.");
+							const currentCursor = eventCursors.get(reference.jobId) ?? 0;
+							activityDeadline = Date.now() + eventIdleTimeout;
+							if (parsedEvent.sequence > currentCursor) {
+								eventCursors.set(reference.jobId, parsedEvent.sequence);
+								yield parsedEvent;
+								activityDeadline = Date.now() + eventIdleTimeout;
+							}
+						} else if (heartbeat) activityDeadline = Date.now() + eventIdleTimeout;
 						boundary = buffer.indexOf("\n\n");
 					}
 				}
+			} catch (error) {
+				if (error instanceof AnalysisClientError) throw error;
+				if (signal?.aborted) throw aborted();
+				throw new AnalysisClientError("SSE_CONNECTION_INTERRUPTED", "Compute event stream disconnected before observation completed.");
 			} finally {
+				signal?.removeEventListener("abort", onStreamAbort);
 				await reader.cancel().catch(() => void 0);
 			}
-			if (buffer.trim() !== "") clientError("INVALID_RESPONSE", "SSE stream ended with an incomplete event.");
+			if (buffer.trim() !== "") throw new AnalysisClientError("SSE_CONNECTION_INTERRUPTED", "Compute event stream ended with an incomplete event.");
 		},
-		async getResult(reference) {
+		async getResult(reference, signal) {
 			validateReference(reference);
 			const result = resultReference(await invoke(`/v1/jobs/${encodeURIComponent(reference.jobId)}/result`, {
 				method: "GET",
 				headers: headers(reference)
-			}));
+			}, signal));
 			if (result.jobId !== reference.jobId) clientError("INVALID_RESPONSE", "Result reference identity does not match the requested job.");
 			return result;
 		},
-		async deleteJob(reference, idempotencyKey) {
+		async deleteJob(reference, idempotencyKey, signal) {
 			validateReference(reference);
 			const result = deletionReceipt(await invoke(`/v1/jobs/${encodeURIComponent(reference.jobId)}`, {
 				method: "DELETE",
 				headers: headers(reference, idempotencyKey)
-			}));
+			}, signal));
 			if (result.jobId !== reference.jobId) clientError("INVALID_RESPONSE", "Deletion receipt identity does not match the requested job.");
 			return result;
 		},
-		async deleteJobV2(reference, idempotencyKey) {
-			return deleteV2(reference, idempotencyKey);
+		async deleteJobV2(reference, idempotencyKey, signal) {
+			return deleteV2(reference, idempotencyKey, signal);
 		},
-		async deleteJobUntilComplete(reference, idempotencyKey) {
+		async deleteJobUntilComplete(reference, idempotencyKey, signal) {
 			const startedAt = Date.now();
 			while (true) {
-				const receipt = await deleteV2(reference, idempotencyKey);
+				const receipt = await deleteV2(reference, idempotencyKey, signal);
 				if (receipt.termination !== "pending" && receipt.capacity !== "held" && receipt.objects === "deleted" && receipt.inputDeleted && receipt.resultDeleted && receipt.deletedAt !== null) return receipt;
 				if (Date.now() - startedAt >= deletionCompletionTimeout) throw new AnalysisClientError("DELETION_RECONCILIATION_TIMEOUT", "Compute deletion did not reach a fully observed durable state.");
-				await waitForDeletionPoll();
+				await waitForDeletionPoll(signal);
 			}
 		},
-		async getBuildInfo() {
+		async getBuildInfo(signal) {
 			return buildInfo(await invoke("/build-info", {
 				method: "GET",
 				headers: headers()
-			}));
+			}, signal));
 		}
 	});
 }
@@ -37101,8 +37274,8 @@ var init_build_identity = __esmMin((() => {
 		jenaVersion: injected("0.7.0-ona.0", "development-unbound"),
 		jenaCommit: injected("90790856f00bdef63dbd27fc3a5b502e8cffe65f", "development-unbound"),
 		jenaTarballIntegrity: injected("sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==", "development-unbound"),
-		sdkVersion: injected("0.2.0-implemented-unverified.6", "development-unbound"),
-		buildId: injected("a2ef75a6fd715c4e935a6f93978c3520b98504a4", "development-unbound"),
+		sdkVersion: injected("0.2.0-implemented-unverified.7", "development-unbound"),
+		buildId: injected("87b0e953129e1bacf00172c4abb6b31a5f8bb888", "development-unbound"),
 		bound: true
 	});
 }));

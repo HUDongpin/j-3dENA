@@ -16,6 +16,11 @@ architecture candidate, not evidence of a deployed Neon/Fly/Vercel service.
 - `migrations/0003_build_approval_v3.sql` append-only widens the approval JSON
   constraint to the signed V3 scientific-build identity while retaining read
   compatibility for historical V1/V2 approval rows.
+- `migrations/0004_scientific_result_generations.sql` preserves every immutable
+  `compute_scientific_results` row as generation 1, adds append-only publication
+  generations, and separates them from a deletable active mapping. An unexpired
+  mapping remains fail-closed; after expiry the same scientific result hash can
+  bind a new task/object generation without rewriting legacy or new evidence.
 - `PostgresComputeTaskRepository` and
   `PostgresComputeHttpJobRepository` preserve create idempotency and revision
   compare-and-set semantics. `PostgresComputeHttpEventBroker` uses a durable
@@ -55,6 +60,17 @@ database secrets in the parent, and pass only locale/runtime controls to the
 scientific child. Startup verifies the exact migration, active signed build
 approval, configured capacity rows, Blob credential reachability, and bundle
 hashes before readiness or work.
+The 60-second retention loop deletes expired source-result active mappings in
+bounded pages while leaving both the legacy `compute_scientific_results` table
+and the generational publication table immutable. Resolvers join only the
+unexpired active mapping to its exact publication generation and still verify
+the object HEAD, byte length, SHA-256, artifact envelope, owner, build, and
+scientific result hash before returning a source.
+The Node HTTP bridge keeps each Web `Request.signal` bound to the real socket
+for the complete response lifetime. A browser or proxy disconnect therefore
+aborts the router subscription and cancels the SSE response reader instead of
+leaving a PostgreSQL polling iterator behind; a normally completed response is
+not treated as an abort.
 
 Dedicated `POST /v2/longitudinal-jobs` creation additionally requires the
 `x-3dena-service-token` header. The compute runtime stores only its SHA-256 in
@@ -77,7 +93,7 @@ Docker has no fallback bundle: the image build must explicitly pass that exact
 directory and the reviewed SDK version as `RUNTIME_BUNDLE_DIR` and
 `EXPECTED_SDK_VERSION`, plus the public artifact `EXPECTED_BUILD_ID`. The image
 build rechecks the v4 manifest source commit against the OCI revision, all six
-contracts, all three migrations, dependency pins, scientific identity, and
+contracts, all four migrations, dependency pins, scientific identity, and
 both artifact digests before it can receive the current Git revision label.
 
 The separate migration CLI has explicit `apply` and `verify` modes. Runtime

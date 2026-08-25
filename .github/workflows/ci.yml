@@ -7,6 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -14,13 +15,58 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  public-package-head:
+    name: Classify public package source/generated HEAD
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      kind: ${{ steps.classify.outputs.kind }}
+      stage: ${{ steps.classify.outputs.stage }}
+      head: ${{ steps.classify.outputs.head }}
+      source-head: ${{ steps.classify.outputs.source-head }}
+    steps:
+      - name: Check out exact pull-request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Use the frozen npm release
+        run: npm install --global npm@11.16.0
+
+      - name: Install exact verification dependencies
+        run: npm ci
+
+      - name: Classify and verify exact S/A/C phase
+        id: classify
+        run: node packages/analysis/scripts/public-package-head-governance.mjs --github-output "$GITHUB_OUTPUT"
+
   checks:
     name: Lint, test, build, and runtime boundary
+    needs: [public-package-head, public-package-generated-custody]
+    if: >-
+      always() &&
+      needs.public-package-head.result == 'success' &&
+      (
+        needs.public-package-head.outputs.kind == 'source' ||
+        needs.public-package-generated-custody.result == 'success'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -34,6 +80,10 @@ jobs:
       - name: Install exact dependencies
         run: npm ci
 
+      - name: Verify tracked generated public package phase without rebuilding
+        if: needs.public-package-head.outputs.kind == 'generated'
+        run: node packages/analysis/scripts/public-package-head-governance.mjs
+
       - name: Lint
         run: npm run lint
 
@@ -46,15 +96,9 @@ jobs:
       - name: Dependency vulnerability audit
         run: npm audit --audit-level=moderate
 
-      - name: Build and verify public facade package
-        run: |
-          npm run build:public --workspace @3dena/analysis
-          npm run pack:check --workspace @3dena/analysis
-
-      - name: Smoke public tarball in Node, TypeScript, Vite, and Next.js
-        env:
-          THREEDENA_PUBLIC_PACKAGE_EVIDENCE_DIR: output/public-package-evidence
-        run: npm run test:public-package --workspace @3dena/analysis
+      - name: Build source-staged public facade package
+        if: needs.public-package-head.outputs.kind == 'source'
+        run: npm run build:public --workspace @3dena/analysis
 
       - name: Golden parity tests
         run: npm run test:golden
@@ -106,21 +150,317 @@ jobs:
       - name: Verify release security and generated SBOM
         run: node scripts/verify-release-security.mjs --sbom output/sbom.cdx.json
 
-      - name: Upload package and SBOM evidence
+      - name: Upload SBOM evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: package-and-sbom-evidence
-          path: |
-            packages/analysis/dist/package
-            output/public-package-evidence
-            output/sbom.cdx.json
+          name: sbom-evidence
+          path: output/sbom.cdx.json
           if-no-files-found: error
           retention-days: 14
+
+  public-package-producer:
+    name: Deterministic public package producer
+    needs: [checks, public-package-head]
+    if: >-
+      always() &&
+      needs.checks.result == 'success' &&
+      needs.public-package-head.result == 'success' &&
+      needs.public-package-head.outputs.kind == 'source'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      source-head: ${{ steps.source.outputs.head }}
+      tarball-artifact-id: ${{ steps.upload-tarball.outputs.artifact-id }}
+      tarball-artifact-digest: ${{ steps.upload-tarball.outputs.artifact-digest }}
+      receipt-artifact-id: ${{ steps.upload-receipt.outputs.artifact-id }}
+      receipt-artifact-digest: ${{ steps.upload-receipt.outputs.artifact-digest }}
+    steps:
+      - name: Check out detached source S
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.public-package-head.outputs.source-head }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify detached source S
+        id: source
+        shell: bash
+        env:
+          EXPECTED_SOURCE_HEAD: ${{ needs.public-package-head.outputs.source-head }}
+        run: |
+          set -euo pipefail
+          if ! test "$GITHUB_RUN_ATTEMPT" = "1"; then
+            echo "Public package artifacts may only be produced on workflow attempt 1; start a new workflow run." >&2
+            exit 1
+          fi
+          if git symbolic-ref -q HEAD; then
+            echo "Public package producer must run at detached HEAD." >&2
+            exit 1
+          fi
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_HEAD"
+          printf 'head=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Use the frozen npm release
+        run: npm install --global npm@11.16.0
+
+      - name: Install and build first clean source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build:public --workspace @3dena/analysis
+          cp -a packages/analysis/dist/package "$RUNNER_TEMP/public-package-first"
+
+      - name: Build independent clean source tree and compare exact bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach "$RUNNER_TEMP/public-package-rebuild" "${{ steps.source.outputs.head }}"
+          cd "$RUNNER_TEMP/public-package-rebuild"
+          npm ci
+          npm run build:public --workspace @3dena/analysis
+          node packages/analysis/scripts/compare-public-package-trees.mjs \
+            --expected "$RUNNER_TEMP/public-package-first" \
+            --actual packages/analysis/dist/package
+          npm run artifact:public --workspace @3dena/analysis -- \
+            --package dist/package \
+            --output-directory "$RUNNER_TEMP/public-package-artifact"
+
+      - name: Upload raw npm tarball
+        id: upload-tarball
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: ${{ runner.temp }}/public-package-artifact/j-3dena-0.2.0-implemented-unverified.7.tgz
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+          archive: false
+
+      - name: Upload raw artifact receipt
+        id: upload-receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: ${{ runner.temp }}/public-package-artifact/j-3dena-0.2.0-implemented-unverified.7.tgz.artifact-receipt.json
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+          archive: false
+
+  public-package-consumer:
+    name: Independent public package consumer
+    needs: public-package-producer
+    if: >-
+      always() &&
+      needs.public-package-producer.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Validate immutable handoff tuple
+        shell: bash
+        env:
+          TARBALL_ARTIFACT_ID: ${{ needs.public-package-producer.outputs.tarball-artifact-id }}
+          TARBALL_ARTIFACT_DIGEST: ${{ needs.public-package-producer.outputs.tarball-artifact-digest }}
+          RECEIPT_ARTIFACT_ID: ${{ needs.public-package-producer.outputs.receipt-artifact-id }}
+          RECEIPT_ARTIFACT_DIGEST: ${{ needs.public-package-producer.outputs.receipt-artifact-digest }}
+        run: |
+          set -euo pipefail
+          [[ "$TARBALL_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$RECEIPT_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$TARBALL_ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$RECEIPT_ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]
+
+      - name: Check out detached receipt source S
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.public-package-producer.outputs.source-head }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download tarball by numeric artifact ID
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          artifact-ids: ${{ needs.public-package-producer.outputs.tarball-artifact-id }}
+          path: ${{ runner.temp }}/public-package-consumer/tarball
+          merge-multiple: false
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          skip-decompress: true
+          digest-mismatch: error
+
+      - name: Download receipt by numeric artifact ID
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          artifact-ids: ${{ needs.public-package-producer.outputs.receipt-artifact-id }}
+          path: ${{ runner.temp }}/public-package-consumer/receipt
+          merge-multiple: false
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          skip-decompress: true
+          digest-mismatch: error
+
+      - name: Verify raw artifact hashes and detached source
+        shell: bash
+        env:
+          SOURCE_HEAD: ${{ needs.public-package-producer.outputs.source-head }}
+          TARBALL_DIGEST: ${{ needs.public-package-producer.outputs.tarball-artifact-digest }}
+          RECEIPT_DIGEST: ${{ needs.public-package-producer.outputs.receipt-artifact-digest }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+          ! git symbolic-ref -q HEAD
+          printf '%s  %s\n' "$TARBALL_DIGEST" "$RUNNER_TEMP/public-package-consumer/tarball/j-3dena-0.2.0-implemented-unverified.7.tgz" | sha256sum --check --strict
+          printf '%s  %s\n' "$RECEIPT_DIGEST" "$RUNNER_TEMP/public-package-consumer/receipt/j-3dena-0.2.0-implemented-unverified.7.tgz.artifact-receipt.json" | sha256sum --check --strict
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Use the frozen npm release
+        run: npm install --global npm@11.16.0
+
+      - name: Install exact consumer dependencies
+        run: npm ci
+
+      - name: Smoke only the downloaded tarball and receipt
+        env:
+          THREEDENA_PUBLIC_PACKAGE_EVIDENCE_DIR: output/public-package-evidence
+        run: |
+          npm run test:public-package --workspace @3dena/analysis -- \
+            --tarball "$RUNNER_TEMP/public-package-consumer/tarball/j-3dena-0.2.0-implemented-unverified.7.tgz" \
+            --receipt "$RUNNER_TEMP/public-package-consumer/receipt/j-3dena-0.2.0-implemented-unverified.7.tgz.artifact-receipt.json"
+
+  public-package-generated-custody:
+    name: Verify generated package custody from exact source producer
+    needs: public-package-head
+    if: needs.public-package-head.outputs.kind == 'generated'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact generated HEAD
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.public-package-head.outputs.head }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Read strict numeric custody tuple
+        id: custody
+        run: |
+          node packages/analysis/scripts/public-package-ci-custody-intake.mjs \
+            --manifest packages/analysis/dist/j-3dena-0.2.0-implemented-unverified.7.tgz.ci-custody.json \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Bind custody to classified repository and source S
+        shell: bash
+        env:
+          CUSTODY_REPOSITORY: ${{ steps.custody.outputs.repository }}
+          CUSTODY_SOURCE_HEAD: ${{ steps.custody.outputs.source-head }}
+          EXPECTED_GENERATED_HEAD: ${{ needs.public-package-head.outputs.head }}
+          EXPECTED_SOURCE_HEAD: ${{ needs.public-package-head.outputs.source-head }}
+        run: |
+          set -euo pipefail
+          test "$CUSTODY_REPOSITORY" = "$GITHUB_REPOSITORY"
+          test "$CUSTODY_SOURCE_HEAD" = "$EXPECTED_SOURCE_HEAD"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_GENERATED_HEAD"
+          ! git symbolic-ref -q HEAD
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Read exact GitHub Actions run and artifact metadata
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CUSTODY_REPOSITORY: ${{ steps.custody.outputs.repository }}
+          PRODUCER_RUN_ID: ${{ steps.custody.outputs.producer-run-id }}
+          TARBALL_ARTIFACT_ID: ${{ steps.custody.outputs.tarball-artifact-id }}
+          RECEIPT_ARTIFACT_ID: ${{ steps.custody.outputs.receipt-artifact-id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/public-package-generated-custody/metadata"
+          gh api --method GET \
+            "repos/$CUSTODY_REPOSITORY/actions/runs/$PRODUCER_RUN_ID" \
+            > "$RUNNER_TEMP/public-package-generated-custody/metadata/run.json"
+          gh api --method GET \
+            "repos/$CUSTODY_REPOSITORY/actions/artifacts/$TARBALL_ARTIFACT_ID" \
+            > "$RUNNER_TEMP/public-package-generated-custody/metadata/tarball-artifact.json"
+          gh api --method GET \
+            "repos/$CUSTODY_REPOSITORY/actions/artifacts/$RECEIPT_ARTIFACT_ID" \
+            > "$RUNNER_TEMP/public-package-generated-custody/metadata/receipt-artifact.json"
+
+      - name: Verify trusted producer API custody
+        run: |
+          node packages/analysis/scripts/verify-public-package-ci-custody-github.mjs \
+            --manifest packages/analysis/dist/j-3dena-0.2.0-implemented-unverified.7.tgz.ci-custody.json \
+            --run-json "$RUNNER_TEMP/public-package-generated-custody/metadata/run.json" \
+            --tarball-artifact-json "$RUNNER_TEMP/public-package-generated-custody/metadata/tarball-artifact.json" \
+            --receipt-artifact-json "$RUNNER_TEMP/public-package-generated-custody/metadata/receipt-artifact.json"
+
+      - name: Download producer tarball by numeric artifact ID
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          artifact-ids: ${{ steps.custody.outputs.tarball-artifact-id }}
+          path: ${{ runner.temp }}/public-package-generated-custody/tarball
+          merge-multiple: false
+          github-token: ${{ github.token }}
+          repository: ${{ steps.custody.outputs.repository }}
+          run-id: ${{ steps.custody.outputs.producer-run-id }}
+          skip-decompress: true
+          digest-mismatch: error
+
+      - name: Download producer receipt by numeric artifact ID
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          artifact-ids: ${{ steps.custody.outputs.receipt-artifact-id }}
+          path: ${{ runner.temp }}/public-package-generated-custody/receipt
+          merge-multiple: false
+          github-token: ${{ github.token }}
+          repository: ${{ steps.custody.outputs.repository }}
+          run-id: ${{ steps.custody.outputs.producer-run-id }}
+          skip-decompress: true
+          digest-mismatch: error
+
+      - name: Compare downloaded producer bytes with tracked A bytes
+        shell: bash
+        env:
+          TARBALL_DIGEST: ${{ steps.custody.outputs.tarball-digest }}
+          RECEIPT_DIGEST: ${{ steps.custody.outputs.receipt-digest }}
+        run: |
+          set -euo pipefail
+          DOWNLOADED_TARBALL="$RUNNER_TEMP/public-package-generated-custody/tarball/j-3dena-0.2.0-implemented-unverified.7.tgz"
+          DOWNLOADED_RECEIPT="$RUNNER_TEMP/public-package-generated-custody/receipt/j-3dena-0.2.0-implemented-unverified.7.tgz.artifact-receipt.json"
+          TRACKED_TARBALL="packages/analysis/dist/j-3dena-0.2.0-implemented-unverified.7.tgz"
+          TRACKED_RECEIPT="packages/analysis/dist/j-3dena-0.2.0-implemented-unverified.7.tgz.artifact-receipt.json"
+          printf '%s  %s\n' "$TARBALL_DIGEST" "$DOWNLOADED_TARBALL" | sha256sum --check --strict
+          printf '%s  %s\n' "$RECEIPT_DIGEST" "$DOWNLOADED_RECEIPT" | sha256sum --check --strict
+          cmp --silent "$DOWNLOADED_TARBALL" "$TRACKED_TARBALL"
+          cmp --silent "$DOWNLOADED_RECEIPT" "$TRACKED_RECEIPT"
 
   browser:
     name: Chromium, Firefox, WebKit, and accessibility
     needs: checks
+    if: >-
+      always() &&
+      needs.checks.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

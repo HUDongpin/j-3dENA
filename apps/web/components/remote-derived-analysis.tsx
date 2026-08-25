@@ -48,6 +48,8 @@ interface RemoteDerivedControlsProps {
   readonly kind: DerivedTaskKind;
   readonly source: VerifiedRemoteAnalysisResult;
   readonly running: boolean;
+  /** Prevents replacing a retained persistent job before explicit cleanup. */
+  readonly disabled?: boolean;
   readonly onRun: (task: ActivatedAnalysisTaskSpecV1) => void;
 }
 
@@ -137,6 +139,7 @@ export function RemoteDerivedControls({
   kind,
   source,
   running,
+  disabled = false,
   onRun,
 }: RemoteDerivedControlsProps) {
   const analysis = sourceAnalysis(source);
@@ -395,7 +398,7 @@ export function RemoteDerivedControls({
           </div>
         )}
         {!valid && <p className="derived-validation" role="alert">Complete the required controls. Group pairs must differ; trajectory space requires exactly three dimensions and a valid value for every ordered period; paired designs require the physical-entity confirmation.</p>}
-        <button className="button button--primary" type="submit" disabled={!valid || running} data-testid="remote-derived-run"><Play size={17} aria-hidden="true" />{running ? "Running on service…" : `Run ${copy.title.toLowerCase()}`}</button>
+        <button className="button button--primary" type="submit" disabled={!valid || running || disabled} data-testid="remote-derived-run"><Play size={17} aria-hidden="true" />{running ? "Running on service…" : disabled ? "Delete retained job before running" : `Run ${copy.title.toLowerCase()}`}</button>
       </form>
     </section>
   );
