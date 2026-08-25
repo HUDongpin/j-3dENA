@@ -29,7 +29,7 @@ function fixture() {
     source: { repositoryHead: SOURCE_HEAD },
     package: {
       name: "j-3dena",
-      version: "0.2.0-implemented-unverified.7",
+      version: "0.2.0-implemented-unverified.8",
       buildId: SOURCE_HEAD,
     },
     tree: {
@@ -39,20 +39,20 @@ function fixture() {
       byteLength: 1,
     },
     tarball: {
-      filename: "j-3dena-0.2.0-implemented-unverified.7.tgz",
+      filename: "j-3dena-0.2.0-implemented-unverified.8.tgz",
       byteLength: tarballBytes.length,
       sha256: tarballSha256,
       integrity: sri512(tarballBytes),
     },
     npmPack: {
-      id: "j-3dena@0.2.0-implemented-unverified.7",
+      id: "j-3dena@0.2.0-implemented-unverified.8",
       name: "j-3dena",
-      version: "0.2.0-implemented-unverified.7",
+      version: "0.2.0-implemented-unverified.8",
       size: tarballBytes.length,
       unpackedSize: 1,
       shasum: createHash("sha1").update(tarballBytes).digest("hex"),
       integrity: sri512(tarballBytes),
-      filename: "j-3dena-0.2.0-implemented-unverified.7.tgz",
+      filename: "j-3dena-0.2.0-implemented-unverified.8.tgz",
       files: [{ path: "index.js", size: 1, mode: 0o644 }],
       entryCount: 1,
       bundled: [],
@@ -107,12 +107,12 @@ function fixture() {
     tarballArtifact: artifact(
       TARBALL_ARTIFACT_ID,
       manifest.tarball.sha256,
-      "j-3dena-0.2.0-implemented-unverified.7.tgz",
+      "j-3dena-0.2.0-implemented-unverified.8.tgz",
     ),
     receiptArtifact: artifact(
       RECEIPT_ARTIFACT_ID,
       manifest.receipt.sha256,
-      "j-3dena-0.2.0-implemented-unverified.7.tgz.artifact-receipt.json",
+      "j-3dena-0.2.0-implemented-unverified.8.tgz.artifact-receipt.json",
     ),
     tarballBytes,
     receiptBytes,

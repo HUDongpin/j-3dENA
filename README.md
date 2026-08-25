@@ -104,6 +104,15 @@ requires every reachable production package and dependency edge in the
 deterministic CycloneDX graph; npm's currently incomplete native SBOM is not an
 accepted substitute.
 
+The public-package portion is phase-aware. On a clean source HEAD it builds the
+facade, creates a temporary tarball and receipt outside the repository, passes
+their explicit paths to the strict verifier, and runs fresh consumer smoke. On
+a generated artifact/runtime HEAD it verifies and consumes the exact tracked
+tarball and receipt without rebuilding or overwriting their source-bound
+custody. Temporary source-stage tarball/receipt artifacts are removed when the
+gate exits; the staged package directory remains available to the subsequent
+release-security check in the same `npm run check` invocation.
+
 ## Architecture
 
 ```text

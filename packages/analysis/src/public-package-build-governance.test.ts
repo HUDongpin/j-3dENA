@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -15,6 +15,7 @@ const {
   DETERMINISTIC_SCHEMA_MODULE_QUERY,
   assertSourceSnapshotUnchanged,
   captureCleanSourceSnapshot,
+  cleanPublicPackageBuildOutputs,
   compareCodePoints,
   extractGzipTarEntry,
 } = buildGovernance;
@@ -118,6 +119,64 @@ describe("public package clean-HEAD build governance", () => {
     }
   });
 
+  it("cleans only rebuildable public-package directories and preserves historical custody", async () => {
+    const fixture = await mkdtemp(join(tmpdir(), "3dena-public-build-dist-"));
+    const analysisDirectory = join(fixture, "packages", "analysis");
+    const distributionDirectory = join(analysisDirectory, "dist");
+    const packageDirectory = join(distributionDirectory, "package");
+    const schemaRuntimeDirectory = join(distributionDirectory, "schema-runtime");
+    const historicalTarball = join(distributionDirectory, "j-3dena-0.2.0-implemented-unverified.7.tgz");
+    const historicalReceipt = `${historicalTarball}.artifact-receipt.json`;
+    const historicalCustody = `${historicalTarball}.ci-custody.json`;
+
+    try {
+      await mkdir(packageDirectory, { recursive: true });
+      await mkdir(schemaRuntimeDirectory, { recursive: true });
+      await writeFile(join(packageDirectory, "stale.js"), "stale\n", "utf8");
+      await writeFile(join(schemaRuntimeDirectory, "stale.js"), "stale\n", "utf8");
+      await writeFile(historicalTarball, "tarball\n", "utf8");
+      await writeFile(historicalReceipt, "receipt\n", "utf8");
+      await writeFile(historicalCustody, "custody\n", "utf8");
+
+      await cleanPublicPackageBuildOutputs({ analysisDirectory, distributionDirectory });
+
+      await expect(access(packageDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(access(schemaRuntimeDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(readFile(historicalTarball, "utf8")).resolves.toBe("tarball\n");
+      await expect(readFile(historicalReceipt, "utf8")).resolves.toBe("receipt\n");
+      await expect(readFile(historicalCustody, "utf8")).resolves.toBe("custody\n");
+    } finally {
+      await rm(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects unexpected or symbolic-link distribution paths before deleting bytes", async () => {
+    const fixture = await mkdtemp(join(tmpdir(), "3dena-public-build-clean-safety-"));
+    const analysisDirectory = join(fixture, "packages", "analysis");
+    const outsideDistribution = join(fixture, "outside-dist");
+    const sentinel = join(outsideDistribution, "package", "sentinel.txt");
+
+    try {
+      await mkdir(join(outsideDistribution, "package"), { recursive: true });
+      await mkdir(analysisDirectory, { recursive: true });
+      await writeFile(sentinel, "preserve\n", "utf8");
+
+      await expect(cleanPublicPackageBuildOutputs({
+        analysisDirectory,
+        distributionDirectory: outsideDistribution,
+      })).rejects.toThrow(/unexpected distribution path/u);
+
+      await symlink(outsideDistribution, join(analysisDirectory, "dist"));
+      await expect(cleanPublicPackageBuildOutputs({
+        analysisDirectory,
+        distributionDirectory: join(analysisDirectory, "dist"),
+      })).rejects.toThrow(/symbolic-link distribution path/u);
+      await expect(readFile(sentinel, "utf8")).resolves.toBe("preserve\n");
+    } finally {
+      await rm(fixture, { recursive: true, force: true });
+    }
+  });
+
   it("uses a locale-independent Unicode code-point order and fixed module query", () => {
     expect(["\u{10000}", "\uE000", "a"].sort(compareCodePoints)).toEqual(["a", "\uE000", "\u{10000}"]);
     expect(DETERMINISTIC_SCHEMA_MODULE_QUERY).toBe("?schemas=public-package-contract-v1");
@@ -141,5 +200,7 @@ describe("public package clean-HEAD build governance", () => {
     expect(source).not.toContain("node_modules/jena-js/PROVENANCE.md");
     expect(source).toContain("assertSourceSnapshotUnchanged");
     expect(source).toContain("DETERMINISTIC_SCHEMA_MODULE_QUERY");
+    expect(source).toContain('allowedDirtyPaths: ["packages/analysis/dist/package"]');
+    expect(source).not.toContain('allowedDirtyPaths: ["packages/analysis/dist"]');
   });
 });
