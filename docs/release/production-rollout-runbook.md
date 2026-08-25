@@ -13,6 +13,9 @@ Stop before any external mutation unless all of the following are true:
 2. `npm run check`, the protected scientific/strict-ledger gates, the reviewed
    exact single-instance `jena-js@0.7.0-ona.0` custody gate, and all release
    security jobs pass for that commit.
+   The local public-package gate inside `npm run check` must report the current
+   Git phase: source commits build and smoke a temporary artifact, while
+   generated commits verify the tracked custody bytes without rebuilding them.
 3. The public analysis tarball, complete lock-graph SBOM, schema bundle, exact
    migration, Vercel build, and Fly OCI digest are hashed into one candidate
    `BuildApprovalV1`; an independent release reviewer has signed it.

@@ -17,6 +17,7 @@ import {
   DETERMINISTIC_SCHEMA_MODULE_QUERY,
   assertSourceSnapshotUnchanged,
   captureCleanSourceSnapshot,
+  cleanPublicPackageBuildOutputs,
   compareCodePoints,
   extractGzipTarEntry,
 } from "./public-package-build-governance.mjs";
@@ -45,12 +46,6 @@ function sha256(bytes) {
 
 function sri512(bytes) {
   return `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
-}
-
-function assertSafeDistributionPath() {
-  if (dirname(distributionDirectory) !== analysisDirectory || distributionDirectory.split(sep).at(-1) !== "dist") {
-    fail("refusing to clean an unexpected distribution path");
-  }
 }
 
 async function walkFiles(directory) {
@@ -102,8 +97,7 @@ const sourceIdentity = Object.freeze({
   generatedAt: sourceSnapshot.generatedAt,
 });
 
-assertSafeDistributionPath();
-await rm(distributionDirectory, { recursive: true, force: true });
+await cleanPublicPackageBuildOutputs({ analysisDirectory, distributionDirectory });
 await mkdir(packageDirectory, { recursive: true });
 
 const sourceManifest = JSON.parse(await readFile(resolve(analysisDirectory, "package.json"), "utf8"));
@@ -338,6 +332,6 @@ const verification = await verifyPublicPackage(packageDirectory, {
 });
 assertSourceSnapshotUnchanged(sourceSnapshot, {
   repositoryRoot,
-  allowedDirtyPaths: ["packages/analysis/dist"],
+  allowedDirtyPaths: ["packages/analysis/dist/package"],
 });
 process.stdout.write(`${JSON.stringify({ packageDirectory, version: publicManifest.version, ...verification }, null, 2)}\n`);

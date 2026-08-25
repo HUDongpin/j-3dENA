@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { lstat, rm } from "node:fs/promises";
+import { dirname, resolve, sep } from "node:path";
 import { gunzipSync } from "node:zlib";
 
 export const DETERMINISTIC_SCHEMA_MODULE_QUERY = "?schemas=public-package-contract-v1";
@@ -27,6 +29,38 @@ function readGit(repositoryRoot, args) {
 
 function hasOwn(environment, name) {
   return Object.prototype.hasOwnProperty.call(environment, name);
+}
+
+export async function cleanPublicPackageBuildOutputs({ analysisDirectory, distributionDirectory }) {
+  const expectedDistributionDirectory = resolve(analysisDirectory, "dist");
+  const resolvedDistributionDirectory = resolve(distributionDirectory);
+  if (
+    resolvedDistributionDirectory !== expectedDistributionDirectory
+    || dirname(resolvedDistributionDirectory) !== resolve(analysisDirectory)
+    || resolvedDistributionDirectory.split(sep).at(-1) !== "dist"
+  ) {
+    fail("refusing to clean an unexpected distribution path");
+  }
+
+  try {
+    const distribution = await lstat(resolvedDistributionDirectory);
+    if (!distribution.isDirectory() || distribution.isSymbolicLink()) {
+      fail("refusing to clean a non-directory or symbolic-link distribution path");
+    }
+  } catch (error) {
+    if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error;
+  }
+
+  for (const directoryName of ["package", "schema-runtime"]) {
+    const outputDirectory = resolve(resolvedDistributionDirectory, directoryName);
+    if (
+      dirname(outputDirectory) !== resolvedDistributionDirectory
+      || outputDirectory.split(sep).at(-1) !== directoryName
+    ) {
+      fail(`refusing to clean an unexpected ${directoryName} path`);
+    }
+    await rm(outputDirectory, { recursive: true, force: true });
+  }
 }
 
 export function captureCleanSourceSnapshot({ repositoryRoot, environment = process.env }) {
