@@ -162,7 +162,11 @@ jobs:
   public-package-producer:
     name: Deterministic public package producer
     needs: [checks, public-package-head]
-    if: needs.public-package-head.outputs.kind == 'source'
+    if: >-
+      always() &&
+      needs.checks.result == 'success' &&
+      needs.public-package-head.result == 'success' &&
+      needs.public-package-head.outputs.kind == 'source'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     outputs:
@@ -257,6 +261,9 @@ jobs:
   public-package-consumer:
     name: Independent public package consumer
     needs: public-package-producer
+    if: >-
+      always() &&
+      needs.public-package-producer.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -451,6 +458,9 @@ jobs:
   browser:
     name: Chromium, Firefox, WebKit, and accessibility
     needs: checks
+    if: >-
+      always() &&
+      needs.checks.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

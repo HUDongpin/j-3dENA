@@ -13,6 +13,7 @@ describe("public package CI source and artifact governance", () => {
     const producer = workflow.match(/  public-package-producer:[\s\S]*?(?=\n  public-package-consumer:)/u)?.[0] ?? "";
     const consumer = workflow.match(/  public-package-consumer:[\s\S]*?(?=\n  [a-z][a-z-]+:|$)/u)?.[0] ?? "";
     const generatedCustody = workflow.match(/  public-package-generated-custody:[\s\S]*?(?=\n  [a-z][a-z-]+:|$)/u)?.[0] ?? "";
+    const browser = workflow.match(/  browser:[\s\S]*?(?=\n  [a-z][a-z-]+:|$)/u)?.[0] ?? "";
     expect(classifier).toContain("github.event.pull_request.head.sha || github.sha");
     expect(classifier).toContain("fetch-depth: 0");
     expect(classifier).toContain("public-package-head-governance.mjs");
@@ -26,7 +27,10 @@ describe("public package CI source and artifact governance", () => {
     expect(checks).toMatch(/if: needs\.public-package-head\.outputs\.kind == 'generated'[\s\S]*?public-package-head-governance\.mjs/u);
     expect(checks).toMatch(/if: needs\.public-package-head\.outputs\.kind == 'source'[\s\S]*?npm run build:public/u);
     expect(producer).toContain("needs: [checks, public-package-head]");
-    expect(producer).toContain("if: needs.public-package-head.outputs.kind == 'source'");
+    expect(producer).toContain("always() &&");
+    expect(producer).toContain("needs.checks.result == 'success'");
+    expect(producer).toContain("needs.public-package-head.result == 'success'");
+    expect(producer).toContain("needs.public-package-head.outputs.kind == 'source'");
     expect(producer).toContain("ref: ${{ needs.public-package-head.outputs.source-head }}");
     expect(producer).toContain("git symbolic-ref -q HEAD");
     expect(producer).toContain('test "$GITHUB_RUN_ATTEMPT" = "1"');
@@ -46,6 +50,8 @@ describe("public package CI source and artifact governance", () => {
     expect(consumer).toContain("run-id: ${{ github.run_id }}");
     expect(consumer.match(/skip-decompress: true/gu)).toHaveLength(2);
     expect(consumer.match(/digest-mismatch: error/gu)).toHaveLength(2);
+    expect(consumer).toContain("always() &&");
+    expect(consumer).toContain("needs.public-package-producer.result == 'success'");
     expect(generatedCustody).toContain("needs: public-package-head");
     expect(generatedCustody).not.toContain("needs: [checks");
     expect(generatedCustody).toContain("needs.public-package-head.outputs.kind == 'generated'");
@@ -61,5 +67,8 @@ describe("public package CI source and artifact governance", () => {
     expect(generatedCustody.match(/skip-decompress: true/gu)).toHaveLength(2);
     expect(generatedCustody.match(/digest-mismatch: error/gu)).toHaveLength(2);
     expect(generatedCustody).toContain("cmp --silent");
+    expect(browser).toContain("needs: checks");
+    expect(browser).toContain("always() &&");
+    expect(browser).toContain("needs.checks.result == 'success'");
   });
 });
