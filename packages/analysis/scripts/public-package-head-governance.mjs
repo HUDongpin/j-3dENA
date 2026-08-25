@@ -27,8 +27,8 @@ export const PUBLIC_PACKAGE_RUNTIME_INPUT_PATH =
   `packages/compute-service-persistent/deploy/runtime-build-input.${PUBLIC_PACKAGE_RELEASE_VERSION}.json`;
 
 const previousRuntimeInputPath =
-  "packages/compute-service-persistent/deploy/runtime-build-input.0.2.0-implemented-unverified.7.json";
-const previousRuntimeCandidateDirectory = "output/compute-service-candidate-8910e41";
+  "packages/compute-service-persistent/deploy/runtime-build-input.0.2.0-implemented-unverified.8.json";
+const previousRuntimeCandidateDirectory = "output/compute-service-candidate-d8512db";
 const runtimeCandidateFiles = Object.freeze([
   "build-manifest.json",
   "compute-runtime.mjs",
