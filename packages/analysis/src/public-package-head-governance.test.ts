@@ -5,6 +5,7 @@ import * as headGovernance from "../scripts/public-package-head-governance.mjs";
 
 const {
   PUBLIC_PACKAGE_RECEIPT_PATH,
+  PUBLIC_PACKAGE_CI_CUSTODY_PATH,
   PUBLIC_PACKAGE_RUNTIME_INPUT_PATH,
   PUBLIC_PACKAGE_TARBALL_PATH,
   classifyPublicPackageHeadPaths,
@@ -42,13 +43,23 @@ describe("public package S/A/C HEAD governance", () => {
       "packages/analysis/dist/package/obsolete.txt",
       PUBLIC_PACKAGE_TARBALL_PATH,
       PUBLIC_PACKAGE_RECEIPT_PATH,
+      PUBLIC_PACKAGE_CI_CUSTODY_PATH,
     ])).toEqual({ kind: "generated", stage: "artifact" });
 
     expect(() => classify([
       "packages/analysis/dist/package/unreceipted.js",
       PUBLIC_PACKAGE_TARBALL_PATH,
       PUBLIC_PACKAGE_RECEIPT_PATH,
+      PUBLIC_PACKAGE_CI_CUSTODY_PATH,
     ])).toThrow(/not an exact allowed generated path/u);
+  });
+
+  it("rejects a self-consistent artifact A that omits its trusted CI custody tuple", () => {
+    expect(() => classify([
+      "packages/analysis/dist/package/index.js",
+      PUBLIC_PACKAGE_TARBALL_PATH,
+      PUBLIC_PACKAGE_RECEIPT_PATH,
+    ])).toThrow(/custody/u);
   });
 
   it("rejects source/generated mixtures and unknown protected generated paths", () => {
@@ -151,5 +162,6 @@ describe("public package S/A/C HEAD governance", () => {
   it("keeps source S independent from the workflow merge SHA", () => {
     expect(sourceHead).toHaveLength(40);
     expect(PUBLIC_PACKAGE_RECEIPT_PATH).toContain("implemented-unverified.7");
+    expect(PUBLIC_PACKAGE_CI_CUSTODY_PATH).toContain("implemented-unverified.7");
   });
 });

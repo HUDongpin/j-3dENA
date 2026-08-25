@@ -8,6 +8,9 @@ import {
   validatePublicPackageArtifactReceiptV2,
   verifyPublicPackageArtifactReceiptV2,
 } from "./public-package-artifact-receipt.mjs";
+import {
+  verifyLocalPublicPackageCiCustodyV1,
+} from "./public-package-ci-custody.mjs";
 import { PUBLIC_PACKAGE_RELEASE_VERSION } from "./public-package-release-contract.mjs";
 import { verifyPublicPackage } from "./verify-public-package.mjs";
 
@@ -18,6 +21,8 @@ const packageDirectory = resolve(repositoryRoot, packageDirectoryPath);
 const artifactFilename = `j-3dena-${PUBLIC_PACKAGE_RELEASE_VERSION}.tgz`;
 export const PUBLIC_PACKAGE_TARBALL_PATH = `packages/analysis/dist/${artifactFilename}`;
 export const PUBLIC_PACKAGE_RECEIPT_PATH = `${PUBLIC_PACKAGE_TARBALL_PATH}.artifact-receipt.json`;
+export const PUBLIC_PACKAGE_CI_CUSTODY_PATH =
+  `${PUBLIC_PACKAGE_TARBALL_PATH}.ci-custody.json`;
 export const PUBLIC_PACKAGE_RUNTIME_INPUT_PATH =
   `packages/compute-service-persistent/deploy/runtime-build-input.${PUBLIC_PACKAGE_RELEASE_VERSION}.json`;
 
@@ -91,6 +96,7 @@ function exactPathSets({ currentPackageFiles, previousPackageFiles, runtimeCandi
   const artifact = new Set([
     PUBLIC_PACKAGE_TARBALL_PATH,
     PUBLIC_PACKAGE_RECEIPT_PATH,
+    PUBLIC_PACKAGE_CI_CUSTODY_PATH,
     ...packagePaths(currentPackageFiles),
     ...packagePaths(previousPackageFiles),
   ]);
@@ -182,9 +188,10 @@ export function classifyPublicPackageHeadPaths({
     if (
       !changed.has(PUBLIC_PACKAGE_TARBALL_PATH)
       || !changed.has(PUBLIC_PACKAGE_RECEIPT_PATH)
+      || !changed.has(PUBLIC_PACKAGE_CI_CUSTODY_PATH)
       || !changedPaths.some((path) => path.startsWith(`${packageDirectoryPath}/`))
     ) {
-      fail("artifact commit must add the exact package tree, tarball, and receipt together");
+      fail("artifact commit must add the exact package tree, tarball, receipt, and CI custody together");
     }
   } else if (stage === "runtimeInput") {
     if (!changed.has(previousRuntimeInputPath) || !changed.has(PUBLIC_PACKAGE_RUNTIME_INPUT_PATH)) {
@@ -327,6 +334,9 @@ async function verifyGeneratedHead({ head, parent, stage, receipt }) {
   if (isTracked(PUBLIC_PACKAGE_RECEIPT_PATH, sourceHead)) {
     fail("receipt source S already contains the v7 artifact receipt");
   }
+  if (isTracked(PUBLIC_PACKAGE_CI_CUSTODY_PATH, sourceHead)) {
+    fail("receipt source S already contains the v7 CI custody manifest");
+  }
 
   const currentPackageFiles = receipt.npmPack.files.map(({ path }) => path);
   const trackedPackagePaths = gitPaths(["ls-files", "-z", "--", `${packageDirectoryPath}/`]);
@@ -340,6 +350,7 @@ async function verifyGeneratedHead({ head, parent, stage, receipt }) {
   assertTrackedRegularFiles([
     PUBLIC_PACKAGE_TARBALL_PATH,
     PUBLIC_PACKAGE_RECEIPT_PATH,
+    PUBLIC_PACKAGE_CI_CUSTODY_PATH,
     ...expectedPackagePaths,
   ]);
 
@@ -371,6 +382,20 @@ async function verifyGeneratedHead({ head, parent, stage, receipt }) {
     packageDirectory,
     tarballPath: resolve(repositoryRoot, PUBLIC_PACKAGE_TARBALL_PATH),
   });
+  const [custody, tarballBytes, receiptBytes] = await Promise.all([
+    readFile(resolve(repositoryRoot, PUBLIC_PACKAGE_CI_CUSTODY_PATH), "utf8")
+      .then((text) => JSON.parse(text)),
+    readFile(resolve(repositoryRoot, PUBLIC_PACKAGE_TARBALL_PATH)),
+    readFile(resolve(repositoryRoot, PUBLIC_PACKAGE_RECEIPT_PATH)),
+  ]);
+  const custodyVerification = await verifyLocalPublicPackageCiCustodyV1({
+    manifest: custody,
+    tarballBytes,
+    receiptBytes,
+  });
+  if (custodyVerification.sourceHead !== sourceHead) {
+    fail("CI custody source differs from receipt source S");
+  }
   await verifyPublicPackage(packageDirectory, { artifactReceipt: receipt, expectedSourceHead: sourceHead });
 
   if (stage === "artifact") {
