@@ -231,7 +231,7 @@ jobs:
             --expected "$RUNNER_TEMP/public-package-first" \
             --actual packages/analysis/dist/package
           npm run artifact:public --workspace @3dena/analysis -- \
-            --package packages/analysis/dist/package \
+            --package dist/package \
             --output-directory "$RUNNER_TEMP/public-package-artifact"
 
       - name: Upload raw npm tarball

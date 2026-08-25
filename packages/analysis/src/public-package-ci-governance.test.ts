@@ -36,6 +36,8 @@ describe("public package CI source and artifact governance", () => {
     expect(producer).toContain('test "$GITHUB_RUN_ATTEMPT" = "1"');
     expect(producer).toContain("start a new workflow run");
     expect(producer).toContain("compare-public-package-trees.mjs");
+    expect(producer).toContain("--package dist/package");
+    expect(producer).not.toContain("--package packages/analysis/dist/package");
     expect(producer.match(/archive: false/gu)).toHaveLength(2);
     expect(producer.match(/if-no-files-found: error/gu)).toHaveLength(2);
     expect(producer.match(/overwrite: false/gu)).toHaveLength(2);
