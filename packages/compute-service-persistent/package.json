@@ -18,7 +18,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build": "tsc --noEmit",
-    "build:runtime": "node ./scripts/build-runtime.mjs"
+    "build:runtime": "node ./scripts/build-runtime.mjs",
+    "capacity:operator": "node ./deploy/capacity-operator.mjs"
   },
   "dependencies": {
     "@3dena/analysis": "0.2.0",

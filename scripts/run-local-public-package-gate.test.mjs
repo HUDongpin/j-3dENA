@@ -20,7 +20,7 @@ test("phase-aware plan rebuilds source packages but never generated custody byte
   assert.equal(existsSync(gateUrl), true, "phase-aware gate module must exist");
   const { createLocalPublicPackagePlan } = await import(gateUrl.href);
   const inputs = {
-    releaseVersion: "0.2.0-implemented-unverified.10",
+    releaseVersion: "0.2.0-implemented-unverified.11",
     packageDirectory: "packages/analysis/dist/package",
     temporaryArtifactDirectory: "/private/tmp/3dena-source-artifact",
     trackedArtifactDirectory: "packages/analysis/dist",
@@ -30,19 +30,19 @@ test("phase-aware plan rebuilds source packages but never generated custody byte
   assert.deepEqual(source.map(({ action }) => action), ["build", "artifact", "verify", "smoke"]);
   assert.deepEqual(source[2].args, [
     "--package", "packages/analysis/dist/package",
-    "--tarball", "/private/tmp/3dena-source-artifact/j-3dena-0.2.0-implemented-unverified.10.tgz",
-    "--receipt", "/private/tmp/3dena-source-artifact/j-3dena-0.2.0-implemented-unverified.10.tgz.artifact-receipt.json",
+    "--tarball", "/private/tmp/3dena-source-artifact/j-3dena-0.2.0-implemented-unverified.11.tgz",
+    "--receipt", "/private/tmp/3dena-source-artifact/j-3dena-0.2.0-implemented-unverified.11.tgz.artifact-receipt.json",
   ]);
   assert.deepEqual(source[3].args, [
-    "--tarball", "/private/tmp/3dena-source-artifact/j-3dena-0.2.0-implemented-unverified.10.tgz",
-    "--receipt", "/private/tmp/3dena-source-artifact/j-3dena-0.2.0-implemented-unverified.10.tgz.artifact-receipt.json",
+    "--tarball", "/private/tmp/3dena-source-artifact/j-3dena-0.2.0-implemented-unverified.11.tgz",
+    "--receipt", "/private/tmp/3dena-source-artifact/j-3dena-0.2.0-implemented-unverified.11.tgz.artifact-receipt.json",
   ]);
 
   const generated = createLocalPublicPackagePlan({ ...inputs, headKind: "generated" });
   assert.deepEqual(generated.map(({ action }) => action), ["verify", "smoke"]);
   assert.deepEqual(generated[0].args, [
     "--package", "packages/analysis/dist/package",
-    "--tarball", "packages/analysis/dist/j-3dena-0.2.0-implemented-unverified.10.tgz",
-    "--receipt", "packages/analysis/dist/j-3dena-0.2.0-implemented-unverified.10.tgz.artifact-receipt.json",
+    "--tarball", "packages/analysis/dist/j-3dena-0.2.0-implemented-unverified.11.tgz",
+    "--receipt", "packages/analysis/dist/j-3dena-0.2.0-implemented-unverified.11.tgz.artifact-receipt.json",
   ]);
 });

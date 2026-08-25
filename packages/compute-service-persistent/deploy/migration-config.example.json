@@ -2,24 +2,29 @@
   "databaseUrlEnv": "NEON_DIRECT_DATABASE_URL",
   "migrations": [
     {
-      "path": "../migrations/0001_persistent_compute.sql",
+      "path": "packages/compute-service-persistent/migrations/0001_persistent_compute.sql",
       "sha256": "2ada0828852d69dfebfaf3da96d41ba69dd91b522117fd868fad1665239e568e",
       "version": "0001-persistent-compute"
     },
     {
-      "path": "../migrations/0002_persistent_control_plane.sql",
+      "path": "packages/compute-service-persistent/migrations/0002_persistent_control_plane.sql",
       "sha256": "3df697fed6ca0ad6e4106d2f1c649b877e16a64ea3228ef23aea8d5540a30a21",
       "version": "0002-persistent-control-plane"
     },
     {
-      "path": "../migrations/0003_build_approval_v3.sql",
+      "path": "packages/compute-service-persistent/migrations/0003_build_approval_v3.sql",
       "sha256": "104cdcb19e043d8bd65d717dc19fb0285a45627260278f1bee8e4a5197218326",
       "version": "0003-build-approval-v3"
     },
     {
-      "path": "../migrations/0004_scientific_result_generations.sql",
+      "path": "packages/compute-service-persistent/migrations/0004_scientific_result_generations.sql",
       "sha256": "ff61b7f367f7e03e790725fb766f1e29c4b89d03fe586901f866c3bbebde8ce7",
       "version": "0004-scientific-result-generations"
+    },
+    {
+      "path": "packages/compute-service-persistent/migrations/0005_build_approval_v4.sql",
+      "sha256": "41baae6414181e90d8d3f8510aa4e807f1d76fb879de394498a5780f840195fa",
+      "version": "0005-build-approval-v4"
     }
   ]
 }

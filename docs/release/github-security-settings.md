@@ -19,7 +19,8 @@ repository settings. Before a release reviewer may issue the `secret-scan` and
 - the immutable workflow action-pin gate passes for the release commit.
 
 The owner receipt must bind the repository identity, settings snapshot hash,
-release Git SHA, reviewer, UTC time, and the same `BuildApprovalV1` manifest hash.
+release Git SHA, reviewer, UTC time, and the same signed
+`3dena.build-approval.v4` manifest hash.
 Screenshots alone do not satisfy the setting or scan receipts. Until a remote is
 authorized and these controls are observed, push protection remains an explicit
 external release blocker.

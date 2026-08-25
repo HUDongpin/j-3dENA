@@ -156,7 +156,7 @@ describe("public package clean-HEAD build governance", () => {
     const distributionDirectory = join(analysisDirectory, "dist");
     const packageDirectory = join(distributionDirectory, "package");
     const schemaRuntimeDirectory = join(distributionDirectory, "schema-runtime");
-    const historicalTarball = join(distributionDirectory, "j-3dena-0.2.0-implemented-unverified.9.tgz");
+    const historicalTarball = join(distributionDirectory, "j-3dena-0.2.0-implemented-unverified.10.tgz");
     const historicalReceipt = `${historicalTarball}.artifact-receipt.json`;
     const historicalCustody = `${historicalTarball}.ci-custody.json`;
 

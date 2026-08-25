@@ -46,7 +46,7 @@ The legal reviewer must be outside implementation roles. The immutable receipt
 must bind the release Git SHA, complete lockfile, SBOM, notice bundle, public
 package tarball, jENA successor, Web deployment, Fly image digest, migration,
 data-processor/region decisions, source-availability URL or offer, reviewer,
-decision, UTC time, and the active signed `BuildApprovalV1` manifest hash.
+decision, UTC time, and the active signed `3dena.build-approval.v4` manifest hash.
 
 Any unresolved dependency, missing source, unapproved rENA-derived material,
 processor/region ambiguity, private-storage beta concern, or retention mismatch

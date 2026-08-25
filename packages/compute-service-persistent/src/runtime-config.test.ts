@@ -1,3 +1,4 @@
+import { createHash, generateKeyPairSync } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -25,6 +26,7 @@ function manifest(): ComputeRuntimeBuildManifestV1 {
     { version: "0002-persistent-control-plane", sha256: "b".repeat(64) },
     { version: "0003-build-approval-v3", sha256: "c".repeat(64) },
     { version: "0004-scientific-result-generations", sha256: "d".repeat(64) },
+    { version: "0005-build-approval-v4", sha256: "e".repeat(64) },
   ];
   return {
     schemaVersion: "3dena.compute-runtime-build-manifest.v4",
@@ -52,12 +54,25 @@ describe("compute runtime V4 configuration", () => {
     try {
       const manifestPath = join(directory, "build-manifest.json");
       await writeFile(manifestPath, JSON.stringify(manifest()));
+      const { publicKey } = generateKeyPairSync("ed25519");
+      const publicKeysPath = join(directory, "public-keys.json");
+      const publicKeyRegistry = `${JSON.stringify({
+        "release-key-runtime-v4": {
+          algorithm: "Ed25519",
+          allowedEnvironments: ["production"],
+          publicKeyPem: String(publicKey.export({ format: "pem", type: "spki" })),
+          reviewerId: "reviewer-runtime-v4",
+          role: "independent-reviewer",
+        },
+      })}\n`;
+      await writeFile(publicKeysPath, publicKeyRegistry);
       const environment: NodeJS.ProcessEnv = {
         BUILD_MANIFEST_PATH: manifestPath,
         NEON_POOLED_DATABASE_URL: "postgresql://database.example/compute",
         DEPLOYMENT_ENV: "production",
         ALLOWED_ORIGINS_JSON: JSON.stringify(["https://app.example"]),
         BUILD_APPROVAL_MANIFEST_SHA256: "e".repeat(64),
+        BUILD_APPROVAL_MATERIALIZATION_MANIFEST_SHA256: "4".repeat(64),
         RELEASE_ID: "release-runtime-v3",
         GIT_COMMIT: "f".repeat(40),
         FLY_IMAGE_DIGEST: `sha256:${"1".repeat(64)}`,
@@ -69,7 +84,7 @@ describe("compute runtime V4 configuration", () => {
         CAPABILITY_HMAC_SECRET: "fixture-capability-secret",
         LONGITUDINAL_SERVICE_TOKEN_SHA256: "2".repeat(64),
         PUBLIC_COMPUTE_BASE_URL: "https://compute.example/",
-        BUILD_APPROVAL_PUBLIC_KEYS_PATH: "/app/public-keys.json",
+        BUILD_APPROVAL_PUBLIC_KEYS_PATH: publicKeysPath,
         SCIENTIFIC_WORKER_ENTRY_PATH: "/app/scientific-worker-entry.mjs",
         PORT: "8080",
         FLY_MACHINE_ID: "machine-runtime-v3",
@@ -83,12 +98,48 @@ describe("compute runtime V4 configuration", () => {
       expect(loaded.publicBaseUrl).toBe("https://compute.example");
       expect(loaded.approvedLongitudinalBuild).toEqual(scientificBuild);
       expect(loaded.expectedBuild).toMatchObject(scientificBuild);
+      expect(loaded.expectedBuild.publicKeyRegistrySha256).toBe(
+        createHash("sha256").update(publicKeyRegistry).digest("hex"),
+      );
+      expect(loaded.expectedBuild.materializationManifestSha256).toBe("4".repeat(64));
+      // compute-build-info.v1 remains exact: approvalManifestSha256 addresses the
+      // signed V4 candidate which directly contains materializationManifestSha256.
+      expect(loaded.publicBuildIdentity.approvalManifestSha256).toBe("e".repeat(64));
+      expect(loaded.publicBuildIdentity).not.toHaveProperty("materializationManifestSha256");
       expect(loaded.longitudinalServiceTokenSha256).toBe("2".repeat(64));
+
+      await expect(loadComputeRuntimeConfiguration("api", {
+        ...environment,
+        BUILD_APPROVAL_MATERIALIZATION_MANIFEST_SHA256: undefined,
+      })).rejects.toThrow(/BUILD_APPROVAL_MATERIALIZATION_MANIFEST_SHA256/iu);
 
       await expect(loadComputeRuntimeConfiguration("api", {
         ...environment,
         PUBLIC_COMPUTE_BASE_URL: "https://compute.example/compute",
       })).rejects.toThrow("root HTTPS origin");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a public-key registry larger than 128 KiB before readiness identity is built", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "3dena-runtime-config-registry-limit-"));
+    try {
+      const manifestPath = join(directory, "build-manifest.json");
+      const publicKeysPath = join(directory, "public-keys.json");
+      await writeFile(manifestPath, JSON.stringify(manifest()));
+      await writeFile(publicKeysPath, Buffer.alloc((128 * 1024) + 1, 0x20));
+      await expect(loadComputeRuntimeConfiguration("api", {
+        BUILD_MANIFEST_PATH: manifestPath,
+        BUILD_APPROVAL_PUBLIC_KEYS_PATH: publicKeysPath,
+        NEON_POOLED_DATABASE_URL: "postgresql://database.example/compute",
+        DEPLOYMENT_ENV: "production",
+        ALLOWED_ORIGINS_JSON: JSON.stringify(["https://app.example"]),
+        BUILD_APPROVAL_MANIFEST_SHA256: "e".repeat(64),
+        BUILD_APPROVAL_MATERIALIZATION_MANIFEST_SHA256: "4".repeat(64),
+        RELEASE_ID: "release-runtime-v4-limit",
+        GIT_COMMIT: "f".repeat(40),
+      })).rejects.toThrow(/128 KiB|public-key registry/iu);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -138,13 +189,26 @@ describe("compute runtime V4 configuration", () => {
     const directory = await mkdtemp(join(tmpdir(), "3dena-runtime-config-source-"));
     try {
       const manifestPath = join(directory, "build-manifest.json");
+      const publicKeysPath = join(directory, "public-keys.json");
+      const { publicKey } = generateKeyPairSync("ed25519");
       await writeFile(manifestPath, JSON.stringify(manifest()));
+      await writeFile(publicKeysPath, `${JSON.stringify({
+        "release-key-runtime-v4": {
+          algorithm: "Ed25519",
+          allowedEnvironments: ["production"],
+          publicKeyPem: String(publicKey.export({ format: "pem", type: "spki" })),
+          reviewerId: "reviewer-runtime-v4",
+          role: "independent-reviewer",
+        },
+      })}\n`);
       await expect(loadComputeRuntimeConfiguration("api", {
         BUILD_MANIFEST_PATH: manifestPath,
+        BUILD_APPROVAL_PUBLIC_KEYS_PATH: publicKeysPath,
         NEON_POOLED_DATABASE_URL: "postgresql://database.example/compute",
         DEPLOYMENT_ENV: "production",
         ALLOWED_ORIGINS_JSON: JSON.stringify(["https://app.example"]),
         BUILD_APPROVAL_MANIFEST_SHA256: "e".repeat(64),
+        BUILD_APPROVAL_MATERIALIZATION_MANIFEST_SHA256: "4".repeat(64),
         RELEASE_ID: "release-runtime-v4",
         GIT_COMMIT: "0".repeat(40),
       })).rejects.toThrow(/source commit/i);

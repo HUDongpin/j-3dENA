@@ -11,6 +11,10 @@ on:
         description: Full lowercase Git SHA used to build the image
         required: true
         type: string
+      expected_public_key_registry_sha256:
+        description: SHA-256 from the independently verified public-key materialization manifest
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -35,6 +39,7 @@ jobs:
         env:
           IMAGE_REF: ${{ inputs.image_ref }}
           SOURCE_HEAD_COMMIT: ${{ inputs.source_head_commit }}
+          EXPECTED_PUBLIC_KEY_REGISTRY_SHA256: ${{ inputs.expected_public_key_registry_sha256 }}
         shell: bash
         run: |
           set -euo pipefail
@@ -44,6 +49,10 @@ jobs:
           fi
           if [[ ! "$SOURCE_HEAD_COMMIT" =~ ^[a-f0-9]{40}$ ]]; then
             echo "source_head_commit must be a full lowercase Git SHA" >&2
+            exit 64
+          fi
+          if [[ ! "$EXPECTED_PUBLIC_KEY_REGISTRY_SHA256" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "expected_public_key_registry_sha256 must be 64 lowercase hex" >&2
             exit 64
           fi
           CHECKED_OUT_COMMIT="$(git rev-parse HEAD)"
@@ -71,6 +80,35 @@ jobs:
           docker pull "$IMAGE_REF"
           docker image inspect "$IMAGE_REF" > output/container-scan/docker-inspect.json
 
+      - name: Extract and verify the in-image public-key registry
+        env:
+          IMAGE_REF: ${{ inputs.image_ref }}
+          EXPECTED_PUBLIC_KEY_REGISTRY_SHA256: ${{ inputs.expected_public_key_registry_sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PUBLIC_KEYS_SHA256="$(docker image inspect \
+            --format '{{ index .Config.Labels "org.3dena.build-approval-public-keys.sha256" }}' \
+            "$IMAGE_REF")"
+          if [[ ! "$PUBLIC_KEYS_SHA256" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "image lacks a valid public-key registry SHA-256 label" >&2
+            exit 65
+          fi
+          if [[ "$PUBLIC_KEYS_SHA256" != "$EXPECTED_PUBLIC_KEY_REGISTRY_SHA256" ]]; then
+            echo "image public-key registry differs from the independently expected SHA-256" >&2
+            exit 66
+          fi
+          CONTAINER_ID="$(docker create "$IMAGE_REF")"
+          cleanup() { docker rm -f "$CONTAINER_ID" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker cp \
+            "$CONTAINER_ID:/app/build-approval-public-keys.json" \
+            output/container-scan/build-approval-public-keys.json
+          node packages/compute-service-persistent/deploy/verify-image-public-key-registry.mjs \
+            output/container-scan/build-approval-public-keys.json \
+            "$PUBLIC_KEYS_SHA256" \
+            > output/container-scan/public-key-registry-verification.json
+
       - name: Scan exact image for vulnerabilities, misconfiguration, and secrets
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
@@ -78,8 +116,8 @@ jobs:
           scan-type: image
           image-ref: ${{ inputs.image_ref }}
           scanners: vuln,misconfig,secret
-          format: sarif
-          output: output/container-scan/trivy-exact-image.sarif
+          format: json
+          output: output/container-scan/trivy-exact-image.json
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: 1
@@ -89,12 +127,16 @@ jobs:
         env:
           IMAGE_REF: ${{ inputs.image_ref }}
           SOURCE_HEAD_COMMIT: ${{ inputs.source_head_commit }}
+          EXPECTED_PUBLIC_KEY_REGISTRY_SHA256: ${{ inputs.expected_public_key_registry_sha256 }}
         shell: bash
         run: |
           set -euo pipefail
           node scripts/verify-container-scan-evidence.mjs \
-            --sarif output/container-scan/trivy-exact-image.sarif \
+            --trivy-json output/container-scan/trivy-exact-image.json \
             --inspect output/container-scan/docker-inspect.json \
+            --public-key-registry output/container-scan/build-approval-public-keys.json \
+            --public-key-verification output/container-scan/public-key-registry-verification.json \
+            --expected-public-key-registry-sha256 "$EXPECTED_PUBLIC_KEY_REGISTRY_SHA256" \
             --output output/container-scan/receipt.json \
             --image-ref "$IMAGE_REF" \
             --repository "$GITHUB_REPOSITORY" \

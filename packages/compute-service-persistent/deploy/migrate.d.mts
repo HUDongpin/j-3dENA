@@ -16,12 +16,16 @@ export interface MigrationClientV1 {
 
 export type MigrationConnectorV1 = (connectionString: string) => Promise<MigrationClientV1>;
 
+export const MIGRATION_ADVISORY_LOCK_KEY: string;
+
 export function migrationManifestSha256(
   migrations: readonly Pick<MigrationEntryConfigV2, "version" | "sha256">[],
 ): string;
 
 export function loadMigrationConfig(
+  sourceRoot: string,
   path: string,
+  expectedConfigSha256: string,
   environment?: Readonly<Record<string, string | undefined>>,
 ): Promise<Readonly<{
   config: MigrationConfigV2;
@@ -30,5 +34,15 @@ export function loadMigrationConfig(
   connectionString: string;
 }>>;
 
-export function verifyMigration(path: string, connect?: MigrationConnectorV1): Promise<void>;
-export function applyMigration(path: string, connect?: MigrationConnectorV1): Promise<void>;
+export function verifyMigration(
+  sourceRoot: string,
+  path: string,
+  expectedConfigSha256: string,
+  connect?: MigrationConnectorV1,
+): Promise<void>;
+export function applyMigration(
+  sourceRoot: string,
+  path: string,
+  expectedConfigSha256: string,
+  connect?: MigrationConnectorV1,
+): Promise<void>;

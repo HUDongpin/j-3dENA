@@ -36,11 +36,16 @@ describe("compute container boundary", () => {
     expect(dockerfile).not.toContain("ARG RUNTIME_BUNDLE_DIR=");
     expect(dockerfile).toContain("ARG EXPECTED_SDK_VERSION");
     expect(dockerfile).toContain("ARG EXPECTED_BUILD_ID");
+    expect(dockerfile).toContain("ARG BUILD_APPROVAL_PUBLIC_KEYS_DIR");
+    expect(dockerfile).toContain("ARG EXPECTED_BUILD_APPROVAL_PUBLIC_KEYS_SHA256");
     expect(dockerfile).not.toContain("ARG SOURCE_COMMIT=");
     expect(dockerfile).not.toContain("ARG EXPECTED_SDK_VERSION=");
     expect(dockerfile).not.toContain("ARG EXPECTED_BUILD_ID=");
+    expect(dockerfile).not.toContain("ARG BUILD_APPROVAL_PUBLIC_KEYS_DIR=");
+    expect(dockerfile).not.toContain("ARG EXPECTED_BUILD_APPROVAL_PUBLIC_KEYS_SHA256=");
     expect(dockerfile).toContain('org.opencontainers.image.revision="${SOURCE_COMMIT}"');
     expect(dockerfile).toContain('org.opencontainers.image.source="https://github.com/HUDongpin/j-3dENA"');
+    expect(dockerfile).toContain('org.3dena.build-approval-public-keys.sha256="${EXPECTED_BUILD_APPROVAL_PUBLIC_KEYS_SHA256}"');
     expect(dockerfile).toContain("grep -Eq '^[a-f0-9]{40}$'");
     expect(dockerfile).not.toMatch(/^FROM\s+[^$].*:[^@\s]+\s*$/mu);
     expect(dockerfile).toContain("test -x /sbin/tini");
@@ -50,6 +55,10 @@ describe("compute container boundary", () => {
     expect(dockerfile).toContain("scientific-worker-entry.mjs");
     expect(dockerfile).toContain("BUILD_MANIFEST_PATH=/app/build-manifest.json");
     expect(dockerfile).toContain("SCIENTIFIC_WORKER_ENTRY_PATH=/app/scientific-worker-entry.mjs");
+    expect(dockerfile).toContain("BUILD_APPROVAL_PUBLIC_KEYS_PATH=/app/build-approval-public-keys.json");
+    expect(dockerfile).toContain("${BUILD_APPROVAL_PUBLIC_KEYS_DIR}/build-approval-public-keys.json /app/build-approval-public-keys.json");
+    expect(dockerfile).toContain("packages/compute-service-persistent/deploy/strict-json.mjs /usr/local/bin/strict-json.mjs");
+    expect(dockerfile).toContain("node /usr/local/bin/verify-image-public-key-registry /app/build-approval-public-keys.json \"$EXPECTED_BUILD_APPROVAL_PUBLIC_KEYS_SHA256\"");
     expect(dockerfile).toContain("node /usr/local/bin/verify-runtime-bundle /app \"$EXPECTED_SDK_VERSION\" \"$EXPECTED_BUILD_ID\" \"$SOURCE_COMMIT\"");
     expect(dockerfile).not.toMatch(/COPY\s+\.\s+/u);
     expect(dockerfile).not.toMatch(/apt-get|apk add|dnf install|Rscript|rENA|Shiny/iu);
@@ -72,9 +81,12 @@ describe("compute container boundary", () => {
     expect(dockerignore).toContain("!output/compute-service-candidate-*/compute-runtime.mjs");
     expect(dockerignore).toContain("!output/compute-service-candidate-*/scientific-worker-entry.mjs");
     expect(dockerignore).toContain("!output/compute-service-candidate-*/build-manifest.json");
+    expect(dockerignore).toContain("!output/build-approval-public-keys-*/build-approval-public-keys.json");
     expect(dockerignore).toContain("!packages/compute-service-persistent/deploy/Dockerfile");
     expect(dockerignore).toContain("!packages/compute-service-persistent/deploy/entrypoint.sh");
     expect(dockerignore).toContain("!packages/compute-service-persistent/deploy/verify-runtime-bundle.mjs");
+    expect(dockerignore).toContain("!packages/compute-service-persistent/deploy/verify-image-public-key-registry.mjs");
+    expect(dockerignore).toContain("!packages/compute-service-persistent/deploy/strict-json.mjs");
     expect(dockerignore).not.toMatch(/!oracle|!evidence|!apps\/|!\.git|!.*test-fixtures/iu);
   });
 
@@ -129,6 +141,7 @@ describe("compute container boundary", () => {
         { sha256: "b".repeat(64), version: "0002-persistent-control-plane" },
         { sha256: "c".repeat(64), version: "0003-build-approval-v3" },
         { sha256: "d".repeat(64), version: "0004-scientific-result-generations" },
+        { sha256: "e".repeat(64), version: "0005-build-approval-v4" },
       ];
       await writeFile(join(directory, "compute-runtime.mjs"), runtime);
       await writeFile(join(directory, "scientific-worker-entry.mjs"), worker);

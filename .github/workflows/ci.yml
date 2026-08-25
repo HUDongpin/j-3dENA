@@ -242,7 +242,7 @@ jobs:
         id: upload-tarball
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          path: ${{ runner.temp }}/public-package-artifact/j-3dena-0.2.0-implemented-unverified.10.tgz
+          path: ${{ runner.temp }}/public-package-artifact/j-3dena-0.2.0-implemented-unverified.11.tgz
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
@@ -254,7 +254,7 @@ jobs:
         id: upload-receipt
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          path: ${{ runner.temp }}/public-package-artifact/j-3dena-0.2.0-implemented-unverified.10.tgz.artifact-receipt.json
+          path: ${{ runner.temp }}/public-package-artifact/j-3dena-0.2.0-implemented-unverified.11.tgz.artifact-receipt.json
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
@@ -326,8 +326,8 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
           ! git symbolic-ref -q HEAD
-          printf '%s  %s\n' "$TARBALL_DIGEST" "$RUNNER_TEMP/public-package-consumer/tarball/j-3dena-0.2.0-implemented-unverified.10.tgz" | sha256sum --check --strict
-          printf '%s  %s\n' "$RECEIPT_DIGEST" "$RUNNER_TEMP/public-package-consumer/receipt/j-3dena-0.2.0-implemented-unverified.10.tgz.artifact-receipt.json" | sha256sum --check --strict
+          printf '%s  %s\n' "$TARBALL_DIGEST" "$RUNNER_TEMP/public-package-consumer/tarball/j-3dena-0.2.0-implemented-unverified.11.tgz" | sha256sum --check --strict
+          printf '%s  %s\n' "$RECEIPT_DIGEST" "$RUNNER_TEMP/public-package-consumer/receipt/j-3dena-0.2.0-implemented-unverified.11.tgz.artifact-receipt.json" | sha256sum --check --strict
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -346,8 +346,8 @@ jobs:
           THREEDENA_PUBLIC_PACKAGE_EVIDENCE_DIR: output/public-package-evidence
         run: |
           npm run test:public-package --workspace @3dena/analysis -- \
-            --tarball "$RUNNER_TEMP/public-package-consumer/tarball/j-3dena-0.2.0-implemented-unverified.10.tgz" \
-            --receipt "$RUNNER_TEMP/public-package-consumer/receipt/j-3dena-0.2.0-implemented-unverified.10.tgz.artifact-receipt.json"
+            --tarball "$RUNNER_TEMP/public-package-consumer/tarball/j-3dena-0.2.0-implemented-unverified.11.tgz" \
+            --receipt "$RUNNER_TEMP/public-package-consumer/receipt/j-3dena-0.2.0-implemented-unverified.11.tgz.artifact-receipt.json"
 
   public-package-generated-custody:
     name: Verify generated package custody from exact source producer
@@ -372,7 +372,7 @@ jobs:
         id: custody
         run: |
           node packages/analysis/scripts/public-package-ci-custody-intake.mjs \
-            --manifest packages/analysis/dist/j-3dena-0.2.0-implemented-unverified.10.tgz.ci-custody.json \
+            --manifest packages/analysis/dist/j-3dena-0.2.0-implemented-unverified.11.tgz.ci-custody.json \
             --github-output "$GITHUB_OUTPUT"
 
       - name: Bind custody to classified repository and source S
@@ -414,7 +414,7 @@ jobs:
       - name: Verify trusted producer API custody
         run: |
           node packages/analysis/scripts/verify-public-package-ci-custody-github.mjs \
-            --manifest packages/analysis/dist/j-3dena-0.2.0-implemented-unverified.10.tgz.ci-custody.json \
+            --manifest packages/analysis/dist/j-3dena-0.2.0-implemented-unverified.11.tgz.ci-custody.json \
             --run-json "$RUNNER_TEMP/public-package-generated-custody/metadata/run.json" \
             --tarball-artifact-json "$RUNNER_TEMP/public-package-generated-custody/metadata/tarball-artifact.json" \
             --receipt-artifact-json "$RUNNER_TEMP/public-package-generated-custody/metadata/receipt-artifact.json"
@@ -450,10 +450,10 @@ jobs:
           RECEIPT_DIGEST: ${{ steps.custody.outputs.receipt-digest }}
         run: |
           set -euo pipefail
-          DOWNLOADED_TARBALL="$RUNNER_TEMP/public-package-generated-custody/tarball/j-3dena-0.2.0-implemented-unverified.10.tgz"
-          DOWNLOADED_RECEIPT="$RUNNER_TEMP/public-package-generated-custody/receipt/j-3dena-0.2.0-implemented-unverified.10.tgz.artifact-receipt.json"
-          TRACKED_TARBALL="packages/analysis/dist/j-3dena-0.2.0-implemented-unverified.10.tgz"
-          TRACKED_RECEIPT="packages/analysis/dist/j-3dena-0.2.0-implemented-unverified.10.tgz.artifact-receipt.json"
+          DOWNLOADED_TARBALL="$RUNNER_TEMP/public-package-generated-custody/tarball/j-3dena-0.2.0-implemented-unverified.11.tgz"
+          DOWNLOADED_RECEIPT="$RUNNER_TEMP/public-package-generated-custody/receipt/j-3dena-0.2.0-implemented-unverified.11.tgz.artifact-receipt.json"
+          TRACKED_TARBALL="packages/analysis/dist/j-3dena-0.2.0-implemented-unverified.11.tgz"
+          TRACKED_RECEIPT="packages/analysis/dist/j-3dena-0.2.0-implemented-unverified.11.tgz.artifact-receipt.json"
           printf '%s  %s\n' "$TARBALL_DIGEST" "$DOWNLOADED_TARBALL" | sha256sum --check --strict
           printf '%s  %s\n' "$RECEIPT_DIGEST" "$DOWNLOADED_RECEIPT" | sha256sum --check --strict
           cmp --silent "$DOWNLOADED_TARBALL" "$TRACKED_TARBALL"

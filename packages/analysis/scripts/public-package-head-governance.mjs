@@ -27,8 +27,8 @@ export const PUBLIC_PACKAGE_RUNTIME_INPUT_PATH =
   `packages/compute-service-persistent/deploy/runtime-build-input.${PUBLIC_PACKAGE_RELEASE_VERSION}.json`;
 
 const previousRuntimeInputPath =
-  "packages/compute-service-persistent/deploy/runtime-build-input.0.2.0-implemented-unverified.9.json";
-const previousRuntimeCandidateDirectory = "output/compute-service-candidate-6266a89";
+  "packages/compute-service-persistent/deploy/runtime-build-input.0.2.0-implemented-unverified.10.json";
+const previousRuntimeCandidateDirectory = "output/compute-service-candidate-daa90c2";
 const runtimeCandidateFiles = Object.freeze([
   "build-manifest.json",
   "compute-runtime.mjs",
@@ -38,6 +38,9 @@ const protectedGeneratedPrefixes = Object.freeze([
   "packages/analysis/dist/",
   "packages/compute-service-persistent/deploy/runtime-build-input.",
   "output/compute-service-candidate-",
+]);
+const sourceContractPaths = new Set([
+  "packages/compute-service-persistent/deploy/runtime-build-input.example.json",
 ]);
 const requiredContracts = Object.freeze([
   "3dena.compute-dataset-http.v1",
@@ -63,6 +66,10 @@ const requiredMigrations = Object.freeze([
   Object.freeze({
     path: "packages/compute-service-persistent/migrations/0004_scientific_result_generations.sql",
     version: "0004-scientific-result-generations",
+  }),
+  Object.freeze({
+    path: "packages/compute-service-persistent/migrations/0005_build_approval_v4.sql",
+    version: "0005-build-approval-v4",
   }),
 ]);
 const requiredJena = Object.freeze({
@@ -146,6 +153,7 @@ export function resolveEffectivePublicPackageHead({
 }
 
 function isProtectedGeneratedPath(path) {
+  if (sourceContractPaths.has(path)) return false;
   return protectedGeneratedPrefixes.some((prefix) => path.startsWith(prefix));
 }
 

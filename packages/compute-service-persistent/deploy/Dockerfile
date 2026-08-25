@@ -5,6 +5,8 @@
 #   --build-arg RUNTIME_BUNDLE_DIR=output/compute-service-candidate-<release-id>
 #   --build-arg EXPECTED_SDK_VERSION=<reviewed @3dena/analysis version>
 #   --build-arg EXPECTED_BUILD_ID=<reviewed public package build ID>
+#   --build-arg BUILD_APPROVAL_PUBLIC_KEYS_DIR=output/build-approval-public-keys-<release-id>
+#   --build-arg EXPECTED_BUILD_APPROVAL_PUBLIC_KEYS_SHA256=<64 lowercase hex>
 # The selected image must contain Node >=20.9 and /sbin/tini. There is no
 # mutable image or runtime-bundle default: omission deliberately fails the build.
 ARG NODE_BASE_IMAGE
@@ -14,9 +16,12 @@ ARG SOURCE_COMMIT
 ARG RUNTIME_BUNDLE_DIR
 ARG EXPECTED_SDK_VERSION
 ARG EXPECTED_BUILD_ID
+ARG BUILD_APPROVAL_PUBLIC_KEYS_DIR
+ARG EXPECTED_BUILD_APPROVAL_PUBLIC_KEYS_SHA256
 
 LABEL org.opencontainers.image.revision="${SOURCE_COMMIT}" \
-      org.opencontainers.image.source="https://github.com/HUDongpin/j-3dENA"
+      org.opencontainers.image.source="https://github.com/HUDongpin/j-3dENA" \
+      org.3dena.build-approval-public-keys.sha256="${EXPECTED_BUILD_APPROVAL_PUBLIC_KEYS_SHA256}"
 
 ENV NODE_ENV=production \
     HOME=/nonexistent \
@@ -26,6 +31,7 @@ ENV NODE_ENV=production \
     LC_ALL=C.UTF-8 \
     NODE_OPTIONS=--disable-proto=throw \
     BUILD_MANIFEST_PATH=/app/build-manifest.json \
+    BUILD_APPROVAL_PUBLIC_KEYS_PATH=/app/build-approval-public-keys.json \
     SCIENTIFIC_WORKER_ENTRY_PATH=/app/scientific-worker-entry.mjs \
     MAX_OPEN_FILES=1024 \
     MAX_PROCESSES=64
@@ -35,8 +41,11 @@ WORKDIR /app
 COPY --chown=10001:10001 ${RUNTIME_BUNDLE_DIR}/compute-runtime.mjs /app/compute-runtime.mjs
 COPY --chown=10001:10001 ${RUNTIME_BUNDLE_DIR}/scientific-worker-entry.mjs /app/scientific-worker-entry.mjs
 COPY --chown=10001:10001 ${RUNTIME_BUNDLE_DIR}/build-manifest.json /app/build-manifest.json
+COPY --chown=10001:10001 ${BUILD_APPROVAL_PUBLIC_KEYS_DIR}/build-approval-public-keys.json /app/build-approval-public-keys.json
 COPY --chmod=0555 packages/compute-service-persistent/deploy/entrypoint.sh /usr/local/bin/compute-entrypoint
 COPY --chmod=0555 packages/compute-service-persistent/deploy/verify-runtime-bundle.mjs /usr/local/bin/verify-runtime-bundle
+COPY --chmod=0555 packages/compute-service-persistent/deploy/verify-image-public-key-registry.mjs /usr/local/bin/verify-image-public-key-registry
+COPY --chmod=0444 packages/compute-service-persistent/deploy/strict-json.mjs /usr/local/bin/strict-json.mjs
 
 # Refuse an image without a real init and refuse accidentally bundled oracle/R
 # source by filename. The release boundary scanner remains an independent gate.
@@ -45,7 +54,9 @@ RUN test -x /sbin/tini \
     && test -s /app/compute-runtime.mjs \
     && test -s /app/scientific-worker-entry.mjs \
     && test -s /app/build-manifest.json \
+    && test -s /app/build-approval-public-keys.json \
     && node /usr/local/bin/verify-runtime-bundle /app "$EXPECTED_SDK_VERSION" "$EXPECTED_BUILD_ID" "$SOURCE_COMMIT" \
+    && node /usr/local/bin/verify-image-public-key-registry /app/build-approval-public-keys.json "$EXPECTED_BUILD_APPROVAL_PUBLIC_KEYS_SHA256" \
     && ! find /app -type f \( -name '*.R' -o -name '*.rds' -o -name '*.rda' -o -name '*.RData' \) -print -quit | grep -q . \
     && chmod -R a-w /app
 
