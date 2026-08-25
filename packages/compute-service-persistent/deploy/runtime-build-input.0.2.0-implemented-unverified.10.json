@@ -4,8 +4,8 @@
     "jenaVersion": "0.7.0-ona.0",
     "jenaCommit": "90790856f00bdef63dbd27fc3a5b502e8cffe65f",
     "jenaTarballIntegrity": "sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==",
-    "sdkVersion": "0.2.0-implemented-unverified.9",
-    "buildId": "6dbbbf30e2bdec995834a8001882049d2d41894f"
+    "sdkVersion": "0.2.0-implemented-unverified.10",
+    "buildId": "fa0f58dd937cc0b92514661afc7eedf0e259bac2"
   },
   "migrations": [
     {
