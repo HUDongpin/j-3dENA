@@ -28,6 +28,7 @@ function parseArguments(argv) {
   const options = {
     root: DEFAULT_ROOT,
     output: null,
+    sourceHead: null,
     seeds: "3de02026,656e6133",
     casesPerSeed: 128,
   };
@@ -35,6 +36,8 @@ function parseArguments(argv) {
     const argument = argv[index];
     if (argument === "--root" && argv[index + 1]) {
       options.root = resolve(argv[++index]);
+    } else if (argument === "--source-head" && argv[index + 1]) {
+      options.sourceHead = argv[++index];
     } else if (argument === "--output" && argv[index + 1]) {
       options.output = resolve(argv[++index]);
     } else if (argument === "--seeds" && argv[index + 1]) {
@@ -43,7 +46,7 @@ function parseArguments(argv) {
       options.casesPerSeed = normalizeParserFuzzCases(argv[++index]);
     } else if (argument === "--help" || argument === "-h") {
       process.stdout.write(
-        "Usage: node scripts/run-parser-fuzz.mjs --output <new-directory> [--seeds <hex,hex>] [--cases-per-seed <1..2048>] [--root <path>]\n",
+        "Usage: node scripts/run-parser-fuzz.mjs --output <new-directory> [--source-head <40-char-sha>] [--seeds <hex,hex>] [--cases-per-seed <1..2048>] [--root <path>]\n",
       );
       return null;
     } else {
@@ -51,25 +54,30 @@ function parseArguments(argv) {
     }
   }
   if (options.output === null) throw new Error("--output requires a new evidence directory.");
+  if (options.sourceHead !== null && !/^[0-9a-f]{40}$/u.test(options.sourceHead)) {
+    throw new Error("--source-head must be a full lowercase Git commit.");
+  }
   options.seeds = normalizeParserFuzzSeeds(options.seeds);
   options.casesPerSeed = normalizeParserFuzzCases(options.casesPerSeed);
   return options;
 }
 
-function exactCommit(root) {
+function exactCommit(root, explicitSourceHead) {
   const commit = execFileSync("git", ["rev-parse", "HEAD"], {
     cwd: root,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
   }).trim();
   if (!/^[0-9a-f]{40}$/u.test(commit)) throw new Error("Exact Git commit is unavailable.");
-  if (process.env.GITHUB_SHA && process.env.GITHUB_SHA !== commit) {
-    throw new Error("GitHub SHA does not match the checked-out parser fuzz source.");
+  const expectedSourceHead = explicitSourceHead ?? process.env.GITHUB_SHA;
+  if (expectedSourceHead && expectedSourceHead !== commit) {
+    throw new Error("Expected source head does not match the checked-out parser fuzz source.");
   }
   return commit;
 }
 
 function run(options) {
+  const gitCommit = exactCommit(options.root, options.sourceHead);
   if (existsSync(options.output)) {
     throw new Error("Parser fuzz evidence directory already exists; refusing to overwrite it.");
   }
@@ -109,7 +117,6 @@ function run(options) {
     throw new Error(`Parser fuzz Vitest execution failed with status ${result.status ?? "signal"}.`);
   }
 
-  const gitCommit = exactCommit(options.root);
   const receipt = createParserFuzzReceipt({
     root: options.root,
     gitCommit,
