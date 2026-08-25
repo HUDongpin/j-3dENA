@@ -33,6 +33,21 @@ const expectedManifestFiles = [
   "PROVENANCE.json"
 ];
 
+const expectedManifestKeys = [
+  "name",
+  "version",
+  "description",
+  "type",
+  "license",
+  "sideEffects",
+  "peerDependencies",
+  "engines",
+  "exports",
+  "files",
+  "publishConfig",
+  "repository"
+];
+
 export const PUBLIC_PACKAGE_RUNTIME_EXPORT_NAMES = Object.freeze([
   "adaptFittedJenaTrajectoryResultV2",
   "assertAnalysisExecutionDatasetV2", "assertAnalysisResultEnvelopeV1",
@@ -47,6 +62,105 @@ export const PUBLIC_PACKAGE_RUNTIME_EXPORT_NAMES = Object.freeze([
 
 function fail(message) {
   throw new Error(`PUBLIC_PACKAGE_INVALID: ${message}`);
+}
+
+function requireExactObject(value, expectedKeys, path) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    fail(`${path} must be an object`);
+  }
+  const actualKeys = Object.keys(value).sort();
+  const sortedExpectedKeys = [...expectedKeys].sort();
+  if (
+    actualKeys.length !== sortedExpectedKeys.length
+    || actualKeys.some((key, index) => key !== sortedExpectedKeys[index])
+  ) {
+    fail(`${path} keys must be exactly ${sortedExpectedKeys.join(", ")}`);
+  }
+  return value;
+}
+
+function requireExactValue(actual, expected, path) {
+  if (!Object.is(actual, expected)) fail(`${path} changed`);
+}
+
+export function verifyPublicPackageManifest(candidate) {
+  if (
+    candidate !== null
+    && typeof candidate === "object"
+    && !Array.isArray(candidate)
+    && Object.hasOwn(candidate, "scripts")
+  ) {
+    fail("package manifest must not contain lifecycle scripts");
+  }
+  const manifest = requireExactObject(candidate, expectedManifestKeys, "package manifest");
+
+  requireExactValue(manifest.name, "j-3dena", "package manifest name");
+  requireExactValue(
+    manifest.version,
+    PUBLIC_PACKAGE_RELEASE_VERSION,
+    "package manifest version",
+  );
+  requireExactValue(
+    manifest.description,
+    "Public TypeScript analysis facade for the j-3dENA successor",
+    "package manifest description",
+  );
+  requireExactValue(manifest.type, "module", "package manifest type");
+  requireExactValue(manifest.license, "GPL-3.0-only", "package manifest license");
+  requireExactValue(manifest.sideEffects, false, "package manifest sideEffects");
+
+  const peerDependencies = requireExactObject(
+    manifest.peerDependencies,
+    ["jena-js"],
+    "package manifest peerDependencies",
+  );
+  requireExactValue(
+    peerDependencies["jena-js"],
+    "0.7.0-ona.0",
+    "package manifest peerDependencies.jena-js",
+  );
+
+  const engines = requireExactObject(manifest.engines, ["node"], "package manifest engines");
+  requireExactValue(engines.node, ">=20.9.0", "package manifest engines.node");
+
+  const exports = requireExactObject(manifest.exports, ["."], "package manifest exports");
+  const rootExport = requireExactObject(
+    exports["."],
+    ["types", "import"],
+    "package manifest exports[\".\"]",
+  );
+  requireExactValue(rootExport.types, "./index.d.ts", "package manifest exports[\".\"].types");
+  requireExactValue(rootExport.import, "./index.js", "package manifest exports[\".\"].import");
+
+  if (
+    !Array.isArray(manifest.files)
+    || manifest.files.length !== expectedManifestFiles.length
+    || manifest.files.some((file, index) => file !== expectedManifestFiles[index])
+  ) {
+    fail("package manifest files changed");
+  }
+
+  const publishConfig = requireExactObject(
+    manifest.publishConfig,
+    ["access", "provenance"],
+    "package manifest publishConfig",
+  );
+  requireExactValue(publishConfig.access, "public", "package manifest publishConfig.access");
+  requireExactValue(publishConfig.provenance, true, "package manifest publishConfig.provenance");
+
+  const repository = requireExactObject(
+    manifest.repository,
+    ["type", "url"],
+    "package manifest repository",
+  );
+  requireExactValue(repository.type, "git", "package manifest repository.type");
+  requireExactValue(
+    repository.url,
+    "git+https://github.com/HUDongpin/j-3dENA.git",
+    "package manifest repository.url",
+  );
+
+  return manifest;
 }
 
 async function listFiles(directory, prefix = "") {
@@ -125,27 +239,7 @@ export async function verifyPublicPackage(packageDirectory, options = {}) {
   if (!(await stat(directory)).isDirectory()) fail("staging path is not a directory");
 
   const manifest = JSON.parse(await readFile(resolve(directory, "package.json"), "utf8"));
-  if (manifest.name !== "j-3dena") fail("unexpected package name");
-  if (manifest.version !== PUBLIC_PACKAGE_RELEASE_VERSION) {
-    fail("package version does not match the source-controlled release contract");
-  }
-  if (manifest.private !== undefined) fail("staged public manifest must not contain private");
-  if (manifest.type !== "module") fail("package must be ESM-only");
-  if (manifest.license !== "GPL-3.0-only") fail("license must be GPL-3.0-only");
-  if (manifest.engines?.node !== ">=20.9.0") fail("Node engine contract changed");
-  if (manifest.repository?.url !== "git+https://github.com/HUDongpin/j-3dENA.git") {
-    fail("repository provenance does not point to the owner repository");
-  }
-  if (Object.keys(manifest.exports ?? {}).join(",") !== ".") fail("only the root export is public");
-  if (manifest.dependencies !== undefined || manifest.optionalDependencies !== undefined) {
-    fail("public facade must not publish bundled runtime dependency edges");
-  }
-  if (JSON.stringify(manifest.peerDependencies) !== JSON.stringify({ "jena-js": "0.7.0-ona.0" })) {
-    fail("public facade must expose the exact single-instance jENA peer contract");
-  }
-  if (JSON.stringify(manifest.files) !== JSON.stringify(expectedManifestFiles)) {
-    fail("public facade package inventory changed");
-  }
+  verifyPublicPackageManifest(manifest);
 
   const manifestText = JSON.stringify(manifest);
   if (manifestText.includes("file:") || manifestText.includes("workspace:")) {
