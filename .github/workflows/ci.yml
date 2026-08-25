@@ -186,6 +186,10 @@ jobs:
           EXPECTED_SOURCE_HEAD: ${{ needs.public-package-head.outputs.source-head }}
         run: |
           set -euo pipefail
+          if ! test "$GITHUB_RUN_ATTEMPT" = "1"; then
+            echo "Public package artifacts may only be produced on workflow attempt 1; start a new workflow run." >&2
+            exit 1
+          fi
           if git symbolic-ref -q HEAD; then
             echo "Public package producer must run at detached HEAD." >&2
             exit 1

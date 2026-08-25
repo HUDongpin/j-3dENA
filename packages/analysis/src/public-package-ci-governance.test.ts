@@ -29,6 +29,8 @@ describe("public package CI source and artifact governance", () => {
     expect(producer).toContain("if: needs.public-package-head.outputs.kind == 'source'");
     expect(producer).toContain("ref: ${{ needs.public-package-head.outputs.source-head }}");
     expect(producer).toContain("git symbolic-ref -q HEAD");
+    expect(producer).toContain('test "$GITHUB_RUN_ATTEMPT" = "1"');
+    expect(producer).toContain("start a new workflow run");
     expect(producer).toContain("compare-public-package-trees.mjs");
     expect(producer.match(/archive: false/gu)).toHaveLength(2);
     expect(producer.match(/if-no-files-found: error/gu)).toHaveLength(2);

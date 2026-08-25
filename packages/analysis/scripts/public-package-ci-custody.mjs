@@ -93,7 +93,9 @@ export function validatePublicPackageCiCustodyV1(value) {
     fail("custody.sourceHead must be a full lowercase Git commit");
   }
   positiveInteger(manifest.producerRunId, "custody.producerRunId");
-  positiveInteger(manifest.producerRunAttempt, "custody.producerRunAttempt");
+  if (manifest.producerRunAttempt !== 1) {
+    fail("custody.producerRunAttempt must equal 1; rerun artifacts require a new workflow run");
+  }
   const tarball = artifactTuple(manifest.tarball, "custody.tarball");
   const receipt = artifactTuple(manifest.receipt, "custody.receipt");
   if (tarball.artifactId === receipt.artifactId) {

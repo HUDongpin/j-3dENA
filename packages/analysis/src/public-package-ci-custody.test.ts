@@ -65,7 +65,7 @@ function fixture() {
     workflowPath: ".github/workflows/ci.yml",
     sourceHead: SOURCE_HEAD,
     producerRunId: PRODUCER_RUN_ID,
-    producerRunAttempt: 2,
+    producerRunAttempt: 1,
     tarball: {
       artifactId: TARBALL_ARTIFACT_ID,
       sha256: tarballSha256,
@@ -77,7 +77,7 @@ function fixture() {
   };
   const run = {
     id: PRODUCER_RUN_ID,
-    run_attempt: 2,
+    run_attempt: 1,
     status: "completed",
     conclusion: "success",
     event: "pull_request",
@@ -139,6 +139,16 @@ describe("public package CI custody manifest", () => {
     }
   });
 
+  it("rejects a custody manifest from workflow run attempt 2", async () => {
+    const { validatePublicPackageCiCustodyV1 } = await custodyContract();
+    const { manifest } = fixture();
+
+    expect(() => validatePublicPackageCiCustodyV1({
+      ...manifest,
+      producerRunAttempt: 2,
+    })).toThrow(/producerRunAttempt must equal 1/u);
+  });
+
   it("binds tracked tarball and receipt bytes to exact S", async () => {
     const { verifyLocalPublicPackageCiCustodyV1 } = await custodyContract();
     const value = fixture();
@@ -185,7 +195,7 @@ describe("trusted GitHub Actions producer custody", () => {
     const value = fixture();
     const runMutations = [
       { ...value.run, id: 999 },
-      { ...value.run, run_attempt: 1 },
+      { ...value.run, run_attempt: 2 },
       { ...value.run, status: "in_progress" },
       { ...value.run, conclusion: "failure" },
       { ...value.run, path: ".github/workflows/untrusted.yml" },
@@ -196,6 +206,26 @@ describe("trusted GitHub Actions producer custody", () => {
       expect(() => verifyGitHubPublicPackageCiCustodyV1({ ...value, run }))
         .toThrow(/CI_CUSTODY_INVALID/u);
     }
+  });
+
+  it("rejects cross-attempt reuse even when artifact workflow metadata says attempt 1", async () => {
+    const { verifyGitHubPublicPackageCiCustodyV1 } = await custodyContract();
+    const value = fixture();
+    const artifactFromAttemptOne = <T extends typeof value.tarballArtifact>(artifact: T): T => ({
+      ...artifact,
+      workflow_run: {
+        ...artifact.workflow_run,
+        run_attempt: 1,
+      },
+    });
+
+    expect(() => verifyGitHubPublicPackageCiCustodyV1({
+      ...value,
+      manifest: { ...value.manifest, producerRunAttempt: 2 },
+      run: { ...value.run, run_attempt: 2 },
+      tarballArtifact: artifactFromAttemptOne(value.tarballArtifact),
+      receiptArtifact: artifactFromAttemptOne(value.receiptArtifact),
+    })).toThrow(/producerRunAttempt must equal 1/u);
   });
 
   it("rejects wrong, expired, cross-run, cross-repository, or digest-mismatched artifacts", async () => {
