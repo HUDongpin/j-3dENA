@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { PUBLIC_PACKAGE_RELEASE_VERSION } from "./public-package-release-contract.mjs";
+import { assertPublicMetadataHygiene } from "./public-package-build-governance.mjs";
 import {
   validatePublicPackageArtifactReceiptV2,
   verifyPublicPackageArtifactReceiptV2,
@@ -47,6 +48,13 @@ const expectedManifestKeys = [
   "publishConfig",
   "repository"
 ];
+
+const publicMetadataPaths = Object.freeze([
+  "README.md",
+  "THIRD_PARTY_NOTICES.md",
+  "THIRD_PARTY/jena-js-PROVENANCE.md",
+  "PROVENANCE.json",
+]);
 
 export const PUBLIC_PACKAGE_RUNTIME_EXPORT_NAMES = Object.freeze([
   "adaptFittedJenaTrajectoryResultV2",
@@ -163,6 +171,23 @@ export function verifyPublicPackageManifest(candidate) {
   return manifest;
 }
 
+export function verifyPublicPackageMetadataHygiene(metadata) {
+  if (metadata === null || typeof metadata !== "object" || Array.isArray(metadata)) {
+    fail("metadata hygiene input must be an object");
+  }
+  for (const path of publicMetadataPaths) {
+    const text = metadata[path];
+    if (typeof text !== "string") fail(`metadata hygiene input is missing ${path}`);
+    try {
+      assertPublicMetadataHygiene(text, path);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      fail(`metadata hygiene rejected ${path}: ${detail}`);
+    }
+  }
+  return metadata;
+}
+
 async function listFiles(directory, prefix = "") {
   const result = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -256,6 +281,11 @@ export async function verifyPublicPackage(packageDirectory, options = {}) {
   if (!files.includes("THIRD_PARTY/jena-js-LICENSE") || !files.includes("THIRD_PARTY/jena-js-PROVENANCE.md") || !files.includes("THIRD_PARTY/SheetJS-LICENSE.txt")) {
     fail("third-party license or provenance material is incomplete");
   }
+  const metadata = Object.fromEntries(await Promise.all(publicMetadataPaths.map(async (path) => [
+    path,
+    await readFile(resolve(directory, path), "utf8"),
+  ])));
+  verifyPublicPackageMetadataHygiene(metadata);
   const schemaIndex = JSON.parse(await readFile(resolve(directory, "schemas/index.json"), "utf8"));
   const expectedSchemaNames = [
     "typedScalar", "typedKey", "taskOwner", "datasetReceipt", "analysisSpec", "displaySpec",

@@ -20,6 +20,7 @@ import {
   cleanPublicPackageBuildOutputs,
   compareCodePoints,
   extractGzipTarEntry,
+  sanitizeRedistributedJenaProvenance,
 } from "./public-package-build-governance.mjs";
 import {
   PUBLIC_PACKAGE_RELEASE_VERSION,
@@ -122,6 +123,11 @@ if (
 if (sha256(jenaArchive) !== jenaReceipt.tarballSha256 || sri512(jenaArchive) !== jenaReceipt.tarballIntegrity) {
   fail("vendored jENA tarball digest does not match its receipt");
 }
+const upstreamJenaProvenance = extractGzipTarEntry(jenaArchive, "package/PROVENANCE.md");
+const redistributedJenaProvenance = sanitizeRedistributedJenaProvenance(
+  upstreamJenaProvenance,
+  jenaReceipt,
+);
 const packageBuildId = sourceIdentity.repositoryHead;
 
 const sheetArchivePath = resolve(repositoryRoot, "vendor/sheetjs/xlsx-0.20.3.tgz");
@@ -229,7 +235,8 @@ await writeFile(
 );
 await writeFile(
   resolve(packageDirectory, "THIRD_PARTY/jena-js-PROVENANCE.md"),
-  extractGzipTarEntry(jenaArchive, "package/PROVENANCE.md"),
+  redistributedJenaProvenance,
+  "utf8",
 );
 await writeFile(
   resolve(packageDirectory, "THIRD_PARTY/SheetJS-LICENSE.txt"),
