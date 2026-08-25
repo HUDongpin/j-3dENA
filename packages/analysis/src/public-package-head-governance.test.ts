@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import { describe, expect, it } from "vitest";
 
 // @ts-expect-error The source-governance MJS authority intentionally has no declaration file.
@@ -163,5 +165,15 @@ describe("public package S/A/C HEAD governance", () => {
     expect(sourceHead).toHaveLength(40);
     expect(PUBLIC_PACKAGE_RECEIPT_PATH).toContain("implemented-unverified.8");
     expect(PUBLIC_PACKAGE_CI_CUSTODY_PATH).toContain("implemented-unverified.8");
+  });
+
+  it("keeps generated-stage failure diagnostics aligned with the active release contract", async () => {
+    const source = await readFile(
+      new URL("../scripts/public-package-head-governance.mjs", import.meta.url),
+      "utf8",
+    );
+    expect(source).not.toMatch(/fail\((?:"|`)[^"`]*\bv(?:6|7)\b[^"`]*(?:"|`)\)/gu);
+    expect(source).toContain('release ${PUBLIC_PACKAGE_RELEASE_VERSION}');
+    expect(source).toContain("replace the previous runtime candidate");
   });
 });

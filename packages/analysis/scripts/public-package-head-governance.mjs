@@ -304,7 +304,7 @@ export function validatePublicRuntimeInput(value, expectedBuildId) {
     || build.jenaCommit !== requiredJena.jenaCommit
     || build.jenaTarballIntegrity !== requiredJena.jenaTarballIntegrity
   ) {
-    fail("runtime input is not exactly bound to receipt source S and release v7");
+    fail(`runtime input is not exactly bound to receipt source S and release ${PUBLIC_PACKAGE_RELEASE_VERSION}`);
   }
   return input;
 }
@@ -332,10 +332,10 @@ async function verifyGeneratedHead({ head, parent, stage, receipt }) {
     fail("receipt source S is not an ancestor of generated HEAD");
   }
   if (isTracked(PUBLIC_PACKAGE_RECEIPT_PATH, sourceHead)) {
-    fail("receipt source S already contains the v7 artifact receipt");
+    fail(`receipt source S already contains the ${PUBLIC_PACKAGE_RELEASE_VERSION} artifact receipt`);
   }
   if (isTracked(PUBLIC_PACKAGE_CI_CUSTODY_PATH, sourceHead)) {
-    fail("receipt source S already contains the v7 CI custody manifest");
+    fail(`receipt source S already contains the ${PUBLIC_PACKAGE_RELEASE_VERSION} CI custody manifest`);
   }
 
   const currentPackageFiles = receipt.npmPack.files.map(({ path }) => path);
@@ -400,9 +400,13 @@ async function verifyGeneratedHead({ head, parent, stage, receipt }) {
 
   if (stage === "artifact") {
     if (parent !== sourceHead) fail("artifact A must be the direct child of receipt source S");
-    if (isTracked(PUBLIC_PACKAGE_RUNTIME_INPUT_PATH)) fail("artifact A must not contain the v7 runtime input");
+    if (isTracked(PUBLIC_PACKAGE_RUNTIME_INPUT_PATH)) {
+      fail(`artifact A must not contain the ${PUBLIC_PACKAGE_RELEASE_VERSION} runtime input`);
+    }
   } else {
-    if (!isTracked(PUBLIC_PACKAGE_RUNTIME_INPUT_PATH)) fail("generated runtime stage is missing tracked v7 input");
+    if (!isTracked(PUBLIC_PACKAGE_RUNTIME_INPUT_PATH)) {
+      fail(`generated runtime stage is missing tracked ${PUBLIC_PACKAGE_RELEASE_VERSION} input`);
+    }
     assertTrackedRegularFiles([PUBLIC_PACKAGE_RUNTIME_INPUT_PATH]);
     const input = JSON.parse(await readFile(resolve(repositoryRoot, PUBLIC_PACKAGE_RUNTIME_INPUT_PATH), "utf8"));
     validatePublicRuntimeInput(input, sourceHead);
@@ -420,7 +424,7 @@ async function verifyGeneratedHead({ head, parent, stage, receipt }) {
       || candidatePaths.some((path) => !trackedCandidates.includes(path))
       || runtimeCandidateFiles.some((file) => isTracked(`${previousRuntimeCandidateDirectory}/${file}`))
     ) {
-      fail("runtime candidate C must track exactly its three source-bound files and replace v6");
+      fail("runtime candidate C must track exactly its three source-bound files and replace the previous runtime candidate");
     }
     assertTrackedRegularFiles(candidatePaths);
     const parentPaths = gitPaths(["diff-tree", "--no-commit-id", "--name-only", "-r", "-z", parent]);
@@ -436,7 +440,7 @@ async function verifyGeneratedHead({ head, parent, stage, receipt }) {
       parent,
     ], { cwd: repositoryRoot, stdio: "pipe" });
   } else if (runtimeCandidateSourceCommit !== undefined) {
-    fail("artifact or runtime-input stage must not track a v7 runtime candidate");
+    fail("artifact or runtime-input stage must not track the current-release runtime candidate");
   }
 
   return sourceHead;
