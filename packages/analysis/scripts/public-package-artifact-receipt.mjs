@@ -256,7 +256,7 @@ export async function comparePublicPackageTrees(expectedDirectory, actualDirecto
   return Object.freeze({ identical: true, tree: hashEntries(expected) });
 }
 
-function validateNpmPackReceipt(value) {
+function validateNpmPackReceipt(value, { requireCanonicalOrder = true } = {}) {
   const npmPack = exactKeys(value, npmPackKeys, "receipt.npmPack");
   string(npmPack.id, "receipt.npmPack.id");
   string(npmPack.name, "receipt.npmPack.name", /^[a-z0-9][a-z0-9._-]*$/u);
@@ -273,7 +273,7 @@ function validateNpmPackReceipt(value) {
     safeRelativePath(entry.path, `receipt.npmPack.files[${index}].path`);
     integer(entry.size, `receipt.npmPack.files[${index}].size`);
     integer(entry.mode, `receipt.npmPack.files[${index}].mode`, 0o777);
-    if (previousPath !== undefined && compareCodePoints(previousPath, entry.path) >= 0) {
+    if (requireCanonicalOrder && previousPath !== undefined && compareCodePoints(previousPath, entry.path) >= 0) {
       fail("receipt.npmPack.files must use unique code-point path order");
     }
     previousPath = entry.path;
@@ -284,6 +284,27 @@ function validateNpmPackReceipt(value) {
   }
   if (npmPack.bundled.length !== 0) fail("receipt.npmPack.bundled must be empty");
   return npmPack;
+}
+
+function normalizeNpmPackReceipt(value) {
+  const npmPack = validateNpmPackReceipt(value, { requireCanonicalOrder: false });
+  const files = npmPack.files
+    .map((entry) => ({ path: entry.path, size: entry.size, mode: entry.mode }))
+    .sort((left, right) => compareCodePoints(left.path, right.path));
+  const normalized = {
+    id: npmPack.id,
+    name: npmPack.name,
+    version: npmPack.version,
+    size: npmPack.size,
+    unpackedSize: npmPack.unpackedSize,
+    shasum: npmPack.shasum,
+    integrity: npmPack.integrity,
+    filename: npmPack.filename,
+    files,
+    entryCount: npmPack.entryCount,
+    bundled: [...npmPack.bundled],
+  };
+  return validateNpmPackReceipt(normalized);
 }
 
 export function validatePublicPackageArtifactReceiptV2(value) {
@@ -372,7 +393,7 @@ export async function createPublicPackageArtifactReceiptV2({
   sourceHead,
 }) {
   string(sourceHead, "sourceHead", /^[0-9a-f]{40}$/u);
-  const npmPack = validateNpmPackReceipt(npmPackReceipt);
+  const npmPack = normalizeNpmPackReceipt(npmPackReceipt);
   const [directoryEntries, tarballBytes, identity] = await Promise.all([
     collectDirectoryEntries(resolve(packageDirectory)),
     readFile(resolve(tarballPath)),

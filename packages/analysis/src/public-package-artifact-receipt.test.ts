@@ -163,6 +163,51 @@ describe("public package artifact receipt v2", () => {
     }
   });
 
+  it("canonicalizes unordered npm pack files without weakening receipt verification", async () => {
+    const fixture = await artifactFixture();
+    try {
+      const canonicalFiles = fixture.npmPackReceipt.files as Array<{ path: string; size: number; mode: number }>;
+      const reversedFiles = [...canonicalFiles].reverse();
+      const unorderedPackReceipt = { ...fixture.npmPackReceipt, files: reversedFiles };
+      const receipt = await createPublicPackageArtifactReceiptV2({
+        packageDirectory: fixture.directory,
+        tarballPath: fixture.tarballPath,
+        npmPackReceipt: unorderedPackReceipt,
+        sourceHead: SOURCE_HEAD,
+      });
+
+      expect(receipt.npmPack.files).toEqual(canonicalFiles);
+      expect(unorderedPackReceipt.files).toEqual(reversedFiles);
+      await expect(verifyPublicPackageArtifactReceiptV2({
+        receipt,
+        packageDirectory: fixture.directory,
+        tarballPath: fixture.tarballPath,
+      })).resolves.toMatchObject({ sourceHead: SOURCE_HEAD });
+
+      const nonCanonicalReceipt = {
+        ...receipt,
+        npmPack: { ...receipt.npmPack, files: [...receipt.npmPack.files].reverse() },
+      };
+      await expect(verifyPublicPackageArtifactReceiptV2({ receipt: nonCanonicalReceipt }))
+        .rejects.toThrow(/unique code-point path order/u);
+
+      const duplicate = canonicalFiles[0]!;
+      await expect(createPublicPackageArtifactReceiptV2({
+        packageDirectory: fixture.directory,
+        tarballPath: fixture.tarballPath,
+        npmPackReceipt: {
+          ...fixture.npmPackReceipt,
+          files: [...reversedFiles, { ...duplicate }],
+          entryCount: canonicalFiles.length + 1,
+          unpackedSize: Number(fixture.npmPackReceipt.unpackedSize) + duplicate.size,
+        },
+        sourceHead: SOURCE_HEAD,
+      })).rejects.toThrow(/unique code-point path order/u);
+    } finally {
+      await rm(join(fixture.directory, ".."), { recursive: true, force: true });
+    }
+  });
+
   it("rejects unknown fields at every receipt boundary", async () => {
     const fixture = await artifactFixture();
     try {
