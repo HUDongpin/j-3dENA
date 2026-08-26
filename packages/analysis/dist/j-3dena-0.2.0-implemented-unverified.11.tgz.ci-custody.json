@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "3dena.public-package-ci-custody.v1",
+  "repository": "HUDongpin/j-3dENA",
+  "workflowPath": ".github/workflows/ci.yml",
+  "sourceHead": "9ce41017d3d17dd24beac7c7d08f74d7e92d2a1c",
+  "producerRunId": 32912311390,
+  "producerRunAttempt": 1,
+  "tarball": {
+    "artifactId": 9587049776,
+    "sha256": "c70700a003261ac8a4e44458f13ec89bb7f337c2dd96fa8ccd772bb74b20a74c"
+  },
+  "receipt": {
+    "artifactId": 9587050177,
+    "sha256": "47d2fa8e0c80baccbfaf31a4fe0ffa6e8c223526c0b2a9cc03bb51e64ae3db7a"
+  }
+}
