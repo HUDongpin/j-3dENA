@@ -11,7 +11,13 @@ case "${MAX_PROCESSES:-}" in
 esac
 
 ulimit -n "${MAX_OPEN_FILES}"
-ulimit -u "${MAX_PROCESSES}" 2>/dev/null || exit 78
+if ulimit -u "${MAX_PROCESSES}" 2>/dev/null; then
+  :
+elif command -v prlimit >/dev/null 2>&1; then
+  prlimit --pid "$$" --nproc="${MAX_PROCESSES}:${MAX_PROCESSES}" >/dev/null 2>&1 || exit 78
+else
+  exit 78
+fi
 
 test -r /app/build-manifest.json
 test ! -w /app

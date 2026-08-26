@@ -243,7 +243,12 @@ describe("compute container boundary", () => {
     expect(entrypoint).toContain("set -eu");
     expect(entrypoint).toContain("umask 077");
     expect(entrypoint).toContain('ulimit -n "${MAX_OPEN_FILES}"');
-    expect(entrypoint).toContain('ulimit -u "${MAX_PROCESSES}"');
+    expect(entrypoint).toContain('if ulimit -u "${MAX_PROCESSES}"');
+    expect(entrypoint).toContain("elif command -v prlimit");
+    expect(entrypoint).toContain(
+      'prlimit --pid "$$" --nproc="${MAX_PROCESSES}:${MAX_PROCESSES}"',
+    );
+    expect(entrypoint).toContain("else\n  exit 78\nfi");
     expect(entrypoint).toContain("test ! -w /app");
     expect(entrypoint).toContain('test -w "${TMPDIR}"');
     expect(entrypoint).toContain("exec /sbin/tini -- node /app/compute-runtime.mjs");
