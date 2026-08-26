@@ -1,0 +1,155 @@
+name: Publish implemented-unverified npm artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type the exact frozen release confirmation"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish-j-3dena-0.2.0-implemented-unverified.11
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Verify and publish the exact v11 tarball
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PACKAGE_NAME: j-3dena
+      PACKAGE_VERSION: 0.2.0-implemented-unverified.11
+      RELEASE_TAG: implemented-unverified
+      TARBALL: packages/analysis/dist/j-3dena-0.2.0-implemented-unverified.11.tgz
+      TARBALL_SHA256: c70700a003261ac8a4e44458f13ec89bb7f337c2dd96fa8ccd772bb74b20a74c
+      EXPECTED_LATEST: 0.1.0-implemented-unverified.0
+      REQUIRED_CONFIRMATION: publish-j-3dena-0.2.0-implemented-unverified.11-c70700a0
+    steps:
+      - name: Reject non-main or mismatched dispatches
+        shell: bash
+        env:
+          PROVIDED_CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$PROVIDED_CONFIRMATION" = "$REQUIRED_CONFIRMATION"
+
+      - name: Check out the exact main commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js for npm OIDC trusted publishing
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Use the frozen npm release
+        run: npm install --global npm@11.16.0
+
+      - name: Install exact verification dependencies
+        run: npm ci
+
+      - name: Verify generated-package custody and consumer behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          node packages/analysis/scripts/public-package-head-governance.mjs
+          npm run test:local-public-package-gate
+          npm run verify:public-package
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Verify the frozen tarball identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' "$TARBALL_SHA256" "$TARBALL" | sha256sum --check --strict
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { execFileSync } from "node:child_process";
+          const packageJson = JSON.parse(execFileSync(
+            "tar",
+            ["-xOf", process.env.TARBALL, "package/package.json"],
+            { encoding: "utf8" },
+          ));
+          assert.equal(packageJson.name, process.env.PACKAGE_NAME);
+          assert.equal(packageJson.version, process.env.PACKAGE_VERSION);
+          assert.equal(packageJson.repository?.url, "git+https://github.com/HUDongpin/j-3dENA.git");
+          assert.equal(packageJson.publishConfig?.access, "public");
+          assert.equal(packageJson.publishConfig?.provenance, true);
+          NODE
+
+      - name: Confirm latest is unchanged and classify registry state
+        id: registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm view "$PACKAGE_NAME" versions --json > "$RUNNER_TEMP/versions.json"
+          npm view "$PACKAGE_NAME" dist-tags --json > "$RUNNER_TEMP/tags-before.json"
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { readFileSync } from "node:fs";
+          const versionsValue = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/versions.json`, "utf8"));
+          const versions = Array.isArray(versionsValue) ? versionsValue : [versionsValue];
+          const tags = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/tags-before.json`, "utf8"));
+          assert.equal(tags.latest, process.env.EXPECTED_LATEST);
+          const alreadyPublished = versions.includes(process.env.PACKAGE_VERSION);
+          process.stdout.write(`already-published=${alreadyPublished}\n`);
+          NODE
+          node --input-type=module <<'NODE' >> "$GITHUB_OUTPUT"
+          import { readFileSync } from "node:fs";
+          const value = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/versions.json`, "utf8"));
+          const versions = Array.isArray(value) ? value : [value];
+          process.stdout.write(`already-published=${versions.includes(process.env.PACKAGE_VERSION)}\n`);
+          NODE
+
+      - name: Publish exact tarball with provenance and non-latest tag
+        if: steps.registry.outputs.already-published != 'true'
+        shell: bash
+        run: npm publish "$TARBALL" --tag "$RELEASE_TAG" --access public --provenance
+
+      - name: Verify registry bytes, provenance, and dist-tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm view "$PACKAGE_NAME@$PACKAGE_VERSION" --json > "$RUNNER_TEMP/published.json"
+          npm view "$PACKAGE_NAME" dist-tags --json > "$RUNNER_TEMP/tags-after.json"
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { createHash } from "node:crypto";
+          import { readFileSync } from "node:fs";
+          const bytes = readFileSync(process.env.TARBALL);
+          const published = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/published.json`, "utf8"));
+          const tags = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/tags-after.json`, "utf8"));
+          const sha1 = createHash("sha1").update(bytes).digest("hex");
+          const integrity = `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
+          assert.equal(published.name, process.env.PACKAGE_NAME);
+          assert.equal(published.version, process.env.PACKAGE_VERSION);
+          assert.equal(published.dist?.shasum, sha1);
+          assert.equal(published.dist?.integrity, integrity);
+          assert.match(published.dist?.attestations?.url ?? "", /^https:\/\/registry\.npmjs\.org\/-\/npm\/v1\/attestations\//u);
+          assert.equal(
+            published.dist?.attestations?.provenance?.predicateType,
+            "https://slsa.dev/provenance/v1",
+          );
+          assert.equal(tags[process.env.RELEASE_TAG], process.env.PACKAGE_VERSION);
+          assert.equal(tags.latest, process.env.EXPECTED_LATEST);
+          process.stdout.write(JSON.stringify({
+            status: "pass",
+            package: `${published.name}@${published.version}`,
+            tag: process.env.RELEASE_TAG,
+            latestUnchanged: tags.latest,
+            tarballSha256: createHash("sha256").update(bytes).digest("hex"),
+            provenancePredicateType: published.dist.attestations.provenance.predicateType,
+          }, null, 2) + "\n");
+          NODE
