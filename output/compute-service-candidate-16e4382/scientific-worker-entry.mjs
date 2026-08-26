@@ -2394,8 +2394,8 @@ var init_build_identity = __esmMin((() => {
 		jenaVersion: injected("0.7.0-ona.0", "development-unbound"),
 		jenaCommit: injected("90790856f00bdef63dbd27fc3a5b502e8cffe65f", "development-unbound"),
 		jenaTarballIntegrity: injected("sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==", "development-unbound"),
-		sdkVersion: injected("0.2.0-implemented-unverified.10", "development-unbound"),
-		buildId: injected("fa0f58dd937cc0b92514661afc7eedf0e259bac2", "development-unbound"),
+		sdkVersion: injected("0.2.0-implemented-unverified.11", "development-unbound"),
+		buildId: injected("9ce41017d3d17dd24beac7c7d08f74d7e92d2a1c", "development-unbound"),
 		bound: true
 	});
 }));
