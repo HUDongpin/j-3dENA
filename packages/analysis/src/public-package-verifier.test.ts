@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 // @ts-expect-error release verifier is an MJS build-script module.
 import * as publicPackageVerifier from "../scripts/verify-public-package.mjs";
 
-const publicPackageVersion = "0.2.0-implemented-unverified.8";
+const publicPackageVersion = "0.2.0-implemented-unverified.11";
 
 function createValidPublicPackageManifest(): Record<string, unknown> {
   return {
@@ -70,7 +70,144 @@ function sha256(bytes: string): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+function fullyPercentEncode(value: string): string {
+  return [...Buffer.from(value, "utf8")]
+    .map((byte) => `%${byte.toString(16).toUpperCase().padStart(2, "0")}`)
+    .join("");
+}
+
 describe("public package provenance verifier", () => {
+  it("preserves Unicode-continuation pseudo-label routes in verifier metadata", () => {
+    const verifyMetadataHygiene = (
+      publicPackageVerifier as typeof publicPackageVerifier & {
+        verifyPublicPackageMetadataHygiene?: (metadata: Record<string, string>) => unknown;
+      }
+    ).verifyPublicPackageMetadataHygiene;
+    expect(verifyMetadataHygiene).toBeTypeOf("function");
+    if (!verifyMetadataHygiene) return;
+
+    const clean = {
+      "README.md": "Public package metadata.\n",
+      "THIRD_PARTY_NOTICES.md": "Reviewed dependency notices.\n",
+      "THIRD_PARTY/jena-js-PROVENANCE.md": "Privacy-sanitized upstream provenance.\n",
+      "PROVENANCE.json": JSON.stringify({ sha256: "a".repeat(64) }),
+    };
+
+    for (const route of [
+      "épath /api/v1/users",
+      "e\u0301path /api/v1/users",
+      "x\u{1D165}path /api/v1/users",
+      "x\u2054path /api/v1/users",
+    ]) {
+      expect(() => verifyMetadataHygiene({ ...clean, "README.md": route })).not.toThrow();
+    }
+  });
+
+  it.each([
+    ["NFC letter", "éhttps://example.com/Users/alice/private.txt"],
+    ["NFD combining mark", "e\u0301https://example.com/Users/alice/private.txt"],
+    ["supplementary combining mark", "x\u{1D165}https://example.com/Users/alice/private.txt"],
+    ["connector punctuation", "x\u2054https://example.com/Users/alice/private.txt"],
+  ])("rejects an HTTP local-path exemption after a %s in verifier metadata", (_label, text) => {
+    const verifyMetadataHygiene = (
+      publicPackageVerifier as typeof publicPackageVerifier & {
+        verifyPublicPackageMetadataHygiene?: (metadata: Record<string, string>) => unknown;
+      }
+    ).verifyPublicPackageMetadataHygiene;
+    expect(verifyMetadataHygiene).toBeTypeOf("function");
+    if (!verifyMetadataHygiene) return;
+
+    expect(() => verifyMetadataHygiene({
+      "README.md": text,
+      "THIRD_PARTY_NOTICES.md": "Reviewed dependency notices.\n",
+      "THIRD_PARTY/jena-js-PROVENANCE.md": "Privacy-sanitized upstream provenance.\n",
+      "PROVENANCE.json": JSON.stringify({ sha256: "a".repeat(64) }),
+    }))
+      .toThrow(/PUBLIC_PACKAGE_INVALID.*metadata hygiene/u);
+  });
+
+  it("fail-closes over public metadata text without scanning bundled JavaScript", () => {
+    const verifyMetadataHygiene = (
+      publicPackageVerifier as typeof publicPackageVerifier & {
+        verifyPublicPackageMetadataHygiene?: (metadata: Record<string, string>) => unknown;
+      }
+    ).verifyPublicPackageMetadataHygiene;
+    expect(verifyMetadataHygiene).toBeTypeOf("function");
+    if (!verifyMetadataHygiene) return;
+
+    const clean = {
+      "README.md": [
+        "https://example.com/home/docs",
+        "https://example.com/Users/docs",
+        "https://example.com/Volumes/docs",
+        "https://[2001:db8::1]/home/docs",
+        "https://reader@[2001:db8::1]/home/docs",
+        "https://reader:public@[2001:db8::1]/Users/docs",
+        "https://MiXeD.Example.COM:8443/docs?q=a(b)",
+        "[documentation](https://example.com/docs?q=a[b])",
+        "https://example.com/docs?q=a{b}",
+        `https://example.com/docs?notes=${"漢".repeat(3_000)}`,
+        "/api/v1/users",
+        "/docs/getting-started.md",
+        "Home /about/team",
+        "File /download/report",
+        "Source /docs/reference",
+        "not-a-path /api/v1/users",
+        "Coverage is 95% complete.",
+        "Sample alpha%20beta%ZZ remains public.",
+        "",
+      ].join("\n"),
+      "THIRD_PARTY_NOTICES.md": "Reviewed dependency notices.\n",
+      "THIRD_PARTY/jena-js-PROVENANCE.md": "Privacy-sanitized upstream provenance.\n",
+      "PROVENANCE.json": JSON.stringify({ sha256: "a".repeat(64) }),
+    };
+    expect(() => verifyMetadataHygiene(clean)).not.toThrow();
+
+    const unsafeMetadata: ReadonlyArray<readonly [string, string]> = [
+      ["THIRD_PARTY/jena-js-PROVENANCE.md", "source=/home/alice/private.csv"],
+      ["THIRD_PARTY/jena-js-PROVENANCE.md", "source=/root/private.csv"],
+      ["THIRD_PARTY/jena-js-PROVENANCE.md", "source=/private/var/folders/private.csv"],
+      ["THIRD_PARTY/jena-js-PROVENANCE.md", "source=/tmp/private.csv"],
+      ["THIRD_PARTY/jena-js-PROVENANCE.md", "/users/alice/private.csv"],
+      ["THIRD_PARTY/jena-js-PROVENANCE.md", "cwd /custom/private"],
+      ["THIRD_PARTY/jena-js-PROVENANCE.md", "source=//Users/share/private.csv"],
+      ["THIRD_PARTY/jena-js-PROVENANCE.md", String.raw`source=\\server\share\private.csv`],
+      ["THIRD_PARTY/jena-js-PROVENANCE.md", String.raw`source=\\?\UNC\server\share\private.csv`],
+      ["README.md", "-----BEGIN RSA PRIVATE KEY-----"],
+      ["THIRD_PARTY_NOTICES.md", `github_pat_${"A".repeat(82)}`],
+      ["README.md", "file:///Users/alice/private.csv"],
+      ["README.md", encodeURIComponent("file:///private/var/private.csv")],
+      ["README.md", "https://example.com/docs?source=%2FUsers%2Falice%2Fprivate.csv"],
+      ["README.md", `https://example.com/docs?token=${fullyPercentEncode(`ghp_${"A".repeat(36)}`)}`],
+      ["README.md", `https://example.com/docs#token=${fullyPercentEncode(`sk-proj-${"B".repeat(32)}`)}`],
+      ["README.md", `https://example.com/docs?key=${fullyPercentEncode("-----BEGIN OPENSSH PRIVATE KEY-----")}`],
+      ["README.md", `https://example.com/docs#key=${fullyPercentEncode("-----BEGIN RSA PRIVATE KEY-----")}`],
+      ["README.md", "https://example.com/docs?key=-----BEGIN OPENSSH PRIVATE KEY-----"],
+      ["README.md", "https://example.com/docs#key=-----BEGIN RSA PRIVATE KEY-----"],
+      ["README.md", "https://example.com/docs?key=-----BEGIN+OPENSSH+PRIVATE+KEY-----"],
+      ["README.md", "https://example.com/docs?key=-----BEGIN%2BOPENSSH%2BPRIVATE%2BKEY-----"],
+      ["README.md", `https://example.com/download/${fullyPercentEncode(`ghp_${"P".repeat(36)}`)}`],
+      ["README.md", `https://example.com/download/${fullyPercentEncode("-----BEGIN OPENSSH PRIVATE KEY-----")}`],
+      ["README.md", `https://example.com/download/${fullyPercentEncode("file:///Users/alice/private.txt")}`],
+      ["README.md", `https://${fullyPercentEncode(`ghp_${"U".repeat(36)}`)}@example.com/home/docs`],
+      ["README.md", `https://${fullyPercentEncode(`ghp_${"V".repeat(36)}`)}@[2001:db8::1]/home/docs`],
+      ["README.md", `https://reader:${fullyPercentEncode(`sk-proj-${"W".repeat(32)}`)}@[2001:db8::1]/home/docs`],
+      ["README.md", `https://${fullyPercentEncode("file:///Users/alice/private.txt")}@example.com/home/docs`],
+      ["README.md", "key=-----BEGIN%20OPENSSH PRIVATE KEY-----"],
+      ["README.md", "https://example.com/docs?key=a(-----BEGIN%20OPENSSH PRIVATE KEY-----)"],
+      ["README.md", "éhttps://example.com/Users/alice/private.txt"],
+      ["README.md", `https://${fullyPercentEncode(`AKIA${"H".repeat(16)}`)}.example.invalid/docs`],
+      ["README.md", `https://${fullyPercentEncode(`sk-proj-${"K".repeat(24)}`)}.example.invalid/docs`],
+      ["README.md", "CWD -> /app/repo"],
+      ["README.md", "**cwd:** /app/repo"],
+      ["README.md", "Source -> /custom/private"],
+    ];
+    for (const [path, text] of unsafeMetadata) {
+      expect(() => verifyMetadataHygiene({ ...clean, [path]: text }))
+        .toThrow(/PUBLIC_PACKAGE_INVALID.*metadata hygiene/u);
+    }
+  });
+
   it("accepts only the exact public manifest regardless of object key order", () => {
     const manifest = createValidPublicPackageManifest();
     const reversedManifest = Object.fromEntries(Object.entries(manifest).reverse());

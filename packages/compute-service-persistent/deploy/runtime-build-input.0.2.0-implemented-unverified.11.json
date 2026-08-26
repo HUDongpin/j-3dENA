@@ -4,8 +4,8 @@
     "jenaVersion": "0.7.0-ona.0",
     "jenaCommit": "90790856f00bdef63dbd27fc3a5b502e8cffe65f",
     "jenaTarballIntegrity": "sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==",
-    "sdkVersion": "0.2.0-implemented-unverified.8",
-    "buildId": "6127638095dce3e3791a3ea18e90bb800c9f353b"
+    "sdkVersion": "0.2.0-implemented-unverified.11",
+    "buildId": "9ce41017d3d17dd24beac7c7d08f74d7e92d2a1c"
   },
   "migrations": [
     {
@@ -23,6 +23,10 @@
     {
       "path": "packages/compute-service-persistent/migrations/0004_scientific_result_generations.sql",
       "version": "0004-scientific-result-generations"
+    },
+    {
+      "path": "packages/compute-service-persistent/migrations/0005_build_approval_v4.sql",
+      "version": "0005-build-approval-v4"
     }
   ],
   "contractVersions": [

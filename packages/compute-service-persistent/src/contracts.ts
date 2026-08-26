@@ -4,8 +4,8 @@ import type {
 } from "@3dena/compute-service-core";
 
 export const BUILD_APPROVAL_CANDIDATE_VERSION =
-  "3dena.build-approval-candidate.v3" as const;
-export const BUILD_APPROVAL_VERSION = "3dena.build-approval.v3" as const;
+  "3dena.build-approval-candidate.v4" as const;
+export const BUILD_APPROVAL_VERSION = "3dena.build-approval.v4" as const;
 export const BUILD_APPROVAL_REGISTRY_VERSION =
   "3dena.build-approval-registry.v1" as const;
 export const PERSISTENT_LEASE_CLAIM_VERSION =
@@ -43,6 +43,8 @@ export interface BuildApprovalCandidateV1 {
   readonly sbomSha256: string;
   readonly schemaBundleSha256: string;
   readonly migrationManifestSha256: string;
+  readonly publicKeyRegistrySha256: string;
+  readonly materializationManifestSha256: string;
   readonly contractVersions: readonly string[];
   /** All implementation actors bound into the signed candidate manifest. */
   readonly implementationActorIds: readonly string[];
@@ -59,6 +61,14 @@ export interface BuildApprovalV1 {
   readonly signatureBase64: string;
 }
 
+export interface BuildApprovalPublicKeyV1 {
+  readonly algorithm: "Ed25519";
+  readonly allowedEnvironments: readonly BuildApprovalCandidateV1["environment"][];
+  readonly publicKeyPem: string;
+  readonly reviewerId: string;
+  readonly role: "independent-reviewer";
+}
+
 export interface ExpectedRuntimeBuildV1 {
   readonly releaseId: string;
   readonly environment: BuildApprovalCandidateV1["environment"];
@@ -69,6 +79,8 @@ export interface ExpectedRuntimeBuildV1 {
   readonly flyBuildId: string;
   readonly approvalManifestSha256: string;
   readonly migrationManifestSha256: string;
+  readonly publicKeyRegistrySha256: string;
+  readonly materializationManifestSha256: string;
   readonly contractVersions: readonly string[];
   readonly jenaVersion: string;
   readonly jenaCommit: string;

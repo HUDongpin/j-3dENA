@@ -2,7 +2,7 @@
 
 Status: `IMPLEMENTED_UNVERIFIED` until the exact remote workflow artifact is
 executed, retained, and independently approved under the active
-`BuildApprovalV1`.
+`3dena.build-approval.v4`.
 
 ## Scope
 
@@ -74,5 +74,5 @@ npm run test:parser-fuzz -- --output /absolute/new/evidence-directory \
 The authoritative remote candidate is `.github/workflows/parser-fuzz.yml`.
 Its uploaded artifact is an immutable technical execution receipt, not an
 independent release approval. The final `parser-fuzz` row in
-`3dena.release-receipts.v1` still requires a non-implementation approver and the
-same signed `BuildApprovalV1` manifest hash as every other release receipt.
+`3dena.release-receipts.v2` still requires a non-implementation approver and the
+same signed `3dena.build-approval.v4` manifest hash as every other release receipt.

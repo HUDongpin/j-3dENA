@@ -1,12 +1,12 @@
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { createHash, createHmac, createPublicKey, randomUUID, timingSafeEqual, verify } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { open, readFile } from "node:fs/promises";
+import { constants, realpathSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { Buffer as Buffer$1 } from "node:buffer";
 import { spawn } from "node:child_process";
-import { realpathSync, statSync } from "node:fs";
-import { constants } from "node:os";
+import { constants as constants$1 } from "node:os";
 import { Readable } from "stream";
 //#region \0rolldown/runtime.js
 var __create = Object.create;
@@ -49,6 +49,12 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 }) : target, mod));
 var __toCommonJS = (mod) => __hasOwnProp.call(mod, "module.exports") ? mod["module.exports"] : __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 var __require = /* #__PURE__ */ (() => createRequire(import.meta.url))();
+var BUILD_APPROVAL_REGISTRY_VERSION = "3dena.build-approval-registry.v1";
+var PERSISTENT_LEASE_CLAIM_VERSION = "3dena.persistent-lease-claim.v1";
+var RECOVERY_RECEIPT_VERSION_V2 = "3dena.compute-recovery-receipt.v2";
+var OBJECT_DELETION_PROBE_VERSION = "3dena.object-deletion-probe.v1";
+var ORPHAN_RECONCILIATION_RECEIPT_VERSION = "3dena.orphan-reconciliation-receipt.v1";
+var TERMINATION_RECONCILIATION_RECEIPT_VERSION = "3dena.termination-reconciliation-receipt.v1";
 //#endregion
 //#region packages/compute-service-persistent/src/errors.ts
 var PersistentComputeError = class extends Error {
@@ -67,7 +73,7 @@ function persistentError(code) {
 var LOWER_SHA256$1 = /^[a-f0-9]{64}$/u;
 var OPAQUE_ID$1 = /^[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$/u;
 var SAFE_OBJECT_KEY = /^(?:[A-Za-z0-9._~-]+\/)*[A-Za-z0-9._~-]+$/u;
-function isRecord$3(value) {
+function isRecord$2(value) {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function hasExactKeys$1(value, expected) {
@@ -98,10 +104,303 @@ function assertObjectKey$1(value) {
 	if (typeof value !== "string" || value.length > 512 || !SAFE_OBJECT_KEY.test(value) || value.includes("..")) persistentError("CONFIGURATION_INVALID");
 }
 //#endregion
-//#region packages/compute-service-persistent/src/runtime-config.ts
-var GIT_COMMIT$1 = /^[a-f0-9]{40}$/u;
+//#region packages/compute-service-persistent/src/build-approval.ts
+var COMMIT = /^[a-f0-9]{40}$/u;
 var IMAGE_DIGEST$2 = /^sha256:[a-f0-9]{64}$/u;
 var VERSION$1 = /^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u;
+var TARBALL_INTEGRITY = /^sha512-[A-Za-z0-9+/]+={0,2}$/u;
+var CANDIDATE_KEYS = [
+	"version",
+	"releaseId",
+	"environment",
+	"gitCommit",
+	"vercelDeploymentId",
+	"vercelBuildId",
+	"flyImageDigest",
+	"flyBuildId",
+	"analysisTarballSha256",
+	"jenaVersion",
+	"jenaCommit",
+	"jenaTarballSha256",
+	"jenaTarballIntegrity",
+	"sdkVersion",
+	"buildId",
+	"lockfileSha256",
+	"sbomSha256",
+	"schemaBundleSha256",
+	"migrationManifestSha256",
+	"publicKeyRegistrySha256",
+	"materializationManifestSha256",
+	"contractVersions",
+	"implementationActorIds"
+];
+var APPROVAL_KEYS = [
+	"version",
+	"candidate",
+	"approvalManifestSha256",
+	"reviewerId",
+	"approvedAt",
+	"publicKeyId",
+	"signatureAlgorithm",
+	"signatureBase64"
+];
+var SIGNATURE_ENVELOPE_KEYS = APPROVAL_KEYS.filter((key) => key !== "signatureBase64");
+var PUBLIC_KEY_ENTRY_KEYS = [
+	"algorithm",
+	"allowedEnvironments",
+	"publicKeyPem",
+	"reviewerId",
+	"role"
+];
+function validTimestamp(value) {
+	return typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u.test(value) && Number.isFinite(Date.parse(value));
+}
+function assertBuildApprovalCandidate(value) {
+	const contractVersions = isRecord$2(value) && Array.isArray(value.contractVersions) ? value.contractVersions : null;
+	const implementationActorIds = isRecord$2(value) && Array.isArray(value.implementationActorIds) ? value.implementationActorIds : null;
+	if (!isRecord$2(value) || !hasExactKeys$1(value, CANDIDATE_KEYS) || value.version !== "3dena.build-approval-candidate.v4" || typeof value.releaseId !== "string" || !OPAQUE_ID$1.test(value.releaseId) || value.environment !== "preview" && value.environment !== "production" || typeof value.gitCommit !== "string" || !COMMIT.test(value.gitCommit) || typeof value.vercelDeploymentId !== "string" || !OPAQUE_ID$1.test(value.vercelDeploymentId) || typeof value.vercelBuildId !== "string" || !OPAQUE_ID$1.test(value.vercelBuildId) || typeof value.flyImageDigest !== "string" || !IMAGE_DIGEST$2.test(value.flyImageDigest) || typeof value.flyBuildId !== "string" || !OPAQUE_ID$1.test(value.flyBuildId) || typeof value.analysisTarballSha256 !== "string" || !LOWER_SHA256$1.test(value.analysisTarballSha256) || typeof value.jenaVersion !== "string" || !VERSION$1.test(value.jenaVersion) || typeof value.jenaCommit !== "string" || !COMMIT.test(value.jenaCommit) || typeof value.jenaTarballSha256 !== "string" || !LOWER_SHA256$1.test(value.jenaTarballSha256) || typeof value.jenaTarballIntegrity !== "string" || !TARBALL_INTEGRITY.test(value.jenaTarballIntegrity) || typeof value.sdkVersion !== "string" || !VERSION$1.test(value.sdkVersion) || typeof value.buildId !== "string" || !OPAQUE_ID$1.test(value.buildId) || typeof value.lockfileSha256 !== "string" || !LOWER_SHA256$1.test(value.lockfileSha256) || typeof value.sbomSha256 !== "string" || !LOWER_SHA256$1.test(value.sbomSha256) || typeof value.schemaBundleSha256 !== "string" || !LOWER_SHA256$1.test(value.schemaBundleSha256) || typeof value.migrationManifestSha256 !== "string" || !LOWER_SHA256$1.test(value.migrationManifestSha256) || typeof value.publicKeyRegistrySha256 !== "string" || !LOWER_SHA256$1.test(value.publicKeyRegistrySha256) || typeof value.materializationManifestSha256 !== "string" || !LOWER_SHA256$1.test(value.materializationManifestSha256) || contractVersions === null || contractVersions.length < 1 || contractVersions.some((item) => typeof item !== "string" || !VERSION$1.test(item)) || new Set(contractVersions).size !== contractVersions.length || [...contractVersions].sort().some((item, index) => item !== contractVersions[index]) || implementationActorIds === null || implementationActorIds.length < 1 || implementationActorIds.some((item) => typeof item !== "string" || !OPAQUE_ID$1.test(item)) || new Set(implementationActorIds).size !== implementationActorIds.length || [...implementationActorIds].sort().some((item, index) => item !== implementationActorIds[index])) persistentError("BUILD_APPROVAL_INVALID");
+}
+function buildApprovalManifestSha256(candidate) {
+	assertBuildApprovalCandidate(candidate);
+	return sha256Text$2(canonicalStringify$2(candidate));
+}
+function buildApprovalSignaturePayload(value) {
+	if (!isRecord$2(value) || !hasExactKeys$1(value, SIGNATURE_ENVELOPE_KEYS) || value.version !== "3dena.build-approval.v4" || typeof value.approvalManifestSha256 !== "string" || !LOWER_SHA256$1.test(value.approvalManifestSha256) || typeof value.reviewerId !== "string" || !OPAQUE_ID$1.test(value.reviewerId) || !validTimestamp(value.approvedAt) || typeof value.publicKeyId !== "string" || !OPAQUE_ID$1.test(value.publicKeyId) || value.signatureAlgorithm !== "Ed25519") persistentError("BUILD_APPROVAL_INVALID");
+	assertBuildApprovalCandidate(value.candidate);
+	if (buildApprovalManifestSha256(value.candidate) !== value.approvalManifestSha256) persistentError("BUILD_APPROVAL_INVALID");
+	return canonicalStringify$2(value);
+}
+function assertPublicKeyEntry(value) {
+	const environments = isRecord$2(value) && Array.isArray(value.allowedEnvironments) ? value.allowedEnvironments : null;
+	if (!isRecord$2(value) || !hasExactKeys$1(value, PUBLIC_KEY_ENTRY_KEYS) || value.algorithm !== "Ed25519" || value.role !== "independent-reviewer" || typeof value.reviewerId !== "string" || !OPAQUE_ID$1.test(value.reviewerId) || typeof value.publicKeyPem !== "string" || /PRIVATE KEY/iu.test(value.publicKeyPem) || environments === null || environments.length < 1 || environments.some((environment) => environment !== "preview" && environment !== "production") || new Set(environments).size !== environments.length || [...environments].sort().some((environment, index) => environment !== environments[index])) persistentError("BUILD_APPROVAL_INVALID");
+	try {
+		const publicKey = createPublicKey(value.publicKeyPem);
+		if (publicKey.asymmetricKeyType !== "ed25519" || String(publicKey.export({
+			format: "pem",
+			type: "spki"
+		})) !== value.publicKeyPem) persistentError("BUILD_APPROVAL_INVALID");
+	} catch {
+		persistentError("BUILD_APPROVAL_INVALID");
+	}
+}
+function parseBuildApprovalPublicKeyRegistry(bytes) {
+	if (bytes.byteLength < 1 || bytes.byteLength > 131072) persistentError("BUILD_APPROVAL_INVALID");
+	let value;
+	const text = Buffer.from(bytes).toString("utf8");
+	try {
+		value = JSON.parse(text);
+	} catch {
+		persistentError("BUILD_APPROVAL_INVALID");
+	}
+	if (!isRecord$2(value) || Object.keys(value).length < 1 || text !== `${canonicalStringify$2(value)}\n`) persistentError("BUILD_APPROVAL_INVALID");
+	const entries = [];
+	for (const [publicKeyId, entry] of Object.entries(value)) {
+		if (!OPAQUE_ID$1.test(publicKeyId)) persistentError("BUILD_APPROVAL_INVALID");
+		assertPublicKeyEntry(entry);
+		entries.push([publicKeyId, cloneFrozen$2(entry)]);
+	}
+	return new Map(entries);
+}
+async function loadBuildApprovalPublicKeyRegistry(path) {
+	const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+	try {
+		const before = await handle.stat({ bigint: true });
+		if (!before.isFile() || before.size < 1n || before.size > BigInt(131072)) throw new TypeError("Build approval public-key registry exceeds the 128 KiB limit.");
+		const bytes = await handle.readFile();
+		const after = await handle.stat({ bigint: true });
+		if (after.dev !== before.dev || after.ino !== before.ino || after.size !== before.size || after.mtimeNs !== before.mtimeNs || after.ctimeNs !== before.ctimeNs || BigInt(bytes.byteLength) !== before.size) throw new TypeError("Build approval public-key registry changed during secure read.");
+		return Object.freeze({
+			publicKeys: parseBuildApprovalPublicKeyRegistry(bytes),
+			sha256: createHash("sha256").update(bytes).digest("hex")
+		});
+	} catch (error) {
+		if (error instanceof TypeError && /public-key registry/iu.test(error.message)) throw error;
+		throw new TypeError("Build approval public-key registry is invalid.");
+	} finally {
+		await handle.close();
+	}
+}
+function assertBuildApproval(value, publicKeys) {
+	if (!isRecord$2(value) || !hasExactKeys$1(value, APPROVAL_KEYS) || value.version !== "3dena.build-approval.v4" || typeof value.approvalManifestSha256 !== "string" || !LOWER_SHA256$1.test(value.approvalManifestSha256) || typeof value.reviewerId !== "string" || !OPAQUE_ID$1.test(value.reviewerId) || !validTimestamp(value.approvedAt) || typeof value.publicKeyId !== "string" || !OPAQUE_ID$1.test(value.publicKeyId) || value.signatureAlgorithm !== "Ed25519" || typeof value.signatureBase64 !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/u.test(value.signatureBase64)) persistentError("BUILD_APPROVAL_INVALID");
+	assertBuildApprovalCandidate(value.candidate);
+	if (value.candidate.implementationActorIds.includes(value.reviewerId)) persistentError("BUILD_APPROVAL_INVALID");
+	if (buildApprovalManifestSha256(value.candidate) !== value.approvalManifestSha256) persistentError("BUILD_APPROVAL_INVALID");
+	const publicKeyEntry = publicKeys.get(value.publicKeyId);
+	if (publicKeyEntry === void 0) persistentError("BUILD_APPROVAL_INVALID");
+	assertPublicKeyEntry(publicKeyEntry);
+	if (publicKeyEntry.reviewerId !== value.reviewerId || !publicKeyEntry.allowedEnvironments.includes(value.candidate.environment) || publicKeyEntry.role !== "independent-reviewer" || publicKeyEntry.algorithm !== value.signatureAlgorithm) persistentError("BUILD_APPROVAL_INVALID");
+	const signaturePayload = buildApprovalSignaturePayload({
+		version: value.version,
+		candidate: value.candidate,
+		approvalManifestSha256: value.approvalManifestSha256,
+		reviewerId: value.reviewerId,
+		approvedAt: value.approvedAt,
+		publicKeyId: value.publicKeyId,
+		signatureAlgorithm: value.signatureAlgorithm
+	});
+	const signature = Buffer.from(value.signatureBase64, "base64");
+	if (signature.byteLength !== 64 || signature.toString("base64") !== value.signatureBase64) persistentError("BUILD_APPROVAL_INVALID");
+	let valid = false;
+	try {
+		valid = verify(null, Buffer.from(signaturePayload, "utf8"), createPublicKey(publicKeyEntry.publicKeyPem), signature);
+	} catch {
+		persistentError("BUILD_APPROVAL_INVALID");
+	}
+	if (!valid) persistentError("BUILD_APPROVAL_INVALID");
+}
+var PostgresBuildApprovalRegistry = class {
+	version = BUILD_APPROVAL_REGISTRY_VERSION;
+	#database;
+	#publicKeys;
+	constructor(database, publicKeys) {
+		if (publicKeys.size < 1) persistentError("CONFIGURATION_INVALID");
+		for (const [publicKeyId, entry] of publicKeys) {
+			if (!OPAQUE_ID$1.test(publicKeyId)) persistentError("CONFIGURATION_INVALID");
+			try {
+				assertPublicKeyEntry(entry);
+			} catch {
+				persistentError("CONFIGURATION_INVALID");
+			}
+		}
+		this.#database = database;
+		this.#publicKeys = new Map(publicKeys);
+	}
+	async activate(approval) {
+		assertBuildApproval(approval, this.#publicKeys);
+		await this.#database.transaction(async (sql) => {
+			await sql.query("LOCK TABLE compute_build_approval_events IN SHARE ROW EXCLUSIVE MODE");
+			await sql.query(`INSERT INTO compute_build_approvals (
+          approval_manifest_sha256, release_id, environment, git_commit,
+          vercel_deployment_id, vercel_build_id, fly_image_digest, fly_build_id,
+          reviewer_id, approved_at, approval
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+        ON CONFLICT (approval_manifest_sha256) DO NOTHING`, [
+				approval.approvalManifestSha256,
+				approval.candidate.releaseId,
+				approval.candidate.environment,
+				approval.candidate.gitCommit,
+				approval.candidate.vercelDeploymentId,
+				approval.candidate.vercelBuildId,
+				approval.candidate.flyImageDigest,
+				approval.candidate.flyBuildId,
+				approval.reviewerId,
+				approval.approvedAt,
+				JSON.stringify(approval)
+			]);
+			const observed = (await sql.query(`SELECT approval FROM compute_build_approvals
+         WHERE approval_manifest_sha256 = $1`, [approval.approvalManifestSha256])).rows[0]?.approval;
+			assertBuildApproval(observed, this.#publicKeys);
+			if (canonicalStringify$2(observed) !== canonicalStringify$2(approval)) persistentError("BUILD_APPROVAL_INVALID");
+			await sql.query(`INSERT INTO compute_build_approval_events (
+          approval_manifest_sha256, environment, event_type, actor_id, occurred_at
+        ) VALUES ($1,$2,'activated',$3,$4)
+        ON CONFLICT (approval_manifest_sha256, event_type, actor_id, occurred_at)
+        DO NOTHING`, [
+				approval.approvalManifestSha256,
+				approval.candidate.environment,
+				approval.reviewerId,
+				approval.approvedAt
+			]);
+		});
+	}
+	async revoke(manifestSha256, revokedAt, actorId) {
+		if (!LOWER_SHA256$1.test(manifestSha256) || !validTimestamp(revokedAt) || !OPAQUE_ID$1.test(actorId)) persistentError("BUILD_APPROVAL_INVALID");
+		await this.#database.transaction(async (sql) => {
+			await sql.query("LOCK TABLE compute_build_approval_events IN SHARE ROW EXCLUSIVE MODE");
+			if ((await sql.query(`SELECT approval FROM compute_build_approvals
+         WHERE approval_manifest_sha256 = $1`, [manifestSha256])).rows[0]?.approval === void 0) persistentError("BUILD_APPROVAL_INVALID");
+			await sql.query(`INSERT INTO compute_build_approval_events (
+          approval_manifest_sha256, environment, event_type, actor_id, occurred_at
+        ) SELECT approval_manifest_sha256, environment, 'revoked', $2, $3
+          FROM compute_build_approvals WHERE approval_manifest_sha256 = $1
+        ON CONFLICT (approval_manifest_sha256, event_type, actor_id, occurred_at)
+        DO NOTHING`, [
+				manifestSha256,
+				actorId,
+				revokedAt
+			]);
+		});
+	}
+	async isActive(expected) {
+		if (!isRecord$2(expected) || !hasExactKeys$1(expected, [
+			"releaseId",
+			"environment",
+			"gitCommit",
+			"vercelDeploymentId",
+			"vercelBuildId",
+			"flyImageDigest",
+			"flyBuildId",
+			"approvalManifestSha256",
+			"migrationManifestSha256",
+			"publicKeyRegistrySha256",
+			"materializationManifestSha256",
+			"contractVersions",
+			"jenaVersion",
+			"jenaCommit",
+			"jenaTarballIntegrity",
+			"sdkVersion",
+			"buildId"
+		])) return false;
+		const approval = (await this.#database.query(`WITH latest_activation AS (
+         SELECT event_id, approval_manifest_sha256
+         FROM compute_build_approval_events
+         WHERE environment = $3 AND event_type = 'activated'
+         ORDER BY event_id DESC LIMIT 1
+       )
+       SELECT approval FROM latest_activation active
+       JOIN compute_build_approvals approval
+         ON approval.approval_manifest_sha256 = active.approval_manifest_sha256
+       WHERE approval.approval_manifest_sha256 = $1 AND approval.release_id = $2
+         AND approval.environment = $3 AND approval.git_commit = $4
+         AND approval.vercel_deployment_id = $5 AND approval.vercel_build_id = $6
+         AND approval.fly_image_digest = $7 AND approval.fly_build_id = $8
+         AND NOT EXISTS (
+           SELECT 1 FROM compute_build_approval_events revoked
+           WHERE revoked.approval_manifest_sha256 = active.approval_manifest_sha256
+             AND revoked.event_type = 'revoked' AND revoked.event_id > active.event_id
+         )`, [
+			expected.approvalManifestSha256,
+			expected.releaseId,
+			expected.environment,
+			expected.gitCommit,
+			expected.vercelDeploymentId,
+			expected.vercelBuildId,
+			expected.flyImageDigest,
+			expected.flyBuildId
+		])).rows[0]?.approval;
+		if (approval === void 0) return false;
+		try {
+			assertBuildApproval(approval, this.#publicKeys);
+			return approval.candidate.migrationManifestSha256 === expected.migrationManifestSha256 && approval.candidate.publicKeyRegistrySha256 === expected.publicKeyRegistrySha256 && approval.candidate.materializationManifestSha256 === expected.materializationManifestSha256 && canonicalStringify$2(approval.candidate.contractVersions) === canonicalStringify$2(expected.contractVersions) && approval.candidate.jenaVersion === expected.jenaVersion && approval.candidate.jenaCommit === expected.jenaCommit && approval.candidate.jenaTarballIntegrity === expected.jenaTarballIntegrity && approval.candidate.sdkVersion === expected.sdkVersion && approval.candidate.buildId === expected.buildId;
+		} catch {
+			return false;
+		}
+	}
+};
+var BuildApprovalReadinessProbe = class {
+	#registry;
+	#expected;
+	#dependencies;
+	constructor(input) {
+		this.#registry = input.registry;
+		this.#expected = cloneFrozen$2(input.expected);
+		this.#dependencies = [...input.dependencies ?? []];
+	}
+	async check() {
+		try {
+			if (!await this.#registry.isActive(this.#expected)) return false;
+			for (const dependency of this.#dependencies) if (!await dependency()) return false;
+			return true;
+		} catch {
+			return false;
+		}
+	}
+};
+//#endregion
+//#region packages/compute-service-persistent/src/runtime-config.ts
+var GIT_COMMIT$1 = /^[a-f0-9]{40}$/u;
+var IMAGE_DIGEST$1 = /^sha256:[a-f0-9]{64}$/u;
+var VERSION = /^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u;
 var REQUIRED_JENA_VERSION = "0.7.0-ona.0";
 var REQUIRED_JENA_COMMIT = "90790856f00bdef63dbd27fc3a5b502e8cffe65f";
 var REQUIRED_JENA_TARBALL_INTEGRITY = "sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==";
@@ -117,7 +416,8 @@ var REQUIRED_MIGRATION_VERSIONS = [
 	"0001-persistent-compute",
 	"0002-persistent-control-plane",
 	"0003-build-approval-v3",
-	"0004-scientific-result-generations"
+	"0004-scientific-result-generations",
+	"0005-build-approval-v4"
 ];
 var RUNTIME_MANIFEST_FIELDS = [
 	"schemaVersion",
@@ -152,19 +452,19 @@ function rootHttpsBaseUrl(value) {
 	return parsed.origin;
 }
 function assertVersions(value, path) {
-	if (!Array.isArray(value) || value.length < 1 || value.some((entry) => typeof entry !== "string" || !VERSION$1.test(entry)) || new Set(value).size !== value.length || [...value].sort().some((entry, index) => entry !== value[index])) throw new TypeError(`${path} must be a non-empty unique sorted version list.`);
+	if (!Array.isArray(value) || value.length < 1 || value.some((entry) => typeof entry !== "string" || !VERSION.test(entry)) || new Set(value).size !== value.length || [...value].sort().some((entry, index) => entry !== value[index])) throw new TypeError(`${path} must be a non-empty unique sorted version list.`);
 }
 function isMigrationManifest(value) {
-	return Array.isArray(value) && value.length > 0 && value.every((entry) => isRecord$3(entry) && hasExactKeys$1(entry, ["sha256", "version"]) && typeof entry.version === "string" && VERSION$1.test(entry.version) && typeof entry.sha256 === "string" && LOWER_SHA256$1.test(entry.sha256)) && new Set(value.map((entry) => entry.version)).size === value.length && [...value].sort((left, right) => left.version.localeCompare(right.version)).every((entry, index) => entry.version === value[index]?.version);
+	return Array.isArray(value) && value.length > 0 && value.every((entry) => isRecord$2(entry) && hasExactKeys$1(entry, ["sha256", "version"]) && typeof entry.version === "string" && VERSION.test(entry.version) && typeof entry.sha256 === "string" && LOWER_SHA256$1.test(entry.sha256)) && new Set(value.map((entry) => entry.version)).size === value.length && [...value].sort((left, right) => left.version.localeCompare(right.version)).every((entry, index) => entry.version === value[index]?.version);
 }
 function assertComputeRuntimeBuildManifestV1(value) {
-	if (!isRecord$3(value) || !hasExactKeys$1(value, RUNTIME_MANIFEST_FIELDS) || value.schemaVersion !== "3dena.compute-runtime-build-manifest.v4" || typeof value.sourceCommit !== "string" || !GIT_COMMIT$1.test(value.sourceCommit) || !isMigrationManifest(value.migrationManifest) || typeof value.migrationManifestSha256 !== "string" || !LOWER_SHA256$1.test(value.migrationManifestSha256) || sha256Text$2(canonicalStringify$2(value.migrationManifest)) !== value.migrationManifestSha256 || typeof value.runtimeBundleSha256 !== "string" || !LOWER_SHA256$1.test(value.runtimeBundleSha256) || typeof value.scientificWorkerBundleSha256 !== "string" || !LOWER_SHA256$1.test(value.scientificWorkerBundleSha256) || !isRecord$3(value.runtimeDependencies) || !hasExactKeys$1(value.runtimeDependencies, ["@vercel/blob", "pg"]) || value.runtimeDependencies["@vercel/blob"] !== "2.8.0" || value.runtimeDependencies.pg !== "8.22.0" || !isRecord$3(value.approvedLongitudinalBuild) || !hasExactKeys$1(value.approvedLongitudinalBuild, [
+	if (!isRecord$2(value) || !hasExactKeys$1(value, RUNTIME_MANIFEST_FIELDS) || value.schemaVersion !== "3dena.compute-runtime-build-manifest.v4" || typeof value.sourceCommit !== "string" || !GIT_COMMIT$1.test(value.sourceCommit) || !isMigrationManifest(value.migrationManifest) || typeof value.migrationManifestSha256 !== "string" || !LOWER_SHA256$1.test(value.migrationManifestSha256) || sha256Text$2(canonicalStringify$2(value.migrationManifest)) !== value.migrationManifestSha256 || typeof value.runtimeBundleSha256 !== "string" || !LOWER_SHA256$1.test(value.runtimeBundleSha256) || typeof value.scientificWorkerBundleSha256 !== "string" || !LOWER_SHA256$1.test(value.scientificWorkerBundleSha256) || !isRecord$2(value.runtimeDependencies) || !hasExactKeys$1(value.runtimeDependencies, ["@vercel/blob", "pg"]) || value.runtimeDependencies["@vercel/blob"] !== "2.8.0" || value.runtimeDependencies.pg !== "8.22.0" || !isRecord$2(value.approvedLongitudinalBuild) || !hasExactKeys$1(value.approvedLongitudinalBuild, [
 		"jenaVersion",
 		"jenaCommit",
 		"jenaTarballIntegrity",
 		"sdkVersion",
 		"buildId"
-	]) || value.approvedLongitudinalBuild.jenaVersion !== REQUIRED_JENA_VERSION || value.approvedLongitudinalBuild.jenaCommit !== REQUIRED_JENA_COMMIT || value.approvedLongitudinalBuild.jenaTarballIntegrity !== REQUIRED_JENA_TARBALL_INTEGRITY || typeof value.approvedLongitudinalBuild.sdkVersion !== "string" || !VERSION$1.test(value.approvedLongitudinalBuild.sdkVersion) || typeof value.approvedLongitudinalBuild.buildId !== "string" || !OPAQUE_ID$1.test(value.approvedLongitudinalBuild.buildId)) throw new TypeError("Runtime build manifest is invalid.");
+	]) || value.approvedLongitudinalBuild.jenaVersion !== REQUIRED_JENA_VERSION || value.approvedLongitudinalBuild.jenaCommit !== REQUIRED_JENA_COMMIT || value.approvedLongitudinalBuild.jenaTarballIntegrity !== REQUIRED_JENA_TARBALL_INTEGRITY || typeof value.approvedLongitudinalBuild.sdkVersion !== "string" || !VERSION.test(value.approvedLongitudinalBuild.sdkVersion) || typeof value.approvedLongitudinalBuild.buildId !== "string" || !OPAQUE_ID$1.test(value.approvedLongitudinalBuild.buildId)) throw new TypeError("Runtime build manifest is invalid.");
 	assertVersions(value.contractVersions, "manifest.contractVersions");
 	if (value.contractVersions.length !== REQUIRED_CONTRACT_VERSIONS.length || value.contractVersions.some((entry, index) => entry !== REQUIRED_CONTRACT_VERSIONS[index]) || value.migrationManifest.length !== REQUIRED_MIGRATION_VERSIONS.length || value.migrationManifest.some((entry, index) => entry.version !== REQUIRED_MIGRATION_VERSIONS[index])) throw new TypeError("Runtime build manifest contract or migration set is not current.");
 }
@@ -173,6 +473,8 @@ async function loadComputeRuntimeConfiguration(role, environment = process.env) 
 	const manifestValue = JSON.parse(await readFile(manifestPath, "utf8"));
 	assertComputeRuntimeBuildManifestV1(manifestValue);
 	const manifest = structuredClone(manifestValue);
+	const publicKeysPath = exactEnvironment(environment, "BUILD_APPROVAL_PUBLIC_KEYS_PATH");
+	const publicKeyRegistry = await loadBuildApprovalPublicKeyRegistry(publicKeysPath);
 	const databaseUrl = exactEnvironment(environment, role === "api" ? "NEON_POOLED_DATABASE_URL" : "NEON_DIRECT_DATABASE_URL", /^postgres(?:ql)?:\/\//u);
 	const environmentName = exactEnvironment(environment, "DEPLOYMENT_ENV");
 	if (environmentName !== "preview" && environmentName !== "production") throw new TypeError("DEPLOYMENT_ENV is invalid.");
@@ -180,10 +482,11 @@ async function loadComputeRuntimeConfiguration(role, environment = process.env) 
 	if (!Array.isArray(allowedOriginsValue) || allowedOriginsValue.length < 1 || allowedOriginsValue.some((value) => typeof value !== "string")) throw new TypeError("ALLOWED_ORIGINS_JSON is invalid.");
 	const allowedOrigins = allowedOriginsValue;
 	const approvalManifestSha256 = exactEnvironment(environment, "BUILD_APPROVAL_MANIFEST_SHA256", LOWER_SHA256$1);
+	const materializationManifestSha256 = exactEnvironment(environment, "BUILD_APPROVAL_MATERIALIZATION_MANIFEST_SHA256", LOWER_SHA256$1);
 	const releaseId = exactEnvironment(environment, "RELEASE_ID", OPAQUE_ID$1);
 	const gitCommit = exactEnvironment(environment, "GIT_COMMIT", GIT_COMMIT$1);
 	if (gitCommit !== manifest.sourceCommit) throw new TypeError("Runtime source commit does not match GIT_COMMIT.");
-	const flyImageDigest = exactEnvironment(environment, "FLY_IMAGE_DIGEST", IMAGE_DIGEST$2);
+	const flyImageDigest = exactEnvironment(environment, "FLY_IMAGE_DIGEST", IMAGE_DIGEST$1);
 	const flyBuildId = exactEnvironment(environment, "FLY_BUILD_ID", OPAQUE_ID$1);
 	const expectedBuild = Object.freeze({
 		approvalManifestSha256,
@@ -195,6 +498,8 @@ async function loadComputeRuntimeConfiguration(role, environment = process.env) 
 		flyImageDigest,
 		flyBuildId,
 		migrationManifestSha256: manifest.migrationManifestSha256,
+		publicKeyRegistrySha256: publicKeyRegistry.sha256,
+		materializationManifestSha256,
 		contractVersions: [...manifest.contractVersions],
 		...manifest.approvedLongitudinalBuild
 	});
@@ -207,7 +512,8 @@ async function loadComputeRuntimeConfiguration(role, environment = process.env) 
 		longitudinalServiceTokenSha256: exactEnvironment(environment, "LONGITUDINAL_SERVICE_TOKEN_SHA256", LOWER_SHA256$1),
 		publicBaseUrl: rootHttpsBaseUrl(exactEnvironment(environment, "PUBLIC_COMPUTE_BASE_URL", /^https:\/\//u)),
 		allowedOrigins: Object.freeze([...allowedOrigins]),
-		publicKeysPath: exactEnvironment(environment, "BUILD_APPROVAL_PUBLIC_KEYS_PATH"),
+		publicKeysPath,
+		publicKeys: publicKeyRegistry.publicKeys,
 		workerEntryPath: exactEnvironment(environment, "SCIENTIFIC_WORKER_ENTRY_PATH"),
 		port: positiveInteger$2(exactEnvironment(environment, "PORT"), "PORT", 65535),
 		holderId: exactEnvironment(environment, "FLY_MACHINE_ID", OPAQUE_ID$1),
@@ -244,8 +550,8 @@ var init_build_identity = __esmMin((() => {
 		jenaVersion: injected("0.7.0-ona.0", "development-unbound"),
 		jenaCommit: injected("90790856f00bdef63dbd27fc3a5b502e8cffe65f", "development-unbound"),
 		jenaTarballIntegrity: injected("sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==", "development-unbound"),
-		sdkVersion: injected("0.2.0-implemented-unverified.8", "development-unbound"),
-		buildId: injected("6127638095dce3e3791a3ea18e90bb800c9f353b", "development-unbound"),
+		sdkVersion: injected("0.2.0-implemented-unverified.11", "development-unbound"),
+		buildId: injected("9ce41017d3d17dd24beac7c7d08f74d7e92d2a1c", "development-unbound"),
 		bound: true
 	});
 })), HARD_ANALYSIS_LIMITS;
@@ -37910,7 +38216,7 @@ var MAX_EVENT_HEARTBEAT_INTERVAL_MS = 6e4;
 var JSON_CONTENT_TYPE = /^application\/json(?:\s*;\s*charset=utf-8)?$/iu;
 var IDEMPOTENCY_KEY = /^[^\u0000-\u0020\u007f]{8,200}$/u;
 var GIT_COMMIT = /^[a-f0-9]{40}$/u;
-var IMAGE_DIGEST$1 = /^sha256:[a-f0-9]{64}$/u;
+var IMAGE_DIGEST = /^sha256:[a-f0-9]{64}$/u;
 var CONTRACT_VERSION = /^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u;
 var TERMINAL_REMOTE_STATES = /* @__PURE__ */ new Set([
 	"SUCCEEDED",
@@ -38246,7 +38552,7 @@ var ComputeV1HttpRouter = class {
 		if (!Array.isArray(options.allowedOrigins) || options.allowedOrigins.length < 1) throw new TypeError("At least one explicit CORS origin is required.");
 		const origins = options.allowedOrigins.map(normalizeAllowedOrigin);
 		if (new Set(origins).size !== origins.length) throw new TypeError("Allowed CORS origins must not contain duplicates.");
-		if (!LOWER_SHA256.test(options.buildIdentity.approvalManifestSha256) || !OPAQUE_ID.test(options.buildIdentity.releaseId) || !GIT_COMMIT.test(options.buildIdentity.gitCommit) || !IMAGE_DIGEST$1.test(options.buildIdentity.flyImageDigest) || !OPAQUE_ID.test(options.buildIdentity.flyBuildId) || !Array.isArray(options.buildIdentity.contractVersions) || options.buildIdentity.contractVersions.length < 1 || options.buildIdentity.contractVersions.some((version) => typeof version !== "string" || !CONTRACT_VERSION.test(version)) || new Set(options.buildIdentity.contractVersions).size !== options.buildIdentity.contractVersions.length || [...options.buildIdentity.contractVersions].sort().some((version, index) => version !== options.buildIdentity.contractVersions[index])) throw new TypeError("buildIdentity must be one exact approved runtime identity.");
+		if (!LOWER_SHA256.test(options.buildIdentity.approvalManifestSha256) || !OPAQUE_ID.test(options.buildIdentity.releaseId) || !GIT_COMMIT.test(options.buildIdentity.gitCommit) || !IMAGE_DIGEST.test(options.buildIdentity.flyImageDigest) || !OPAQUE_ID.test(options.buildIdentity.flyBuildId) || !Array.isArray(options.buildIdentity.contractVersions) || options.buildIdentity.contractVersions.length < 1 || options.buildIdentity.contractVersions.some((version) => typeof version !== "string" || !CONTRACT_VERSION.test(version)) || new Set(options.buildIdentity.contractVersions).size !== options.buildIdentity.contractVersions.length || [...options.buildIdentity.contractVersions].sort().some((version, index) => version !== options.buildIdentity.contractVersions[index])) throw new TypeError("buildIdentity must be one exact approved runtime identity.");
 		this.#core = options.core;
 		this.#infrastructure = options.infrastructure;
 		this.#allowedOrigins = new Set(origins);
@@ -40094,7 +40400,7 @@ function nodeSupervisorError(code) {
 //#region packages/compute-service-node/src/node-process-supervisor.ts
 var MAX_TIMER_DELAY_MS = 2147483647;
 var MAX_PENDING_SESSION_MESSAGES = 8;
-var SIGNAL_NAMES = new Set(Object.keys(constants.signals));
+var SIGNAL_NAMES = new Set(Object.keys(constants$1.signals));
 var SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 var ENVIRONMENT_KEYS = Object.freeze([
 	"LANG",
@@ -40116,7 +40422,7 @@ function exactKeys(value, expected) {
 	const wanted = [...expected].sort();
 	return actual.length === wanted.length && actual.every((key, index) => key === wanted[index]);
 }
-function isRecord$2(value) {
+function isRecord$1(value) {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function isIpcSerializable(value) {
@@ -40140,7 +40446,7 @@ function assertRegularAbsoluteFile(value) {
 }
 function assertEnvironment(value) {
 	if (value === void 0) return Object.freeze({});
-	if (!isRecord$2(value) || !Object.keys(value).every((key) => ENVIRONMENT_KEYS.includes(key))) nodeSupervisorError("INVALID_CONFIGURATION");
+	if (!isRecord$1(value) || !Object.keys(value).every((key) => ENVIRONMENT_KEYS.includes(key))) nodeSupervisorError("INVALID_CONFIGURATION");
 	const environment = {};
 	if (value.LANG !== void 0) {
 		if (!LANGUAGE_VALUE_PATTERN.test(value.LANG)) nodeSupervisorError("INVALID_CONFIGURATION");
@@ -40161,7 +40467,7 @@ function assertEnvironment(value) {
 	return Object.freeze(environment);
 }
 function assertLaunchControl(control, now) {
-	if (!isRecord$2(control) || !exactKeys(control, [
+	if (!isRecord$1(control) || !exactKeys(control, [
 		"version",
 		"deadlineAtMs",
 		"signal"
@@ -40170,7 +40476,7 @@ function assertLaunchControl(control, now) {
 	if (control.deadlineAtMs <= now) nodeSupervisorError("LAUNCH_DEADLINE_EXPIRED");
 }
 function assertOwner(value) {
-	if (!isRecord$2(value) || !exactKeys(value, [
+	if (!isRecord$1(value) || !exactKeys(value, [
 		"contractVersion",
 		"datasetHash",
 		"specHash",
@@ -40179,14 +40485,14 @@ function assertOwner(value) {
 	]) || value.contractVersion !== "3dena.compute-task-owner.v1" || typeof value.datasetHash !== "string" || !SHA256_PATTERN.test(value.datasetHash) || typeof value.specHash !== "string" || !SHA256_PATTERN.test(value.specHash) || !isNonEmptyString(value.runId) || !isNonEmptyString(value.taskId)) nodeSupervisorError("INVALID_LAUNCH_CONTEXT");
 }
 function assertObjectDescriptor$1(value) {
-	if (!isRecord$2(value) || !exactKeys(value, [
+	if (!isRecord$1(value) || !exactKeys(value, [
 		"key",
 		"sha256",
 		"byteLength"
 	]) || !isNonEmptyString(value.key) || typeof value.sha256 !== "string" || !SHA256_PATTERN.test(value.sha256) || !isNonNegativeSafeInteger(value.byteLength)) nodeSupervisorError("INVALID_LAUNCH_CONTEXT");
 }
 function assertLaunchContext(context) {
-	if (!isRecord$2(context) || !exactKeys(context, [
+	if (!isRecord$1(context) || !exactKeys(context, [
 		"owner",
 		"taskRef",
 		"request",
@@ -40195,7 +40501,7 @@ function assertLaunchContext(context) {
 		"resultObjectKey"
 	]) || !isNonEmptyString(context.taskRef) || !isNonEmptyString(context.executionId) || !isNonEmptyString(context.resultObjectKey)) nodeSupervisorError("INVALID_LAUNCH_CONTEXT");
 	assertOwner(context.owner);
-	if (!isRecord$2(context.request) || !exactKeys(context.request, [
+	if (!isRecord$1(context.request) || !exactKeys(context.request, [
 		"version",
 		"owner",
 		"taskKind",
@@ -40206,7 +40512,7 @@ function assertLaunchContext(context) {
 	assertOwner(context.request.owner);
 	if (context.request.owner.contractVersion !== context.owner.contractVersion || context.request.owner.datasetHash !== context.owner.datasetHash || context.request.owner.specHash !== context.owner.specHash || context.request.owner.runId !== context.owner.runId || context.request.owner.taskId !== context.owner.taskId) nodeSupervisorError("INVALID_LAUNCH_CONTEXT");
 	assertObjectDescriptor$1(context.request.input);
-	if (!isRecord$2(context.lease) || !exactKeys(context.lease, [
+	if (!isRecord$1(context.lease) || !exactKeys(context.lease, [
 		"version",
 		"leaseId",
 		"holderId",
@@ -40256,7 +40562,7 @@ function copyLaunchContext(context) {
 	};
 }
 function isReadyMessage(value, executionId) {
-	return isRecord$2(value) && exactKeys(value, [
+	return isRecord$1(value) && exactKeys(value, [
 		"version",
 		"type",
 		"executionId"
@@ -40276,14 +40582,14 @@ var NodeComputeProcessSupervisor = class {
 	#sessionAdapter;
 	#children = /* @__PURE__ */ new Map();
 	constructor(options, sessionAdapter) {
-		if (!isRecord$2(options) || Object.keys(options).some((key) => !SUPERVISOR_OPTION_KEYS.has(key)) || options.version !== "3dena.compute-node-supervisor-options.v1") nodeSupervisorError("INVALID_CONFIGURATION");
+		if (!isRecord$1(options) || Object.keys(options).some((key) => !SUPERVISOR_OPTION_KEYS.has(key)) || options.version !== "3dena.compute-node-supervisor-options.v1") nodeSupervisorError("INVALID_CONFIGURATION");
 		this.#workerEntry = assertRegularAbsoluteFile(options.workerEntry);
 		this.#nodeExecutable = assertRegularAbsoluteFile(options.nodeExecutable ?? process.execPath);
 		this.#environment = assertEnvironment(options.environment);
 		const terminationGraceMs = options.terminationGraceMs ?? 500;
 		if (!Number.isSafeInteger(terminationGraceMs) || terminationGraceMs < 1 || terminationGraceMs > 3e4) nodeSupervisorError("INVALID_CONFIGURATION");
 		this.#terminationGraceMs = terminationGraceMs;
-		if (sessionAdapter !== void 0 && (!isRecord$2(sessionAdapter) || sessionAdapter.version !== "3dena.compute-node-session-adapter.v1" || typeof sessionAdapter.prepareLaunchPayload !== "function" || typeof sessionAdapter.handleMessage !== "function")) nodeSupervisorError("INVALID_CONFIGURATION");
+		if (sessionAdapter !== void 0 && (!isRecord$1(sessionAdapter) || sessionAdapter.version !== "3dena.compute-node-session-adapter.v1" || typeof sessionAdapter.prepareLaunchPayload !== "function" || typeof sessionAdapter.handleMessage !== "function")) nodeSupervisorError("INVALID_CONFIGURATION");
 		this.#sessionAdapter = sessionAdapter;
 	}
 	async spawn(context, control) {
@@ -40682,7 +40988,7 @@ var WORKER_FAILURE_CODES = /* @__PURE__ */ new Set([
 	"PUBLICATION_FAILED",
 	"PROTOCOL_FAILED"
 ]);
-function isRecord$1(value) {
+function isRecord(value) {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function hasExactKeys(value, expected) {
@@ -40736,14 +41042,14 @@ async function bindAndHashPersistentLongitudinalRequestV2(request) {
 	}
 }
 function assertObjectDescriptor(value) {
-	if (!isRecord$1(value) || !hasExactKeys(value, [
+	if (!isRecord(value) || !hasExactKeys(value, [
 		"key",
 		"sha256",
 		"byteLength"
 	]) || !nonEmptyString(value.key) || typeof value.sha256 !== "string" || !SHA256.test(value.sha256) || !safeNonNegativeInteger(value.byteLength)) scientificWorkerError("INVALID_WORKER_MESSAGE");
 }
 function assertComputeOwner(value) {
-	if (!isRecord$1(value) || !hasExactKeys(value, [
+	if (!isRecord(value) || !hasExactKeys(value, [
 		"contractVersion",
 		"datasetHash",
 		"specHash",
@@ -40752,7 +41058,7 @@ function assertComputeOwner(value) {
 	]) || value.contractVersion !== "3dena.compute-task-owner.v1" || typeof value.datasetHash !== "string" || !SHA256.test(value.datasetHash) || typeof value.specHash !== "string" || !SHA256.test(value.specHash) || !nonEmptyString(value.runId) || !nonEmptyString(value.taskId)) scientificWorkerError("INVALID_WORKER_MESSAGE");
 }
 function assertLease(value) {
-	if (!isRecord$1(value) || !hasExactKeys(value, [
+	if (!isRecord(value) || !hasExactKeys(value, [
 		"version",
 		"leaseId",
 		"holderId",
@@ -40771,7 +41077,7 @@ function leasesEqual(left, right) {
 	return left.version === right.version && left.leaseId === right.leaseId && left.holderId === right.holderId && left.epoch === right.epoch && left.issuedAtMs === right.issuedAtMs && left.expiresAtMs === right.expiresAtMs;
 }
 function assertDataset(value) {
-	if (!isRecord$1(value) || value.schemaVersion !== "3dena.analysis-execution-dataset.v1" && value.schemaVersion !== "3dena.analysis-execution-dataset.v2" || !Object.hasOwn(value, "receipt") || !Object.hasOwn(value, "specHash") || !Object.hasOwn(value, "buildId") || typeof value.specHash !== "string" || !SHA256.test(value.specHash) || !nonEmptyString(value.buildId) || value.generatedAt !== void 0 && (!nonEmptyString(value.generatedAt) || Number.isNaN(Date.parse(value.generatedAt)))) scientificWorkerError("INVALID_EXECUTION_INPUT");
+	if (!isRecord(value) || value.schemaVersion !== "3dena.analysis-execution-dataset.v1" && value.schemaVersion !== "3dena.analysis-execution-dataset.v2" || !Object.hasOwn(value, "receipt") || !Object.hasOwn(value, "specHash") || !Object.hasOwn(value, "buildId") || typeof value.specHash !== "string" || !SHA256.test(value.specHash) || !nonEmptyString(value.buildId) || value.generatedAt !== void 0 && (!nonEmptyString(value.generatedAt) || Number.isNaN(Date.parse(value.generatedAt)))) scientificWorkerError("INVALID_EXECUTION_INPUT");
 	try {
 		assertDatasetReceiptV1(value.receipt);
 	} catch {
@@ -40786,7 +41092,7 @@ function assertLongitudinalRequestShape(value) {
 	}
 }
 function assertScientificLongitudinalExecutionInput(value, context) {
-	if (!isRecord$1(value) || !hasExactKeys(value, [
+	if (!isRecord(value) || !hasExactKeys(value, [
 		"version",
 		"kind",
 		"source",
@@ -40807,11 +41113,11 @@ function assertScientificLongitudinalExecutionInput(value, context) {
 	if (context !== void 0 && (!descriptorsEqual(value.source, context.request.input) || !ownersEqual(value.owner, context.owner) || context.request.taskKind !== SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2 || context.request.deadlineAtMs !== value.deadlineAtMs)) scientificWorkerError("INVALID_EXECUTION_INPUT");
 }
 function assertScientificExecutionInput(value, context) {
-	if (isRecord$1(value) && value.version === "3dena.compute-scientific-longitudinal-execution-input.v2") {
+	if (isRecord(value) && value.version === "3dena.compute-scientific-longitudinal-execution-input.v2") {
 		assertScientificLongitudinalExecutionInput(value, context);
 		return;
 	}
-	if (!isRecord$1(value) || !hasExactKeys(value, [
+	if (!isRecord(value) || !hasExactKeys(value, [
 		"version",
 		"source",
 		"dataset",
@@ -40837,7 +41143,7 @@ function assertMessageBinding(message, context) {
 	if (!ownersEqual(message.owner, context.owner) || !leasesEqual(message.lease, context.lease) || message.object.key !== context.resultObjectKey) scientificWorkerError("INVALID_WORKER_MESSAGE");
 }
 function assertArtifactPutRequest(value, context) {
-	if (!isRecord$1(value) || !hasExactKeys(value, [
+	if (!isRecord(value) || !hasExactKeys(value, [
 		"version",
 		"protocolVersion",
 		"type",
@@ -40850,7 +41156,7 @@ function assertArtifactPutRequest(value, context) {
 	assertMessageBinding(value, context);
 }
 function assertPublicationRequest(value, context) {
-	if (!isRecord$1(value) || !hasExactKeys(value, [
+	if (!isRecord(value) || !hasExactKeys(value, [
 		"version",
 		"protocolVersion",
 		"type",
@@ -40862,7 +41168,7 @@ function assertPublicationRequest(value, context) {
 	assertMessageBinding(value, context);
 }
 function assertWorkerFailure(value, executionId) {
-	if (!isRecord$1(value) || !hasExactKeys(value, [
+	if (!isRecord(value) || !hasExactKeys(value, [
 		"version",
 		"protocolVersion",
 		"type",
@@ -40871,7 +41177,7 @@ function assertWorkerFailure(value, executionId) {
 	]) || value.version !== "3dena.compute-scientific-worker-failure.v1" || value.protocolVersion !== "3dena.compute-scientific-worker.v1" || value.type !== "failed" || value.executionId !== executionId || !WORKER_FAILURE_CODES.has(value.code)) scientificWorkerError("INVALID_WORKER_MESSAGE");
 }
 function assertPublicationReceipt(value, request) {
-	if (!isRecord$1(value) || !hasExactKeys(value, [
+	if (!isRecord(value) || !hasExactKeys(value, [
 		"version",
 		"accepted",
 		"executionId",
@@ -40891,7 +41197,7 @@ function sha256$3(bytes) {
 	return createHash("sha256").update(bytes).digest("hex");
 }
 function storedAnalysisOwnerMatches(value, context) {
-	return isRecord$1(value) && hasExactKeys(value, [
+	return isRecord(value) && hasExactKeys(value, [
 		"contractVersion",
 		"datasetHash",
 		"specHash",
@@ -40904,11 +41210,11 @@ var JsonObjectStoreScientificInputProvider = class {
 	#objectStore;
 	#maxInputBytes;
 	constructor(options) {
-		if (!isRecord$1(options) || !Object.keys(options).every((key) => [
+		if (!isRecord(options) || !Object.keys(options).every((key) => [
 			"version",
 			"objectStore",
 			"maxInputBytes"
-		].includes(key)) || options.version !== "3dena.compute-scientific-json-input-provider-options.v1" || !isRecord$1(options.objectStore) || typeof options.objectStore.head !== "function" || typeof options.objectStore.get !== "function") scientificWorkerError("INVALID_CONFIGURATION");
+		].includes(key)) || options.version !== "3dena.compute-scientific-json-input-provider-options.v1" || !isRecord(options.objectStore) || typeof options.objectStore.head !== "function" || typeof options.objectStore.get !== "function") scientificWorkerError("INVALID_CONFIGURATION");
 		const maxInputBytes = options.maxInputBytes ?? 33554432;
 		if (!Number.isSafeInteger(maxInputBytes) || maxInputBytes < 1 || maxInputBytes > 268435456) scientificWorkerError("INVALID_CONFIGURATION");
 		this.#objectStore = options.objectStore;
@@ -40934,7 +41240,7 @@ var JsonObjectStoreScientificInputProvider = class {
 		} catch {
 			scientificWorkerError("INVALID_EXECUTION_INPUT");
 		}
-		if (!isRecord$1(parsed)) scientificWorkerError("INVALID_EXECUTION_INPUT");
+		if (!isRecord(parsed)) scientificWorkerError("INVALID_EXECUTION_INPUT");
 		if (parsed.version === SCIENTIFIC_STORED_LONGITUDINAL_INPUT_VERSION) {
 			if (!hasExactKeys(parsed, [
 				"version",
@@ -40986,7 +41292,7 @@ function sha256$2(bytes) {
 	return createHash("sha256").update(bytes).digest("hex");
 }
 function analysisOwnerMatches$1(value, session) {
-	return isRecord$1(value) && hasExactKeys(value, [
+	return isRecord(value) && hasExactKeys(value, [
 		"contractVersion",
 		"datasetHash",
 		"specHash",
@@ -41001,18 +41307,18 @@ async function assertArtifactBinding(bytes, session, expectedLongitudinal) {
 	} catch {
 		scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
 	}
-	if (!isRecord$1(artifact)) scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
+	if (!isRecord(artifact)) scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
 	if (artifact.version === "3dena.compute-scientific-longitudinal-result-artifact.v2") {
-		const bundle = isRecord$1(artifact.bundle) ? artifact.bundle : void 0;
-		const identity = bundle !== void 0 && isRecord$1(bundle.identity) ? bundle.identity : void 0;
-		const execution = bundle !== void 0 && isRecord$1(bundle.execution) ? bundle.execution : void 0;
+		const bundle = isRecord(artifact.bundle) ? artifact.bundle : void 0;
+		const identity = bundle !== void 0 && isRecord(bundle.identity) ? bundle.identity : void 0;
+		const execution = bundle !== void 0 && isRecord(bundle.execution) ? bundle.execution : void 0;
 		if (!hasExactKeys(artifact, [
 			"version",
 			"owner",
 			"taskKind",
 			"requestHash",
 			"bundle"
-		]) || artifact.taskKind !== SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2 || session.context.request.taskKind !== SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2 || !isRecord$1(artifact.owner) || !hasExactKeys(artifact.owner, [
+		]) || artifact.taskKind !== SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2 || session.context.request.taskKind !== SCIENTIFIC_LONGITUDINAL_TASK_KIND_V2 || !isRecord(artifact.owner) || !hasExactKeys(artifact.owner, [
 			"contractVersion",
 			"datasetHash",
 			"specHash",
@@ -41029,7 +41335,7 @@ async function assertArtifactBinding(bytes, session, expectedLongitudinal) {
 		return;
 	}
 	try {
-		if (!isRecord$1(artifact.envelope)) throw new TypeError("INVALID_ENVELOPE");
+		if (!isRecord(artifact.envelope)) throw new TypeError("INVALID_ENVELOPE");
 		assertAnalysisResultEnvelopeV1(artifact.envelope);
 	} catch {
 		scientificWorkerError("ARTIFACT_BINDING_MISMATCH");
@@ -41052,13 +41358,13 @@ var ScientificWorkerSessionAdapter = class {
 	#failureCounts = /* @__PURE__ */ new Map();
 	#totalFailures = 0;
 	constructor(options) {
-		if (!isRecord$1(options) || !Object.keys(options).every((key) => [
+		if (!isRecord(options) || !Object.keys(options).every((key) => [
 			"version",
 			"inputProvider",
 			"resultStore",
 			"publisher",
 			"maxResultBytes"
-		].includes(key)) || options.version !== "3dena.compute-scientific-session-adapter-options.v1" || !isRecord$1(options.inputProvider) || options.inputProvider.version !== "3dena.compute-scientific-input-provider.v1" || typeof options.inputProvider.load !== "function" || !isRecord$1(options.resultStore) || typeof options.resultStore.putImmutable !== "function" || typeof options.resultStore.head !== "function" || !isRecord$1(options.publisher) || options.publisher.version !== "3dena.compute-scientific-result-publisher.v1" || typeof options.publisher.publish !== "function") scientificWorkerError("INVALID_CONFIGURATION");
+		].includes(key)) || options.version !== "3dena.compute-scientific-session-adapter-options.v1" || !isRecord(options.inputProvider) || options.inputProvider.version !== "3dena.compute-scientific-input-provider.v1" || typeof options.inputProvider.load !== "function" || !isRecord(options.resultStore) || typeof options.resultStore.putImmutable !== "function" || typeof options.resultStore.head !== "function" || !isRecord(options.publisher) || options.publisher.version !== "3dena.compute-scientific-result-publisher.v1" || typeof options.publisher.publish !== "function") scientificWorkerError("INVALID_CONFIGURATION");
 		const maxResultBytes = options.maxResultBytes ?? 134217728;
 		if (!Number.isSafeInteger(maxResultBytes) || maxResultBytes < 1 || maxResultBytes > 268435456) scientificWorkerError("INVALID_CONFIGURATION");
 		this.#inputProvider = options.inputProvider;
@@ -41095,18 +41401,18 @@ var ScientificWorkerSessionAdapter = class {
 	}
 	async handleMessage(session, message) {
 		if (session.signal.aborted) scientificWorkerError("SESSION_ABORTED");
-		if (isRecord$1(message) && message.type === "failed") {
+		if (isRecord(message) && message.type === "failed") {
 			assertWorkerFailure(message, session.executionId);
 			this.#recordFailure(message.code);
 			this.#bindings.delete(session.childId);
 			this.#expectedLongitudinal.delete(session.executionId);
 			return;
 		}
-		if (isRecord$1(message) && message.type === "artifact-put-request") {
+		if (isRecord(message) && message.type === "artifact-put-request") {
 			await this.#handleArtifactPut(session, message);
 			return;
 		}
-		if (isRecord$1(message) && message.type === "publication-request") {
+		if (isRecord(message) && message.type === "publication-request") {
 			await this.#handlePublication(session, message);
 			return;
 		}
@@ -45456,216 +45762,6 @@ import_lib$1.default.escapeLiteral;
 import_lib$1.default.Result;
 import_lib$1.default.TypeOverrides;
 import_lib$1.default.defaults;
-var BUILD_APPROVAL_REGISTRY_VERSION = "3dena.build-approval-registry.v1";
-var PERSISTENT_LEASE_CLAIM_VERSION = "3dena.persistent-lease-claim.v1";
-var RECOVERY_RECEIPT_VERSION_V2 = "3dena.compute-recovery-receipt.v2";
-var OBJECT_DELETION_PROBE_VERSION = "3dena.object-deletion-probe.v1";
-var ORPHAN_RECONCILIATION_RECEIPT_VERSION = "3dena.orphan-reconciliation-receipt.v1";
-var TERMINATION_RECONCILIATION_RECEIPT_VERSION = "3dena.termination-reconciliation-receipt.v1";
-//#endregion
-//#region packages/compute-service-persistent/src/build-approval.ts
-var COMMIT = /^[a-f0-9]{40}$/u;
-var IMAGE_DIGEST = /^sha256:[a-f0-9]{64}$/u;
-var VERSION = /^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u;
-var TARBALL_INTEGRITY = /^sha512-[A-Za-z0-9+/]+={0,2}$/u;
-var CANDIDATE_KEYS = [
-	"version",
-	"releaseId",
-	"environment",
-	"gitCommit",
-	"vercelDeploymentId",
-	"vercelBuildId",
-	"flyImageDigest",
-	"flyBuildId",
-	"analysisTarballSha256",
-	"jenaVersion",
-	"jenaCommit",
-	"jenaTarballSha256",
-	"jenaTarballIntegrity",
-	"sdkVersion",
-	"buildId",
-	"lockfileSha256",
-	"sbomSha256",
-	"schemaBundleSha256",
-	"migrationManifestSha256",
-	"contractVersions",
-	"implementationActorIds"
-];
-var APPROVAL_KEYS = [
-	"version",
-	"candidate",
-	"approvalManifestSha256",
-	"reviewerId",
-	"approvedAt",
-	"publicKeyId",
-	"signatureAlgorithm",
-	"signatureBase64"
-];
-function validTimestamp(value) {
-	return typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u.test(value) && Number.isFinite(Date.parse(value));
-}
-function assertBuildApprovalCandidate(value) {
-	const contractVersions = isRecord$3(value) && Array.isArray(value.contractVersions) ? value.contractVersions : null;
-	const implementationActorIds = isRecord$3(value) && Array.isArray(value.implementationActorIds) ? value.implementationActorIds : null;
-	if (!isRecord$3(value) || !hasExactKeys$1(value, CANDIDATE_KEYS) || value.version !== "3dena.build-approval-candidate.v3" || typeof value.releaseId !== "string" || !OPAQUE_ID$1.test(value.releaseId) || value.environment !== "preview" && value.environment !== "production" || typeof value.gitCommit !== "string" || !COMMIT.test(value.gitCommit) || typeof value.vercelDeploymentId !== "string" || !OPAQUE_ID$1.test(value.vercelDeploymentId) || typeof value.vercelBuildId !== "string" || !OPAQUE_ID$1.test(value.vercelBuildId) || typeof value.flyImageDigest !== "string" || !IMAGE_DIGEST.test(value.flyImageDigest) || typeof value.flyBuildId !== "string" || !OPAQUE_ID$1.test(value.flyBuildId) || typeof value.analysisTarballSha256 !== "string" || !LOWER_SHA256$1.test(value.analysisTarballSha256) || typeof value.jenaVersion !== "string" || !VERSION.test(value.jenaVersion) || typeof value.jenaCommit !== "string" || !COMMIT.test(value.jenaCommit) || typeof value.jenaTarballSha256 !== "string" || !LOWER_SHA256$1.test(value.jenaTarballSha256) || typeof value.jenaTarballIntegrity !== "string" || !TARBALL_INTEGRITY.test(value.jenaTarballIntegrity) || typeof value.sdkVersion !== "string" || !VERSION.test(value.sdkVersion) || typeof value.buildId !== "string" || !OPAQUE_ID$1.test(value.buildId) || typeof value.lockfileSha256 !== "string" || !LOWER_SHA256$1.test(value.lockfileSha256) || typeof value.sbomSha256 !== "string" || !LOWER_SHA256$1.test(value.sbomSha256) || typeof value.schemaBundleSha256 !== "string" || !LOWER_SHA256$1.test(value.schemaBundleSha256) || typeof value.migrationManifestSha256 !== "string" || !LOWER_SHA256$1.test(value.migrationManifestSha256) || contractVersions === null || contractVersions.length < 1 || contractVersions.some((item) => typeof item !== "string" || !VERSION.test(item)) || new Set(contractVersions).size !== contractVersions.length || [...contractVersions].sort().some((item, index) => item !== contractVersions[index]) || implementationActorIds === null || implementationActorIds.length < 1 || implementationActorIds.some((item) => typeof item !== "string" || !OPAQUE_ID$1.test(item)) || new Set(implementationActorIds).size !== implementationActorIds.length || [...implementationActorIds].sort().some((item, index) => item !== implementationActorIds[index])) persistentError("BUILD_APPROVAL_INVALID");
-}
-function buildApprovalManifestSha256(candidate) {
-	assertBuildApprovalCandidate(candidate);
-	return sha256Text$2(canonicalStringify$2(candidate));
-}
-function assertBuildApproval(value, publicKeys) {
-	if (!isRecord$3(value) || !hasExactKeys$1(value, APPROVAL_KEYS) || value.version !== "3dena.build-approval.v3" || typeof value.approvalManifestSha256 !== "string" || !LOWER_SHA256$1.test(value.approvalManifestSha256) || typeof value.reviewerId !== "string" || !OPAQUE_ID$1.test(value.reviewerId) || !validTimestamp(value.approvedAt) || typeof value.publicKeyId !== "string" || !OPAQUE_ID$1.test(value.publicKeyId) || value.signatureAlgorithm !== "Ed25519" || typeof value.signatureBase64 !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/u.test(value.signatureBase64)) persistentError("BUILD_APPROVAL_INVALID");
-	assertBuildApprovalCandidate(value.candidate);
-	if (value.candidate.implementationActorIds.includes(value.reviewerId)) persistentError("BUILD_APPROVAL_INVALID");
-	if (buildApprovalManifestSha256(value.candidate) !== value.approvalManifestSha256) persistentError("BUILD_APPROVAL_INVALID");
-	const publicKey = publicKeys.get(value.publicKeyId);
-	if (publicKey === void 0) persistentError("BUILD_APPROVAL_INVALID");
-	let valid = false;
-	try {
-		valid = verify(null, Buffer.from(value.approvalManifestSha256, "ascii"), typeof publicKey === "string" ? createPublicKey(publicKey) : publicKey, Buffer.from(value.signatureBase64, "base64"));
-	} catch {
-		persistentError("BUILD_APPROVAL_INVALID");
-	}
-	if (!valid) persistentError("BUILD_APPROVAL_INVALID");
-}
-var PostgresBuildApprovalRegistry = class {
-	version = BUILD_APPROVAL_REGISTRY_VERSION;
-	#database;
-	#publicKeys;
-	constructor(database, publicKeys) {
-		if (publicKeys.size < 1) persistentError("CONFIGURATION_INVALID");
-		this.#database = database;
-		this.#publicKeys = new Map(publicKeys);
-	}
-	async activate(approval) {
-		assertBuildApproval(approval, this.#publicKeys);
-		await this.#database.transaction(async (sql) => {
-			await sql.query("LOCK TABLE compute_build_approval_events IN SHARE ROW EXCLUSIVE MODE");
-			await sql.query(`INSERT INTO compute_build_approvals (
-          approval_manifest_sha256, release_id, environment, git_commit,
-          vercel_deployment_id, vercel_build_id, fly_image_digest, fly_build_id,
-          reviewer_id, approved_at, approval
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
-        ON CONFLICT (approval_manifest_sha256) DO NOTHING`, [
-				approval.approvalManifestSha256,
-				approval.candidate.releaseId,
-				approval.candidate.environment,
-				approval.candidate.gitCommit,
-				approval.candidate.vercelDeploymentId,
-				approval.candidate.vercelBuildId,
-				approval.candidate.flyImageDigest,
-				approval.candidate.flyBuildId,
-				approval.reviewerId,
-				approval.approvedAt,
-				JSON.stringify(approval)
-			]);
-			const observed = (await sql.query(`SELECT approval FROM compute_build_approvals
-         WHERE approval_manifest_sha256 = $1`, [approval.approvalManifestSha256])).rows[0]?.approval;
-			assertBuildApproval(observed, this.#publicKeys);
-			if (canonicalStringify$2(observed) !== canonicalStringify$2(approval)) persistentError("BUILD_APPROVAL_INVALID");
-			await sql.query(`INSERT INTO compute_build_approval_events (
-          approval_manifest_sha256, environment, event_type, actor_id, occurred_at
-        ) VALUES ($1,$2,'activated',$3,$4)
-        ON CONFLICT (approval_manifest_sha256, event_type, actor_id, occurred_at)
-        DO NOTHING`, [
-				approval.approvalManifestSha256,
-				approval.candidate.environment,
-				approval.reviewerId,
-				approval.approvedAt
-			]);
-		});
-	}
-	async revoke(manifestSha256, revokedAt, actorId) {
-		if (!LOWER_SHA256$1.test(manifestSha256) || !validTimestamp(revokedAt) || !OPAQUE_ID$1.test(actorId)) persistentError("BUILD_APPROVAL_INVALID");
-		await this.#database.transaction(async (sql) => {
-			await sql.query("LOCK TABLE compute_build_approval_events IN SHARE ROW EXCLUSIVE MODE");
-			if ((await sql.query(`SELECT approval FROM compute_build_approvals
-         WHERE approval_manifest_sha256 = $1`, [manifestSha256])).rows[0]?.approval === void 0) persistentError("BUILD_APPROVAL_INVALID");
-			await sql.query(`INSERT INTO compute_build_approval_events (
-          approval_manifest_sha256, environment, event_type, actor_id, occurred_at
-        ) SELECT approval_manifest_sha256, environment, 'revoked', $2, $3
-          FROM compute_build_approvals WHERE approval_manifest_sha256 = $1
-        ON CONFLICT (approval_manifest_sha256, event_type, actor_id, occurred_at)
-        DO NOTHING`, [
-				manifestSha256,
-				actorId,
-				revokedAt
-			]);
-		});
-	}
-	async isActive(expected) {
-		if (!isRecord$3(expected) || !hasExactKeys$1(expected, [
-			"releaseId",
-			"environment",
-			"gitCommit",
-			"vercelDeploymentId",
-			"vercelBuildId",
-			"flyImageDigest",
-			"flyBuildId",
-			"approvalManifestSha256",
-			"migrationManifestSha256",
-			"contractVersions",
-			"jenaVersion",
-			"jenaCommit",
-			"jenaTarballIntegrity",
-			"sdkVersion",
-			"buildId"
-		])) return false;
-		const approval = (await this.#database.query(`WITH latest_activation AS (
-         SELECT event_id, approval_manifest_sha256
-         FROM compute_build_approval_events
-         WHERE environment = $3 AND event_type = 'activated'
-         ORDER BY event_id DESC LIMIT 1
-       )
-       SELECT approval FROM latest_activation active
-       JOIN compute_build_approvals approval
-         ON approval.approval_manifest_sha256 = active.approval_manifest_sha256
-       WHERE approval.approval_manifest_sha256 = $1 AND approval.release_id = $2
-         AND approval.environment = $3 AND approval.git_commit = $4
-         AND approval.vercel_deployment_id = $5 AND approval.vercel_build_id = $6
-         AND approval.fly_image_digest = $7 AND approval.fly_build_id = $8
-         AND NOT EXISTS (
-           SELECT 1 FROM compute_build_approval_events revoked
-           WHERE revoked.approval_manifest_sha256 = active.approval_manifest_sha256
-             AND revoked.event_type = 'revoked' AND revoked.event_id > active.event_id
-         )`, [
-			expected.approvalManifestSha256,
-			expected.releaseId,
-			expected.environment,
-			expected.gitCommit,
-			expected.vercelDeploymentId,
-			expected.vercelBuildId,
-			expected.flyImageDigest,
-			expected.flyBuildId
-		])).rows[0]?.approval;
-		if (approval === void 0) return false;
-		try {
-			assertBuildApproval(approval, this.#publicKeys);
-			return approval.candidate.migrationManifestSha256 === expected.migrationManifestSha256 && canonicalStringify$2(approval.candidate.contractVersions) === canonicalStringify$2(expected.contractVersions) && approval.candidate.jenaVersion === expected.jenaVersion && approval.candidate.jenaCommit === expected.jenaCommit && approval.candidate.jenaTarballIntegrity === expected.jenaTarballIntegrity && approval.candidate.sdkVersion === expected.sdkVersion && approval.candidate.buildId === expected.buildId;
-		} catch {
-			return false;
-		}
-	}
-};
-var BuildApprovalReadinessProbe = class {
-	#registry;
-	#expected;
-	#dependencies;
-	constructor(input) {
-		this.#registry = input.registry;
-		this.#expected = cloneFrozen$2(input.expected);
-		this.#dependencies = [...input.dependencies ?? []];
-	}
-	async check() {
-		try {
-			if (!await this.#registry.isActive(this.#expected)) return false;
-			for (const dependency of this.#dependencies) if (!await dependency()) return false;
-			return true;
-		} catch {
-			return false;
-		}
-	}
-};
 //#endregion
 //#region packages/compute-service-persistent/src/dataset-storage.ts
 function workflowError$1(code, path) {
@@ -45711,7 +45807,7 @@ var PostgresDatasetSessionRepository = class {
 		const row = (await this.#database.query(`SELECT revision, session, control_state FROM compute_dataset_workflows
        WHERE dataset_id = $1 AND deleted_at IS NULL
          AND expires_at > clock_timestamp()`, [datasetId])).rows[0];
-		if (!isRecord$3(row?.session) || !isRecord$3(row.control_state)) return null;
+		if (!isRecord$2(row?.session) || !isRecord$2(row.control_state)) return null;
 		return {
 			revision: safeInteger$2(row.revision),
 			session: cloneFrozen$2(row.session),
@@ -45744,7 +45840,7 @@ var PostgresDatasetSessionRepository = class {
 		return (await this.#database.query(`SELECT record FROM compute_dataset_artifacts
        WHERE dataset_id = $1 AND artifact_kind = 'parsed'
        ORDER BY artifact_identity`, [datasetId])).rows.map(({ record }) => {
-			if (!isRecord$3(record) || record.schemaVersion !== "3dena.persistent-parsed-object-ref.v1" || !isRecord$3(record.object) || typeof record.object.key !== "string") workflowError$1("PARSED_STORAGE_FAILURE", "storage.parsed.object");
+			if (!isRecord$2(record) || record.schemaVersion !== "3dena.persistent-parsed-object-ref.v1" || !isRecord$2(record.object) || typeof record.object.key !== "string") workflowError$1("PARSED_STORAGE_FAILURE", "storage.parsed.object");
 			return record.object.key;
 		});
 	}
@@ -45800,7 +45896,7 @@ var PostgresDatasetWorkflowStorage = class {
 		const metadata = await this.#artifact("upload", identity);
 		if (metadata === null) return null;
 		const bytes = await this.#objectStore.get(this.#inputObjectKey);
-		if (bytes === null || !isRecord$3(metadata)) return null;
+		if (bytes === null || !isRecord$2(metadata)) return null;
 		return cloneFrozen$2({
 			...metadata,
 			bytes
@@ -45829,7 +45925,7 @@ var PostgresDatasetWorkflowStorage = class {
 	async readParsed(identity) {
 		const reference = await this.#artifact("parsed", identity);
 		if (reference === null) return null;
-		if (!isRecord$3(reference) || reference.schemaVersion !== "3dena.persistent-parsed-object-ref.v1" || reference.parsedIdentity !== identity || !isRecord$3(reference.object) || typeof reference.object.key !== "string" || typeof reference.object.sha256 !== "string" || !Number.isSafeInteger(reference.object.byteLength)) workflowError$1("PARSED_STORAGE_FAILURE", "storage.parsed.reference");
+		if (!isRecord$2(reference) || reference.schemaVersion !== "3dena.persistent-parsed-object-ref.v1" || reference.parsedIdentity !== identity || !isRecord$2(reference.object) || typeof reference.object.key !== "string" || typeof reference.object.sha256 !== "string" || !Number.isSafeInteger(reference.object.byteLength)) workflowError$1("PARSED_STORAGE_FAILURE", "storage.parsed.reference");
 		const [head, bytes] = await Promise.all([this.#objectStore.head(reference.object.key), this.#objectStore.get(reference.object.key)]);
 		if (head === null || bytes === null || head.sha256 !== reference.object.sha256 || head.byteLength !== reference.object.byteLength || bytes.byteLength !== reference.object.byteLength || bytesSha256(bytes) !== reference.object.sha256) workflowError$1("PARSED_STORAGE_FAILURE", "storage.parsed.bytes");
 		let parsed;
@@ -45838,7 +45934,7 @@ var PostgresDatasetWorkflowStorage = class {
 		} catch {
 			workflowError$1("PARSED_STORAGE_FAILURE", "storage.parsed.json");
 		}
-		if (!isRecord$3(parsed) || parsed.parsedIdentity !== identity) workflowError$1("PARSED_STORAGE_FAILURE", "storage.parsed.identity");
+		if (!isRecord$2(parsed) || parsed.parsedIdentity !== identity) workflowError$1("PARSED_STORAGE_FAILURE", "storage.parsed.identity");
 		return cloneFrozen$2(parsed);
 	}
 	async activateAtomic(request) {
@@ -45846,7 +45942,7 @@ var PostgresDatasetWorkflowStorage = class {
 			const row = await this.#lockedWorkflow(sql);
 			if (safeInteger$2(row.generation) !== request.generation) return "stale";
 			const active = row.active_record;
-			if ((isRecord$3(active) && isRecord$3(active.handle) && typeof active.handle.activationIdentity === "string" ? active.handle.activationIdentity : null) !== request.expectedActiveActivationIdentity) return "conflict";
+			if ((isRecord$2(active) && isRecord$2(active.handle) && typeof active.handle.activationIdentity === "string" ? active.handle.activationIdentity : null) !== request.expectedActiveActivationIdentity) return "conflict";
 			await sql.query(`UPDATE compute_dataset_workflows SET active_record = $2::jsonb,
           updated_at = clock_timestamp()
          WHERE dataset_id = $1`, [this.#datasetId, JSON.stringify(request.next)]);
@@ -45857,7 +45953,7 @@ var PostgresDatasetWorkflowStorage = class {
 		const active = (await this.#database.query(`SELECT active_record FROM compute_dataset_workflows
        WHERE dataset_id = $1 AND deleted_at IS NULL
          AND expires_at > clock_timestamp()`, [this.#datasetId])).rows[0]?.active_record;
-		return isRecord$3(active) ? cloneFrozen$2(active) : null;
+		return isRecord$2(active) ? cloneFrozen$2(active) : null;
 	}
 	async #lockedWorkflow(sql) {
 		const row = (await sql.query(`SELECT generation, active_record FROM compute_dataset_workflows
@@ -84722,7 +84818,7 @@ var OfficialVercelPrivateBlobClient = class {
 var PostgresDatabase = class {
 	#pool;
 	constructor(pool) {
-		if (!isRecord$3(pool) || typeof pool.query !== "function" || typeof pool.connect !== "function") persistentError("CONFIGURATION_INVALID");
+		if (!isRecord$2(pool) || typeof pool.query !== "function" || typeof pool.connect !== "function") persistentError("CONFIGURATION_INVALID");
 		this.#pool = pool;
 	}
 	query(text, values = []) {
@@ -84925,10 +85021,10 @@ function safeInteger$1(value) {
 	return Number(parsed);
 }
 function assertCoreRecord(value) {
-	if (!isRecord$3(value) || value.version !== "3dena.compute-job-record.v1" || !isRecord$3(value.owner) || typeof value.owner.taskId !== "string" || !OPAQUE_ID$1.test(value.owner.taskId) || typeof value.taskRef !== "string" || !/^[a-f0-9]{64}$/u.test(value.taskRef) || !Number.isSafeInteger(value.revision) || Number(value.revision) < 0 || !Number.isSafeInteger(value.leaseEpoch) || Number(value.leaseEpoch) < 0 || typeof value.state !== "string") persistentError("DATABASE_FAILURE");
+	if (!isRecord$2(value) || value.version !== "3dena.compute-job-record.v1" || !isRecord$2(value.owner) || typeof value.owner.taskId !== "string" || !OPAQUE_ID$1.test(value.owner.taskId) || typeof value.taskRef !== "string" || !/^[a-f0-9]{64}$/u.test(value.taskRef) || !Number.isSafeInteger(value.revision) || Number(value.revision) < 0 || !Number.isSafeInteger(value.leaseEpoch) || Number(value.leaseEpoch) < 0 || typeof value.state !== "string") persistentError("DATABASE_FAILURE");
 }
 function assertHttpRecord(value) {
-	if (!isRecord$3(value) || value.version !== "3dena.compute-http-job.v1" || typeof value.jobId !== "string" || !OPAQUE_ID$1.test(value.jobId) || !Number.isSafeInteger(value.revision) || Number(value.revision) < 0 || typeof value.createIdempotencyHash !== "string" || !/^[a-f0-9]{64}$/u.test(value.createIdempotencyHash) || value.inputDeletedAtMs !== void 0 && (!Number.isSafeInteger(value.inputDeletedAtMs) || Number(value.inputDeletedAtMs) < 0) || value.deletionCompletedAtMs !== void 0 && (!Number.isSafeInteger(value.deletionCompletedAtMs) || Number(value.deletionCompletedAtMs) < 0 || !Number.isSafeInteger(value.inputDeletedAtMs) || !Number.isSafeInteger(value.deleteRequestedAtMs) || Number(value.deletionCompletedAtMs) < Number(value.inputDeletedAtMs) || Number(value.deletionCompletedAtMs) < Number(value.deleteRequestedAtMs))) persistentError("DATABASE_FAILURE");
+	if (!isRecord$2(value) || value.version !== "3dena.compute-http-job.v1" || typeof value.jobId !== "string" || !OPAQUE_ID$1.test(value.jobId) || !Number.isSafeInteger(value.revision) || Number(value.revision) < 0 || typeof value.createIdempotencyHash !== "string" || !/^[a-f0-9]{64}$/u.test(value.createIdempotencyHash) || value.inputDeletedAtMs !== void 0 && (!Number.isSafeInteger(value.inputDeletedAtMs) || Number(value.inputDeletedAtMs) < 0) || value.deletionCompletedAtMs !== void 0 && (!Number.isSafeInteger(value.deletionCompletedAtMs) || Number(value.deletionCompletedAtMs) < 0 || !Number.isSafeInteger(value.inputDeletedAtMs) || !Number.isSafeInteger(value.deleteRequestedAtMs) || Number(value.deletionCompletedAtMs) < Number(value.inputDeletedAtMs) || Number(value.deletionCompletedAtMs) < Number(value.deleteRequestedAtMs))) persistentError("DATABASE_FAILURE");
 }
 var HTTP_EVENT_STATES = /* @__PURE__ */ new Set([
 	"CREATED",
@@ -84942,7 +85038,7 @@ var HTTP_EVENT_STATES = /* @__PURE__ */ new Set([
 	"EXPIRED"
 ]);
 function storedHttpEvent(value) {
-	if (!isRecord$3(value) || !hasExactKeys$1(value, [
+	if (!isRecord$2(value) || !hasExactKeys$1(value, [
 		"schemaVersion",
 		"sequence",
 		"state",
@@ -86061,7 +86157,7 @@ var PostgresPublishedSourceResultRegistry = class {
 		} catch {
 			return null;
 		}
-		if (!isRecord$3(parsed) || !hasExactKeys$1(parsed, [
+		if (!isRecord$2(parsed) || !hasExactKeys$1(parsed, [
 			"version",
 			"owner",
 			"taskKind",
@@ -86373,7 +86469,7 @@ var VercelPrivateBlobObjectStore = class {
 	#retentionMs;
 	constructor(options) {
 		this.options = options;
-		if (!isRecord$3(options.client) || typeof options.client.put !== "function" || typeof options.client.head !== "function" || typeof options.client.download !== "function" || typeof options.client.del !== "function" || typeof options.token !== "string" || options.token.length < 16 || !/^[a-z0-9][a-z0-9-]{0,62}$/u.test(options.namespace)) persistentError("CONFIGURATION_INVALID");
+		if (!isRecord$2(options.client) || typeof options.client.put !== "function" || typeof options.client.head !== "function" || typeof options.client.download !== "function" || typeof options.client.del !== "function" || typeof options.token !== "string" || options.token.length < 16 || !/^[a-z0-9][a-z0-9-]{0,62}$/u.test(options.namespace)) persistentError("CONFIGURATION_INVALID");
 		this.#retentionMs = options.retentionMs ?? DEFAULT_SWEEP_RETENTION_MS;
 		if (!Number.isSafeInteger(this.#retentionMs) || this.#retentionMs < 1 || this.#retentionMs > MAX_RETENTION_MS) persistentError("CONFIGURATION_INVALID");
 	}
@@ -87002,14 +87098,6 @@ var FlyArtifactUrlIssuer = class {
 		});
 	}
 };
-function isRecord(value) {
-	return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-async function loadPublicKeys(path) {
-	const value = JSON.parse(await readFile(path, "utf8"));
-	if (!isRecord(value) || Object.keys(value).length < 1 || Object.entries(value).some(([id, key]) => !/^[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$/u.test(id) || typeof key !== "string" || !key.includes("BEGIN PUBLIC KEY"))) throw new TypeError("Build approval public-key registry is invalid.");
-	return new Map(Object.entries(value));
-}
 async function verifyCapacity(database, expected) {
 	try {
 		const result = await database.query(`SELECT count(*)::integer AS enabled_count
@@ -87020,7 +87108,7 @@ async function verifyCapacity(database, expected) {
 	}
 }
 function ownerMatches(left, right) {
-	return isRecord(left) && hasExactKeys$1(left, [
+	return isRecord$2(left) && hasExactKeys$1(left, [
 		"contractVersion",
 		"datasetHash",
 		"specHash",
@@ -87029,7 +87117,7 @@ function ownerMatches(left, right) {
 	]) && canonicalStringify$2(left) === canonicalStringify$2(right);
 }
 function analysisOwnerMatches(left, right) {
-	return isRecord(left) && hasExactKeys$1(left, [
+	return isRecord$2(left) && hasExactKeys$1(left, [
 		"contractVersion",
 		"datasetHash",
 		"specHash",
@@ -87075,7 +87163,7 @@ var CoreScientificResultPublisher = class {
 		} catch {
 			throw new TypeError("Published result artifact is invalid.");
 		}
-		if (!isRecord(parsed)) throw new TypeError("Published result artifact is invalid.");
+		if (!isRecord$2(parsed)) throw new TypeError("Published result artifact is invalid.");
 		let sourceEnvelope;
 		if (parsed.version === "3dena.compute-scientific-longitudinal-result-artifact.v2") {
 			const bundle = parsed.bundle;
@@ -87085,7 +87173,7 @@ var CoreScientificResultPublisher = class {
 				"taskKind",
 				"requestHash",
 				"bundle"
-			]) || parsed.taskKind !== "longitudinal-analysis-v2" || task.request.taskKind !== "longitudinal-analysis-v2" || !ownerMatches(parsed.owner, task.request.owner) || typeof parsed.requestHash !== "string" || !LOWER_SHA256$1.test(parsed.requestHash) || !isRecord(bundle)) throw new TypeError("Published longitudinal result artifact is invalid.");
+			]) || parsed.taskKind !== "longitudinal-analysis-v2" || task.request.taskKind !== "longitudinal-analysis-v2" || !ownerMatches(parsed.owner, task.request.owner) || typeof parsed.requestHash !== "string" || !LOWER_SHA256$1.test(parsed.requestHash) || !isRecord$2(bundle)) throw new TypeError("Published longitudinal result artifact is invalid.");
 			try {
 				await verifyLongitudinalAnalysisBundleV2(bundle);
 			} catch {
@@ -87100,7 +87188,7 @@ var CoreScientificResultPublisher = class {
 				"owner",
 				"taskKind",
 				"envelope"
-			]) || parsed.version !== "3dena.compute-scientific-result-artifact.v1" || parsed.taskKind !== task.request.taskKind || !analysisOwnerMatches(parsed.owner, task.request.owner) || !isRecord(parsed.envelope)) throw new TypeError("Published result artifact is invalid.");
+			]) || parsed.version !== "3dena.compute-scientific-result-artifact.v1" || parsed.taskKind !== task.request.taskKind || !analysisOwnerMatches(parsed.owner, task.request.owner) || !isRecord$2(parsed.envelope)) throw new TypeError("Published result artifact is invalid.");
 			assertAnalysisResultEnvelopeV1(parsed.envelope);
 			sourceEnvelope = parsed.envelope;
 			if (sourceEnvelope.taskKind !== task.request.taskKind || !analysisOwnerMatches(sourceEnvelope.owner, task.request.owner)) throw new TypeError("Published result binding is invalid.");
@@ -87155,7 +87243,7 @@ async function createCommonRuntime(config) {
 		clock,
 		ledger
 	});
-	const registry = new PostgresBuildApprovalRegistry(database, await loadPublicKeys(config.publicKeysPath));
+	const registry = new PostgresBuildApprovalRegistry(database, config.publicKeys);
 	const migration = config.manifest.migrationManifest.map((entry) => ({
 		version: entry.version,
 		sha256: entry.sha256

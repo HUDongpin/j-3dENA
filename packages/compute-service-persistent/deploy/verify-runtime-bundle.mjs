@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
+import { open } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 const [requestedDirectory, expectedSdkVersion, expectedBuildId, expectedSourceCommit] = process.argv.slice(2);
@@ -17,11 +18,18 @@ const requiredMigrations = Object.freeze([
   "0002-persistent-control-plane",
   "0003-build-approval-v3",
   "0004-scientific-result-generations",
+  "0005-build-approval-v4",
 ]);
 const requiredJena = Object.freeze({
   version: "0.7.0-ona.0",
   commit: "90790856f00bdef63dbd27fc3a5b502e8cffe65f",
   tarballIntegrity: "sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==",
+});
+const RUNTIME_BUNDLE_FILE_BOUNDS_V1 = Object.freeze({
+  schemaVersion: "3dena.runtime-bundle-file-bounds.v1",
+  runtime: 64 * 1024 * 1024,
+  worker: 64 * 1024 * 1024,
+  manifest: 1024 * 1024,
 });
 
 function reject(reason) {
@@ -30,6 +38,36 @@ function reject(reason) {
 
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+async function readBoundBundleFile(pathname, label, maximumBytes) {
+  let handle;
+  try {
+    handle = await open(
+      pathname,
+      fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
+    );
+    const before = await handle.stat();
+    if (!before.isFile()) reject(`${label} must be a regular file`);
+    if (before.size > maximumBytes) {
+      reject(`${label} exceeds its ${maximumBytes}-byte limit`);
+    }
+    const bytes = await handle.readFile();
+    const after = await handle.stat();
+    if (bytes.byteLength !== before.size || after.size !== before.size ||
+        after.dev !== before.dev || after.ino !== before.ino ||
+        after.mtimeMs !== before.mtimeMs) {
+      reject(`${label} changed while it was being read`);
+    }
+    return bytes;
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("RUNTIME_BUNDLE_REJECTED:")) {
+      throw error;
+    }
+    reject(`${label} could not be read securely`);
+  } finally {
+    await handle?.close();
+  }
 }
 
 function exact(value, fields, path) {
@@ -58,9 +96,22 @@ if (!requestedDirectory || !expectedSdkVersion || !expectedBuildId || !expectedS
 }
 
 const directory = resolve(requestedDirectory);
-const runtimeBytes = await readFile(join(directory, "compute-runtime.mjs"));
-const workerBytes = await readFile(join(directory, "scientific-worker-entry.mjs"));
-const manifest = JSON.parse(await readFile(join(directory, "build-manifest.json"), "utf8"));
+const runtimeBytes = await readBoundBundleFile(
+  join(directory, "compute-runtime.mjs"),
+  "compute runtime bundle",
+  RUNTIME_BUNDLE_FILE_BOUNDS_V1.runtime,
+);
+const workerBytes = await readBoundBundleFile(
+  join(directory, "scientific-worker-entry.mjs"),
+  "scientific worker bundle",
+  RUNTIME_BUNDLE_FILE_BOUNDS_V1.worker,
+);
+const manifestBytes = await readBoundBundleFile(
+  join(directory, "build-manifest.json"),
+  "runtime build manifest",
+  RUNTIME_BUNDLE_FILE_BOUNDS_V1.manifest,
+);
+const manifest = JSON.parse(manifestBytes.toString("utf8"));
 
 if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
   reject("manifest must be an object");

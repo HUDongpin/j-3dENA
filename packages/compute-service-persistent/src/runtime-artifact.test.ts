@@ -56,6 +56,13 @@ describe("immutable compute runtime artifact", () => {
             ),
             version: "0004-scientific-result-generations",
           },
+          {
+            path: join(
+              repositoryRoot,
+              "packages/compute-service-persistent/migrations/0005_build_approval_v4.sql",
+            ),
+            version: "0005-build-approval-v4",
+          },
         ],
         contractVersions: [
           "3dena.compute-dataset-http.v1",

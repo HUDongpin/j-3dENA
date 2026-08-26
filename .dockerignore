@@ -12,6 +12,10 @@ output/compute-service-candidate-*/**
 !output/compute-service-candidate-*/scientific-worker-entry.mjs
 !output/compute-service-candidate-*/build-manifest.json
 
+!output/build-approval-public-keys-*/
+output/build-approval-public-keys-*/**
+!output/build-approval-public-keys-*/build-approval-public-keys.json
+
 !packages/
 packages/**
 !packages/compute-service-persistent/
@@ -21,3 +25,5 @@ packages/compute-service-persistent/deploy/**
 !packages/compute-service-persistent/deploy/Dockerfile
 !packages/compute-service-persistent/deploy/entrypoint.sh
 !packages/compute-service-persistent/deploy/verify-runtime-bundle.mjs
+!packages/compute-service-persistent/deploy/verify-image-public-key-registry.mjs
+!packages/compute-service-persistent/deploy/strict-json.mjs

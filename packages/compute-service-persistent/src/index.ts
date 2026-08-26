@@ -13,8 +13,12 @@ export {
 export {
   assertBuildApproval,
   assertBuildApprovalCandidate,
+  BUILD_APPROVAL_PUBLIC_KEY_REGISTRY_MAX_BYTES,
   buildApprovalManifestSha256,
+  buildApprovalSignaturePayload,
   BuildApprovalReadinessProbe,
+  loadBuildApprovalPublicKeyRegistry,
+  parseBuildApprovalPublicKeyRegistry,
   PostgresBuildApprovalRegistry,
 } from "./build-approval";
 export { PersistentComputeError } from "./errors";
@@ -61,6 +65,7 @@ export {
 
 export type {
   BuildApprovalCandidateV1,
+  BuildApprovalPublicKeyV1,
   BuildApprovalRegistry,
   BuildApprovalV1,
   ExternalTerminationObservationV1,

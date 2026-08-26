@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
 import {
@@ -76,7 +75,7 @@ import {
   DurableControlPlaneProcessSupervisor,
   PersistentComputeWorker,
 } from "./worker";
-import { canonicalStringify, hasExactKeys, LOWER_SHA256 } from "./util";
+import { canonicalStringify, hasExactKeys, isRecord, LOWER_SHA256 } from "./util";
 
 const MAX_REQUEST_HEADERS = 64;
 const MAX_REQUEST_HEADER_BYTES = 16 * 1024;
@@ -166,21 +165,6 @@ class FlyArtifactUrlIssuer implements ComputeHttpObjectUrlIssuer {
       exportUrl: null,
     });
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-async function loadPublicKeys(path: string): Promise<ReadonlyMap<string, string>> {
-  const value = JSON.parse(await readFile(path, "utf8")) as unknown;
-  if (!isRecord(value) || Object.keys(value).length < 1 ||
-      Object.entries(value).some(([id, key]) =>
-        !/^[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$/u.test(id) ||
-        typeof key !== "string" || !key.includes("BEGIN PUBLIC KEY"))) {
-    throw new TypeError("Build approval public-key registry is invalid.");
-  }
-  return new Map(Object.entries(value) as Array<[string, string]>);
 }
 
 async function verifyCapacity(database: PostgresDatabase, expected: number): Promise<boolean> {
@@ -393,8 +377,7 @@ async function createCommonRuntime(
     clock,
     ledger,
   });
-  const publicKeys = await loadPublicKeys(config.publicKeysPath);
-  const registry = new PostgresBuildApprovalRegistry(database, publicKeys);
+  const registry = new PostgresBuildApprovalRegistry(database, config.publicKeys);
   const migration = config.manifest.migrationManifest.map((entry) => ({
     version: entry.version,
     sha256: entry.sha256,

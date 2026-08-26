@@ -722,6 +722,19 @@ describe("persistent PostgreSQL contract", () => {
     expect(sql).not.toMatch(/ALTER\s+TABLE\s+compute_schema_migrations/iu);
   });
 
+  it("ships an append-only approval migration that preserves V1-V3 as history and permits V4", () => {
+    const sql = readFileSync(
+      new URL("../migrations/0005_build_approval_v4.sql", import.meta.url),
+      "utf8",
+    );
+    expect(sql).toContain("3dena.build-approval.v1");
+    expect(sql).toContain("3dena.build-approval.v2");
+    expect(sql).toContain("3dena.build-approval.v3");
+    expect(sql).toContain("3dena.build-approval.v4");
+    expect(sql).toContain("compute_build_approvals_approval_check");
+    expect(sql).not.toMatch(/ALTER\s+TABLE\s+compute_schema_migrations/iu);
+  });
+
   it("ships a generational source-result migration without mutating legacy history", () => {
     const sql = readFileSync(
       new URL("../migrations/0004_scientific_result_generations.sql", import.meta.url),

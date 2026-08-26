@@ -31,7 +31,7 @@ function classify(changedPaths: string[], hasCurrentReceipt = true) {
 }
 
 describe("public package S/A/C HEAD governance", () => {
-  it("classifies source-only HEADs as S only before the v8 receipt exists", () => {
+  it("classifies source-only HEADs as S only before the v11 receipt exists", () => {
     expect(classify(["packages/analysis/src/index.ts"], false)).toEqual({
       kind: "source",
       stage: "source",
@@ -74,13 +74,28 @@ describe("public package S/A/C HEAD governance", () => {
     ])).toThrow(/not an exact allowed generated path/u);
   });
 
+  it("treats only the exact runtime input example as a source contract", () => {
+    const examplePath =
+      "packages/compute-service-persistent/deploy/runtime-build-input.example.json";
+    expect(classify([examplePath], false)).toEqual({
+      kind: "source",
+      stage: "source",
+    });
+    expect(() => classify([examplePath])).toThrow(/receipt already exists/u);
+    expect(() => classify([`${examplePath}.backup`], false))
+      .toThrow(/not an exact allowed generated path/u);
+    expect(() => classify([
+      "packages/compute-service-persistent/deploy/runtime-build-input.other.json",
+    ], false)).toThrow(/not an exact allowed generated path/u);
+  });
+
   it("requires exact, single-purpose runtime input and candidate commits", () => {
     expect(classify([
-      "packages/compute-service-persistent/deploy/runtime-build-input.0.2.0-implemented-unverified.7.json",
-      "packages/compute-service-persistent/deploy/runtime-build-input.0.2.0-implemented-unverified.8.json",
+      "packages/compute-service-persistent/deploy/runtime-build-input.0.2.0-implemented-unverified.10.json",
+      "packages/compute-service-persistent/deploy/runtime-build-input.0.2.0-implemented-unverified.11.json",
     ])).toEqual({ kind: "generated", stage: "runtime-input" });
 
-    const oldCandidate = "output/compute-service-candidate-8910e41";
+    const oldCandidate = "output/compute-service-candidate-daa90c2";
     const newCandidate = `output/compute-service-candidate-${runtimeInputHead.slice(0, 7)}`;
     const files = ["build-manifest.json", "compute-runtime.mjs", "scientific-worker-entry.mjs"];
     expect(classify(files.flatMap((file) => [
@@ -89,19 +104,19 @@ describe("public package S/A/C HEAD governance", () => {
     ]))).toEqual({ kind: "generated", stage: "runtime-candidate" });
 
     expect(() => classify([
-      "packages/compute-service-persistent/deploy/runtime-build-input.0.2.0-implemented-unverified.8.json",
+      "packages/compute-service-persistent/deploy/runtime-build-input.0.2.0-implemented-unverified.11.json",
       `${newCandidate}/compute-runtime.mjs`,
     ])).toThrow(/multiple generated stages/u);
   });
 
-  it("strictly binds the runtime input to receipt S and the v8 release", () => {
+  it("strictly binds the runtime input to receipt S and the v11 release", () => {
     const input = {
       schemaVersion: "3dena.compute-runtime-build-input.v4",
       approvedLongitudinalBuild: {
         jenaVersion: "0.7.0-ona.0",
         jenaCommit: "90790856f00bdef63dbd27fc3a5b502e8cffe65f",
         jenaTarballIntegrity: "sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==",
-        sdkVersion: "0.2.0-implemented-unverified.8",
+        sdkVersion: "0.2.0-implemented-unverified.11",
         buildId: sourceHead,
       },
       migrations: [
@@ -109,6 +124,7 @@ describe("public package S/A/C HEAD governance", () => {
         { path: "packages/compute-service-persistent/migrations/0002_persistent_control_plane.sql", version: "0002-persistent-control-plane" },
         { path: "packages/compute-service-persistent/migrations/0003_build_approval_v3.sql", version: "0003-build-approval-v3" },
         { path: "packages/compute-service-persistent/migrations/0004_scientific_result_generations.sql", version: "0004-scientific-result-generations" },
+        { path: "packages/compute-service-persistent/migrations/0005_build_approval_v4.sql", version: "0005-build-approval-v4" },
       ],
       contractVersions: [
         "3dena.compute-dataset-http.v1",
@@ -120,7 +136,7 @@ describe("public package S/A/C HEAD governance", () => {
       ],
     };
     expect(validatePublicRuntimeInput(input, sourceHead)).toBe(input);
-    expect(PUBLIC_PACKAGE_RUNTIME_INPUT_PATH).toContain("implemented-unverified.8");
+    expect(PUBLIC_PACKAGE_RUNTIME_INPUT_PATH).toContain("implemented-unverified.11");
     expect(() => validatePublicRuntimeInput({ ...input, unexpected: true }, sourceHead)).toThrow(/exact fields/u);
     expect(() => validatePublicRuntimeInput(input, "c".repeat(40))).toThrow(/receipt source S/u);
     expect(() => validatePublicRuntimeInput({
@@ -163,8 +179,8 @@ describe("public package S/A/C HEAD governance", () => {
 
   it("keeps source S independent from the workflow merge SHA", () => {
     expect(sourceHead).toHaveLength(40);
-    expect(PUBLIC_PACKAGE_RECEIPT_PATH).toContain("implemented-unverified.8");
-    expect(PUBLIC_PACKAGE_CI_CUSTODY_PATH).toContain("implemented-unverified.8");
+    expect(PUBLIC_PACKAGE_RECEIPT_PATH).toContain("implemented-unverified.11");
+    expect(PUBLIC_PACKAGE_CI_CUSTODY_PATH).toContain("implemented-unverified.11");
   });
 
   it("keeps generated-stage failure diagnostics aligned with the active release contract", async () => {
@@ -172,7 +188,7 @@ describe("public package S/A/C HEAD governance", () => {
       new URL("../scripts/public-package-head-governance.mjs", import.meta.url),
       "utf8",
     );
-    expect(source).not.toMatch(/fail\((?:"|`)[^"`]*\bv(?:6|7)\b[^"`]*(?:"|`)\)/gu);
+    expect(source).not.toMatch(/fail\((?:"|`)[^"`]*\bv(?:6|7|8|9|10)\b[^"`]*(?:"|`)\)/gu);
     expect(source).toContain('release ${PUBLIC_PACKAGE_RELEASE_VERSION}');
     expect(source).toContain("replace the previous runtime candidate");
   });

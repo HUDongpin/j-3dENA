@@ -1,4 +1,4 @@
-import { generateKeyPairSync, sign } from "node:crypto";
+import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
@@ -13,8 +13,11 @@ import {
 } from "./contracts";
 import {
   assertBuildApproval,
+  BUILD_APPROVAL_PUBLIC_KEY_REGISTRY_MAX_BYTES,
   BuildApprovalReadinessProbe,
   buildApprovalManifestSha256,
+  buildApprovalSignaturePayload,
+  parseBuildApprovalPublicKeyRegistry,
   PostgresBuildApprovalRegistry,
 } from "./build-approval";
 import {
@@ -23,8 +26,22 @@ import {
   type PgCompatiblePool,
   type SqlQueryResult,
 } from "./postgres";
+import { canonicalStringify } from "./util";
 
 const hex = (character: string, length = 64): string => character.repeat(length);
+
+function reviewerKey(
+  publicKey: KeyObject,
+  allowedEnvironments: readonly ("preview" | "production")[] = ["production"],
+) {
+  return {
+    algorithm: "Ed25519" as const,
+    allowedEnvironments,
+    publicKeyPem: String(publicKey.export({ format: "pem", type: "spki" })),
+    reviewerId: "reviewer-independent-1",
+    role: "independent-reviewer" as const,
+  };
+}
 
 function candidate(): BuildApprovalCandidateV1 {
   return {
@@ -47,6 +64,8 @@ function candidate(): BuildApprovalCandidateV1 {
     sbomSha256: hex("1"),
     schemaBundleSha256: hex("2"),
     migrationManifestSha256: hex("3"),
+    publicKeyRegistrySha256: hex("4"),
+    materializationManifestSha256: hex("5"),
     contractVersions: ["3dena.compute-http.v1", "3dena.contract.v1"],
     implementationActorIds: ["compute-implementer-1", "release-implementer-1"],
   };
@@ -132,12 +151,57 @@ class ApprovalPool implements PgCompatiblePool, PgCompatibleClient {
   }
 }
 
-describe("BuildApprovalV1", () => {
+describe("BuildApprovalV4", () => {
+  it("accepts a canonical registry at exactly 128 KiB and rejects one extra byte", () => {
+    const { publicKey } = generateKeyPairSync("ed25519");
+    const publicKeyPem = String(publicKey.export({ format: "pem", type: "spki" }));
+    const registry: Record<string, {
+      algorithm: "Ed25519";
+      allowedEnvironments: readonly ["production"];
+      publicKeyPem: string;
+      reviewerId: string;
+      role: "independent-reviewer";
+    }> = {};
+    for (let index = 0; ; index += 1) {
+      const publicKeyId = `release-key-${String(index).padStart(4, "0")}`;
+      registry[publicKeyId] = {
+        algorithm: "Ed25519",
+        allowedEnvironments: ["production"],
+        publicKeyPem,
+        reviewerId: "r",
+        role: "independent-reviewer",
+      };
+      if (Buffer.byteLength(`${canonicalStringify(registry)}\n`) >
+          BUILD_APPROVAL_PUBLIC_KEY_REGISTRY_MAX_BYTES) {
+        delete registry[publicKeyId];
+        break;
+      }
+    }
+    let remaining = BUILD_APPROVAL_PUBLIC_KEY_REGISTRY_MAX_BYTES -
+      Buffer.byteLength(`${canonicalStringify(registry)}\n`);
+    for (const entry of Object.values(registry)) {
+      const padding = Math.min(127, remaining);
+      entry.reviewerId += "x".repeat(padding);
+      remaining -= padding;
+      if (remaining === 0) break;
+    }
+    expect(remaining).toBe(0);
+    const boundaryBytes = Buffer.from(`${canonicalStringify(registry)}\n`);
+    expect(boundaryBytes.byteLength).toBe(BUILD_APPROVAL_PUBLIC_KEY_REGISTRY_MAX_BYTES);
+    expect(parseBuildApprovalPublicKeyRegistry(boundaryBytes).size)
+      .toBe(Object.keys(registry).length);
+    expect(() => parseBuildApprovalPublicKeyRegistry(
+      Buffer.concat([boundaryBytes, Buffer.from(" ")]),
+    )).toThrowError();
+  });
+
   it("cryptographically binds every exact-build field and rejects mutation", () => {
+    expect(BUILD_APPROVAL_CANDIDATE_VERSION).toBe("3dena.build-approval-candidate.v4");
+    expect(BUILD_APPROVAL_VERSION).toBe("3dena.build-approval.v4");
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     const manifest = candidate();
     const digest = buildApprovalManifestSha256(manifest);
-    const approval: BuildApprovalV1 = {
+    const unsignedApproval = {
       version: BUILD_APPROVAL_VERSION,
       candidate: manifest,
       approvalManifestSha256: digest,
@@ -145,16 +209,26 @@ describe("BuildApprovalV1", () => {
       approvedAt: "2026-08-21T12:00:00.000Z",
       publicKeyId: "release-key-1",
       signatureAlgorithm: "Ed25519",
-      signatureBase64: sign(null, Buffer.from(digest, "ascii"), privateKey).toString("base64"),
+    } as const;
+    const approval: BuildApprovalV1 = {
+      ...unsignedApproval,
+      signatureBase64: sign(
+        null,
+        Buffer.from(buildApprovalSignaturePayload(unsignedApproval), "utf8"),
+        privateKey,
+      ).toString("base64"),
     };
-    expect(() => assertBuildApproval(approval, new Map([["release-key-1", publicKey]])))
+    expect(() => assertBuildApproval(approval, new Map([[
+      "release-key-1",
+      reviewerKey(publicKey),
+    ]])))
       .not.toThrow();
     let rejected: unknown;
     try {
       assertBuildApproval({
         ...approval,
         candidate: { ...manifest, flyBuildId: "mixed-build" },
-      }, new Map([["release-key-1", publicKey]]));
+      }, new Map([["release-key-1", reviewerKey(publicKey)]]));
     } catch (error) {
       rejected = error;
     }
@@ -162,7 +236,30 @@ describe("BuildApprovalV1", () => {
     expect(() => assertBuildApproval({
       ...approval,
       reviewerId: "compute-implementer-1",
-    }, new Map([["release-key-1", publicKey]]))).toThrowError();
+    }, new Map([["release-key-1", reviewerKey(publicKey)]]))).toThrowError();
+    expect(() => assertBuildApproval(approval, new Map([[
+      "release-key-1",
+      reviewerKey(publicKey, ["preview"]),
+    ]]))).toThrowError();
+    expect(() => assertBuildApproval(approval, new Map([[
+      "release-key-1",
+      { ...reviewerKey(publicKey), reviewerId: "another-independent-reviewer" },
+    ]]))).toThrowError();
+    expect(() => assertBuildApproval({
+      ...approval,
+      approvedAt: "2026-08-21T12:00:01.000Z",
+    }, new Map([["release-key-1", reviewerKey(publicKey)]]))).toThrowError();
+    expect(() => assertBuildApproval({
+      ...approval,
+      publicKeyId: "release-key-2",
+    }, new Map([
+      ["release-key-1", reviewerKey(publicKey)],
+      ["release-key-2", reviewerKey(publicKey)],
+    ]))).toThrowError();
+    expect(() => assertBuildApproval({
+      ...approval,
+      signatureBase64: Buffer.alloc(63).toString("base64"),
+    }, new Map([["release-key-1", reviewerKey(publicKey)]]))).toThrowError();
   });
 
   it("keeps readiness fail-closed for missing approval or dependency failure", async () => {
@@ -176,6 +273,8 @@ describe("BuildApprovalV1", () => {
       flyBuildId: "fly-build-approved",
       approvalManifestSha256: hex("c"),
       migrationManifestSha256: hex("3"),
+      publicKeyRegistrySha256: hex("4"),
+      materializationManifestSha256: hex("5"),
       contractVersions: ["3dena.compute-http.v1", "3dena.contract.v1"],
       jenaVersion: "0.7.0-ona.0",
       jenaCommit: hex("d", 40),
@@ -207,7 +306,7 @@ describe("BuildApprovalV1", () => {
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     const manifest = candidate();
     const digest = buildApprovalManifestSha256(manifest);
-    const approval: BuildApprovalV1 = {
+    const unsignedApproval = {
       version: BUILD_APPROVAL_VERSION,
       candidate: manifest,
       approvalManifestSha256: digest,
@@ -215,7 +314,14 @@ describe("BuildApprovalV1", () => {
       approvedAt: "2026-08-21T12:00:00.000Z",
       publicKeyId: "release-key-1",
       signatureAlgorithm: "Ed25519",
-      signatureBase64: sign(null, Buffer.from(digest, "ascii"), privateKey).toString("base64"),
+    } as const;
+    const approval: BuildApprovalV1 = {
+      ...unsignedApproval,
+      signatureBase64: sign(
+        null,
+        Buffer.from(buildApprovalSignaturePayload(unsignedApproval), "utf8"),
+        privateKey,
+      ).toString("base64"),
     };
     const expected: ExpectedRuntimeBuildV1 = {
       releaseId: manifest.releaseId,
@@ -227,6 +333,8 @@ describe("BuildApprovalV1", () => {
       flyBuildId: manifest.flyBuildId,
       approvalManifestSha256: digest,
       migrationManifestSha256: manifest.migrationManifestSha256,
+      publicKeyRegistrySha256: manifest.publicKeyRegistrySha256,
+      materializationManifestSha256: manifest.materializationManifestSha256,
       contractVersions: manifest.contractVersions,
       jenaVersion: manifest.jenaVersion,
       jenaCommit: manifest.jenaCommit,
@@ -237,7 +345,7 @@ describe("BuildApprovalV1", () => {
     const pool = new ApprovalPool();
     const registry = new PostgresBuildApprovalRegistry(
       new PostgresDatabase(pool),
-      new Map([["release-key-1", publicKey]]),
+      new Map([["release-key-1", reviewerKey(publicKey)]]),
     );
     await expect(registry.isActive(expected)).resolves.toBe(false);
     await registry.activate(approval);
@@ -245,6 +353,10 @@ describe("BuildApprovalV1", () => {
     await expect(registry.isActive({ ...expected, flyBuildId: "mixed-build" }))
       .resolves.toBe(false);
     await expect(registry.isActive({ ...expected, migrationManifestSha256: hex("9") }))
+      .resolves.toBe(false);
+    await expect(registry.isActive({ ...expected, publicKeyRegistrySha256: hex("9") }))
+      .resolves.toBe(false);
+    await expect(registry.isActive({ ...expected, materializationManifestSha256: hex("9") }))
       .resolves.toBe(false);
     for (const changed of [
       { ...expected, jenaVersion: "0.7.0-drift" },

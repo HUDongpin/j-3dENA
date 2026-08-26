@@ -18,10 +18,47 @@ Stop before any external mutation unless all of the following are true:
    generated commits verify the tracked custody bytes without rebuilding them.
 3. The public analysis tarball, complete lock-graph SBOM, schema bundle, exact
    migration, Vercel build, and Fly OCI digest are hashed into one candidate
-   `BuildApprovalV1`; an independent release reviewer has signed it.
+   `3dena.build-approval.v4`; an independent release reviewer has signed it.
+   Preserve the strict `keys -> image -> candidate` order: independently
+   materialize/verify the public-key reviewer-policy registry without an image identity, include its
+   exact bytes in the image, obtain the real immutable digest, and only then
+   materialize/verify the schema bundle and hash-pinned unsigned candidate
+   input. The Docker build now requires the verified registry directory and
+   expected registry SHA-256, copies only that exact public registry into the
+   image, and verifies it before making `/app` read-only. This source contract
+   is not an image receipt: release remains fail-closed until a real independent
+   registry is supplied and the resulting immutable image is built and scanned.
+   None of these tooling receipts is a signature or activation.
+   Dispatch the exact-image scan with the registry SHA-256 taken from the
+   independently verified key-materialization manifest. The scan must extract
+   the registry from the same immutable image digest and issue a
+   `3dena.container-scan-receipt.v2`; the `3dena.release-receipts.v2` gate then
+   securely reads the raw signed approval, registry, materialization manifest,
+   scan receipt, Docker inspect, registry-verification receipt, and SARIF bytes.
+   It cross-binds the signed Fly digest, source commit, and registry hash instead
+   of trusting duplicated hand-entered fields.
+   After every required receipt has completed, an independent reviewer must sign
+   the canonical final matrix with `3dena.release-receipts-approval.v1`. The
+   approval timestamp must be later than every receipt, the reviewer must remain
+   outside the signed implementation-actor set, and any later receipt, descriptor,
+   identity, timestamp, or approval-metadata change invalidates the signature.
 4. The signed approval is active in the append-only Neon approval registry for
    the target environment, and both Web and compute readiness reject every other
-   manifest hash.
+   manifest hash. Configure the exact signed candidate's
+   `BUILD_APPROVAL_MATERIALIZATION_MANIFEST_SHA256` for both Fly process groups;
+   it is runtime identity, not a secret and not an image build argument.
+   Run BuildApproval activation/verification and capacity apply/verification
+   only from the reviewed custody root, using portable root-relative paths and
+   all mandatory external pins documented in
+   `packages/compute-service-persistent/deploy/README.md`. The BuildApproval CLI
+   requires independently handed-off config, signed-approval, and registry
+   SHA-256 values. The capacity CLI requires independently handed-off config,
+   active approval-manifest, and registry SHA-256 values. The migration CLI
+   likewise requires the externally pinned migration-config SHA-256. Do not derive these
+   pins by hashing the same files inside the operator invocation or copy them
+   from the config under review; that would turn evidence into its own trust
+   root. Preserve the exact command, custody-root identity, input pins, result,
+   and non-secret file digests in the release evidence.
 5. Preview is isolated by Vercel deployment, Neon branch/schema, Fly staging app,
    and private staging object namespace. Preview and production have no Class 1
    custody permission.
@@ -103,7 +140,7 @@ mismatch, or scientifically invalid result stops progression and triggers rollba
 Only after the new build is fully rolled out, the rollback observation window has
 closed, and the owner approves loss of backward compatibility may a separate
 reviewed migration contract obsolete columns or behavior. It requires a new Git
-commit, migration version, SBOM/schema bundle, BuildApprovalV1, test matrix,
+commit, migration version, SBOM/schema bundle, `3dena.build-approval.v4`, test matrix,
 canary, and rollback plan; it cannot reuse the expand-phase approval.
 
 ## 7. Incident rule

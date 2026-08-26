@@ -6,7 +6,11 @@ import type {
   ComputeHttpBuildIdentityV1,
 } from "@3dena/compute-service-http";
 
-import type { ExpectedRuntimeBuildV1 } from "./contracts";
+import type {
+  BuildApprovalPublicKeyV1,
+  ExpectedRuntimeBuildV1,
+} from "./contracts";
+import { loadBuildApprovalPublicKeyRegistry } from "./build-approval";
 import {
   canonicalStringify,
   hasExactKeys,
@@ -35,6 +39,7 @@ const REQUIRED_MIGRATION_VERSIONS = [
   "0002-persistent-control-plane",
   "0003-build-approval-v3",
   "0004-scientific-result-generations",
+  "0005-build-approval-v4",
 ] as const;
 const RUNTIME_MANIFEST_FIELDS = [
   "schemaVersion",
@@ -76,6 +81,7 @@ export interface ComputeRuntimeConfigurationV1 {
   readonly publicBaseUrl: string;
   readonly allowedOrigins: readonly string[];
   readonly publicKeysPath: string;
+  readonly publicKeys: ReadonlyMap<string, BuildApprovalPublicKeyV1>;
   readonly workerEntryPath: string;
   readonly port: number;
   readonly holderId: string;
@@ -189,6 +195,8 @@ export async function loadComputeRuntimeConfiguration(
   const manifestValue = JSON.parse(await readFile(manifestPath, "utf8")) as unknown;
   assertComputeRuntimeBuildManifestV1(manifestValue);
   const manifest = structuredClone(manifestValue);
+  const publicKeysPath = exactEnvironment(environment, "BUILD_APPROVAL_PUBLIC_KEYS_PATH");
+  const publicKeyRegistry = await loadBuildApprovalPublicKeyRegistry(publicKeysPath);
   const databaseUrl = exactEnvironment(
     environment,
     role === "api" ? "NEON_POOLED_DATABASE_URL" : "NEON_DIRECT_DATABASE_URL",
@@ -211,6 +219,11 @@ export async function loadComputeRuntimeConfiguration(
     "BUILD_APPROVAL_MANIFEST_SHA256",
     LOWER_SHA256,
   );
+  const materializationManifestSha256 = exactEnvironment(
+    environment,
+    "BUILD_APPROVAL_MATERIALIZATION_MANIFEST_SHA256",
+    LOWER_SHA256,
+  );
   const releaseId = exactEnvironment(environment, "RELEASE_ID", OPAQUE_ID);
   const gitCommit = exactEnvironment(environment, "GIT_COMMIT", GIT_COMMIT);
   if (gitCommit !== manifest.sourceCommit) {
@@ -228,6 +241,8 @@ export async function loadComputeRuntimeConfiguration(
     flyImageDigest,
     flyBuildId,
     migrationManifestSha256: manifest.migrationManifestSha256,
+    publicKeyRegistrySha256: publicKeyRegistry.sha256,
+    materializationManifestSha256,
     contractVersions: [...manifest.contractVersions],
     ...manifest.approvedLongitudinalBuild,
   });
@@ -246,7 +261,8 @@ export async function loadComputeRuntimeConfiguration(
       exactEnvironment(environment, "PUBLIC_COMPUTE_BASE_URL", /^https:\/\//u),
     ),
     allowedOrigins: Object.freeze([...allowedOrigins]),
-    publicKeysPath: exactEnvironment(environment, "BUILD_APPROVAL_PUBLIC_KEYS_PATH"),
+    publicKeysPath,
+    publicKeys: publicKeyRegistry.publicKeys,
     workerEntryPath: exactEnvironment(environment, "SCIENTIFIC_WORKER_ENTRY_PATH"),
     port: positiveInteger(exactEnvironment(environment, "PORT"), "PORT", 65_535),
     holderId: exactEnvironment(environment, "FLY_MACHINE_ID", OPAQUE_ID),

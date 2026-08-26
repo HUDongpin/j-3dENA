@@ -1,4 +1,6 @@
-import { createPublicKey, verify, type KeyObject } from "node:crypto";
+import { createHash, createPublicKey, verify } from "node:crypto";
+import { constants as fsConstants } from "node:fs";
+import { open } from "node:fs/promises";
 
 import type { ComputeHttpReadinessProbe } from "@3dena/compute-service-http";
 
@@ -7,6 +9,7 @@ import {
   BUILD_APPROVAL_REGISTRY_VERSION,
   BUILD_APPROVAL_VERSION,
   type BuildApprovalCandidateV1,
+  type BuildApprovalPublicKeyV1,
   type BuildApprovalRegistry,
   type BuildApprovalV1,
   type ExpectedRuntimeBuildV1,
@@ -27,18 +30,24 @@ const COMMIT = /^[a-f0-9]{40}$/u;
 const IMAGE_DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const VERSION = /^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/u;
 const TARBALL_INTEGRITY = /^sha512-[A-Za-z0-9+/]+={0,2}$/u;
+export const BUILD_APPROVAL_PUBLIC_KEY_REGISTRY_MAX_BYTES = 128 * 1024;
 
 const CANDIDATE_KEYS = [
   "version", "releaseId", "environment", "gitCommit", "vercelDeploymentId",
   "vercelBuildId", "flyImageDigest", "flyBuildId", "analysisTarballSha256",
   "jenaVersion", "jenaCommit", "jenaTarballSha256", "jenaTarballIntegrity",
   "sdkVersion", "buildId", "lockfileSha256",
-  "sbomSha256", "schemaBundleSha256", "migrationManifestSha256", "contractVersions",
+  "sbomSha256", "schemaBundleSha256", "migrationManifestSha256",
+  "publicKeyRegistrySha256", "materializationManifestSha256", "contractVersions",
   "implementationActorIds",
 ] as const;
 const APPROVAL_KEYS = [
   "version", "candidate", "approvalManifestSha256", "reviewerId", "approvedAt",
   "publicKeyId", "signatureAlgorithm", "signatureBase64",
+] as const;
+const SIGNATURE_ENVELOPE_KEYS = APPROVAL_KEYS.filter((key) => key !== "signatureBase64");
+const PUBLIC_KEY_ENTRY_KEYS = [
+  "algorithm", "allowedEnvironments", "publicKeyPem", "reviewerId", "role",
 ] as const;
 
 function validTimestamp(value: unknown): value is string {
@@ -80,6 +89,10 @@ export function assertBuildApprovalCandidate(
     typeof value.schemaBundleSha256 !== "string" || !LOWER_SHA256.test(value.schemaBundleSha256) ||
     typeof value.migrationManifestSha256 !== "string" ||
       !LOWER_SHA256.test(value.migrationManifestSha256) ||
+    typeof value.publicKeyRegistrySha256 !== "string" ||
+      !LOWER_SHA256.test(value.publicKeyRegistrySha256) ||
+    typeof value.materializationManifestSha256 !== "string" ||
+      !LOWER_SHA256.test(value.materializationManifestSha256) ||
     contractVersions === null || contractVersions.length < 1 ||
     contractVersions.some((item) => typeof item !== "string" || !VERSION.test(item)) ||
     new Set(contractVersions).size !== contractVersions.length ||
@@ -98,9 +111,115 @@ export function buildApprovalManifestSha256(candidate: BuildApprovalCandidateV1)
   return sha256Text(canonicalStringify(candidate));
 }
 
+export function buildApprovalSignaturePayload(
+  value: Omit<BuildApprovalV1, "signatureBase64">,
+): string {
+  if (!isRecord(value) || !hasExactKeys(value, SIGNATURE_ENVELOPE_KEYS) ||
+      value.version !== BUILD_APPROVAL_VERSION ||
+      typeof value.approvalManifestSha256 !== "string" ||
+        !LOWER_SHA256.test(value.approvalManifestSha256) ||
+      typeof value.reviewerId !== "string" || !OPAQUE_ID.test(value.reviewerId) ||
+      !validTimestamp(value.approvedAt) ||
+      typeof value.publicKeyId !== "string" || !OPAQUE_ID.test(value.publicKeyId) ||
+      value.signatureAlgorithm !== "Ed25519") {
+    persistentError("BUILD_APPROVAL_INVALID");
+  }
+  assertBuildApprovalCandidate(value.candidate);
+  if (buildApprovalManifestSha256(value.candidate) !== value.approvalManifestSha256) {
+    persistentError("BUILD_APPROVAL_INVALID");
+  }
+  return canonicalStringify(value);
+}
+
+function assertPublicKeyEntry(value: unknown): asserts value is BuildApprovalPublicKeyV1 {
+  const environments = isRecord(value) && Array.isArray(value.allowedEnvironments)
+    ? value.allowedEnvironments
+    : null;
+  if (!isRecord(value) || !hasExactKeys(value, PUBLIC_KEY_ENTRY_KEYS) ||
+      value.algorithm !== "Ed25519" || value.role !== "independent-reviewer" ||
+      typeof value.reviewerId !== "string" || !OPAQUE_ID.test(value.reviewerId) ||
+      typeof value.publicKeyPem !== "string" || /PRIVATE KEY/iu.test(value.publicKeyPem) ||
+      environments === null || environments.length < 1 ||
+      environments.some((environment) =>
+        environment !== "preview" && environment !== "production") ||
+      new Set(environments).size !== environments.length ||
+      [...environments].sort().some((environment, index) =>
+        environment !== environments[index])) {
+    persistentError("BUILD_APPROVAL_INVALID");
+  }
+  try {
+    const publicKey = createPublicKey(value.publicKeyPem);
+    if (publicKey.asymmetricKeyType !== "ed25519" ||
+        String(publicKey.export({ format: "pem", type: "spki" })) !== value.publicKeyPem) {
+      persistentError("BUILD_APPROVAL_INVALID");
+    }
+  } catch {
+    persistentError("BUILD_APPROVAL_INVALID");
+  }
+}
+
+export function parseBuildApprovalPublicKeyRegistry(
+  bytes: Uint8Array,
+): ReadonlyMap<string, BuildApprovalPublicKeyV1> {
+  if (bytes.byteLength < 1 ||
+      bytes.byteLength > BUILD_APPROVAL_PUBLIC_KEY_REGISTRY_MAX_BYTES) {
+    persistentError("BUILD_APPROVAL_INVALID");
+  }
+  let value: unknown;
+  const text = Buffer.from(bytes).toString("utf8");
+  try {
+    value = JSON.parse(text) as unknown;
+  } catch {
+    persistentError("BUILD_APPROVAL_INVALID");
+  }
+  if (!isRecord(value) || Object.keys(value).length < 1 ||
+      text !== `${canonicalStringify(value)}\n`) {
+    persistentError("BUILD_APPROVAL_INVALID");
+  }
+  const entries: Array<[string, BuildApprovalPublicKeyV1]> = [];
+  for (const [publicKeyId, entry] of Object.entries(value)) {
+    if (!OPAQUE_ID.test(publicKeyId)) persistentError("BUILD_APPROVAL_INVALID");
+    assertPublicKeyEntry(entry);
+    entries.push([publicKeyId, cloneFrozen(entry)]);
+  }
+  return new Map(entries);
+}
+
+export async function loadBuildApprovalPublicKeyRegistry(
+  path: string,
+): Promise<Readonly<{
+  publicKeys: ReadonlyMap<string, BuildApprovalPublicKeyV1>;
+  sha256: string;
+}>> {
+  const handle = await open(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+  try {
+    const before = await handle.stat({ bigint: true });
+    if (!before.isFile() || before.size < 1n ||
+        before.size > BigInt(BUILD_APPROVAL_PUBLIC_KEY_REGISTRY_MAX_BYTES)) {
+      throw new TypeError("Build approval public-key registry exceeds the 128 KiB limit.");
+    }
+    const bytes = await handle.readFile();
+    const after = await handle.stat({ bigint: true });
+    if (after.dev !== before.dev || after.ino !== before.ino ||
+        after.size !== before.size || after.mtimeNs !== before.mtimeNs ||
+        after.ctimeNs !== before.ctimeNs || BigInt(bytes.byteLength) !== before.size) {
+      throw new TypeError("Build approval public-key registry changed during secure read.");
+    }
+    return Object.freeze({
+      publicKeys: parseBuildApprovalPublicKeyRegistry(bytes),
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    });
+  } catch (error) {
+    if (error instanceof TypeError && /public-key registry/iu.test(error.message)) throw error;
+    throw new TypeError("Build approval public-key registry is invalid.");
+  } finally {
+    await handle.close();
+  }
+}
+
 export function assertBuildApproval(
   value: unknown,
-  publicKeys: ReadonlyMap<string, string | KeyObject>,
+  publicKeys: ReadonlyMap<string, BuildApprovalPublicKeyV1>,
 ): asserts value is BuildApprovalV1 {
   if (
     !isRecord(value) || !hasExactKeys(value, APPROVAL_KEYS) ||
@@ -119,15 +238,35 @@ export function assertBuildApproval(
   if (buildApprovalManifestSha256(value.candidate) !== value.approvalManifestSha256) {
     persistentError("BUILD_APPROVAL_INVALID");
   }
-  const publicKey = publicKeys.get(value.publicKeyId);
-  if (publicKey === undefined) persistentError("BUILD_APPROVAL_INVALID");
+  const publicKeyEntry = publicKeys.get(value.publicKeyId);
+  if (publicKeyEntry === undefined) persistentError("BUILD_APPROVAL_INVALID");
+  assertPublicKeyEntry(publicKeyEntry);
+  if (publicKeyEntry.reviewerId !== value.reviewerId ||
+      !publicKeyEntry.allowedEnvironments.includes(value.candidate.environment) ||
+      publicKeyEntry.role !== "independent-reviewer" ||
+      publicKeyEntry.algorithm !== value.signatureAlgorithm) {
+    persistentError("BUILD_APPROVAL_INVALID");
+  }
+  const signaturePayload = buildApprovalSignaturePayload({
+    version: value.version,
+    candidate: value.candidate,
+    approvalManifestSha256: value.approvalManifestSha256,
+    reviewerId: value.reviewerId,
+    approvedAt: value.approvedAt,
+    publicKeyId: value.publicKeyId,
+    signatureAlgorithm: value.signatureAlgorithm,
+  });
+  const signature = Buffer.from(value.signatureBase64, "base64");
+  if (signature.byteLength !== 64 || signature.toString("base64") !== value.signatureBase64) {
+    persistentError("BUILD_APPROVAL_INVALID");
+  }
   let valid = false;
   try {
     valid = verify(
       null,
-      Buffer.from(value.approvalManifestSha256, "ascii"),
-      typeof publicKey === "string" ? createPublicKey(publicKey) : publicKey,
-      Buffer.from(value.signatureBase64, "base64"),
+      Buffer.from(signaturePayload, "utf8"),
+      createPublicKey(publicKeyEntry.publicKeyPem),
+      signature,
     );
   } catch {
     persistentError("BUILD_APPROVAL_INVALID");
@@ -142,13 +281,21 @@ interface ApprovalRow extends Record<string, unknown> {
 export class PostgresBuildApprovalRegistry implements BuildApprovalRegistry {
   readonly version = BUILD_APPROVAL_REGISTRY_VERSION;
   readonly #database: PostgresDatabase;
-  readonly #publicKeys: ReadonlyMap<string, string | KeyObject>;
+  readonly #publicKeys: ReadonlyMap<string, BuildApprovalPublicKeyV1>;
 
   constructor(
     database: PostgresDatabase,
-    publicKeys: ReadonlyMap<string, string | KeyObject>,
+    publicKeys: ReadonlyMap<string, BuildApprovalPublicKeyV1>,
   ) {
     if (publicKeys.size < 1) persistentError("CONFIGURATION_INVALID");
+    for (const [publicKeyId, entry] of publicKeys) {
+      if (!OPAQUE_ID.test(publicKeyId)) persistentError("CONFIGURATION_INVALID");
+      try {
+        assertPublicKeyEntry(entry);
+      } catch {
+        persistentError("CONFIGURATION_INVALID");
+      }
+    }
     this.#database = database;
     this.#publicKeys = new Map(publicKeys);
   }
@@ -223,7 +370,9 @@ export class PostgresBuildApprovalRegistry implements BuildApprovalRegistry {
     if (!isRecord(expected) || !hasExactKeys(expected, [
       "releaseId", "environment", "gitCommit", "vercelDeploymentId",
       "vercelBuildId", "flyImageDigest", "flyBuildId", "approvalManifestSha256",
-      "migrationManifestSha256", "contractVersions", "jenaVersion", "jenaCommit",
+      "migrationManifestSha256", "publicKeyRegistrySha256",
+      "materializationManifestSha256", "contractVersions",
+      "jenaVersion", "jenaCommit",
       "jenaTarballIntegrity", "sdkVersion", "buildId",
     ])) return false;
     const result = await this.#database.query<ApprovalRow>(
@@ -255,6 +404,10 @@ export class PostgresBuildApprovalRegistry implements BuildApprovalRegistry {
       assertBuildApproval(approval, this.#publicKeys);
       return approval.candidate.migrationManifestSha256 ===
           expected.migrationManifestSha256 &&
+        approval.candidate.publicKeyRegistrySha256 ===
+          expected.publicKeyRegistrySha256 &&
+        approval.candidate.materializationManifestSha256 ===
+          expected.materializationManifestSha256 &&
         canonicalStringify(approval.candidate.contractVersions) ===
           canonicalStringify(expected.contractVersions) &&
         approval.candidate.jenaVersion === expected.jenaVersion &&
