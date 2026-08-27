@@ -1,0 +1,777 @@
+name: Exact v12 whole-container memory-peak calibration
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_ref:
+        description: Exact private Fly registry image pinned by the frozen sha256 digest
+        required: true
+        default: registry.fly.io/j3dena-preview-hdp-260826@sha256:4257374102d32b5b21d59fe3030b1fab339c65b7c55070d396d1b78b099b5881
+        type: string
+      tooling_commit:
+        description: Full Git SHA of this workflow, runner, verifier, and request; it must equal github.sha and remain distinct from the image source
+        required: true
+        type: string
+      expected_pin_manifest_sha256:
+        description: Independently reviewed SHA-256 of the canonical fixed-pin manifest for this tooling commit
+        required: true
+        type: string
+      expected_workflow_sha256:
+        description: Independently reviewed SHA-256 of this protected workflow file
+        required: true
+        type: string
+      expected_verifier_sha256:
+        description: Independently reviewed SHA-256 of the exact verifier
+        required: true
+        type: string
+      expected_host_observer_sha256:
+        description: Independently reviewed SHA-256 of the host-side cgroup observer
+        required: true
+        type: string
+      expected_runner_sha256:
+        description: Independently reviewed SHA-256 of the in-container direct-fork runner
+        required: true
+        type: string
+      expected_node_sha256:
+        description: Independently reviewed in-image SHA-256 of /usr/local/bin/node
+        required: true
+        type: string
+      expected_tini_sha256:
+        description: Independently reviewed in-image SHA-256 of /sbin/tini
+        required: true
+        default: 93dcc18adc78c65a028a84799ecf8ad40c936fdfc5f2a57b1acda5a8117fa82c
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: container-memory-peak-calibration-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  exact-v12-container-memory-peak-producer:
+    name: Three fresh exact-image Linux containers
+    runs-on: ubuntu-latest
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      github.ref_protected == true &&
+      github.repository_id == '1341282948' &&
+      github.repository_owner_id == '47708816'
+    environment: container-memory-peak-calibration
+    timeout-minutes: 45
+    outputs:
+      evidence-artifact-id: ${{ steps.upload-evidence.outputs.artifact-id }}
+      evidence-artifact-digest: ${{ steps.upload-evidence.outputs.artifact-digest }}
+      consistency-receipt-sha256: ${{ steps.consistency-sha.outputs.sha256 }}
+    env:
+      EVIDENCE_ROOT: output/container-memory-peak-v12
+      INPUT_ROOT: ${{ runner.temp }}/container-memory-peak-input-${{ github.run_id }}-${{ github.run_attempt }}
+      RUN_OUTPUT_STAGE: ${{ runner.temp }}/container-memory-peak-output-${{ github.run_id }}-${{ github.run_attempt }}
+      RUN_LOG_STAGE: ${{ runner.temp }}/container-memory-peak-logs-${{ github.run_id }}-${{ github.run_attempt }}
+      RUN_STATE_STAGE: ${{ runner.temp }}/container-memory-peak-state-${{ github.run_id }}-${{ github.run_attempt }}
+      SCAN_STAGE: ${{ runner.temp }}/container-memory-peak-scan-${{ github.run_id }}-${{ github.run_attempt }}
+      IMAGE_DIGEST: sha256:4257374102d32b5b21d59fe3030b1fab339c65b7c55070d396d1b78b099b5881
+      IMAGE_SOURCE_COMMIT: fb5c89322ea32b88fcde456b0338e659aa590272
+      FLY_BUILD_ID: a8b63e853c28be665282eaa4e8010d4198319106
+      SDK_VERSION: 0.2.0-implemented-unverified.12
+      SCIENTIFIC_WORKER_SHA256: df19b871790be8de8267b6467733647071b7b7e8a642341a09e7095f7887d0c7
+      RUNTIME_BUNDLE_SHA256: 54c4e2a96a5fbd8324ee2a3d91411a229e82fb892dc57eab3b15dd8565d2d751
+      BUILD_MANIFEST_SHA256: cb07d77e824f57b9ed709aad12994b1fece92b297b7e9252fa4f0f7116573dc5
+      SCAN_RECEIPT_SHA256: 53b828f7dbb0608087bfeaa7347190faebdd7115e507db6cf5ed3be2165340fc
+      DOCKER_INSPECT_SHA256: 75ea98fa5b3aa1898222dcdd61b4049bbd375fcbb59f4c51c3ec5225aea9d03a
+      REQUEST_ARTIFACT_SHA256: 7e8dc73d599685ee108aa6608405a73f3995fb31e4f3561e1009d671708bd65f
+      REQUEST_HASH: a76fa8cd5aca04017ad39403e5da0f1c53725e0e439fcffd18fdd1474ed22aed
+      EXPECTED_RESULT_HASH: 2438b7a52a7ec0be3a00cf4382e34469cfce1a5e111ce3cfa76c95f6002b862a
+      AUXILIARY_HOST_RECEIPT_SHA256: d9b0d03edbc1d25858a4b433fb0dee687492e5632a5146dc8158d2c3c051cf49
+      AUXILIARY_HOST_REDACTED_RECEIPT_SHA256: ab5b95038a1c80fcd9506ac879b189d63cfec7e35820196f463e3cec59349a12
+      MEMORY_LIMIT_BYTES: "2147483648"
+      THRESHOLD_FRACTION: "0.5"
+      EXACT_SCAN_RUN_ID: "33056284011"
+      GITHUB_REPOSITORY_ID_FROZEN: "1341282948"
+      GITHUB_REPOSITORY_OWNER_ID_FROZEN: "47708816"
+    steps:
+      - name: Authenticate, pull the exact image, and erase private-registry credentials
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          IMAGE_REF: ${{ inputs.image_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FLY_API_TOKEN"
+          test "$IMAGE_REF" = "registry.fly.io/j3dena-preview-hdp-260826@$IMAGE_DIGEST"
+          docker_config="$(mktemp -d "$RUNNER_TEMP/container-memory-peak-docker-config.XXXXXX")"
+          case "$docker_config" in
+            "$RUNNER_TEMP"/container-memory-peak-docker-config.*) ;;
+            *) exit 70 ;;
+          esac
+          export DOCKER_CONFIG="$docker_config"
+          cleanup_docker_credentials() {
+            local original_status="$?"
+            local cleanup_status=0
+            trap - EXIT
+            set +e
+            docker logout registry.fly.io >/dev/null 2>&1 || cleanup_status="$?"
+            rm -rf -- "$docker_config" || cleanup_status="$?"
+            test ! -e "$docker_config" || cleanup_status=71
+            if [[ "$original_status" -ne 0 ]]; then
+              exit "$original_status"
+            fi
+            exit "$cleanup_status"
+          }
+          trap cleanup_docker_credentials EXIT
+          printf '%s' "$FLY_API_TOKEN" |
+            docker login registry.fly.io --username x --password-stdin >/dev/null
+          docker pull "$IMAGE_REF"
+          docker image inspect "$IMAGE_REF" >/dev/null
+          docker logout registry.fly.io >/dev/null
+          rm -rf -- "$docker_config"
+          test ! -e "$docker_config"
+          trap - EXIT
+
+      - name: Check out the exact tooling commit without persisted credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tooling_commit }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Bind the protected workflow and detached tooling identities
+        env:
+          IMAGE_REF: ${{ inputs.image_ref }}
+          TOOLING_COMMIT: ${{ inputs.tooling_commit }}
+          EXPECTED_PIN_MANIFEST_SHA256: ${{ inputs.expected_pin_manifest_sha256 }}
+          EXPECTED_WORKFLOW_SHA256: ${{ inputs.expected_workflow_sha256 }}
+          EXPECTED_VERIFIER_SHA256: ${{ inputs.expected_verifier_sha256 }}
+          EXPECTED_HOST_OBSERVER_SHA256: ${{ inputs.expected_host_observer_sha256 }}
+          EXPECTED_RUNNER_SHA256: ${{ inputs.expected_runner_sha256 }}
+          EXPECTED_NODE_SHA256: ${{ inputs.expected_node_sha256 }}
+          EXPECTED_TINI_SHA256: ${{ inputs.expected_tini_sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_RUN_ATTEMPT" = "1"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_REF_PROTECTED" = "true"
+          test "$GITHUB_REPOSITORY_ID" = "$GITHUB_REPOSITORY_ID_FROZEN"
+          test "$GITHUB_REPOSITORY_OWNER_ID" = "$GITHUB_REPOSITORY_OWNER_ID_FROZEN"
+          test "$IMAGE_REF" = "registry.fly.io/j3dena-preview-hdp-260826@$IMAGE_DIGEST"
+          [[ "$TOOLING_COMMIT" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$EXPECTED_PIN_MANIFEST_SHA256" =~ ^[a-f0-9]{64}$ ]]
+          for reviewed_sha in \
+            "$EXPECTED_WORKFLOW_SHA256" "$EXPECTED_VERIFIER_SHA256" "$EXPECTED_HOST_OBSERVER_SHA256" \
+            "$EXPECTED_RUNNER_SHA256" "$EXPECTED_NODE_SHA256" "$EXPECTED_TINI_SHA256"; do
+            [[ "$reviewed_sha" =~ ^[a-f0-9]{64}$ ]]
+          done
+          test "$EXPECTED_TINI_SHA256" = "93dcc18adc78c65a028a84799ecf8ad40c936fdfc5f2a57b1acda5a8117fa82c"
+          test "$TOOLING_COMMIT" != "$IMAGE_SOURCE_COMMIT"
+          test "$TOOLING_COMMIT" = "$GITHUB_SHA"
+          test "$TOOLING_COMMIT" = "$GITHUB_WORKFLOW_SHA"
+          test "$(git rev-parse HEAD)" = "$TOOLING_COMMIT"
+          ! git symbolic-ref -q HEAD
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          test "$(sha256sum .github/workflows/container-memory-peak-calibration.yml | cut -d' ' -f1)" = "$EXPECTED_WORKFLOW_SHA256"
+          test "$(sha256sum scripts/verify-container-memory-peak-evidence.mjs | cut -d' ' -f1)" = "$EXPECTED_VERIFIER_SHA256"
+          test "$(sha256sum scripts/observe-container-memory-peak-linux.mjs | cut -d' ' -f1)" = "$EXPECTED_HOST_OBSERVER_SHA256"
+          test "$(sha256sum scripts/run-container-memory-peak-linux-calibration.mjs | cut -d' ' -f1)" = "$EXPECTED_RUNNER_SHA256"
+
+      - name: Download frozen exact-image scan evidence outside the curated root
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: trivy-exact-image-evidence
+          path: ${{ env.SCAN_STAGE }}
+          github-token: ${{ github.token }}
+          run-id: ${{ env.EXACT_SCAN_RUN_ID }}
+
+      - name: Bind prior evidence and the fixed-pin tooling manifest
+        env:
+          IMAGE_REF: ${{ inputs.image_ref }}
+          TOOLING_COMMIT: ${{ inputs.tooling_commit }}
+          EXPECTED_PIN_MANIFEST_SHA256: ${{ inputs.expected_pin_manifest_sha256 }}
+          EXPECTED_WORKFLOW_SHA256: ${{ inputs.expected_workflow_sha256 }}
+          EXPECTED_VERIFIER_SHA256: ${{ inputs.expected_verifier_sha256 }}
+          EXPECTED_HOST_OBSERVER_SHA256: ${{ inputs.expected_host_observer_sha256 }}
+          EXPECTED_RUNNER_SHA256: ${{ inputs.expected_runner_sha256 }}
+          EXPECTED_NODE_SHA256: ${{ inputs.expected_node_sha256 }}
+          EXPECTED_TINI_SHA256: ${{ inputs.expected_tini_sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SCAN_STAGE" = "$RUNNER_TEMP/"* ]]
+          [[ "$INPUT_ROOT" = "$RUNNER_TEMP/"* ]]
+          [[ "$RUN_OUTPUT_STAGE" = "$RUNNER_TEMP/"* ]]
+          [[ "$RUN_LOG_STAGE" = "$RUNNER_TEMP/"* ]]
+          [[ "$RUN_STATE_STAGE" = "$RUNNER_TEMP/"* ]]
+          test ! -e "$EVIDENCE_ROOT"
+          test ! -e "$INPUT_ROOT"
+          test ! -e "$RUN_OUTPUT_STAGE"
+          test ! -e "$RUN_LOG_STAGE"
+          test ! -e "$RUN_STATE_STAGE"
+          install -d -m 0755 "$INPUT_ROOT/prior" "$INPUT_ROOT/tooling"
+          install -d -m 0700 "$RUN_OUTPUT_STAGE" "$RUN_LOG_STAGE" "$RUN_STATE_STAGE"
+          install -m 0444 "$SCAN_STAGE/receipt.json" "$INPUT_ROOT/prior/scan-receipt.json"
+          install -m 0444 "$SCAN_STAGE/docker-inspect.json" "$INPUT_ROOT/prior/docker-inspect.json"
+          install -m 0444 evidence/performance/container-memory-peak-host-preflight-v12-redacted.json \
+            "$INPUT_ROOT/prior/host-preflight-redacted.json"
+          install -m 0444 scripts/run-container-memory-peak-linux-calibration.mjs \
+            "$INPUT_ROOT/tooling/run-container-memory-peak-linux-calibration.mjs"
+          install -m 0444 scripts/container-memory-peak-calibration-request.json \
+            "$INPUT_ROOT/tooling/container-memory-peak-calibration-request.json"
+
+          test "$(sha256sum "$INPUT_ROOT/prior/scan-receipt.json" | cut -d' ' -f1)" = "$SCAN_RECEIPT_SHA256"
+          test "$(sha256sum "$INPUT_ROOT/prior/docker-inspect.json" | cut -d' ' -f1)" = "$DOCKER_INSPECT_SHA256"
+          test "$(sha256sum "$INPUT_ROOT/prior/host-preflight-redacted.json" | cut -d' ' -f1)" = "$AUXILIARY_HOST_REDACTED_RECEIPT_SHA256"
+          test "$(sha256sum "$INPUT_ROOT/tooling/run-container-memory-peak-linux-calibration.mjs" | cut -d' ' -f1)" = "$EXPECTED_RUNNER_SHA256"
+          test "$(sha256sum "$INPUT_ROOT/tooling/container-memory-peak-calibration-request.json" | cut -d' ' -f1)" = "$REQUEST_ARTIFACT_SHA256"
+
+          node --input-type=module - "$INPUT_ROOT" "$IMAGE_REF" "$TOOLING_COMMIT" <<'NODE'
+          import { createHash } from "node:crypto";
+          import { readFileSync, writeFileSync } from "node:fs";
+          import { join } from "node:path";
+          const [root, imageRef, toolingCommit] = process.argv.slice(2);
+          const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+          const runnerSha256 = sha256(readFileSync(join(root, "tooling/run-container-memory-peak-linux-calibration.mjs")));
+          const manifest = {
+            schemaVersion: "3dena.container-memory-peak-pins.v1",
+            repository: "HUDongpin/j-3dENA",
+            image: {
+              ref: imageRef,
+              digest: process.env.IMAGE_DIGEST,
+              sourceCommit: process.env.IMAGE_SOURCE_COMMIT,
+              flyBuildId: process.env.FLY_BUILD_ID,
+              sdkVersion: process.env.SDK_VERSION,
+              scientificWorkerSha256: process.env.SCIENTIFIC_WORKER_SHA256,
+              runtimeBundleSha256: process.env.RUNTIME_BUNDLE_SHA256,
+              buildManifestSha256: process.env.BUILD_MANIFEST_SHA256,
+            },
+            priorEvidence: {
+              exactImageScanReceiptSha256: process.env.SCAN_RECEIPT_SHA256,
+              dockerInspectSha256: process.env.DOCKER_INSPECT_SHA256,
+              auxiliaryHostSourceReceiptSha256: process.env.AUXILIARY_HOST_RECEIPT_SHA256,
+              auxiliaryHostRedactedReceiptSha256: process.env.AUXILIARY_HOST_REDACTED_RECEIPT_SHA256,
+              auxiliaryHostReceiptRole: "informational-only",
+            },
+            tooling: {
+              commit: toolingCommit,
+              workflowSha256: process.env.EXPECTED_WORKFLOW_SHA256,
+              verifierSha256: process.env.EXPECTED_VERIFIER_SHA256,
+              hostObserverSha256: process.env.EXPECTED_HOST_OBSERVER_SHA256,
+              runnerSha256,
+              requestArtifactSha256: process.env.REQUEST_ARTIFACT_SHA256,
+            },
+            runtime: {
+              nodePath: "/usr/local/bin/node",
+              nodeSha256: process.env.EXPECTED_NODE_SHA256,
+              tiniPath: "/sbin/tini",
+              tiniSha256: process.env.EXPECTED_TINI_SHA256,
+              configEnv: [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "NODE_VERSION=24.19.0",
+                "YARN_VERSION=1.22.22",
+                "NODE_ENV=production",
+                "HOME=/nonexistent",
+                "TMPDIR=/tmp",
+                "TZ=UTC",
+                "LANG=C.UTF-8",
+                "LC_ALL=C.UTF-8",
+                "NODE_OPTIONS=--disable-proto=throw",
+                "BUILD_MANIFEST_PATH=/app/build-manifest.json",
+                "BUILD_APPROVAL_PUBLIC_KEYS_PATH=/app/build-approval-public-keys.json",
+                "SCIENTIFIC_WORKER_ENTRY_PATH=/app/scientific-worker-entry.mjs",
+                "MAX_OPEN_FILES=1024",
+                "MAX_PROCESSES=64",
+              ],
+            },
+            calibration: {
+              requestHash: process.env.REQUEST_HASH,
+              expectedResultHash: process.env.EXPECTED_RESULT_HASH,
+              memoryLimitBytes: Number(process.env.MEMORY_LIMIT_BYTES),
+              thresholdFraction: Number(process.env.THRESHOLD_FRACTION),
+              freshContainerRuns: 3,
+              scientificHardDeadlineMilliseconds: 60000,
+            },
+          };
+          writeFileSync(join(root, "pin-manifest.json"), JSON.stringify(manifest) + "\n", {
+            encoding: "utf8", flag: "wx", mode: 0o444,
+          });
+          NODE
+          test "$(sha256sum "$INPUT_ROOT/pin-manifest.json" | cut -d' ' -f1)" = "$EXPECTED_PIN_MANIFEST_SHA256"
+
+          node --input-type=module - "$INPUT_ROOT/prior/scan-receipt.json" \
+            "$INPUT_ROOT/prior/docker-inspect.json" "$IMAGE_REF" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const [scanPath, inspectPath, imageRef] = process.argv.slice(2);
+          const scan = JSON.parse(readFileSync(scanPath, "utf8"));
+          const inspect = JSON.parse(readFileSync(inspectPath, "utf8"));
+          if (scan.schemaVersion !== "3dena.container-scan-receipt.v3" || scan.status !== "passed" ||
+              scan.image.ref !== imageRef || scan.image.digest !== process.env.IMAGE_DIGEST ||
+              scan.image.sourceHeadCommit !== process.env.IMAGE_SOURCE_COMMIT ||
+              scan.image.inspectSha256 !== process.env.DOCKER_INSPECT_SHA256 || scan.scan.resultCount !== 0 ||
+              inspect.length !== 1 || inspect[0].Os !== "linux" || inspect[0].Architecture !== "amd64" ||
+              inspect[0].Config.User !== "10001:10001") {
+            throw new Error("frozen scan or inspect identity mismatch");
+          }
+          NODE
+          chmod 0555 "$INPUT_ROOT" "$INPUT_ROOT/prior" "$INPUT_ROOT/tooling"
+          rm -rf -- "$SCAN_STAGE"
+          test ! -e "$SCAN_STAGE"
+
+      - name: Run the frozen workload in exactly three fresh containers
+        env:
+          IMAGE_REF: ${{ inputs.image_ref }}
+          TOOLING_COMMIT: ${{ inputs.tooling_commit }}
+          EXPECTED_PIN_MANIFEST_SHA256: ${{ inputs.expected_pin_manifest_sha256 }}
+          EXPECTED_HOST_OBSERVER_SHA256: ${{ inputs.expected_host_observer_sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          input_absolute="$(realpath "$INPUT_ROOT")"
+          output_stage_absolute="$(realpath "$RUN_OUTPUT_STAGE")"
+          log_stage_absolute="$(realpath "$RUN_LOG_STAGE")"
+          state_stage_absolute="$(realpath "$RUN_STATE_STAGE")"
+          run_one() (
+            set -euo pipefail
+            local run_index="$1"
+            local run_output_dir="$output_stage_absolute/run-$run_index"
+            local run_log_dir="$log_stage_absolute/run-$run_index"
+            local container_name="3dena-container-memory-peak-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$run_index"
+            local cid_file="$state_stage_absolute/run-$run_index.cid"
+            local container_id=""
+            local docker_client_pid=""
+            install -d -m 0777 "$run_output_dir"
+            install -d -m 0700 "$run_log_dir"
+            test -z "$(find "$run_output_dir" -mindepth 1 -maxdepth 1 -print -quit)"
+            cleanup_container() {
+              local original_status="$?"
+              local cleanup_status=0
+              trap - EXIT
+              set +e
+              if [[ -n "$container_id" ]]; then
+                docker rm -f "$container_id" >/dev/null || cleanup_status="$?"
+              elif docker inspect "$container_name" >/dev/null 2>&1; then
+                docker rm -f "$container_name" >/dev/null || cleanup_status="$?"
+              fi
+              if [[ -n "$docker_client_pid" ]]; then
+                wait "$docker_client_pid" >/dev/null 2>&1 || true
+              fi
+              rm -f -- "$cid_file" || cleanup_status="$?"
+              if [[ "$original_status" -ne 0 ]]; then
+                exit "$original_status"
+              fi
+              exit "$cleanup_status"
+            }
+            trap cleanup_container EXIT
+
+            docker run \
+              --name "$container_name" \
+              --cidfile "$cid_file" \
+              --network none \
+              --read-only \
+              --user 10001:10001 \
+              --memory 2147483648 \
+              --memory-swap 2147483648 \
+              --memory-swappiness 0 \
+              --cpus 1 \
+              --pids-limit 64 \
+              --cap-drop ALL \
+              --security-opt no-new-privileges \
+              --tmpfs /tmp:rw,nosuid,nodev,noexec \
+              --mount "type=bind,source=$input_absolute,target=/calibration,readonly" \
+              --mount "type=bind,source=$run_output_dir,target=/evidence" \
+              --entrypoint /sbin/tini \
+              "$IMAGE_REF" \
+              -- /usr/local/bin/node /calibration/tooling/run-container-memory-peak-linux-calibration.mjs \
+                --run-index "$run_index" \
+                --pin-manifest /calibration/pin-manifest.json \
+                --expected-pin-manifest-sha256 "$EXPECTED_PIN_MANIFEST_SHA256" \
+                --request /calibration/tooling/container-memory-peak-calibration-request.json \
+                --scan-receipt /calibration/prior/scan-receipt.json \
+                --docker-inspect /calibration/prior/docker-inspect.json \
+                --auxiliary-host-redacted-receipt /calibration/prior/host-preflight-redacted.json \
+                --tooling-commit "$TOOLING_COMMIT" \
+                --output-dir /evidence \
+              >"$run_log_dir/stdout.txt" 2>"$run_log_dir/stderr.txt" &
+            docker_client_pid="$!"
+
+            for _attempt in $(seq 1 200); do
+              [[ -s "$cid_file" ]] && break
+              kill -0 "$docker_client_pid" 2>/dev/null || break
+              sleep 0.05
+            done
+            test -s "$cid_file"
+            container_id="$(tr -d '\r\n' <"$cid_file")"
+            [[ "$container_id" =~ ^[a-f0-9]{64}$ ]]
+            local target_pid=""
+            for _attempt in $(seq 1 200); do
+              target_pid="$(docker inspect --format '{{.State.Pid}}' "$container_id")"
+              [[ "$target_pid" =~ ^[1-9][0-9]*$ ]] && break
+              sleep 0.05
+            done
+            [[ "$target_pid" =~ ^[1-9][0-9]*$ ]]
+
+            node scripts/observe-container-memory-peak-linux.mjs \
+              --run-index "$run_index" \
+              --container-id "$container_id" \
+              --target-pid "$target_pid" \
+              --tooling-commit "$TOOLING_COMMIT" \
+              --expected-observer-sha256 "$EXPECTED_HOST_OBSERVER_SHA256" \
+              --output "$run_log_dir/host-cgroup-observation.json" \
+              >"$run_log_dir/observer-stdout.txt" 2>"$run_log_dir/observer-stderr.txt"
+
+            set +e
+            wait "$docker_client_pid"
+            local run_status="$?"
+            set -e
+            docker_client_pid=""
+            docker inspect "$container_id" >"$run_log_dir/runtime-inspect.json"
+            test "$run_status" -eq 0
+            test -s "$run_output_dir/raw-run.json"
+            test -s "$run_output_dir/result-artifact.json"
+            test -e "$run_output_dir/child-stdout.txt"
+            test -e "$run_output_dir/child-stderr.txt"
+            test -s "$run_log_dir/host-cgroup-observation.json"
+            test -s "$run_log_dir/runtime-inspect.json"
+            test -s "$run_log_dir/observer-stdout.txt"
+            test ! -s "$run_log_dir/observer-stderr.txt"
+          )
+          run_one 1
+          run_one 2
+          run_one 3
+
+      - name: Close the isolated staging roots into the curated evidence tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e "$EVIDENCE_ROOT"
+          install -d -m 0755 "$EVIDENCE_ROOT/prior" "$EVIDENCE_ROOT/tooling" "$EVIDENCE_ROOT/runs"
+          install -m 0444 "$INPUT_ROOT/pin-manifest.json" "$EVIDENCE_ROOT/pin-manifest.json"
+          install -m 0444 "$INPUT_ROOT/prior/scan-receipt.json" "$EVIDENCE_ROOT/prior/scan-receipt.json"
+          install -m 0444 "$INPUT_ROOT/prior/docker-inspect.json" "$EVIDENCE_ROOT/prior/docker-inspect.json"
+          install -m 0444 "$INPUT_ROOT/prior/host-preflight-redacted.json" "$EVIDENCE_ROOT/prior/host-preflight-redacted.json"
+          install -m 0444 .github/workflows/container-memory-peak-calibration.yml "$EVIDENCE_ROOT/tooling/container-memory-peak-calibration.yml"
+          install -m 0444 scripts/verify-container-memory-peak-evidence.mjs "$EVIDENCE_ROOT/tooling/verify-container-memory-peak-evidence.mjs"
+          install -m 0444 scripts/observe-container-memory-peak-linux.mjs "$EVIDENCE_ROOT/tooling/observe-container-memory-peak-linux.mjs"
+          install -m 0444 "$INPUT_ROOT/tooling/run-container-memory-peak-linux-calibration.mjs" "$EVIDENCE_ROOT/tooling/run-container-memory-peak-linux-calibration.mjs"
+          install -m 0444 "$INPUT_ROOT/tooling/container-memory-peak-calibration-request.json" "$EVIDENCE_ROOT/tooling/container-memory-peak-calibration-request.json"
+          for run_index in 1 2 3; do
+            run_output_dir="$RUN_OUTPUT_STAGE/run-$run_index"
+            run_log_dir="$RUN_LOG_STAGE/run-$run_index"
+            curated_run="$EVIDENCE_ROOT/runs/run-$run_index"
+            output_names="$(find "$run_output_dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)"
+            test "$output_names" = $'child-stderr.txt\nchild-stdout.txt\nraw-run.json\nresult-artifact.json'
+            log_names="$(find "$run_log_dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)"
+            test "$log_names" = $'host-cgroup-observation.json\nobserver-stderr.txt\nobserver-stdout.txt\nruntime-inspect.json\nstderr.txt\nstdout.txt'
+            for staged_file in \
+              "$run_output_dir/raw-run.json" "$run_output_dir/result-artifact.json" \
+              "$run_output_dir/child-stdout.txt" "$run_output_dir/child-stderr.txt" \
+              "$run_log_dir/stdout.txt" "$run_log_dir/stderr.txt" \
+              "$run_log_dir/runtime-inspect.json" "$run_log_dir/host-cgroup-observation.json"; do
+              test -f "$staged_file"
+              test ! -L "$staged_file"
+              test "$(stat -c '%h' "$staged_file")" = "1"
+            done
+            install -d -m 0755 "$curated_run"
+            install -m 0444 "$run_output_dir/raw-run.json" "$curated_run/raw-run.json"
+            install -m 0444 "$run_output_dir/result-artifact.json" "$curated_run/result-artifact.json"
+            install -m 0444 "$run_output_dir/child-stdout.txt" "$curated_run/child-stdout.txt"
+            install -m 0444 "$run_output_dir/child-stderr.txt" "$curated_run/child-stderr.txt"
+            install -m 0444 "$run_log_dir/stdout.txt" "$curated_run/stdout.txt"
+            install -m 0444 "$run_log_dir/stderr.txt" "$curated_run/stderr.txt"
+            install -m 0444 "$run_log_dir/runtime-inspect.json" "$curated_run/runtime-inspect.json"
+            install -m 0444 "$run_log_dir/host-cgroup-observation.json" "$curated_run/host-cgroup-observation.json"
+          done
+          test -z "$(find "$RUN_STATE_STAGE" -mindepth 1 -maxdepth 1 -print -quit)"
+          rm -rf -- "$INPUT_ROOT" "$RUN_OUTPUT_STAGE" "$RUN_LOG_STAGE" "$RUN_STATE_STAGE"
+          test ! -e "$INPUT_ROOT"
+          test ! -e "$RUN_OUTPUT_STAGE"
+          test ! -e "$RUN_LOG_STAGE"
+          test ! -e "$RUN_STATE_STAGE"
+
+      - name: Assemble the strict whole-container memory-peak evidence manifest
+        env:
+          TOOLING_COMMIT: ${{ inputs.tooling_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module - "$EVIDENCE_ROOT" "$TOOLING_COMMIT" <<'NODE'
+          import { createHash } from "node:crypto";
+          import { execFileSync } from "node:child_process";
+          import { readFileSync, statSync, writeFileSync } from "node:fs";
+          import { join } from "node:path";
+          const [root, toolingCommit] = process.argv.slice(2);
+          const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+          const command = (path, args) => execFileSync(path, args, {
+            encoding: "utf8", maxBuffer: 64 * 1024,
+          }).trim();
+          const descriptor = (path) => {
+            const absolute = join(root, path);
+            const metadata = statSync(absolute);
+            const bytes = readFileSync(absolute);
+            if (!metadata.isFile() || metadata.nlink !== 1) throw new Error("invalid evidence inode: " + path);
+            return { path, sha256: sha256(bytes), byteLength: bytes.byteLength };
+          };
+          const runs = [1, 2, 3].map((runIndex) => ({
+            runIndex,
+            rawRun: descriptor(`runs/run-${runIndex}/raw-run.json`),
+            runtimeInspect: descriptor(`runs/run-${runIndex}/runtime-inspect.json`),
+            hostObservation: descriptor(`runs/run-${runIndex}/host-cgroup-observation.json`),
+            artifact: descriptor(`runs/run-${runIndex}/result-artifact.json`),
+            stdout: descriptor(`runs/run-${runIndex}/stdout.txt`),
+            stderr: descriptor(`runs/run-${runIndex}/stderr.txt`),
+            childStdout: descriptor(`runs/run-${runIndex}/child-stdout.txt`),
+            childStderr: descriptor(`runs/run-${runIndex}/child-stderr.txt`),
+          }));
+          const rawRuns = runs.map(({ rawRun }) => JSON.parse(readFileSync(join(root, rawRun.path), "utf8")));
+          const maximumContainerMemoryPeakBytes = Math.max(...rawRuns.map((run) => run.cgroup.memoryPeakBytes));
+          const memoryLimitBytes = 2147483648;
+          const maximumContainerMemoryPeakFraction = maximumContainerMemoryPeakBytes / memoryLimitBytes;
+          const evidence = {
+            schemaVersion: "3dena.container-memory-peak-evidence.v1",
+            status: "EXECUTED",
+            pinManifest: descriptor("pin-manifest.json"),
+            externalEvidence: {
+              exactImageScanReceipt: descriptor("prior/scan-receipt.json"),
+              dockerInspect: descriptor("prior/docker-inspect.json"),
+              auxiliaryHostPreflight: {
+                ...descriptor("prior/host-preflight-redacted.json"),
+                role: "informational-only",
+                contributesToFormalApproval: false,
+              },
+            },
+            tooling: {
+              toolingCommit,
+              imageSourceCommit: process.env.IMAGE_SOURCE_COMMIT,
+              workflow: descriptor("tooling/container-memory-peak-calibration.yml"),
+              verifier: descriptor("tooling/verify-container-memory-peak-evidence.mjs"),
+              hostObserver: descriptor("tooling/observe-container-memory-peak-linux.mjs"),
+              runner: descriptor("tooling/run-container-memory-peak-linux-calibration.mjs"),
+              request: descriptor("tooling/container-memory-peak-calibration-request.json"),
+            },
+            githubProvenance: {
+              schemaVersion: "3dena.container-memory-peak-github-run-provenance.v1",
+              repository: process.env.GITHUB_REPOSITORY,
+              repositoryId: process.env.GITHUB_REPOSITORY_ID,
+              repositoryOwnerId: process.env.GITHUB_REPOSITORY_OWNER_ID,
+              serverUrl: process.env.GITHUB_SERVER_URL,
+              ref: process.env.GITHUB_REF,
+              refProtected: process.env.GITHUB_REF_PROTECTED === "true",
+              sha: process.env.GITHUB_SHA,
+              workflowPath: ".github/workflows/container-memory-peak-calibration.yml",
+              workflowRef: process.env.GITHUB_WORKFLOW_REF,
+              workflowSha: process.env.GITHUB_WORKFLOW_SHA,
+              runId: process.env.GITHUB_RUN_ID,
+              runAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
+              job: process.env.GITHUB_JOB,
+              protectedEnvironment: "container-memory-peak-calibration",
+              runnerEnvironment: {
+                runnerOs: process.env.RUNNER_OS,
+                runnerArch: process.env.RUNNER_ARCH,
+                runnerImage: process.env.ImageOS,
+                runnerImageVersion: process.env.ImageVersion,
+                kernelRelease: command("/usr/bin/uname", ["-r"]),
+                kernelVersion: command("/usr/bin/uname", ["-v"]),
+                dockerClientVersion: command("/usr/bin/docker", ["version", "--format", "{{.Client.Version}}"]),
+                dockerServerVersion: command("/usr/bin/docker", ["version", "--format", "{{.Server.Version}}"]),
+                cgroupVersion: 2,
+                cgroupFilesystem: command("/usr/bin/stat", ["-fc", "%T", "/sys/fs/cgroup"]),
+              },
+              artifacts: {
+                evidenceName: "exact-v12-container-memory-peak-evidence",
+                formalReceiptName: "exact-v12-container-memory-peak-verification-receipt",
+              },
+            },
+            approvedCalibrationEnvelope: rawRuns[0].workload,
+            executionPolicy: {
+              platform: "linux", architecture: "amd64", cgroupVersion: 2,
+              runtimeUser: "10001:10001", memoryMaxBytes: memoryLimitBytes,
+              memorySwapMaxBytes: 0, cpuCount: 1, pidsMax: 64,
+              readOnlyRoot: true, networkDisabled: true, noNewPrivileges: true, capDropAll: true,
+              tmpfs: { mountPath: "/tmp", options: ["rw", "nosuid", "nodev", "noexec"] },
+              freshContainerRuns: 3,
+            },
+            runs,
+            aggregate: {
+              runCount: 3, maximumContainerMemoryPeakBytes, memoryLimitBytes, maximumContainerMemoryPeakFraction,
+              thresholdFraction: 0.5, calibrationEnvelopeUnderThreshold: maximumContainerMemoryPeakFraction <= 0.5,
+            },
+            claims: {
+              approvedCalibrationEnvelopeOnly: true,
+              extrapolationBeyondEnvelopeApproved: false,
+              realFlyMultiMachineApproved: false,
+              requiredRealFlyMachines: 2,
+              realFlyMultiMachineStatus: "NOT_RUN",
+            },
+          };
+          writeFileSync(join(root, "evidence.json"), JSON.stringify(evidence) + "\n", {
+            encoding: "utf8", flag: "wx", mode: 0o444,
+          });
+          NODE
+
+      - name: Verify every raw file and issue a consistency-only receipt
+        env:
+          TOOLING_COMMIT: ${{ inputs.tooling_commit }}
+          EXPECTED_PIN_MANIFEST_SHA256: ${{ inputs.expected_pin_manifest_sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/verify-container-memory-peak-evidence.mjs \
+            --mode consistency \
+            --evidence-root "$EVIDENCE_ROOT" \
+            --manifest evidence.json \
+            --pin-manifest pin-manifest.json \
+            --expected-pin-manifest-sha256 "$EXPECTED_PIN_MANIFEST_SHA256" \
+            --expected-tooling-commit "$TOOLING_COMMIT" \
+            --output verification.json
+
+      - name: Record the consistency receipt SHA-256
+        id: consistency-sha
+        shell: bash
+        run: |
+          set -euo pipefail
+          receipt_sha="$(sha256sum "$EVIDENCE_ROOT/verification.json" | cut -d' ' -f1)"
+          [[ "$receipt_sha" =~ ^[a-f0-9]{64}$ ]]
+          printf 'sha256=%s\n' "$receipt_sha" >>"$GITHUB_OUTPUT"
+
+      - name: Upload the curated closed evidence root
+        id: upload-evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: exact-v12-container-memory-peak-evidence
+          path: ${{ env.EVIDENCE_ROOT }}
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+  exact-v12-container-memory-peak-verifier:
+    name: Protected GitHub artifact custody verifier
+    needs: exact-v12-container-memory-peak-producer
+    runs-on: ubuntu-latest
+    environment: container-memory-peak-calibration
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    env:
+      EVIDENCE_ROOT: ${{ runner.temp }}/container-memory-peak-consumer/evidence
+      FORMAL_ROOT: ${{ runner.temp }}/container-memory-peak-formal
+      CONTAINER_MEMORY_PEAK_PROTECTED_ENVIRONMENT: container-memory-peak-calibration
+    steps:
+      - name: Check out the exact detached verifier tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tooling_commit }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate the immutable artifact handoff tuple
+        env:
+          TOOLING_COMMIT: ${{ inputs.tooling_commit }}
+          EVIDENCE_ARTIFACT_ID: ${{ needs.exact-v12-container-memory-peak-producer.outputs.evidence-artifact-id }}
+          EVIDENCE_ARTIFACT_DIGEST: ${{ needs.exact-v12-container-memory-peak-producer.outputs.evidence-artifact-digest }}
+          CONSISTENCY_RECEIPT_SHA256: ${{ needs.exact-v12-container-memory-peak-producer.outputs.consistency-receipt-sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$TOOLING_COMMIT" = "$GITHUB_SHA"
+          test "$TOOLING_COMMIT" = "$GITHUB_WORKFLOW_SHA"
+          test "$(git rev-parse HEAD)" = "$TOOLING_COMMIT"
+          ! git symbolic-ref -q HEAD
+          [[ "$EVIDENCE_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$EVIDENCE_ARTIFACT_DIGEST" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$CONSISTENCY_RECEIPT_SHA256" =~ ^[a-f0-9]{64}$ ]]
+
+      - name: Download the evidence by numeric artifact ID with digest enforcement
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          artifact-ids: ${{ needs.exact-v12-container-memory-peak-producer.outputs.evidence-artifact-id }}
+          path: ${{ env.EVIDENCE_ROOT }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Re-read every raw artifact and reproduce the consistency receipt
+        env:
+          TOOLING_COMMIT: ${{ inputs.tooling_commit }}
+          EXPECTED_PIN_MANIFEST_SHA256: ${{ inputs.expected_pin_manifest_sha256 }}
+          CONSISTENCY_RECEIPT_SHA256: ${{ needs.exact-v12-container-memory-peak-producer.outputs.consistency-receipt-sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 0700 "$FORMAL_ROOT/input"
+          cp "$EVIDENCE_ROOT/verification.json" "$FORMAL_ROOT/input/producer-consistency.json"
+          test "$(sha256sum "$FORMAL_ROOT/input/producer-consistency.json" | cut -d' ' -f1)" = "$CONSISTENCY_RECEIPT_SHA256"
+          rm "$EVIDENCE_ROOT/verification.json"
+          node scripts/verify-container-memory-peak-evidence.mjs \
+            --mode consistency \
+            --evidence-root "$EVIDENCE_ROOT" \
+            --manifest evidence.json \
+            --pin-manifest pin-manifest.json \
+            --expected-pin-manifest-sha256 "$EXPECTED_PIN_MANIFEST_SHA256" \
+            --expected-tooling-commit "$TOOLING_COMMIT" \
+            --output verification.json
+          cmp "$FORMAL_ROOT/input/producer-consistency.json" "$EVIDENCE_ROOT/verification.json"
+          test "$(sha256sum "$EVIDENCE_ROOT/verification.json" | cut -d' ' -f1)" = "$CONSISTENCY_RECEIPT_SHA256"
+
+      - name: Bind GitHub run and uploaded-artifact attestation then issue the formal receipt
+        env:
+          TOOLING_COMMIT: ${{ inputs.tooling_commit }}
+          EVIDENCE_ARTIFACT_ID: ${{ needs.exact-v12-container-memory-peak-producer.outputs.evidence-artifact-id }}
+          EVIDENCE_ARTIFACT_DIGEST: ${{ needs.exact-v12-container-memory-peak-producer.outputs.evidence-artifact-digest }}
+          CONSISTENCY_RECEIPT_SHA256: ${{ needs.exact-v12-container-memory-peak-producer.outputs.consistency-receipt-sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module - "$FORMAL_ROOT/input/github-artifact-attestation.json" <<'NODE'
+          import { writeFileSync } from "node:fs";
+          const [path] = process.argv.slice(2);
+          const attestation = {
+            schemaVersion: "3dena.container-memory-peak-github-artifact-attestation.v1",
+            repository: process.env.GITHUB_REPOSITORY,
+            serverUrl: process.env.GITHUB_SERVER_URL,
+            ref: process.env.GITHUB_REF,
+            sha: process.env.GITHUB_SHA,
+            workflowPath: ".github/workflows/container-memory-peak-calibration.yml",
+            workflowRef: process.env.GITHUB_WORKFLOW_REF,
+            workflowSha: process.env.GITHUB_WORKFLOW_SHA,
+            runId: process.env.GITHUB_RUN_ID,
+            runAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
+            producerJob: "exact-v12-container-memory-peak-producer",
+            verifierJob: process.env.GITHUB_JOB,
+            protectedEnvironment: process.env.CONTAINER_MEMORY_PEAK_PROTECTED_ENVIRONMENT,
+            evidenceArtifact: {
+              id: process.env.EVIDENCE_ARTIFACT_ID,
+              name: "exact-v12-container-memory-peak-evidence",
+              digest: process.env.EVIDENCE_ARTIFACT_DIGEST,
+              url: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}/artifacts/${process.env.EVIDENCE_ARTIFACT_ID}`,
+            },
+            consistencyReceiptSha256: process.env.CONSISTENCY_RECEIPT_SHA256,
+          };
+          writeFileSync(path, JSON.stringify(attestation) + "\n", { encoding: "utf8", flag: "wx", mode: 0o400 });
+          NODE
+          node scripts/verify-container-memory-peak-evidence.mjs \
+            --mode formal-github-artifact \
+            --formal-root "$FORMAL_ROOT" \
+            --consistency-receipt input/producer-consistency.json \
+            --github-artifact-attestation input/github-artifact-attestation.json \
+            --expected-consistency-receipt-sha256 "$CONSISTENCY_RECEIPT_SHA256" \
+            --expected-evidence-artifact-id "$EVIDENCE_ARTIFACT_ID" \
+            --expected-evidence-artifact-digest "$EVIDENCE_ARTIFACT_DIGEST" \
+            --expected-tooling-commit "$TOOLING_COMMIT" \
+            --output verification.json
+
+      - name: Upload the exclusive formal GitHub artifact verification receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: exact-v12-container-memory-peak-verification-receipt
+          path: ${{ env.FORMAL_ROOT }}/verification.json
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false

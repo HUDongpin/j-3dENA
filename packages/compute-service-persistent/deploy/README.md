@@ -99,8 +99,13 @@ approval manifest and in-image registry hashes; omitting it or supplying a hash
 from another materialization lineage makes `/readyz` fail closed. It must be
 configured through the deployment environment and never baked into the image.
 
-The candidate `performance-1x`/2 GiB worker size is not approved capacity. The
-release calibration must demonstrate one child peak RSS below 50% or change it.
+The candidate `performance-1x`/2 GiB worker size is not approved capacity. A
+reviewed calibration may measure whole-container cgroup v2 memory.peak for a
+frozen direct-fork harness, but that is neither child-process RSS nor evidence
+that the persistent-service API -> queue -> worker path meets its 60-second hard
+deadline. Capacity approval still requires that real service path and a
+multi-machine matrix on >=2 real Fly Machines; the current Fly status is
+`NOT_RUN`.
 
 ## Deterministic BuildApproval candidate inputs
 

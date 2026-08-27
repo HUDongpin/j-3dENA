@@ -142,6 +142,9 @@ jobs:
       - name: Test exact-image scan evidence contracts
         run: npm run test:container-scan-evidence:unit
 
+      - name: Test whole-container memory-peak evidence contracts
+        run: npm run test:container-memory-peak-evidence:unit
+
       - name: Test CodeQL scanning scope contract
         run: npm run test:codeql-scope:unit
 
