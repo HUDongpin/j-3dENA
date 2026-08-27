@@ -6,6 +6,12 @@ import { describe, expect, it } from "vitest";
 const repositoryRoot = resolve(import.meta.dirname, "../../..");
 
 describe("public package CI source and artifact governance", () => {
+  it("binds producer and custody paths to the active v13 release", async () => {
+    const workflow = await readFile(resolve(repositoryRoot, ".github/workflows/ci.yml"), "utf8");
+    expect(workflow).toContain("j-3dena-0.2.0-implemented-unverified.13.tgz");
+    expect(workflow).not.toContain("j-3dena-0.2.0-implemented-unverified.12.tgz");
+  });
+
   it("classifies S/A/C fail-closed and builds only detached source S", async () => {
     const workflow = await readFile(resolve(repositoryRoot, ".github/workflows/ci.yml"), "utf8");
     const classifier = workflow.match(/  public-package-head:[\s\S]*?(?=\n  checks:)/u)?.[0] ?? "";
