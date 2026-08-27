@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 // @ts-expect-error release verifier is an MJS build-script module.
 import * as publicPackageVerifier from "../scripts/verify-public-package.mjs";
 
-const publicPackageVersion = "0.2.0-implemented-unverified.11";
+const publicPackageVersion = "0.2.0-implemented-unverified.12";
 
 function createValidPublicPackageManifest(): Record<string, unknown> {
   return {
