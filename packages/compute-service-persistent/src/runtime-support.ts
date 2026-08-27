@@ -456,7 +456,16 @@ async function toWebRequest(
     else headers.set(name, raw);
   }
   const method = request.method ?? "GET";
-  if (method === "GET" || method === "HEAD") {
+  const contentLength = request.headers["content-length"];
+  const hasDeclaredBody = request.headers["transfer-encoding"] !== undefined
+    || (Array.isArray(contentLength)
+      ? contentLength.some((value) => value !== "0")
+      : contentLength !== undefined && contentLength !== "0");
+  if (
+    method === "GET"
+    || method === "HEAD"
+    || (method === "DELETE" && !hasDeclaredBody)
+  ) {
     return new Request(url, { method, headers, signal });
   }
   const init: RequestInit & { duplex: "half" } = {

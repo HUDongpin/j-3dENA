@@ -90,6 +90,59 @@ async function within<T>(promise: Promise<T>, label: string): Promise<T> {
 }
 
 describe("Node HTTP to Web transport bridge", () => {
+  it("does not synthesize a body for an empty DELETE request", async () => {
+    let observedBody: ReadableStream<Uint8Array> | null | undefined;
+    let baseUrl = "";
+    const server = createServer((request, response) => {
+      void bridgeNodeHttpRequest(request, response, baseUrl, (webRequest) => {
+        observedBody = webRequest.body;
+        return new Response(null, {
+          status: webRequest.body === null ? 204 : 400,
+        });
+      });
+    });
+    try {
+      baseUrl = await listenLoopback(server);
+      const response = await fetch(`${baseUrl}/v1/jobs/job-1`, {
+        method: "DELETE",
+      });
+
+      expect(response.status).toBe(204);
+      expect(observedBody).toBeNull();
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("preserves a declared DELETE body for downstream rejection", async () => {
+    let observedBody: string | undefined;
+    let observedStream = false;
+    let baseUrl = "";
+    const server = createServer((request, response) => {
+      void bridgeNodeHttpRequest(request, response, baseUrl, async (webRequest) => {
+        observedStream = webRequest.body !== null;
+        observedBody = await webRequest.text();
+        return new Response(null, {
+          status: observedStream && observedBody === "{}" ? 204 : 400,
+        });
+      });
+    });
+    try {
+      baseUrl = await listenLoopback(server);
+      const response = await fetch(`${baseUrl}/v1/jobs/job-1`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+
+      expect(response.status).toBe(204);
+      expect(observedStream).toBe(true);
+      expect(observedBody).toBe("{}");
+    } finally {
+      await closeServer(server);
+    }
+  });
+
   it("aborts the Web request and cancels the SSE body iterator when the client disconnects", async () => {
     const signalAborted = deferred();
     const bodyCancelled = deferred();
