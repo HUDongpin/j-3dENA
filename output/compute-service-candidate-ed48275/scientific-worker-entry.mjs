@@ -19,7 +19,7 @@ var __exportAll = (all, no_symbols) => {
 	return target;
 };
 //#endregion
-//#region node_modules/jena-js/dist/chunk-FSSJXZD4.js
+//#region ../j3dena-release-gate-v8/node_modules/jena-js/dist/chunk-FSSJXZD4.js
 function assertNonEmptyColumns(columns, label) {
 	if (columns.length === 0) throw new Error(`${label} must contain at least one column name.`);
 }
@@ -339,7 +339,7 @@ function covarianceLike(matrix) {
 }
 var init_chunk_FSSJXZD4 = __esmMin((() => {}));
 //#endregion
-//#region node_modules/jena-js/dist/chunk-B5R3F624.js
+//#region ../j3dena-release-gate-v8/node_modules/jena-js/dist/chunk-B5R3F624.js
 function scalarToString(value) {
 	return value === null ? "" : String(value);
 }
@@ -362,7 +362,7 @@ function typedTupleIdentity(row, columns) {
 }
 var init_chunk_B5R3F624 = __esmMin((() => {}));
 //#endregion
-//#region node_modules/jena-js/dist/chunk-MKNCZ6G3.js
+//#region ../j3dena-release-gate-v8/node_modules/jena-js/dist/chunk-MKNCZ6G3.js
 function assertOrderedAdjacencyBudget(codeCount) {
 	const edgeCount = codeCount * codeCount;
 	if (codeCount > ORDERED_MAX_CODE_COUNT || edgeCount > ORDERED_MAX_EDGE_COUNT) throw new Error(`Ordered network analysis descriptive SVD budget allows at most ${ORDERED_MAX_CODE_COUNT} codes (${ORDERED_MAX_EDGE_COUNT} directed edges); got ${codeCount} codes (${edgeCount} directed edges). The verified Yu contract uses ${ORDERED_VERIFIED_CODE_COUNT} codes, while 16/20-code probes are outside this safe bound.`);
@@ -1470,7 +1470,7 @@ var init_chunk_MKNCZ6G3 = __esmMin((() => {
 	]);
 }));
 //#endregion
-//#region node_modules/jena-js/dist/chunk-4NYP2CS4.js
+//#region ../j3dena-release-gate-v8/node_modules/jena-js/dist/chunk-4NYP2CS4.js
 function prepareDesign(x, standardize) {
 	const rows = x.length;
 	const cols = x[0]?.length ?? 0;
@@ -1663,7 +1663,7 @@ function multiGaussianElasticNetCV(x, y, options = {}) {
 }
 var init_chunk_4NYP2CS4 = __esmMin((() => {}));
 //#endregion
-//#region node_modules/jena-js/dist/chunk-GJY2X2UA.js
+//#region ../j3dena-release-gate-v8/node_modules/jena-js/dist/chunk-GJY2X2UA.js
 function svdRotation(pointsForProjection) {
 	const eigen = symmetricJacobiEigen(covarianceLike(pointsForProjection));
 	const divisor = Math.max(1, pointsForProjection.length - 1);
@@ -2228,7 +2228,7 @@ var init_chunk_GJY2X2UA = __esmMin((() => {
 	init_chunk_FSSJXZD4();
 }));
 //#endregion
-//#region node_modules/jena-js/dist/chunk-QY374ADW.js
+//#region ../j3dena-release-gate-v8/node_modules/jena-js/dist/chunk-QY374ADW.js
 function accumulateData(options) {
 	validateAccumulateOptions(options);
 	return accumulateDataChunked({
@@ -2379,7 +2379,7 @@ var init_chunk_QY374ADW = __esmMin((() => {
 	init_chunk_FSSJXZD4();
 }));
 //#endregion
-//#region node_modules/jena-js/dist/index.js
+//#region ../j3dena-release-gate-v8/node_modules/jena-js/dist/index.js
 var init_dist = __esmMin((() => {
 	init_chunk_QY374ADW();
 }));
@@ -2394,8 +2394,8 @@ var init_build_identity = __esmMin((() => {
 		jenaVersion: injected("0.7.0-ona.0", "development-unbound"),
 		jenaCommit: injected("90790856f00bdef63dbd27fc3a5b502e8cffe65f", "development-unbound"),
 		jenaTarballIntegrity: injected("sha512-gBhKP9d7C3akXTPlU03AJHBs+dBBDt1TUFGx96P/pB/s0GEGGX2aZFLJGWf9HLc+wuBJIjrJn7tIGicg1WQflQ==", "development-unbound"),
-		sdkVersion: injected("0.2.0-implemented-unverified.11", "development-unbound"),
-		buildId: injected("9ce41017d3d17dd24beac7c7d08f74d7e92d2a1c", "development-unbound"),
+		sdkVersion: injected("0.2.0-implemented-unverified.12", "development-unbound"),
+		buildId: injected("a8b63e853c28be665282eaa4e8010d4198319106", "development-unbound"),
 		bound: true
 	});
 }));
@@ -9831,7 +9831,7 @@ async function sha256Snapshot(bytes) {
 	return Array.from(digest, (value) => value.toString(16).padStart(2, "0")).join("");
 }
 //#endregion
-//#region node_modules/xlsx/xlsx.mjs
+//#region ../j3dena-release-gate-v8/node_modules/xlsx/xlsx.mjs
 /*! xlsx.js (C) 2013-present SheetJS -- http://sheetjs.com */
 var XLSX = {};
 XLSX.version = "0.20.3";
@@ -9862,7 +9862,7 @@ if (typeof $cptable !== "undefined");
 })();
 XLSX.version;
 //#endregion
-//#region node_modules/xlsx/dist/cpexcel.full.mjs
+//#region ../j3dena-release-gate-v8/node_modules/xlsx/dist/cpexcel.full.mjs
 var cpexcel_full_exports = /* @__PURE__ */ __exportAll({
 	cptable: () => cptable,
 	utils: () => utils,
