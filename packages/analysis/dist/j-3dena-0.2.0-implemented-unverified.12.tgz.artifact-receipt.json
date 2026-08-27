@@ -1,0 +1,727 @@
+{
+  "schemaVersion": "3dena.public-package-artifact-receipt.v2",
+  "source": {
+    "repositoryHead": "a8b63e853c28be665282eaa4e8010d4198319106"
+  },
+  "package": {
+    "name": "j-3dena",
+    "version": "0.2.0-implemented-unverified.12",
+    "buildId": "a8b63e853c28be665282eaa4e8010d4198319106"
+  },
+  "tree": {
+    "serialization": "3dena.regular-file-tree.path-mode-length-bytes.v1",
+    "sha256": "8b2f8657f3c4494d2e36bf2e0250be98aa67e56669fcc7766f9968d94db8c768",
+    "fileCount": 138,
+    "byteLength": 7327105
+  },
+  "tarball": {
+    "filename": "j-3dena-0.2.0-implemented-unverified.12.tgz",
+    "byteLength": 1472290,
+    "sha256": "218faeb50147cff157e617cd43c7030ee38541de7e93b019510c4f75da684c28",
+    "integrity": "sha512-6C/V/XSs1wFUD5Xo8HHH8FIiZDYG7mX1y1EzW6WloDx+fziIMSpVX4kMReW3JillBUwD8TAIs9qc/2ngppj2Ng=="
+  },
+  "npmPack": {
+    "id": "j-3dena@0.2.0-implemented-unverified.12",
+    "name": "j-3dena",
+    "version": "0.2.0-implemented-unverified.12",
+    "size": 1472290,
+    "unpackedSize": 7327105,
+    "shasum": "2d06d5ff26fbc9ce72d461422da8e627085a66a8",
+    "integrity": "sha512-6C/V/XSs1wFUD5Xo8HHH8FIiZDYG7mX1y1EzW6WloDx+fziIMSpVX4kMReW3JillBUwD8TAIs9qc/2ngppj2Ng==",
+    "filename": "j-3dena-0.2.0-implemented-unverified.12.tgz",
+    "files": [
+      {
+        "path": "LICENSE",
+        "size": 35149,
+        "mode": 420
+      },
+      {
+        "path": "PROVENANCE.json",
+        "size": 2060,
+        "mode": 420
+      },
+      {
+        "path": "README.md",
+        "size": 3853,
+        "mode": 420
+      },
+      {
+        "path": "THIRD_PARTY/SheetJS-LICENSE.txt",
+        "size": 11355,
+        "mode": 420
+      },
+      {
+        "path": "THIRD_PARTY/jena-js-LICENSE",
+        "size": 35149,
+        "mode": 420
+      },
+      {
+        "path": "THIRD_PARTY/jena-js-PROVENANCE.md",
+        "size": 14248,
+        "mode": 420
+      },
+      {
+        "path": "THIRD_PARTY_NOTICES.md",
+        "size": 2141,
+        "mode": 420
+      },
+      {
+        "path": "index.d.ts",
+        "size": 48,
+        "mode": 420
+      },
+      {
+        "path": "index.js",
+        "size": 1863134,
+        "mode": 420
+      },
+      {
+        "path": "index.js.map",
+        "size": 3667343,
+        "mode": 420
+      },
+      {
+        "path": "package.json",
+        "size": 799,
+        "mode": 420
+      },
+      {
+        "path": "schemas/analysis-execution-dataset.v2.json",
+        "size": 153197,
+        "mode": 420
+      },
+      {
+        "path": "schemas/analysis-result-envelope.v1.json",
+        "size": 859486,
+        "mode": 420
+      },
+      {
+        "path": "schemas/analysis-spec.v1.json",
+        "size": 1071,
+        "mode": 420
+      },
+      {
+        "path": "schemas/analysis-task.v1.json",
+        "size": 16272,
+        "mode": 420
+      },
+      {
+        "path": "schemas/dataset-receipt.v1.json",
+        "size": 4264,
+        "mode": 420
+      },
+      {
+        "path": "schemas/display-spec.v1.json",
+        "size": 4511,
+        "mode": 420
+      },
+      {
+        "path": "schemas/evidence-stamp.v1.json",
+        "size": 1034,
+        "mode": 420
+      },
+      {
+        "path": "schemas/index.json",
+        "size": 1082,
+        "mode": 420
+      },
+      {
+        "path": "schemas/longitudinal-analysis-bundle.v2.json",
+        "size": 244041,
+        "mode": 420
+      },
+      {
+        "path": "schemas/provenance-manifest.v1.json",
+        "size": 2251,
+        "mode": 420
+      },
+      {
+        "path": "schemas/task-owner.v1.json",
+        "size": 611,
+        "mode": 420
+      },
+      {
+        "path": "schemas/trajectory-bootstrap-task.v2.json",
+        "size": 2140,
+        "mode": 420
+      },
+      {
+        "path": "schemas/trajectory-display-spec.v2.json",
+        "size": 4563,
+        "mode": 420
+      },
+      {
+        "path": "schemas/trajectory-inference-task.v2.json",
+        "size": 5035,
+        "mode": 420
+      },
+      {
+        "path": "schemas/trajectory-network-overlay-task.v2.json",
+        "size": 1403,
+        "mode": 420
+      },
+      {
+        "path": "schemas/trajectory-path-task.v2.json",
+        "size": 725,
+        "mode": 420
+      },
+      {
+        "path": "schemas/trajectory-run-spec.v2.json",
+        "size": 9894,
+        "mode": 420
+      },
+      {
+        "path": "schemas/typed-key.v1.json",
+        "size": 803,
+        "mode": 420
+      },
+      {
+        "path": "schemas/typed-scalar.v1.json",
+        "size": 3657,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/analysis-client.d.ts",
+        "size": 5742,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/analysis-client.d.ts.map",
+        "size": 4431,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/analyze.d.ts",
+        "size": 503,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/analyze.d.ts.map",
+        "size": 253,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/build-identity.d.ts",
+        "size": 314,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/build-identity.d.ts.map",
+        "size": 375,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/contracts.d.ts",
+        "size": 151568,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/contracts.d.ts.map",
+        "size": 11648,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/dataset-inspection.d.ts",
+        "size": 1902,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/dataset-inspection.d.ts.map",
+        "size": 1327,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/display.d.ts",
+        "size": 440,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/display.d.ts.map",
+        "size": 298,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/export-bundle.d.ts",
+        "size": 4727,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/export-bundle.d.ts.map",
+        "size": 3542,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/fitted-jena-adapter-v2.d.ts",
+        "size": 1958,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/fitted-jena-adapter-v2.d.ts.map",
+        "size": 1159,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/index.d.ts",
+        "size": 4816,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/index.d.ts.map",
+        "size": 2939,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/longitudinal-v2.d.ts",
+        "size": 13214,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/longitudinal-v2.d.ts.map",
+        "size": 9757,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/network-analysis.d.ts",
+        "size": 2169,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/network-analysis.d.ts.map",
+        "size": 1607,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/plotly-spec.d.ts",
+        "size": 1491,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/plotly-spec.d.ts.map",
+        "size": 1206,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/prepared-derived.d.ts",
+        "size": 1457,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/prepared-derived.d.ts.map",
+        "size": 1110,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/prepared-space.d.ts",
+        "size": 837,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/prepared-space.d.ts.map",
+        "size": 396,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/prepared-types.d.ts",
+        "size": 6715,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/prepared-types.d.ts.map",
+        "size": 4955,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/public.d.ts",
+        "size": 1819,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/public.d.ts.map",
+        "size": 1055,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/scientific-result-schemas.d.ts",
+        "size": 393,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/scientific-result-schemas.d.ts.map",
+        "size": 409,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/task-executor.d.ts",
+        "size": 3901,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/task-executor.d.ts.map",
+        "size": 2373,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/trajectory-series-adapters.d.ts",
+        "size": 1213,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/trajectory-series-adapters.d.ts.map",
+        "size": 652,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/trajectory-statistics.d.ts",
+        "size": 11663,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/trajectory-statistics.d.ts.map",
+        "size": 8747,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/trajectory.d.ts",
+        "size": 751,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/trajectory.d.ts.map",
+        "size": 457,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/types.d.ts",
+        "size": 10239,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/types.d.ts.map",
+        "size": 7623,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/validation.d.ts",
+        "size": 1657,
+        "mode": 420
+      },
+      {
+        "path": "types/analysis/src/validation.d.ts.map",
+        "size": 1375,
+        "mode": 420
+      },
+      {
+        "path": "types/export/src/csv.d.ts",
+        "size": 1471,
+        "mode": 420
+      },
+      {
+        "path": "types/export/src/csv.d.ts.map",
+        "size": 1130,
+        "mode": 420
+      },
+      {
+        "path": "types/export/src/errors.d.ts",
+        "size": 693,
+        "mode": 420
+      },
+      {
+        "path": "types/export/src/errors.d.ts.map",
+        "size": 608,
+        "mode": 420
+      },
+      {
+        "path": "types/export/src/index.d.ts",
+        "size": 577,
+        "mode": 420
+      },
+      {
+        "path": "types/export/src/index.d.ts.map",
+        "size": 501,
+        "mode": 420
+      },
+      {
+        "path": "types/export/src/unicode.d.ts",
+        "size": 106,
+        "mode": 420
+      },
+      {
+        "path": "types/export/src/unicode.d.ts.map",
+        "size": 184,
+        "mode": 420
+      },
+      {
+        "path": "types/export/src/zip.d.ts",
+        "size": 878,
+        "mode": 420
+      },
+      {
+        "path": "types/export/src/zip.d.ts.map",
+        "size": 679,
+        "mode": 420
+      },
+      {
+        "path": "types/io/src/decode.d.ts",
+        "size": 1195,
+        "mode": 420
+      },
+      {
+        "path": "types/io/src/decode.d.ts.map",
+        "size": 716,
+        "mode": 420
+      },
+      {
+        "path": "types/io/src/errors.d.ts",
+        "size": 738,
+        "mode": 420
+      },
+      {
+        "path": "types/io/src/errors.d.ts.map",
+        "size": 622,
+        "mode": 420
+      },
+      {
+        "path": "types/io/src/index.d.ts",
+        "size": 856,
+        "mode": 420
+      },
+      {
+        "path": "types/io/src/index.d.ts.map",
+        "size": 648,
+        "mode": 420
+      },
+      {
+        "path": "types/io/src/json-preflight.d.ts",
+        "size": 350,
+        "mode": 420
+      },
+      {
+        "path": "types/io/src/json-preflight.d.ts.map",
+        "size": 207,
+        "mode": 420
+      },
+      {
+        "path": "types/io/src/limits.d.ts",
+        "size": 707,
+        "mode": 420
+      },
+      {
+        "path": "types/io/src/limits.d.ts.map",
+        "size": 681,
+        "mode": 420
+      },
+      {
+        "path": "types/io/src/types.d.ts",
+        "size": 3073,
+        "mode": 420
+      },
+      {
+        "path": "types/io/src/types.d.ts.map",
+        "size": 2789,
+        "mode": 420
+      },
+      {
+        "path": "types/stats/src/adjust.d.ts",
+        "size": 203,
+        "mode": 420
+      },
+      {
+        "path": "types/stats/src/adjust.d.ts.map",
+        "size": 267,
+        "mode": 420
+      },
+      {
+        "path": "types/stats/src/independent.d.ts",
+        "size": 252,
+        "mode": 420
+      },
+      {
+        "path": "types/stats/src/independent.d.ts.map",
+        "size": 266,
+        "mode": 420
+      },
+      {
+        "path": "types/stats/src/index.d.ts",
+        "size": 1132,
+        "mode": 420
+      },
+      {
+        "path": "types/stats/src/index.d.ts.map",
+        "size": 825,
+        "mode": 420
+      },
+      {
+        "path": "types/stats/src/numerics.d.ts",
+        "size": 1351,
+        "mode": 420
+      },
+      {
+        "path": "types/stats/src/numerics.d.ts.map",
+        "size": 1227,
+        "mode": 420
+      },
+      {
+        "path": "types/stats/src/paired.d.ts",
+        "size": 222,
+        "mode": 420
+      },
+      {
+        "path": "types/stats/src/paired.d.ts.map",
+        "size": 254,
+        "mode": 420
+      },
+      {
+        "path": "types/stats/src/rank-v2.d.ts",
+        "size": 4633,
+        "mode": 420
+      },
+      {
+        "path": "types/stats/src/rank-v2.d.ts.map",
+        "size": 3567,
+        "mode": 420
+      },
+      {
+        "path": "types/stats/src/types.d.ts",
+        "size": 6751,
+        "mode": 420
+      },
+      {
+        "path": "types/stats/src/types.d.ts.map",
+        "size": 4851,
+        "mode": 420
+      },
+      {
+        "path": "types/tabular-import/src/bytes.d.ts",
+        "size": 606,
+        "mode": 420
+      },
+      {
+        "path": "types/tabular-import/src/bytes.d.ts.map",
+        "size": 602,
+        "mode": 420
+      },
+      {
+        "path": "types/tabular-import/src/container-preflight.d.ts",
+        "size": 453,
+        "mode": 420
+      },
+      {
+        "path": "types/tabular-import/src/container-preflight.d.ts.map",
+        "size": 516,
+        "mode": 420
+      },
+      {
+        "path": "types/tabular-import/src/csv.d.ts",
+        "size": 360,
+        "mode": 420
+      },
+      {
+        "path": "types/tabular-import/src/csv.d.ts.map",
+        "size": 427,
+        "mode": 420
+      },
+      {
+        "path": "types/tabular-import/src/errors.d.ts",
+        "size": 1553,
+        "mode": 420
+      },
+      {
+        "path": "types/tabular-import/src/errors.d.ts.map",
+        "size": 987,
+        "mode": 420
+      },
+      {
+        "path": "types/tabular-import/src/importer.d.ts",
+        "size": 1131,
+        "mode": 420
+      },
+      {
+        "path": "types/tabular-import/src/importer.d.ts.map",
+        "size": 878,
+        "mode": 420
+      },
+      {
+        "path": "types/tabular-import/src/index.d.ts",
+        "size": 728,
+        "mode": 420
+      },
+      {
+        "path": "types/tabular-import/src/index.d.ts.map",
+        "size": 588,
+        "mode": 420
+      },
+      {
+        "path": "types/tabular-import/src/limits.d.ts",
+        "size": 379,
+        "mode": 420
+      },
+      {
+        "path": "types/tabular-import/src/limits.d.ts.map",
+        "size": 390,
+        "mode": 420
+      },
+      {
+        "path": "types/tabular-import/src/types.d.ts",
+        "size": 4199,
+        "mode": 420
+      },
+      {
+        "path": "types/tabular-import/src/types.d.ts.map",
+        "size": 3179,
+        "mode": 420
+      },
+      {
+        "path": "types/trajectory/src/analyze-v2.d.ts",
+        "size": 331,
+        "mode": 420
+      },
+      {
+        "path": "types/trajectory/src/analyze-v2.d.ts.map",
+        "size": 275,
+        "mode": 420
+      },
+      {
+        "path": "types/trajectory/src/analyze.d.ts",
+        "size": 241,
+        "mode": 420
+      },
+      {
+        "path": "types/trajectory/src/analyze.d.ts.map",
+        "size": 257,
+        "mode": 420
+      },
+      {
+        "path": "types/trajectory/src/errors.d.ts",
+        "size": 317,
+        "mode": 420
+      },
+      {
+        "path": "types/trajectory/src/errors.d.ts.map",
+        "size": 393,
+        "mode": 420
+      },
+      {
+        "path": "types/trajectory/src/index.d.ts",
+        "size": 856,
+        "mode": 420
+      },
+      {
+        "path": "types/trajectory/src/index.d.ts.map",
+        "size": 584,
+        "mode": 420
+      },
+      {
+        "path": "types/trajectory/src/types.d.ts",
+        "size": 7341,
+        "mode": 420
+      },
+      {
+        "path": "types/trajectory/src/types.d.ts.map",
+        "size": 5822,
+        "mode": 420
+      }
+    ],
+    "entryCount": 138,
+    "bundled": []
+  }
+}
