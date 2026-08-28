@@ -320,7 +320,6 @@ export class PostgresTemporalDueSource implements PersistentTemporalDueSourceV1 
                    )
                  )
                )
-             )
            ORDER BY h.updated_at, h.job_id
            FOR UPDATE OF h SKIP LOCKED
            LIMIT $1`,

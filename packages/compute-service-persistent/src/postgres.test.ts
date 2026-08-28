@@ -98,6 +98,27 @@ class HandlerPool implements PgCompatiblePool, PgCompatibleClient {
   }
 }
 
+function sqlParenthesisBalance(sql: string): number {
+  let depth = 0;
+  let inSingleQuotedString = false;
+  for (let index = 0; index < sql.length; index += 1) {
+    const character = sql[index];
+    if (character === "'" && inSingleQuotedString && sql[index + 1] === "'") {
+      index += 1;
+      continue;
+    }
+    if (character === "'") {
+      inSingleQuotedString = !inSingleQuotedString;
+      continue;
+    }
+    if (inSingleQuotedString) continue;
+    if (character === "(") depth += 1;
+    if (character === ")") depth -= 1;
+    if (depth < 0) return depth;
+  }
+  return depth;
+}
+
 describe("persistent PostgreSQL contract", () => {
   it("deduplicates an unchanged SSE snapshot under the durable per-job cursor lock", async () => {
     let nextSequence = 8;
@@ -384,6 +405,7 @@ describe("persistent PostgreSQL contract", () => {
     const deletionSelection = pool.statements.find(
       (sql) => sql.includes("SELECT h.job_id") && sql.includes("FROM compute_http_jobs"),
     );
+    expect(sqlParenthesisBalance(deletionSelection ?? "")).toBe(0);
     expect(deletionSelection).not.toContain("compute_capacity_slots");
     expect(deletionSelection).toContain("longitudinal-analysis-v2");
     expect(deletionSelection).toContain("60000");
