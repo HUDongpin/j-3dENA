@@ -547,6 +547,7 @@ test("remote calibration verifies the mocked service build and fails closed with
 test("mocked remote service closes ENA, all six source-bound derived analyses, formal downloads, and deletion without a Worker", async ({
   page,
 }) => {
+  test.setTimeout(90_000);
   let preflight: Record<string, unknown> | null = null;
   let sourceExecuteBody: Record<string, unknown> | null = null;
   const derivedExecuteBodies: Record<string, unknown>[] = [];

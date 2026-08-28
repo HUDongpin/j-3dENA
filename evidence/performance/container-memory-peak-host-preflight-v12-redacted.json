@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "3dena.container-memory-peak-host-preflight-redacted.v1",
+  "status": "INFORMATIONAL_ONLY",
+  "sourceReceiptSha256": "d9b0d03edbc1d25858a4b433fb0dee687492e5632a5146dc8158d2c3c051cf49",
+  "sourceMeasurement": {
+    "platform": "darwin",
+    "architecture": "arm64",
+    "kind": "macos-process-rss",
+    "equivalentToLinuxCgroupV2ContainerMemoryPeak": false
+  },
+  "formalMeasurement": {
+    "platform": "linux",
+    "architecture": "amd64",
+    "kind": "cgroup-v2-whole-container-memory-peak"
+  },
+  "redaction": {
+    "absolutePathsRemoved": true,
+    "childProcessIdentifiersRemoved": true
+  },
+  "claims": {
+    "contributesToFormalApproval": false,
+    "formalContainerMemoryPeakCapacityApproved": false
+  }
+}
